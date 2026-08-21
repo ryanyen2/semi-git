@@ -26,12 +26,12 @@ function RehearsalBanner() {
         letterSpacing: '0.02em',
       }}
     >
-      Rehearsal mode — local emulators. Nothing here reaches the real study.
+      Rehearsal mode, local emulators. Nothing here reaches the real study.
     </div>
   )
 }
 
-// The dashboard carries d3 and the whole analysis pipeline, which a participant
+// The dashboard carries d3-scale and the whole analysis pipeline, which a participant
 // never needs. Splitting it keeps their first load small on a hotel wifi, and
 // keeps the scoring code out of the bundle they are served.
 const ExperimenterApp = lazy(() =>

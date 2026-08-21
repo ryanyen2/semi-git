@@ -24,16 +24,63 @@ All of this work studies the minutes around acceptance: whether the code is
 correct~\cite{perry2023}, whether the developer can tell that it is
 correct~\cite{vasconcelos2025}, whether they trust
 it~\cite{liang2024,cheng2024}, and how much faster they
-finish~\cite{mozannar2024,cui2025}. Nguyen and Glassman studied what happens
+finish~\cite{mozannar2024,cui2025}. The trust question has since been answered at
+population scale: 84\% of professional developers now report using AI tools while
+trust in the accuracy of those tools fell from 40\% to 29\% in one survey year,
+and experienced developers are the most sceptical~\cite{stackoverflow2025}.
+Adoption and distrust are growing together, which means the code that enters the
+repository is code its own author does not fully trust. The natural organisational
+response---deploy a second model to review what the first model
+wrote---is structurally circular when no executable specification exists:
+Zietsman showed that the generating agent and the reviewing agent reason from the
+same artefact with correlated failure modes, so the review checks code against
+itself rather than against intent~\cite{zietsman2026}. The circularity breaks
+only when an external reference independent of both agents enters the
+loop---a specification, a provenance record, or a developer who holds the
+decomposition the code was built from. Nguyen and Glassman studied what happens
 during acceptance itself and found a systematic vocabulary mismatch: beginning
 programmers and code models read each other's intent through different naming
 conventions, so the developer's description of what they asked for and the
 model's description of what it produced diverge even when the behaviour
 matches~\cite{nguyen2024}. That mismatch compounds over time, because the
 developer who later searches their history must use the model's naming, not
-their own, and cannot tell when the two have drifted apart. None of this work asks what happens a week later,
+their own, and cannot tell when the two have drifted apart. The code that
+arrives also carries systematic defects: Tambon et al.\ taxonomised 333 bugs in
+LLM-generated code and found ``misinterpretation''---the model produced something
+other than what the prompt asked for---to be among the most prevalent
+patterns~\cite{tambon2024}. A misinterpretation is code filed under the wrong
+request: it arrived during one prompt but implements something different, and the
+developer who later reverts that request will either miss the rogue code (if it
+was miscounted) or accidentally remove correct code that happened to be produced
+in the same response. Both failure modes are invisible without a record that
+tracks provenance at finer grain than the response that delivered it. Nanda et
+al.\ found misbehaviours in 30\% of production agent trajectories across three
+categories---specification drift, reasoning problems, and tool call
+failures---and deployed Wink, a system that monitors trajectories and nudges the
+agent back on path~\cite{nanda2026wink}. What Wink corrects in real time, version
+control must recover after the fact, because the 70\% of trajectories that
+completed without intervention still interleave edits across multiple requests
+in a single session, and a specification drift that Wink did not catch becomes a
+provenance error that only shows up when someone tries to undo one request without
+disturbing the others. Al~Mujahid
+and Imran confirmed that developers know they are in this position: they found 81
+code comments across public repositories in which a developer incorporates
+AI-generated code while explicitly stating they do not understand its behaviour or
+correctness---what the authors call GenAI-Induced Self-admitted Technical
+Debt~\cite{mujahid2026}. The debt is not incurred by accident; it is incurred
+knowingly, because the alternative is to stop and rebuild the understanding the
+tool was hired to make unnecessary. None of this work asks what happens a week later,
 when the developer needs to recall what their codebase was, what has changed
-since, and why it is constructed the way it is. Bainbridge identified this
+since, and why it is constructed the way it is. Parnin and Rugaber studied
+resumption after interruption in programming and found it takes a median of
+fifteen minutes before a developer can resume productive work---even on code
+they were writing themselves minutes
+earlier~\cite{parnin2011}. The bottleneck is reconstructing the
+\emph{mental simulation}: which functions are involved, what state they expect,
+and what the developer intended to do next. An agent session produces code the
+developer never held that simulation for, so resumption does not mean rebuilding
+a model that decayed; it means constructing a model that never existed, at a
+cost the fifteen-minute figure only lower-bounds. Bainbridge identified this
 structure in 1983: automation removes the need for a skill, the skill degrades
 through disuse, and when the automation fails the operator needs exactly the
 skill that has degraded~\cite{bainbridge1983}. The irony applies here directly.
@@ -43,10 +90,168 @@ served which request---the skill git's revert requires---decays in proportion to
 the success of the tool that made the decomposition unnecessary. Bastani et al.\ confirmed the mechanism experimentally: participants who used a
 generative model during practice solved faster in the moment but performed
 significantly worse on later assessments without access to
-it~\cite{bastani2025}. We observe programmers gradually losing the theory of
+it~\cite{bastani2025}. Risko and Gilbert's framework for \emph{cognitive
+offloading} supplies the missing framing: people strategically delegate
+cognitive work to external resources (notes, tools, other agents) when the
+cost of internal processing exceeds its benefit, and the delegation is
+rational---but its side effect is that the offloaded information is never
+encoded in memory at all~\cite{risko2016}. Bainbridge's irony assumes a skill
+that existed and degraded; cognitive offloading describes the stronger case
+where the skill was never exercised in the first place. A developer who tells
+an agent ``add caching'' has offloaded the typing and the
+decomposition together: which functions to create, which to modify, what state
+they share. That decomposition never entered the developer's working memory because
+the offloading succeeded, and it cannot decay from a state it never reached.
+The developer is not \emph{forgetting} what the agent produced; they never knew
+it at the grain version control will later demand. A version control system
+built for this developer must therefore compensate for absent encoding, not for
+degraded recall---which is why the read layer (Section~\ref{sec:design})
+provides attributions the developer can recognise without having to reconstruct
+from scratch.
+
+Rozenblit and Keil named the metacognitive
+mechanism that makes this degradation invisible: people systematically
+overestimate the depth of their own understanding of causal systems---what they
+call the \emph{illusion of explanatory depth}---and discover the gap only when
+asked to produce a step-by-step explanation~\cite{rozenblit2002}. A developer who
+stated ``add caching'' and received working code believes they understand the
+caching because they specified its purpose, but their understanding lives at the
+purpose level, not at the mechanism level (which functions call which, what state
+they share, what breaks when one is removed). The illusion persists until
+something forces a confrontation with the mechanism---a revert that breaks an
+unexpected caller, a rename that orphans a test---at which point the developer
+discovers that what they knew was the intent, not the implementation. The read
+layer is the forcing function: an attribution that surprises the developer is the
+step-by-step explanation Rozenblit and Keil showed dispels the illusion, delivered
+before the developer acts on their false confidence rather than after.
+Sergeyuk et al.\ confirmed the consequence at scale: a two-year longitudinal
+study of 800 developers showed that sustained AI assistant use produces
+substantially more code \emph{and} deletes substantially more, while developers
+themselves perceive minimal change in anything but
+productivity~\cite{sergeyuk2026}. Murphy-Hill et al.\ distinguished the form
+factor: CLI-based coding agents produce a sustained 24\% lift in merged pull
+requests over four months, whereas He et al.\ found that cursor-style inline
+completion produces a velocity gain that dissipates within two months as
+cyclomatic complexity rises 41\%~\cite{murphyhill2026,he2026}. The difference is
+structural. An inline completion changes one expression inside a function the
+developer is already reading; a CLI agent session changes fourteen functions
+across five files while the developer watches a progress spinner, and what
+accumulates is not lines of code but interleaved edits whose provenance the
+developer never held. Vella and Blincoe tracked 95 matched developers over six months and identified
+the paradox this creates: productivity perceptions held stable at 84\% while the
+share reporting worsened developer experience nearly doubled from 14\% to 27\%,
+with flow state and cognitive load both eroding over the period---a divergence
+they traced to a new category of work they called \emph{supervisory engineering}
+(direction, evaluation, and correction of AI output)~\cite{vella2026longitudinal}.
+He et al.\ documented the consequence at organisational
+scale: when an enterprise mandated doubling per-engineer throughput via AI
+tooling, per-reviewer load roughly doubled and automated review overtook human
+review, while the throughput target was met~\cite{he2026review}. The production
+side of the bottleneck widened; the verification side did not, and what absorbs
+the difference is review depth. Cynthia et al.\ confirmed the downstream
+consequence: across 54{,}791 agent-generated review comments on 342 repositories,
+the only reliable predictor of a comment being resolved was the presence of a
+concise inline code suggestion; lengthy or complex feedback went
+unacted-upon regardless of its correctness~\cite{cynthia2026gohome}. The churn
+is invisible to the developer who produces it, but it is exactly what version
+control must later untangle---more code written per unit time means more
+interleaved edits per commit, and more deletion means more opportunities for a
+removal to carry unrelated work with it.
+Wang et al.\ argued for the reorientation these findings demand: from autonomous
+coding agents evaluated on benchmark completion to human-centred coding agents
+evaluated on four interaction dimensions---task alignment, verifiability,
+steerability, and adaptability~\cite{wang2026humansmissing}. Those four dimensions
+are not properties of the agent itself but of the interface between agent and
+developer, and all four degrade when a developer cannot see which request produced
+which code. Verifiability requires a record the developer can check; steerability
+requires units the developer can redirect or remove; adaptability requires knowing
+what happened before, not just what exists now. All three are version control
+questions answered in terms of commits that predate the interaction pattern they
+describe. Casserini et al.\ named the accumulation that results: \emph{agentic
+entropy}, a systemic drift between agent actions and architectural intent that
+compounds over time and is invisible to traditional diff-based review because a
+diff captures what changed in one commit, not how the aggregate trajectory diverges
+from what was asked for~\cite{casserini2026entropy}. Their proposed remedy is
+process-level telemetry---conformity seeding, reasoning monitoring, a causal graph
+of agent decisions---and the unit of observation is the agent's internal reasoning
+trace. \sgt{} observes a different layer: not what the agent was thinking but what
+the developer asked for and what ended up in the repository, which is the layer a
+revert operates on and the one a developer can verify without access to the agent's
+internals.
+Treude analysed terms of service for widely-used AI coding tools and found a
+consistent pattern: providers shift responsibility for correctness, safety, and
+legal compliance onto the developer, while providing no mechanism for the
+developer to exercise that responsibility at the granularity the agent
+works~\cite{treude2026accountable}. The developer is accountable for code they
+did not write line by line, produced by a process they did not supervise step by
+step, and no infrastructure exists to help them trace which request produced which
+function when something breaks. The governance gap Treude identifies is what makes
+provenance tracking a requirement rather than a convenience: a developer who bears
+responsibility needs, at minimum, a record that says what they asked for and what
+they got.
+Lyu et al.\ interviewed 20 practitioners building SE agents and surveyed 80 more,
+and found that as implementation becomes cheaper, bottlenecks shift rather than
+disappear: what emerges is not a reduction in total difficulty but a migration
+toward evaluation, coordination, and what they call \emph{comprehension
+debt}---code outpacing understanding~\cite{lyu2026practitioners}. Comprehension
+debt is the practitioner's name for the same phenomenon Bainbridge identified
+theoretically: the skill of holding the codebase's structure degrades through
+disuse, and the degraded skill is exactly what a developer needs when the
+automation fails. We observe programmers gradually losing the theory of
 their own codebase~\cite{naur1985} over the time they use these tools, and
 Bainbridge's framework says the loss is structural rather than incidental: it is
 what automation does to the skill it replaces.
+
+Three recent empirical studies quantify how long this debt persists. Liu et al.\
+mined 302{,}600 verified AI-authored commits across 6{,}299 repositories and found
+that 22.7\% of issues the AI introduced---code smells, correctness defects, security
+vulnerabilities---still survive at the latest version~\cite{liu2026debt}. Nearly one
+in four problems becomes permanent. Rahman and Shihab tracked 200{,}000 code units
+across 201 projects and found the opposite of the disposable-code hypothesis: agent-authored
+code survives \emph{longer} than human code (15.8 percentage-point lower modification rate),
+while carrying a modestly elevated corrective-change rate (26.3\% vs.\ 23.0\% for
+humans)~\cite{rahman2026survive}. Code that persists longer while needing more bug fixes
+is code whose provenance matters more over time, not less---each surviving function is a
+future undo that requires tracing back to the session that introduced it. Sawada et al.\
+confirmed the maintenance asymmetry from the other direction: AI-generated files receive
+less frequent maintenance than human-authored code, and when maintenance occurs, human
+developers perform the large majority of it~\cite{sawada2026maintenance}. The pattern
+across all three is consistent: AI-generated code enters the repository, persists, accumulates
+corrections, and is maintained by people who did not write it---which is the exact scenario
+in which provenance attribution becomes load-bearing.
+
+Storey proposed a framework that names these accumulations
+precisely~\cite{storey2026tripledebt}. Traditional technical debt resides in code;
+\emph{cognitive debt} resides in people (the erosion of shared understanding across a
+team); \emph{intent debt} resides in externalized knowledge (the absence of recorded
+rationale that developers and agents need to work safely with code). AI-generated code can
+reduce technical debt---a model that writes clean implementations produces fewer
+shortcuts---while simultaneously increasing the other two, because neither the team's
+understanding nor the system's externalized rationale keeps pace with the code the model
+produces. Catalan et al.\ confirmed the mechanism empirically: cognitive engagement with
+agent-generated output declines as tasks progress, and current agentic assistants provide
+limited affordances for reflection, verification, or
+meaning-making~\cite{catalan2026notreading}. The developer stops reading before the
+session ends, and what they do not read becomes intent debt the moment the session
+closes---code whose purpose no one holds. \sgt{}'s read layer is an affordance for
+exactly the reflection Catalan et al.\ found missing: it externalizes the rationale (which
+request produced which function) so that the intent debt does not accrue silently, and it
+presents the result as a scannable attribution rather than a wall of code, so that a
+developer whose engagement is declining can still absorb the provenance without reading
+every line.
+Dhanorkar et al.\ interviewed 17 experienced developers and identified four forms of
+emergent oversight work: a priori control, co-planning, real-time monitoring, and post hoc
+review~\cite{dhanorkar2026oversight}. Their central finding is that oversight spans all four stages---developers invest
+preventative effort before agent execution and proactive effort during it, as well as
+reactive checking after---and that the tools available for each form are inadequate. ``Difficulty reviewing
+agent-generated code'' was a situated challenge participants named explicitly, and the
+heuristic they adopted (using test results as a proxy for correctness) is the same
+substitution that produces undetected errors in the study of
+Section~\ref{sec:findings}: a developer who relies on tests alone misses the structural
+damage a passing suite cannot detect. \sgt{}'s read layer is infrastructure for the post hoc
+review form---it shows what was produced and by which request---and the consequence preview
+supports the co-planning form, because a developer who can see what a revert would touch
+before confirming it is planning jointly with the tool rather than delegating blindly.
 
 \subsection{What a version control system agrees to record}
 
@@ -78,11 +283,10 @@ removes lines in a stated context~\cite{roundy2005}. Patches that do not depend 
 each other commute, so a user can pull the third patch in a series without the
 first two, and the design has been formalised and reimplemented since on a data
 structure that makes the operations fast~\cite{jacobson2009,mimram2013,pijul2024}.
-A Darcs user who pulls one
-patch onto another branch moves the patch that was recorded, along with the
-dependencies it names, where git's cherry-pick reapplies a diff in a context it
-was not written against and produces a second commit with a second hash, so the
-same work has two identities. But Darcs works out what a patch depends on from the
+A Darcs user who pulls one patch onto another branch moves the patch itself,
+along with the dependencies it names. Git's cherry-pick, by contrast, reapplies
+a diff in a context it was not written against and produces a second commit with
+a second hash---so the same work acquires two identities. But Darcs works out what a patch depends on from the
 lines the patch touches, so a dependency that leaves no trace in the text goes
 unrecorded. When an agent adds a \sym{Retry} class in a new file and edits
 \sym{api.py::handle} to call it, the two patches share no line, and nothing in the
@@ -118,11 +322,26 @@ session into one commit, one change identifier covers all three requests and
 nothing smaller has a name. Figure~\ref{fig:granularity} puts these records beside
 each other.
 
+The granularity mismatch is not specific to code. Deng et al.\ analysed 170 forum
+threads about version control in computer-aided design and identified the same
+structural problem in a different material: CAD tools version entire assemblies
+while designers think in components, so the questions a designer asks (``what
+changed about the bracket?'') have no answer in the record~\cite{deng2026untangling}.
+Their four challenge categories---management, continuity, scope, and
+distribution---map to specific failures in this paper: scope is the tangled commit
+of Section~\ref{sec:scenarios}, continuity is the checkpoint story of
+Section~\ref{sec:walkthrough}, and management is the naming problem of
+Section~\ref{sec:names}. The convergence across domains suggests that the mismatch
+between a tool's recording grain and a practitioner's thinking grain is a general
+property of version control design, not a side effect of any particular language or
+medium, and that any tool which closes the gap must parse the artefact's internal
+structure rather than treating it as opaque content.
+
 \subsection{Version control that already knew about functions}
 
 Recording a version at the grain of a function has been built before, more than
-once, and the reason none of it displaced the commit is the reason we think it can
-now. Historage rewrites a Java repository so that every method sits in a file of
+once, and the reason none of it displaced the commit is the same reason we argue it
+should now. Historage rewrites a Java repository so that every method sits in a file of
 its own, at which point git's existing machinery gives each method a history of
 its own~\cite{hata2011}, and FinerGit refines that format so that git's rename
 detection keeps working when a method moves~\cite{higo2020}. Stellation and Coven
@@ -200,8 +419,12 @@ code.
 \sgt{} does depend on two results from this literature. Keeping a function's
 identity when it is renamed or moved is the problem that refactoring detection and
 tree differencing address~\cite{tsantalis2018,falleri2014,fluri2007}, and it is
-the weakest link in our implementation, since a rename we fail to detect appears
-as one function removed and another added. Grouping edits into features is a
+the weakest link in our implementation---though not for the reason one would
+expect. A rename that goes undetected appears as one function removed and another
+added, but a rename that is detected still breaks the output path: the system
+records that the identity persisted but never records a path remap, so the old
+path becomes a zombie that composes nothing, and the new path receives content
+keyed to a location that no longer exists on disk. Grouping edits into features is a
 clustering over which functions change together and which call each other, both
 halves of which the co-change mining literature
 established~\cite{zimmermann2004,ying2004,kim2005,godfrey2005}, resolved with a
@@ -250,7 +473,10 @@ five small ones. Graphite's guide states the precondition plainly, that develope
 must understand how to break down their work into small, incremental changes, and
 every command the tool offers operates on a decomposition the developer has
 already performed. In an agent session that decomposition exists in the
-developer's request history and nowhere in the code.
+developer's request history and nowhere in the code. The precondition is not
+merely harder to meet; with CLI agents it is structurally unavailable, because
+the agent's changes span multiple files in a single response and the developer
+sees the result only after the decomposition would need to have been decided.
 
 The closest system to ours is sem, which parses about 32 languages with
 tree-sitter and reports which functions, methods and classes a commit changed,
@@ -265,12 +491,43 @@ offer: a record any teammate's ordinary commit can silently invalidate cannot be
 the record an operation acts on, so every sem command reports and none of them
 changes state, and a developer who learns from \cmd{sem diff} that
 \sym{get\_cached} changed removes it with a line-level tool.
-\sgt{} commits its record to the repository in
-order to act on it, and we pay for that in two places. A record that operations
+\sgt{} commits its record to the repository so that operations can act on it, and we pay for that in two places. A record that operations
 depend on has to be repaired when it is wrong, which
 Section~\ref{sec:unreproducible} reports the current cost of, and everybody who
 pulls the repository now carries a record they did not ask for, which
 Section~\ref{sec:colleague} works through from the point of view of the three
 people who never installed \sgt{}. sem chose the safer placement and we chose the
 more useful one, and the honest form of that sentence is that we have taken on an
-obligation sem does not have.
+obligation sem does not have. Kula and Treude proposed the shift at the level of
+the development environment itself: a graph-based IDE that abandons the static
+file as the unit of work and lets a developer prune and reshape AI-generated code
+the way a gardener shapes a tree~\cite{kula2025}. Their diagnosis is the same as
+ours---``current static-file IDEs lack the mechanisms to track the provenance of
+AI-generated code''---and the response is complementary: they restructure the
+editing surface, while we restructure the versioning substrate beneath it.
+Velasco et al.\ address provenance at the model level: tracing generated code
+back through the prompt, the training data, and the model's internal
+representations~\cite{velasco2026provenance}. That question---\emph{why did the
+model write this line?}---is orthogonal to the one \sgt{} answers---\emph{which
+developer request caused this function to exist?}---and a developer may need both.
+The first explains a line's origin in the model's training distribution; the
+second explains its presence in the project's history. \sgt{} provides the second
+without requiring access to model internals, using only the record of what was
+asked and what changed.
+
+\medskip\noindent
+The literature above converges on a position no single paper states. The
+cognitive precondition for version control---that the developer holds a model of
+what changed and why---is eroding (Bainbridge, Shen and Tamkin, Risko and Gilbert).
+The debt that results has been named three times under three framings (comprehension
+debt, intent debt, agentic entropy). Tools that address it either stop at
+display (sem, Azurite, Mylyn) or stop at the editor boundary (Variolite, Kery et
+al.), or address a different grain (GitButler at the file, Darcs at the line,
+Jujutsu at the commit). The combination that does not yet exist is a tool that
+records at the grain of the function, groups those records by the request that
+produced them, writes the result into a repository colleagues can pull, and exposes
+operations (revert, restore, switch) over those groups---so that a developer who
+typed three sentences and received fourteen functions can act on one sentence
+without manually reconstructing which functions it covers. That combination is what
+Section~\ref{sec:design} describes, what Section~\ref{sec:walkthrough}
+demonstrates, and what the remainder of the paper evaluates.

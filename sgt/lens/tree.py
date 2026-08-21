@@ -476,6 +476,55 @@ def _prune_empty_leaves(nodes: dict, roots: list[str]) -> None:
             changed = True
 
 
+def _restamp_depth_by_id(nodes: dict, nid: str, depth: int) -> None:
+    """`_restamp_depth` for the registered graph, where children are ids rather than dicts."""
+    nodes[nid]["depth"] = depth
+    for c in nodes[nid]["children"]:
+        _restamp_depth_by_id(nodes, c, depth + 1)
+
+
+def _collapse_single_child_internals(nodes: dict, roots: list[str]) -> None:
+    """Splice out every internal node left holding exactly one child.
+
+    A group of one is not a grouping. `_regroup_flat_root` already refuses to wrap a lone node, but
+    the arity splitter can cut a node in two and then lose one of the parts: `_rehome_pseudo_members`
+    empties a residue-only sibling and `_prune_empty_leaves` drops it, which leaves the parent
+    wrapping its single survivor. In the confplan fixture that produced a subsystem whose label was
+    its only child's label verbatim -- `rooms and the two-day slot grid with parsing` nested inside
+    `rooms and the two-day slot grid with parsing` -- an extra level of indent carrying no
+    information, under a name a reader has to check twice to be sure they read it once.
+
+    Keeps the child and drops the parent. The child owns the feature id, the members and the ops, so
+    re-parenting it to its grandparent leaves identity, pins and `op_leaf` untouched -- the same
+    argument `_regroup_flat_root` makes, that internal nodes are re-derived grouping while leaves are
+    identity. Cascades, since a collapse can leave the grandparent holding one child in turn, and
+    restamps depth afterwards because every node under the splice point moved up a level.
+
+    A single-child root is left alone: promoting its child would change which node `roots` names,
+    which is a change to the shape of the forest rather than a redundant level inside it."""
+    root_set = set(roots)
+    collapsed = False
+    changed = True
+    while changed:
+        changed = False
+        for nid in list(nodes):
+            nd = nodes.get(nid)
+            if nd is None or nid in root_set or len(nd["children"]) != 1:
+                continue
+            parent = nd["parent"]
+            if parent is None or parent not in nodes:
+                continue
+            child = nd["children"][0]
+            nodes[parent]["children"] = [
+                child if c == nid else c for c in nodes[parent]["children"]
+            ]
+            nodes[child]["parent"] = parent
+            del nodes[nid]
+            changed = collapsed = True
+    if collapsed:
+        for r in roots:
+            _restamp_depth_by_id(nodes, r, nodes[r]["depth"])
+
 def _rehome_pseudo_members(nodes: dict) -> None:
     """Move every residue/anchor member into the leaf that owns its anchor entity.
 
@@ -755,6 +804,8 @@ def build(
     # below to drop. Without it such a leaf becomes a named, labelled, 0-symbol feature (F21).
     _prune_empty_leaves(nodes, roots)  # a member-less leaf is not a feature -- drop it before any
     # feature id is minted for it, so the phantom never reaches identity/op-assignment or the tree.
+    _collapse_single_child_internals(nodes, roots)  # ...and a parent left with one child after
+    # that prune is a group of one: drop the level, keep the child (see the function).
 
     cannot_link_moves = enforce_cannot_link(nodes, pins, real_adj)
 
@@ -1270,6 +1321,7 @@ def label_tree(
     remaining: set[str] = set()
     for rid in result["roots"]:
         remaining.update(_post_order(nodes, rid))
+    root_ids = set(result["roots"])
 
     while remaining:
         ready = [nid for nid in remaining if not (set(nodes[nid]["children"]) & remaining)]
@@ -1295,6 +1347,17 @@ def label_tree(
             elif len(nd["children"]) == 1:
                 only = nodes[nd["children"][0]]
                 nd["label"], nd["why"] = only["label"], only["why"]
+            elif nid in root_ids:
+                # The root holds every alive symbol (see the module docstring), so any name for it
+                # is a name for the whole repository -- which is the one thing the labeler is told
+                # not to produce, because a name that fits every feature separates none of them.
+                # Asked anyway, it answered with whatever the fallback path could assemble out of
+                # the members: the study's practice repo headed its tree and its map with
+                # `README.md add_item remove_item total cart.py`, on the first command of the
+                # session. The repository's own directory name is what that row actually is, it
+                # costs no LLM call, and it does not change between rebuilds.
+                nd["label"] = Path(repo).resolve().name or "the repository"
+                nd["why"] = "The whole repository. Every feature below is part of it."
             else:
                 kid_labels = [nodes[c]["label"] for c in nd["children"]]
                 files = sorted({m.split("::", 1)[0] for m in nd["members"]})[:8]

@@ -1,6 +1,6 @@
 import { useParticipant } from '../ParticipantApp'
 import { Markdown } from '../../ui/Markdown'
-import { PROJECT_BRIEF } from '../../study/content'
+import { BRIEF_NO_MEMORISE, BRIEF_UNTIMED, PROJECT_BRIEF } from '../../study/content'
 import { blockFor, type Step } from '../../study/flow'
 import { SCENARIO } from '../../study/tasks'
 import { Callout } from '../../ui/bits'
@@ -27,9 +27,7 @@ export function BriefStep({ step }: { step: Step }) {
         </div>
         <h1>The project</h1>
         <p className="lede">
-          What {scenario.app} does, who uses it, and what it refuses to do. Nothing is timed on
-          this page, so read it at whatever pace you want and ask anything you like before you
-          continue.
+          What {scenario.app} does, who uses it, and what it refuses to do. {BRIEF_UNTIMED}
         </p>
       </div>
 
@@ -38,8 +36,7 @@ export function BriefStep({ step }: { step: Step }) {
       </div>
 
       <Callout kind="soft" title="You do not have to memorise any of this">
-        The requests tell you what needs to change. This is here so that finding your way around is
-        not the first thing you have to do under a clock.
+        {BRIEF_NO_MEMORISE}
       </Callout>
 
       <div className="sticky-actions">

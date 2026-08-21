@@ -2285,6 +2285,7 @@ def show_at_view(repo, at: str, path: str | None = None) -> dict:
     needed a projection: this one is the *time* reading ("as it was at"), and `show_view` below is the
     *identity* reading ("what is this"). Two functions called `show_view` briefly coexisted here after
     a merge, one silently shadowing the other."""
+    from sgt.tui.graph import plural
     view = fold_view(repo, **_parse_show_spec(at))
     if view.get("forked"):
         return {"error": view["message"]}
@@ -2298,7 +2299,7 @@ def show_at_view(repo, at: str, path: str | None = None) -> dict:
         # more reliably than by its full repo-relative path.
         matches = [p for p in sorted(files) if p == path or p.endswith("/" + path)]
         if not matches:
-            return {"error": f"{path!r} does not exist at {at} ({len(files)} file(s) do; "
+            return {"error": f"{path!r} does not exist at {at} ({plural(len(files), 'file')} do; "
                              f"run `sgt show {at}` to list them)"}
         if len(matches) > 1:
             return {"error": f"{path!r} is ambiguous at {at}: {', '.join(matches)}"}
@@ -2596,6 +2597,7 @@ def _next_action(in_flight: dict, needs_you: dict, working: dict | None = None) 
     then dirty work to save, then guesses to review, else clean. Shape:
     `{kind, command, target, label}` -- `command` is a copy-pasteable shell line (or `None` when
     there's nothing to run, e.g. `clean`, or a fork with no recorded remedy)."""
+    from sgt.tui.graph import plural
     # A paused git merge/cherry-pick/revert outranks everything, because in that state sgt cannot
     # act at all: the tree holds conflict-marker bytes, so `save` refuses outright and every
     # mine-on-contact path skips its dirty pass (F26). Any other suggestion here would be a command
@@ -2629,7 +2631,7 @@ def _next_action(in_flight: dict, needs_you: dict, working: dict | None = None) 
         # would drop the user back into a thread without telling them where it had got to.
         return {"kind": "resume_plan", "command": f"sgt plan resume {s['session_id']}",
                 "target": s["session_id"],
-                "label": f"resume stalled plan ({s['pending_count']} step(s) left)"}
+                "label": f"resume stalled plan ({plural(s['pending_count'], 'step')} left)"}
     if in_flight["total_op_count"] > 0:
         # A save is offered by what it *records*, not by the store's unit of accounting. The
         # developer's own words are already on the surface one line above; if a message can be
@@ -2642,11 +2644,11 @@ def _next_action(in_flight: dict, needs_you: dict, working: dict | None = None) 
         usable = title and '"' not in title and "\\" not in title and "\n" not in title
         command = f'sgt save -m "{title}"' if usable else "sgt save"
         return {"kind": "save", "command": command, "target": None,
-                "label": f"save your {n} unsaved edit(s)"}
+                "label": f"save your {plural(n, 'unsaved edit')}"}
     reviews = needs_you["reviews"]
     if reviews:
         return {"kind": "review", "command": "sgt intent review", "target": None,
-                "label": f"review {len(reviews)} pending alignment(s)"}
+                "label": f"review {plural(len(reviews), 'pending alignment')}"}
     return {"kind": "clean", "command": None, "target": None, "label": "nothing pending"}
 
 

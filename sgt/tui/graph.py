@@ -31,6 +31,15 @@ from .color import color_for
 # ── Layout (pure) ────────────────────────────────────────────────────────────────────────────────
 
 
+def plural(n: int, noun: str) -> str:
+    """`3 symbols`, `1 symbol`. Not `1 symbol(s)`.
+
+    `(s)` is a placeholder for a decision nobody made, and it is on the first line of sgt a new
+    reader meets: `sgt log --tree` prints `· 1 symbol(s)` under every feature. It costs one branch to
+    write what a person would write. Only the regular nouns sgt counts pass through here (symbol,
+    feature, file, save, edit, op), so appending "s" is the whole rule."""
+    return f"{n} {noun}" if n == 1 else f"{n} {noun}s"
+
 def graph_layout(
     map_view: dict,
     grid_view: dict,
@@ -579,20 +588,20 @@ def _state_banner(states: dict | None, *, color: bool) -> list[str]:
     forks = [f for f in all_forks if not f.get("cross_version")]
     stale = [f for f in all_forks if f.get("cross_version")]
     if forks:
-        out.append(_sgr(_RED, f" {_FORK} {len(forks)} open fork(s) — divergent edits to one symbol:",
+        out.append(_sgr(_RED, f" {_FORK} {plural(len(forks), 'open fork')} — divergent edits to one symbol:",
                         color=color))
         for f in forks:
             remedy = f"sgt resolve {f.get('symbol', '?')}"
             out.append(_dim(f"     {f.get('symbol', '?')}  →  {remedy}", color=color))
     if stale:
-        out.append(_sgr(_AMBER, f" {_FORK} {len(stale)} fork(s) are two mining generations of the "
+        out.append(_sgr(_AMBER, f" {_FORK} {plural(len(stale), 'fork')} are two mining generations of the "
                                 f"same commit, not edits — the store mixes miner versions:",
                         color=color))
         out.append(_dim("     →  sgt advanced migrate ops-v3   (unifies the store; "
                         "`sgt advanced fsck` shows the versions present)", color=color))
     drafts = [d for d in (states.get("rewrites") or {}).get("drafts", []) if d.get("verb") == "merge-op"]
     if drafts:
-        out.append(_sgr(_AMBER, f" {_MERGE} {len(drafts)} pending merge-op draft(s):", color=color))
+        out.append(_sgr(_AMBER, f" {_MERGE} {plural(len(drafts), 'pending merge-op draft')}:", color=color))
         for d in drafts:
             did = (d.get("draft_id") or "")[:12]
             out.append(_dim(f"     {d.get('target', '?')}  →  sgt advanced repair {did}", color=color))
@@ -901,7 +910,7 @@ def _reverted_gap_note(gap: dict | None, width: int = 10 ** 6) -> list[str]:
     if not gap.get("op_count"):
         return []
     syms = gap.get("symbols") or []
-    head = f" ⚠ {gap['op_count']} reverted edit(s) sit in no lane below"
+    head = f" ⚠ {plural(gap['op_count'], 'reverted edit')} sit in no lane below"
     # "they are still recorded" is gone from this line: the two commands say it, and with it the line
     # measured 110 columns and wrapped -- so the remedy for the warning was the part that broke.
     how = _wrap_parts(["`sgt undo` reverses the whole revert",
@@ -926,9 +935,9 @@ def _history_header(n_saves: int, n_feat: int, total_saves: int) -> str:
     work and counts only the features that LED one, so it says both things out loud instead of
     implying it is showing everything. When the two save counts agree there is no subset to disclose
     and the shorter phrasing is used."""
-    saves = (f"{n_saves} of {total_saves} save(s) with tracked work"
-             if total_saves > n_saves else f"{n_saves} save(s)")
-    return f" {saves}  ·  {n_feat} main feature(s)"
+    saves = (f"{n_saves} of {total_saves} saves with tracked work"
+             if total_saves > n_saves else plural(n_saves, "save"))
+    return f" {saves}  ·  {plural(n_feat, 'main feature')}"
 
 
 def _row_headline(subject: str, feature: str | None, labels: dict) -> str:
@@ -1055,7 +1064,7 @@ def render_save_list_lines(
         lines.append(f" {prefix}{pos} {sha}  {subj_s}{chips}")
     if n_ep > len(shown):
         lines.append("")
-        lines.append(_dim(f" {n_ep - len(shown)} older save(s) folded (newest {len(shown)} shown)",
+        lines.append(_dim(f" {plural(n_ep - len(shown), 'older save')} folded (newest {len(shown)} shown)",
                           color=color))
     return lines
 
@@ -1278,15 +1287,20 @@ def render_graph_lines(
     # subsystem per folded row -- the default map (which folds every leaf subsystem) said `1
     # subsystem(s)` where `--focus`, which folds nothing, said `4` for the same repo at the same
     # moment, and a reader moving between the two has no way to tell which one is lying.
-    n_sub = len(layout["headers"]) + sum(1 for l in layout["lanes"] if l["is_meta"])
-    sub_note = f"  ·  {n_sub} subsystem(s)" if n_sub else ""
+    # Depth 0 is the root, which holds every feature in the repository, so it is not one of the
+    # groupings this number is telling the reader about. Counted, a repo with no subsystems at all
+    # said `1 subsystem` above a single header row named after the repo -- a level of structure the
+    # reader then goes looking for and does not find.
+    n_sub = (sum(1 for h in layout["headers"] if h["depth"] > 0)
+             + sum(1 for l in layout["lanes"] if l["is_meta"] and l.get("depth", 0) > 0))
+    sub_note = f"  ·  {plural(n_sub, 'subsystem')}" if n_sub else ""
     bk = layout["bookkeeping_count"]
     bk_note = dim(f"  (+{bk} bookkeeping)") if bk else ""
     # Count FEATURES, not rows. This used to report `len(lanes)`, which folds a collapsed subsystem to
     # a single meta-lane -- so the headline size of the repo dropped every time the reader folded a
     # row, and disagreed with every other surface. Leaves are stable under collapse.
     n_feat = sum(len(l["leaves"]) for l in layout["lanes"])
-    lines.append(bold(f" {n_feat} feature(s)  ·  {layout['save_count']} save(s)"
+    lines.append(bold(f" {plural(n_feat, 'feature')}  ·  {plural(layout['save_count'], 'save')}"
                       f"{sub_note}") + bk_note)
     _cols = shutil.get_terminal_size(fallback=(0, 0)).columns
     lines.extend(dim(s) for s in _reverted_gap_note(layout.get("reverted_unaccounted"),
@@ -1315,7 +1329,7 @@ def render_graph_lines(
         # this line needs more than the prefix -- every verb that takes a feature resolves a unique
         # prefix, or the name itself.
         lines.append(f" {paint(hexc, '●')} {bold(raw)}  {dim(handle)}"
-                     f"  ·  {n_ckpt} checkpoint(s)"
+                     f"  ·  {plural(n_ckpt, 'checkpoint')}"
                      + (dim(f"  ·  {n_gone} reverted") if n_gone else ""))
         lines.append("")
         if not lane["cars"]:
@@ -1334,7 +1348,7 @@ def render_graph_lines(
             if car.get("reverted"):
                 state = dim(f"  reverted — `sgt restore {handle}@{car['seg_index']}` brings it back")
             elif gone_n:
-                state = dim(f"  ({gone_n} of {car['op_count']} edit(s) reverted)")
+                state = dim(f"  ({gone_n} of {plural(car['op_count'], 'edit')} reverted)")
             else:
                 state = ""
             slug = checkpoint_slug(car["label"])
@@ -1415,7 +1429,7 @@ def render_graph_lines(
             if lines and lines[-1] != "":
                 lines.append("")  # breathing room between subsystems
             label = ("  " * hd.get("depth", 0) + "▾ " + hd["label"]).ljust(bar_prefix - 1)
-            meta = f"{hd['lane_count']} feature(s)"
+            meta = plural(hd['lane_count'], "feature")
             lines.append(dim(f" {label} {meta}"))
         elif row in lanes_by_row:
             l = lanes_by_row[row]
@@ -1487,7 +1501,7 @@ def render_graph_lines(
         lines.append("")
         # "row(s)", not "feature(s)": a row can be a folded subsystem standing for many features, and
         # the header above now states the feature total -- two different numbers needing two words.
-        lines.append(dim(f" …{total_lanes - lanes_shown} more row(s) "
+        lines.append(dim(f" …{plural(total_lanes - lanes_shown, 'more row')} "
                          f"({lanes_shown} of {total_lanes} shown)"))
     for g in unplaced_ghosts:
         lines.append(" " + dim(f"{_GHOST} planned (no lane yet): {_ellipsize(g.get('title', ''), 40)}"))
@@ -1662,25 +1676,25 @@ def render_verb_preview_lines(
             note = _dim(badge, color=color)
             lines.append(f"   {glyph} {_ellipsize(albl, 28).ljust(28)}  {bar}  {note}")
         if len(others) > 8:
-            lines.append(_dim(f"   +{len(others) - 8} more feature(s)", color=color))
+            lines.append(_dim(f"   +{plural(len(others) - 8, 'more feature')}", color=color))
         lines.append("")
     if context_count:
-        lines.append(_dim(f" · {context_count} other feature(s) unchanged", color=color))
+        lines.append(_dim(f" · {plural(context_count, 'other feature')} unchanged", color=color))
 
     n_op = len(removed) if verb == "revert" else len(added)
     verbword = "removes" if verb == "revert" else "restores"
     frame_hint = "" if frame == "after" else "  · showing before"
     syms = [s for s in preview_view.get("affected_symbols", []) if "::__" not in s]
-    sym_note = f" across {len(syms)} symbol(s)" if syms else ""
+    sym_note = f" across {plural(len(syms), 'symbol')}" if syms else ""
     # A revert whose edit is shared with later work is spliced out of the live code rather than
     # removed as an op, so the op count is 0 while the file changes (`sgt.core.subtract`). Leading
     # with "removes 0 edit(s)" made the feedforward read as a no-op right before it applied.
-    magnitude = (f"changes {len(syms)} symbol(s)"
+    magnitude = (f"changes {plural(len(syms), 'symbol')}"
                  if verb == "revert" and not n_op and syms
-                 else f"{verbword} {n_op} edit(s){sym_note}")
+                 else f"{verbword} {plural(n_op, 'edit')}{sym_note}")
     shown_files = sorted(files)[:4]
     file_note = ", ".join(shown_files) + (f" +{len(files) - 4} more" if len(files) > 4 else "")
-    lines.append(_dim(f" {magnitude} · {len(files)} file(s): {file_note}{frame_hint}"
+    lines.append(_dim(f" {magnitude} · {plural(len(files), 'file')}: {file_note}{frame_hint}"
                       if files else
                       f" {magnitude} · no file changes{frame_hint}",
                       color=color))
@@ -1703,19 +1717,19 @@ def _render_sync_preview_lines(preview_view: dict, *, color: bool = True) -> lis
         f"{_bold(src, color=color)}  {tagline}",
         "",
         f"   {_paint('#5fafff', '↓', color=color)} brings in "
-        f"{_bold(str(ops_added), color=color)} op(s) from {src}",
+        f"{_bold(str(ops_added), color=color)} {'op' if ops_added == 1 else 'ops'} from {src}",
         "",
     ]
 
     if forks:
-        lines.append(_paint("#ffaf00", f"   ⚠ {len(forks)} fork(s) surface -- the fork-free work "
+        lines.append(_paint("#ffaf00", f"   ⚠ {plural(len(forks), 'fork')} surface -- the fork-free work "
                                        f"still merges; resolve these when ready (nothing is lost):",
                             color=color))
         for sym, a, b in forks[:8]:
             remedy = _dim(f"sgt resolve {sym}", color=color)
             lines.append(f"       {_paint('#ffaf00', sym, color=color)}   {remedy}")
         if len(forks) > 8:
-            lines.append(_dim(f"       +{len(forks) - 8} more fork(s)", color=color))
+            lines.append(_dim(f"       +{plural(len(forks) - 8, 'more fork')}", color=color))
         lines.append("")
 
     for c in contradictions:
@@ -1735,7 +1749,7 @@ def _render_sync_preview_lines(preview_view: dict, *, color: bool = True) -> lis
                                        "re-mine on their side, then sync again", color=color))
 
     lines.append("")
-    tail = (f" folds in {ops_added} op · {len(forks)} fork(s) surface to resolve · not auto-undoable"
+    tail = (f" folds in {ops_added} op · {plural(len(forks), 'fork')} surface to resolve · not auto-undoable"
             if forks else f" folds in {ops_added} op · no forks · not auto-undoable")
     lines.append(_dim(tail, color=color))
     return lines
@@ -1817,17 +1831,17 @@ def render_collab_preview_lines(preview_view: dict, *, color: bool = True) -> li
     # else would land, "adds 0 op" is noise the fork line already explains.
     if ops_added:
         lines.append(f"   {_paint('#5fafff', '↑', color=color)} your work adds "
-                     f"{_bold(str(ops_added), color=color)} op(s) to {branch}")
+                     f"{_bold(str(ops_added), color=color)} {'op' if ops_added == 1 else 'ops'} to {branch}")
         lines.append("")
 
     if forks:
-        lines.append(_paint("#ffaf00", f"   ⚠ {len(forks)} fork(s) block the land -- "
+        lines.append(_paint("#ffaf00", f"   ⚠ {plural(len(forks), 'fork')} block the land -- "
                                        f"reconcile before it can advance:", color=color))
         for sym, a, b in forks[:8]:
             remedy = _dim(f"sgt resolve {sym}", color=color)
             lines.append(f"       {_paint('#ffaf00', sym, color=color)}   {remedy}")
         if len(forks) > 8:
-            lines.append(_dim(f"       +{len(forks) - 8} more fork(s)", color=color))
+            lines.append(_dim(f"       +{plural(len(forks) - 8, 'more fork')}", color=color))
         lines.append("")
 
     for c in contradictions:
@@ -1854,7 +1868,7 @@ def render_collab_preview_lines(preview_view: dict, *, color: bool = True) -> li
 
     lines.append("")
     if forks:
-        tail = f" won't advance -- {len(forks)} fork(s) to resolve first"
+        tail = f" won't advance -- {plural(len(forks), 'fork')} to resolve first"
     elif not preview_view.get("oracle_configured", True):
         tail = " won't advance -- no oracle to verify against (LAW-G)"
     else:
@@ -1984,7 +1998,8 @@ def render_rail_lines(
     # columns that pushed it past the terminal. The lanes below *are* the recurrence, drawn; a count of
     # them is nothing a reader can act on.
     if group_label:
-        head = [f"focus: {group_label}", f"{n_feat} feature(s)", f"{n_ep} save(s)", "(newest on top)"]
+        head = [f"focus: {group_label}", plural(n_feat, "feature"), plural(n_ep, "save"),
+                "(newest on top)"]
     else:
         head = _history_header(n_ep, n_feat, grid_view.get("save_count", n_ep)).strip().split("  ·  ")
         head.append("(newest on top)")
@@ -2055,7 +2070,7 @@ def render_rail_lines(
 
     if n_ep > len(shown):
         lines.append("")
-        lines.append(dim(f" {n_ep - len(shown)} older save(s) folded (newest {len(shown)} shown)"))
+        lines.append(dim(f" {plural(n_ep - len(shown), 'older save')} folded (newest {len(shown)} shown)"))
     for g in unplaced_ghosts:
         lines.append(" " + dim(f"{_GHOST} planned (no lane yet): {_ellipsize(g.get('title', ''), label_width)}"))
     lines.append("")

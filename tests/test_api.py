@@ -1177,7 +1177,7 @@ def test_now_view_clean_repo_reports_clean_next_action(tmp_path):
 def test_now_view_dirty_tree_recommends_save(tmp_path):
     """Uncommitted work puts ops in flight and makes `sgt save` the next action. The offer is
     phrased by what it records ("your N unsaved edits"), not by the store's unit of accounting --
-    "pending op(s)" is a fact about the kernel, and the developer is asking about their work."""
+    "pending ops" is a fact about the kernel, and the developer is asking about their work."""
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
     (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
@@ -1186,9 +1186,9 @@ def test_now_view_dirty_tree_recommends_save(tmp_path):
     (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
 
     v = now_view(repo)
-    assert v["in_flight"]["total_op_count"] > 0
+    assert v["in_flight"]["total_op_count"] == 1   # one edited symbol, so the label is singular
     assert v["next_action"] == {"kind": "save", "command": "sgt save", "target": None,
-                                "label": f"save your {v['in_flight']['total_op_count']} unsaved edit(s)"}
+                                "label": "save your 1 unsaved edit"}
 
 
 def test_now_view_include_preview_false_skips_the_mine(tmp_path):

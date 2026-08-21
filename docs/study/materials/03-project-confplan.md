@@ -1,8 +1,8 @@
 # The project: confplan
 
-You are taking over **confplan**. Sam Park built it over the last six weeks, partly by working with an AI assistant, and has now left the team.
+Nothing is timed on this page. Read it at whatever pace you want and ask anything you like before you continue. You do not have to memorise any of it. The requests tell you what needs to change, and this is here so that finding your way around is not the first thing you have to do under a clock.
 
-Nothing is timed on this page. Read it at whatever pace you want and ask anything you like before you continue. You do not have to memorise any of it — the requests tell you what needs to change. This is here so that finding your way around is not the first thing you have to do under a clock.
+You are taking over **confplan**. Sam Park built it over the last six weeks, partly by working with an AI assistant, and has now left the team.
 
 ## What it is for
 
@@ -12,7 +12,7 @@ A conference committee plans its two-day program by hand every year: a spreadshe
 
 Someone on the committee types commands at a terminal. There is no web page and no login. A normal year looks like this:
 
-- While the program is being built they add the **talks** that were accepted, and for each talk the **sessions** it is given — a session is one scheduled slot, with a speaker, a room, a time on one of the two days, and a cap on how many people fit.
+- While the program is being built they add the **talks** that were accepted, and for each talk the **sessions** it is given. A session is one scheduled slot, with a speaker, a room, a time on one of the two days, and a cap on how many people fit.
 - Attendees get added to the system, then **registered** into sessions.
 - When an attendee wants out, they are **unregistered** from a session, which frees the seat.
 

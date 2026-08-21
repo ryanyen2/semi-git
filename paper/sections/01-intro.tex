@@ -8,11 +8,34 @@ names. This agreement dates to the earliest systems and has survived every
 redesign since, for a reason that was sound from the start: the developer
 authored the code, held at least a rough model of what changed and
 why~\cite{naur1985,ko2006}, and could therefore supply the decomposition
-whenever a tool asked for it. Developers now specify intent in natural language and models translate it into
-edits across files~\cite{sarkar2025}. Three controlled field experiments show
-this shift produces 26\% more code per week with no measurable quality
-decline~\cite{cui2025}. The condition that made the agreement sound---that the
-developer holds a model of what changed and why---no longer holds reliably. A
+whenever a tool asked for it.
+
+Developers now specify intent in natural language and models translate it into
+edits across files~\cite{sarkar2025}. Three controlled field experiments show this shift produces 26\% more code per
+week with no measurable quality decline~\cite{cui2025}. A two-year longitudinal
+study of 800 developers found that the extra code comes with proportionally more
+deletion---developers produce more and discard more, while perceiving minimal
+change in anything but speed~\cite{sergeyuk2026}. A field study of CLI agents in
+professional practice found a 24\% lift in merged pull requests that persisted
+over four months~\cite{murphyhill2026}. The velocity gains are real. They are also paid for
+downstream: on a corpus of 3{,}000 repositories adopting cursor-style assistance,
+static analysis warnings rise 30\% and cyclomatic complexity 41\% within two months
+of adoption, while the velocity gain itself dissipates over the same
+period~\cite{he2026}. The speed arrives and leaves; the complexity it deposited
+stays. Meanwhile adoption is near universal---84\% of professional developers
+report using AI tools---while trust in the accuracy of those tools fell from 40\%
+to 29\% in one year, and 46\% now actively distrust what the tools produce,
+with experienced developers (ten or more years) the most
+sceptical~\cite{stackoverflow2025}. Developers are producing code they do not
+trust, faster than they can account for it, and discarding it at a rate that
+suggests they know. The condition that made the agreement sound---that the
+developer holds a model of what changed and why---no longer holds reliably.
+Winograd and Flores called this kind of event a \emph{breakdown}: an assumption so
+embedded in practice that it was invisible as an assumption, until the practice
+changed and the assumption became the thing that needs
+redesigning~\cite{winograd1986}. The assumption that the developer holds the
+decomposition was never stated as a design decision; it was the ground on which
+every other design decision rested. A
 developer who types three sentences in an hour and receives fourteen functions
 across five files cannot supply the decomposition a tool asks for, because they
 never held it. We argue that the design choice should be renegotiated.
@@ -24,8 +47,8 @@ with different formatting or variable names in the next has changed every line
 while changing nothing a developer would name. Across 211 million changed lines
 from public repositories authored between 2020 and 2024, the share associated
 with refactoring---lines moved into a better position rather than written
-afresh---fell from a quarter to under a tenth, while code revised within two
-weeks of being written roughly doubled~\cite{gitclear2025}. A line is now
+afresh---fell from a quarter to under a tenth~\cite{gitclear2025}. In the same
+period, code revised within two weeks of being written roughly doubled. A line is now
 replaced faster than it settles into a position worth recording, and the
 developer wants to revisit a feature as it stood two requests ago---a unit
 the line-level record cannot express.
@@ -33,20 +56,21 @@ the line-level record cannot express.
 Second, the developer does not hold a detailed model of what the code
 says~\cite{sarkar2022}. A natural language prompt specifies an outcome
 but not the logic that implements it, so the implementation contains decisions
-the model made and the developer has not reviewed. Barke et al.\ observed
-programmers reading generated code for shape rather than line by
-line~\cite{barke2023}, Tang et al.\ found that developers often do not notice
-which code a model wrote and delete it rather than repair it~\cite{tang2024},
-and among 410 developers surveyed by Liang et al.\ understanding generated code
-was one of the most frequently reported
-difficulties~\cite{liang2024}. The consequence for version
-control is that the developer who searches a history for a prior state must
-describe it in terms they never acquired. This is the vocabulary problem Furnas
-et al.\ measured in information retrieval~\cite{furnas1987}, now appearing inside
-the repository. Nguyen and Glassman observed it directly: beginning programmers
-and code models systematically misread each other's vocabulary, so a developer's
-search terms and the model's naming choices diverge even when both refer to the
-same behaviour~\cite{nguyen2024}. The developer searches with vocabulary they
+the model made and the developer has not reviewed. The evidence is consistent
+across methods: developers read generated code for shape rather than line by
+line~\cite{barke2023}, frequently cannot identify which code the model
+wrote~\cite{tang2024}, rank understanding generated code among their most
+common difficulties~\cite{liang2024}, and score 17\% lower on assessments
+of code they produced with AI assistance than code they wrote by
+hand~\cite{shen2026skills}. The consequence for version control is
+specific: a developer who searches their history for a prior state must describe
+it in terms they never acquired. Furnas et al.\ measured this vocabulary problem
+in information retrieval thirty years ago~\cite{furnas1987}; it now appears
+inside the repository itself. Nguyen and Glassman observed it directly in
+AI-assisted programming: developers and models systematically name the same
+behaviour differently, so the developer's search terms and the model's naming
+choices diverge even when both refer to the same
+function~\cite{nguyen2024}. The developer searches with vocabulary they
 never learned and finds whatever happens to match instead of the version that
 served a stated purpose~\cite{codoban2015}.
 
@@ -56,14 +80,16 @@ than which file to edit), so the developer's mental model of their own work is
 organised by feature: the retry policy, the export endpoint, the rate limiter. This is the
 level the program comprehension literature has always found people work at:
 Biggerstaff et al.\ called recovering which functions implement a named concern
-the concept assignment problem~\cite{biggerstaff1993}, and the feature location
+the concept assignment problem~\cite{biggerstaff1993}. The feature location
 field exists because answering it by reading code is
 expensive~\cite{dit2013}. The commit is the closest unit a version control system
-offers, and it does not correspond to this level, since Herzig and Zeller found
+offers, and it does not correspond to this level. Herzig and Zeller found
 changes serving several unrelated purposes throughout the histories of five open
-source Java projects~\cite{herzig2013}. An agent session produces exactly that
-structure, because a commit ends where the developer stopped to type a command
-and a request ends somewhere else.
+source Java projects~\cite{herzig2013}---what they called tangled commits,
+produced in 2013 by humans in a hurry. An agent session produces exactly that
+structure systematically, because a commit ends where the developer stopped
+typing a command and a request ends where the agent finished implementing a
+feature, and those two boundaries have no reason to align.
 
 The response we describe is a version control system that records at the grain
 the developer thinks at. Instead of recording lines inside a commit, we parse
@@ -74,44 +100,53 @@ another~\cite{zimmermann2004,ying2004,traag2019}, and label each group with the
 words the developer and the agent used while the work was happening. A version
 of the code is then a set of these edits, and the files on disk are rebuilt
 from whichever set is included, so a feature can be taken out or put back by
-naming it rather than by naming the lines it produced. None of the individual techniques is new. Change coupling mining, community
+naming it rather than by naming the lines it produced.
+
+None of the individual techniques is new. Change coupling mining, community
 detection, feature location, and set-based version control each have a
 literature. What is new is composing them into a single tool that a developer
 operates daily, because that composition introduces interactions none of the
-original designs anticipated. A function identity tracker that loses a rename
-breaks the dependency chain a revert depends on. A grouping inference that absorbs
-a shared helper pulls unrelated work into a single feature. A layout record (the
-whitespace between functions) that becomes individually addressable acquires
-failure modes the entity record does not have, and 68\% of the violations we found
-in ten thousand operations entered through that seam. The contribution is in making
-the composition survive daily use on a real codebase, in measuring where it fails
-honestly, and in reporting both the design's costs and the conditions under which
-it should not be adopted.
+original designs anticipated:
+
+\begin{itemize}
+\item A function identity tracker that loses a rename breaks the dependency
+  chain that reverts depend on.
+\item A grouping inference that absorbs a shared helper pulls unrelated work
+  into a single feature.
+\item A layout record---the whitespace between functions---becomes individually
+  addressable, and acquires failure modes the entity record does not have. More
+  than three in four violations across ten thousand operations trace to a layout
+  record, either targeted directly or dragged along by an entity operation whose
+  own logic worked.
+\end{itemize}
+
+\noindent The contribution is making this composition survive daily use on a real
+codebase, measuring where it fails honestly, and reporting both the design's
+costs and the conditions under which it should not be adopted.
 
 For example, a service that answers price quotes for a trading dashboard has a
 handler, a database layer, and a set of row accessors. On Monday the developer
-prompts \cmd{cache the price lookup, it takes 400ms and the price barely moves},
-and the agent writes \sym{cache.py::get\_cached} and \sym{cache.py::\_ttl}, gives
-\sym{db.py::query} a parameter for how long a cached price stays good so the cache
-can pass one through, and changes \sym{api.py::handle} to consult the cache before
-the database. That is four edits to four functions in three files, and the two in
-\sym{cache.py} share no line with the one in \sym{api.py}, yet all four are filed
-under one name. Over the next two days two further prompts change
-\sym{api.py::handle} again, one adding a rate limit and one adding a retry policy,
-and while it is adding the retry the agent goes back and reworks two of the cache's
-own functions, which brings the price cache to six edits. A colleague adds a metric
-for quote latency. Three weeks later the developer
-finds the dashboard showing a price sixty seconds stale, so they type
-\cmd{sgt revert "price cache"}. \sgt{} prints the six edits that would come out,
-names \sym{api.py::handle} as the one function where later work was built on
-something being removed, shows the text each change would produce, and asks before
-touching anything. The rate limit and the retry policy stay, because their edits
-are still included; the colleague's metric stays, because it was never in the set
-coming out; and the parameter leaves both \sym{db.py::query} and
-\sym{api.py::handle}, because both were in it. When the developer decides a week
-later that the cache was worth keeping after all, \cmd{sgt restore} returns the
-files byte for byte, because putting the six edits back is the same set arithmetic
-as taking them out and nothing is replayed as a patch.
+prompts \cmd{cache the price lookup, it takes 400ms and the price barely moves}.
+The agent writes \sym{cache.py::get\_cached} and \sym{cache.py::\_ttl}, adds a
+parameter to \sym{db.py::query} so the cache can pass a time-to-live through, and
+changes \sym{api.py::handle} to consult the cache before the database---four edits
+to four functions in three files, all filed under the one request. Over the next
+two days two further prompts each change \sym{api.py::handle}: one adds a rate
+limit, the other adds a retry policy. While adding the retry the agent also
+reworks two cache functions, so the price-cache feature now spans six edits. A
+colleague adds a metric for quote latency.
+
+Three weeks later the developer finds the dashboard showing a stale price. They
+type \cmd{sgt revert "price cache"}. The tool prints the six edits that would come
+out, names \sym{api.py::handle} as the one function where later work was built on
+something being removed, shows what each affected function would look like
+afterwards, and asks before touching anything. The rate limit and the retry policy
+stay, because their edits are not in the set coming out. The colleague's metric
+stays, because it was never in that set. The cache parameter leaves both
+\sym{db.py::query} and \sym{api.py::handle}, because both were in it. When the
+developer decides a week later that the cache was worth keeping after all,
+\cmd{sgt restore} returns the files byte for byte, because adding the six edits
+back into the set is the same arithmetic as removing them.
 Figure~\ref{fig:two-records} draws these three requests arriving in a single
 sitting, under both records, and Section~\ref{sec:walkthrough} follows this
 repository through five sittings.
@@ -121,9 +156,11 @@ in some later edge case. Two edits to the same function made from the same
 starting point are recorded as competing versions that a person has to decide
 between, including the pair at opposite ends of a fifty line function that touch
 no common line and that git would have merged without comment. The grouping of
-edits into named requests is inferred, so it is a guess and it will sometimes be
-wrong, and correcting it costs the developer a rename, a merge, or a split, none
-of which moves a recorded edit. \sgt{} reads Python, TypeScript, and TSX and
+edits into named features is inferred from coupling rather than from request
+boundaries, so it is systematically finer than what the developer asked for---one
+request typically becomes four to six features---and correcting that granularity
+costs the developer a merge, a rename, or a split, none of which moves a recorded
+edit. \sgt{} reads Python, TypeScript, and TSX and
 versions every other file whole, at the grain git already uses, so a repository
 whose interesting logic is written in Go gets nothing from \sgt{} today.
 
@@ -135,9 +172,14 @@ itself~\cite{perezderosso2013,perezderosso2016}. We describe \sgt{}'s design as
 four commitments, say what each one buys and what it costs, and run the whole set
 of operations on one repository (Sections~\ref{sec:design}
 and~\ref{sec:walkthrough}). We state which observation would show each of our
-claims to be wrong, and pre-register the study that would produce it
-(Section~\ref{sec:study}). We report what fifty-seven days of \sgt{} versioning its
-own construction taught us about where the design breaks
-(Section~\ref{sec:discussion}), and what three pilots taught us about the distance between a property that holds
-across 10{,}237 operations and a property a new user can rely on
-(Section~\ref{sec:pilot}).
+claims to be wrong (Section~\ref{sec:study}), and report what twelve developers
+found when they used the system on code they had never seen
+(Section~\ref{sec:findings}). We report what fifty-seven days of \sgt{} versioning
+its own construction taught us about where the design breaks
+(Section~\ref{sec:discussion}), and what three pilots taught us about the distance
+between a property that holds across 10{,}237 operations and a property a new user
+can rely on (Section~\ref{sec:pilot}). The evaluation found that the read
+operations---attribution, dependency display, consequence preview---survived
+first contact with every repository and every participant, and that the write
+operations did not. The paper therefore reports both the attempt and what it
+taught us about the order in which a tool of this kind should be built.

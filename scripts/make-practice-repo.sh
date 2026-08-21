@@ -591,6 +591,30 @@ build_index('$dest')
         exit 1
     fi
     echo "  Every handle the practice sheet quotes resolves."
+elif [ "$condition" = sgt ]; then
+    # Asked for the sgt condition and there is no sgt to build it with.
+    #
+    # This used to fall through to the success line, so `make-practice-repo.sh
+    # <dest> sgt` with no bundle root printed "Practice repo at <dest>" over a
+    # plain git repository with no `.sgt` in it and no feature names -- the one
+    # thing the sgt practice sheet is entirely about. Both real callers pass the
+    # bundle root; the case that hit this is a facilitator or a maintainer running
+    # the script by hand, which is exactly when a silent wrong answer costs most.
+    #
+    # The binary is not guessed from PATH on purpose. See the note above the pin
+    # step: guessing found whatever `sgt` happened to be installed and renamed a
+    # different repository's graph while reporting success here.
+    echo >&2
+    if [ -z "$bundle_root" ]; then
+        echo "  No bundle root given, so there is no sgt to build the graph with." >&2
+    else
+        echo "  No executable at $bundle_root/bin/sgt, so there is no sgt to build" >&2
+        echo "  the graph with." >&2
+    fi
+    echo "  Pass the bundle root as the third argument. Without it this is a plain git" >&2
+    echo "  repository, and the sgt practice sheet quotes feature names that only exist" >&2
+    echo "  once the graph is built and pinned." >&2
+    exit 1
 fi
 
 echo "Practice repo at $dest"

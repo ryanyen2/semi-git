@@ -80,9 +80,9 @@ def test_log_human_rail_and_map_wire_state_projections(tmp_path, capsys):
     _seed(tmp_path, 3)
     capsys.readouterr()
     assert _in(tmp_path, ["log"]) == 0
-    assert "save(s)" in capsys.readouterr().out
+    assert "save" in capsys.readouterr().out
     assert _in(tmp_path, ["log", "--map"]) == 0
-    assert "feature(s)" in capsys.readouterr().out
+    assert "1 feature  ·  3 saves" in capsys.readouterr().out   # inflected, both nouns
 
 
 def _seed_resolvable_fork(tmp_path, symbol="a.py::foo"):
@@ -724,7 +724,7 @@ def test_compose_text_summarizes_status_and_oracle(tmp_path, capsys):
     capsys.readouterr()
     assert _in(tmp_path, ["advanced", "compose"]) == 0
     out = capsys.readouterr().out
-    assert "file(s)" in out and "symbol(s)" in out and "feature(s)" in out
+    assert "1 file, 4 symbols, 0 features" in out   # each count inflected, no "(s)" placeholder
     assert "oracle: unconfigured" in out
 
 
@@ -795,7 +795,7 @@ def test_map_rebuild_forces_a_full_recluster(tmp_path, capsys):
     capsys.readouterr()
     assert _in(tmp_path, ["log", "--tree", "--rebuild"]) == 0
     out = capsys.readouterr().out
-    assert "feature(s)" in out
+    assert "feature" in out
 
 
 def test_print_map_tree_drops_phantom_empty_member_leaves(capsys):
@@ -823,7 +823,7 @@ def test_print_map_tree_drops_phantom_empty_member_leaves(capsys):
     out = capsys.readouterr().out
     assert "Real Feature" in out
     assert "phantom subsystem" not in out and "F2" not in out
-    assert "1 feature(s)" in out  # not the inflated view["feature_count"] of 2
+    assert "1 feature" in out  # not the inflated view["feature_count"] of 2
 
 
 def test_preview_unknown_verb_or_bad_arity_prints_usage(tmp_path, capsys):

@@ -6,9 +6,124 @@ on the repository that contains \sgt{}, at a single commit. We took them togethe
 rather than as we needed them, because the repository is still being worked on and
 a set of counts gathered over a week is a set of counts of nothing. That repository holds
 fifty-seven days and three hundred and forty-six commits of daily use by the
-person who wrote the system, which is long enough to have found the limits below
+person who wrote the system. That is long enough to have found the limits below
 and not long enough to have found the ones that need a year, and we say which is
-which where we can tell.
+which where we can tell. What emerges from the numbers is a distinction among
+three properties a developer needs from any tool that rewrites files on their
+behalf: that nothing is removed (the store is durable), that the tool operates on
+what the developer named (the report is honest), and that new work can still be
+recorded after the operation finishes.
+Section~\ref{sec:discussion-synthesis} traces each failure class to the property
+it violates; the numbers below are what those failures look like from inside a
+session.
+
+\subsection{The rate a developer meets}
+\label{sec:session-rate}
+
+A robustness harness exercised every write verb and every selector format across
+289 randomised operation sequences totalling 10{,}237 applied operations. Of
+those, 340 left the repository in a state that violated one of three invariants
+(a file that does not rebuild from its records, a record that names a function no
+file contains, or a composed file whose bytes differ from disk). The per-operation
+violation rate is 3.3\%, but this number is the one we would choose if we wanted
+the design to look good, because a developer does not run one operation. A
+developer runs a session of twenty to fifty operations, and the question they
+experience is whether that session contains at least one violation.
+
+Of 289 sequences, 145 contain at least one violation targeting an entity the
+developer would name---a per-session rate of 50\%. The violations cluster
+rather than spreading evenly: 68\% of flagged operations target entities
+(functions the developer named in the command), and of those entity-targeted
+violations, 157 of 232 trace to a layout record being dragged along by the
+entity operation rather than to the entity logic itself. The entity logic
+worked; the seam between it and the surrounding whitespace did not. Splitting
+the pool by target kind, operations aimed at entities the developer would name
+(entity plus feature-level and filename-level selectors) carry a 3.1\% flag
+rate; operations aimed at layout records alone carry 4.1\%. The seam is not
+noisier than the core, but it produces a different kind of failure: a layout
+violation leaves the developer's code correct and the tool's rebuild unable to
+reproduce it, which is a durability failure that silently weakens the next
+revert rather than a corruption the developer sees now.
+
+The 50\% per-session rate sounds incompatible with the 3.3\% per-operation rate,
+but the two numbers measure different properties and the gap between them is itself
+a finding. Individual operations in isolation are reliable: a single revert fails at
+1.1\%, a single save at 1.5\%, a single undo at 0.7\%. What fails is composition.
+The round-trip probe---revert an operation, then restore everything the revert
+removed, and check whether the bytes returned---fails at 44\% (175 of 399 trials).
+A developer who runs one revert almost always gets the right files. A developer who
+runs a revert, works for an hour, then decides they want it back discovers that the
+restore does not return to the starting point nearly half the time. The mechanism is
+that a revert's upward closure removes records whose dependents shift the composed
+image, and a restore brings back the originals without the shifts, so the two
+operations compose to a state neither one would produce alone. This is the
+set-theoretic version of a well-known property in concurrent systems: individual
+operations can be correct while their composition violates an invariant the
+individual specifications do not constrain. The design claims that revert followed
+by restore is an identity, and the harness measures how far from identity the
+composition actually lands.
+
+On the five real repositories (cloned from GitHub, never touched by \sgt{} before
+the harness), four of five produced at least one violation, confirming that the
+rate is a property of the design rather than an artefact of the study repository's
+migration history. The one clean real repository (asyncer, 50 operations) was also
+the smallest, so its survival is consistent with the hypothesis that violation
+probability scales with store size rather than being a fixed defect rate.
+
+The fixture arm and the real-repository arm measured different systems in a
+precise sense. Fixtures are built to round-trip, so the write guard that fires
+when the store does not reproduce the committed bytes---the guard responsible
+for 70--79\% refusal on real repositories---was structurally unreachable in all
+284 fixture sequences and fired 82 times in 137 real-repository operations.
+Fixtures also write every caller and callee in one commit, so the
+cross-commit dependency the \cmd{--keep-dependents} flag exists to preserve
+was absent from all 878 fixture operations that tested it. A behaviour that
+is absent from the corpus does not produce a zero rate---it produces no rate
+at all, and a zero in the table reads as ``tested and clean'' when the honest
+reading is ``not tested.'' The fixture arm is an excellent bug finder (nine
+defect classes, all in the layout seam); it is not a deployment estimate, and
+the 284-of-289 proportion in the pooled table would have hidden exactly that
+distinction.
+
+The practical consequence is blunt: a developer who uses the write layer daily
+will encounter a violation within their first two sessions on average. Muir's
+model of trust development explains why this timing is
+catastrophic~\cite{muir1994}. Trust in automation passes through three
+qualitatively different stages: predictability (can I anticipate what the system
+will do?), dependability (does it do what it says it will?), and faith (will it
+handle situations I have not yet seen?). A developer in their first two sessions
+is still at the predictability stage---they are learning what the tool's
+operations mean, not yet relying on them. A failure at this stage does not merely
+subtract one positive experience from a base of many; it prevents the stage
+transition entirely, because the developer cannot progress to depending on a
+system whose behaviour they cannot yet predict. Lee and See's calibration model
+explains why recovery is slow once trust is damaged~\cite{lee2004}; Muir's
+developmental model explains why damage during formation is qualitatively
+different from damage during maintenance---it is not a setback within a stage but
+a barrier to reaching the next one. The timing is worse than it would have been
+a year ago. Across the broader ecosystem, trust in AI-generated output is
+actively declining---from 40\% to 29\% in one survey
+cycle~\cite{stackoverflow2025}---while adoption is near universal. A developer
+arriving at \sgt{} in 2026 already expects automation to be unreliable, which
+means Muir's predictability stage requires more confirmations before the
+transition than it did when the baseline expectation was neutrality rather than
+scepticism. The threshold for earning trust rises as the ecosystem trains
+developers to withhold it.
+
+A concrete instance from this paper's own construction illustrates the pattern
+the harness measures in the abstract. During development, a merge conflict
+resolution took the in-progress copy of six files whole, and the copies predated
+several fixes that had already landed. Git reported the merge as a success; the
+working tree was clean; six functions were silently removed, including one that
+the agent interface calls on every restore operation. Two of the six had no
+failing test, because the same resolution had removed their tests along with
+their code. A suite that passes over reduced coverage reads the same as a suite
+that passes over full coverage, and a green checkmark after a merge is the same
+silent-success pattern the pilot participant encountered at the interface level.
+Finding the removal required comparing name-by-name coverage across thirty files
+against a reference commit---exactly the operation \sgt{} is designed to
+perform, and one we did not think to run on our own merge because we had no
+reason to doubt the result.
 
 \subsection{Most of a repository is not functions}
 \label{sec:coverage}
@@ -31,7 +146,7 @@ design's coverage of code is complete, and the files left over, nearly three in 
 everything the store has a record for, hold no function for anything to be filed
 under.
 
-So the limit is the repository's composition, and calling it a parser problem let us describe a fixed property of software as though it were a defect we could fix. Go and Rust have
+So the limit is the repository's composition. Calling it a parser problem let us describe a fixed property of software as though it were a defect we could fix. Go and Rust have
 functions, a tree-sitter grammar plus a decision about which node kinds count as
 one is a day of work per language, and we would take both tomorrow. It would not
 move that share at all, because there is no Go and no Rust in it. What is in it is
@@ -40,14 +155,17 @@ escapes, and a change to four lines of a deployment manifest has no function for
 developer's request to be filed under no matter how many grammars we ship. Every operation in Section~\ref{sec:design}
 still runs on those files, at git's grain, and none of them gets sharper than
 \cmd{git revert} would be. A reader deciding whether to adopt \sgt{} should ask how
-much of the work they need to take apart happens inside functions, which is a
-different question from how much of their repository is code.
+much of the work they need to \emph{take apart} happens inside functions, which is a
+different question from how much of their repository is code. In the repository
+this paper studies, 70\% of files are code and 100\% of the tangling problems the
+scenarios describe live in functions, because a deployment manifest does not
+entangle with a retry policy inside a shared definition.
 
 \subsection{Where a function loses its history}
 \label{sec:identity}
 
-Section~\ref{sec:grain} claims a record survives a rename, and that claim rests on
-a matcher with a threshold in it. \sgt{} links a function across a commit first by
+The design assumes a function's record survives when its source is renamed or
+moved, and that assumption rests on a matcher with a threshold in it. \sgt{} links a function across a commit first by
 its name, then by identical bytes, then by identical structure with formatting and
 comments ignored, and last by token overlap above 0.80, with a guard that rejects
 any pair whose token counts differ by more than a factor of two. The 0.80 comes
@@ -90,6 +208,213 @@ them are the residue of our own format changes. A developer adopting \sgt{} on a
 repository with two years of history should expect a number of this kind on the first
 run, and should read it as work the design has not finished.
 
+A deeper instance of the same incompleteness surfaced during the evaluation. \sgt{}
+reads a repository's history in ten-second chunks and records a single commit as
+its stopping point. A single commit cannot describe position in a branching
+history, so when a chunk boundary falls between a merge and its second parent,
+commits on the side branch are stepped over and never read. On one repository
+mined twice, the second reading was missing 49 operations from one commit, and
+8 commits carrying roughly 30 files were absent from both readings. Both readings
+reported themselves complete. The same mechanism means that a function renamed
+across a chunk boundary is recorded as one name removed and a different name
+added, producing 108 differing identifiers between two readings of the same
+commit on another repository. This is a self-reporting failure of the same class as
+the ones the pilot found at the interface level: the tool claims completeness while
+the claim is false, and nothing in the tool's own output gives the developer
+reason to doubt.
+
+A deeper problem compounds the chunk-boundary effects: the budget is wall-clock
+time, so the store's contents depend on machine load at the moment of mining.
+Five mines of one repository produced 150, 168, 168, 237, and 237 operations from
+the same commit, and the two large stores reconstructed fewer files than the small
+ones, because extra operations introduced by a longer chunk sometimes compose to
+the wrong bytes. The practical consequence is that two developers onboarding the
+same repository on different machines can end up with different stores, different
+reconstruction rates, and different sets of refused operations, with no indication
+that anything distinguishes them. A design that records \emph{what happened} should
+not depend on \emph{when it was read}, and this coupling is a bug rather than a
+tradeoff.
+
+The consequence on external repositories is severe. On the first repository
+outside the author's own projects that the evaluation pointed \sgt{} at (746
+commits, 118 merges, two package renames), reconstruction reproduces 35\% of
+function-level files. This is not noise around a successful result; it is a total
+failure of the write layer, because the guard that protects composition refuses
+every write verb when the composed image disagrees with disk. A developer who
+clones a mid-sized library, runs \cmd{sgt init}, and waits the six unattended
+minutes it takes for onboarding to reach genesis gets a tool that can attribute
+but cannot act---the read layer works, and every write verb refuses. The
+reconstruction rate on the author's own repository (7 of 8 function-level files
+rebuild) is not evidence that the system works; it is evidence that the author's
+habits (linear history, no deletions, no package renames) happen to avoid the
+three inputs that break composition.
+
+The rebuild also fails in the opposite direction: on 28 of 29 corpus
+repositories, the composed image materialises files that do not exist at
+\cmd{HEAD}---1{,}864 paths across the corpus, produced by operations whose
+targets were deleted or renamed and whose records were never pruned. A metric
+that checks only whether a file at \cmd{HEAD} can be reproduced from its records
+cannot see this failure, because the invented file is not at \cmd{HEAD} and
+therefore not in the denominator. Requiring the rebuild to produce
+\cmd{HEAD}'s file set \emph{and nothing more} moves the corpus median rebuild
+rate from 0.33 to 0.24. The two numbers answer different questions: the first
+asks how much of the working tree the record can explain, and the second asks
+how close the record comes to reproducing the working tree as a whole. Both are
+needed, because the write guard compares the entire composed image against
+disk, and a surplus file disagrees just as a missing function does. On the five
+real repositories, surplus paths account for a third of refusals---the write
+verb refuses because the rebuild contains files that no longer exist, not
+because it cannot reproduce the ones that do.
+
+The onboarding path has a separate failure that compounds the completeness problem.
+\sgt{} reads history in ten-second chunks, and between chunks nothing tells the
+developer their history is partial: no command drives the walk to completion, the
+incompleteness flag exists only in the JSON output humans do not read, and the
+summary prints ``13 file(s) on disk differ from the recorded state---\cmd{sgt save}
+absorbs them.'' Following that instruction would record 746 commits of other
+people's work as a single save by whoever just typed it, destroying the provenance
+the tool exists to produce. A confident instruction pointing at a destructive
+action, firing on every repository large enough to matter, is a stronger instance
+of the self-reporting pattern than any single defect the robustness harness found.
+The refusal messages themselves misdirect: in two cases on the recovery path, the
+tool names a wrong cause (``operation does not exist'' for one it holds; ``set
+\cmd{OPENAI\_API\_KEY}'' for a failure unrelated to any credential). A system
+whose failure messages are wrong has the honesty property the design claims for
+it in the code paths that were tested, and not as a structural guarantee.
+
+\subsection{The layout seam}
+\label{sec:layout-seam}
+
+Order and whitespace are encoded as symbols but are not symbols under the
+kernel's relations. A blank line between two functions is recorded as a layout
+record, carries no callers and no dependencies, participates in no structural
+community, and cannot fork because nothing competes for it. Yet composition
+treats it identically to a function body: including a feature includes its
+layout records, reverting one removes them, and the rebuild-from-records
+guard checks the composed bytes against disk with no distinction between a
+wrong function body and a wrong separator. This encoding preserves insertion
+order deterministically---without it, recomposed files would lose their
+formatting---and it is the single most productive source of defects across
+the entire evaluation.
+
+The evidence arrives from three directions at once. In the robustness harness,
+157 of 232 entity-targeted violations trace to a layout record being dragged
+along by the entity operation rather than to any failure in the entity logic
+itself. On real repositories at rest---before any operation runs---19, 48, and
+89 orphaned layout records appear across three of five clones, growing to
+hundreds after the mine completes, because the fork rule withdraws the entity
+records that anchor them and leaves the layout records pointing at a gap.
+And the evaluation's only two recoverability failures---a 33-byte file emptied
+while the tool reported it had done nothing---both targeted layout records. No
+entity record lost a byte in 10{,}237 operations. Every byte that was lost came
+through the seam.
+
+The mechanism is not a bug in any individual component. The kernel's relations
+(calls, co-change, structural containment) ground entity records in a
+dependency structure that composition can reason about: if a function depends
+on another, including one includes the other. Layout records have no such
+grounding. They float between the entities they separate, and when one of those
+entities is withdrawn by the fork rule the layout record stays behind, orphaned,
+pointing at a position that no longer exists in the composed image. The composed
+file then disagrees with disk by the bytes of that orphan, the rebuild guard
+fires, and every write verb that touches that file refuses. The developer sees
+``file does not rebuild from its records'' and has no way to know that the record
+in question is a blank line between two functions that the fork rule withdrew.
+
+A designer facing this choice has three options. Record order as metadata
+attached to each entity (loses the ability to revert a formatting change
+independently). Record order as a relation between adjacent entities rather
+than a symbol in its own right (the approach Darcs takes with its sequencing
+theory, at the cost of a different composition algebra). Or accept the seam as a
+maintenance cost and fix the orphans it produces. The third is what we have been
+paying, and the evaluation's finding is that the cost is higher than we
+estimated: not a cosmetic imprecision in the rebuild, but the mechanism behind
+half the addressable failure surface and the only path to data loss the harness
+found.
+
+\subsection{Findable is not decomposable}
+\label{sec:findable-not-decomposable}
+
+On the two study repositories, every information request is answerable from the
+\sgt{} record in at most three commands: eight derivability checks, run three
+times across two rebuilds, pass every time. A reader might stop there. The checks
+are too easy. They ask whether the answer is \emph{reachable}---whether some
+sequence of \cmd{sgt log}, \cmd{sgt show}, and \cmd{sgt find} can surface the
+relevant symbols---and at function granularity almost anything is reachable. The
+operations the design is built on are not retrieval but \emph{decomposition}:
+naming a coherent piece of work as one unit, and reverting that unit without side
+effects. Measured as decomposition, the same trees fail. One feature in each
+repository participates in 18 of 22 episodes (coursecraft's \texttt{CLI Scaffold})
+or 20 of 22 (confplan's \texttt{Schedule Grid}), so reverting that feature removes
+work from nearly every sitting. Five of 34 features carry a label that describes
+under a third of their symbols. A 5-symbol removal reverses 13 edits, because the
+structural cut crosses the episode boundary wherever a hub function participates.
+
+The three numbers are not three findings. Every episode splitting across 3--6
+features, one feature spanning 90\% of episodes, and reverting 5 symbols costing
+13 edits are one fact seen from three sides: the clustering cuts along the code
+(files, coupling) and the work ran along features (sessions, requests), so the cuts
+land crosswise. A paper that reports them as a list of weaknesses would pad the
+count and hide that a single design choice produces all of them. The choice is
+commitment~1: the function as the unit of recording. A function belongs to one
+feature at a time. A feature is any set of functions. When a hub function
+participates in every episode, every episode and every feature overlap in that hub,
+and the overlap is the mechanism behind every number above.
+
+The corpus evaluation confirms the same mismatch at a larger scale. On four
+real repositories (two external, two this project's own transcripts), one
+developer request becomes a median of 4--6 \sgt{} features and up to 12 on the
+longest session. No repository reaches 1:1. The finding kills a framing the paper
+once used: features are not recovered intents. At this granularity they are
+recovered \emph{sub}-intents---structural communities that correspond to what a
+developer did at the code level, not to what they asked for at the request level.
+Suchman's distinction between plans and situated actions explains why no
+refinement of the clustering will close this gap~\cite{suchman1987}: a
+developer's request is a plan in her sense, a resource that oriented the agent's
+work rather than a specification that determined it, and one orienting statement
+produces several independent implementation decisions the statement never
+mentioned. The gap between request and feature is the gap between planning and
+doing.
+The distinction matters because the paper's scenarios ask ``which request produced
+this function,'' and the feature map answers a different question: ``which other
+functions were modified in the same structural neighbourhood.'' That answer is
+useful---it is the cross-file grouping git cannot provide---but it is a weaker
+claim than intent recovery, and the paper must state it as the claim actually
+supported rather than letting the reader infer the stronger one.
+
+The practical consequence for the developer in Section~\ref{sec:scenarios} is
+that \cmd{sgt revert "price cache"} does not do what the scenario promises. The
+price cache was one request. The tool split it into three features: one holding
+the cache helper, one holding the TTL logic because it co-changed with an
+unrelated timer, and one holding the parameter that threads the TTL through
+\sym{db.py::query} because that function's coupling graph places it in the
+database cluster. The developer who typed one sentence must now name three
+features to remove one request, and deciding which three requires reading the
+feature map---the same comprehension labour the tool was supposed to eliminate.
+The labour is smaller (read a feature tree instead of reading the code), and it
+is faster (a \cmd{sgt log --map} call instead of a \cmd{git log -L} call per
+function), but it is not zero, and a design whose selling point is ``name it and
+remove it'' must say honestly that ``name it'' sometimes means ``find the three
+pieces it became.'' Clark's grounding theory explains the gap: shared vocabulary
+requires proposal and acceptance between two
+parties~\cite{clark1996}, and the tool proposes its structural
+categories without any acceptance step from the developer. The merge command
+exists to repair this, but a developer who does not know the pieces exist cannot
+know they need merging. Surfacing the mismatch---showing, at save time, which
+features the tool proposes and asking the developer to confirm---is the fix this
+design has not yet built, and building it requires interrupting the save flow,
+which is the forcing-function cost the fork rule already pays. That fix also
+contradicts Section~\ref{sec:names}'s own premise: Shipman and Marshall showed
+that systems requiring users to formalise their work get
+abandoned~\cite{shipman1999}, and a confirmation prompt at every save is a
+formalisation request at the highest-frequency operation. The design space is
+therefore narrower than Clark's model alone suggests: the acceptance step has to
+be cheap enough that developers do not skip it, and intermittent enough that it
+does not become the same cognitive tax the tool was built to eliminate. A preview
+that appears only when the grouping changed since the last save, or a deferred
+confirmation that accumulates until the developer acts, might thread that needle.
+We have not built either, and until we do the grounding gap stays open.
+
 \subsection{What a colleague sees}
 \label{sec:colleague}
 
@@ -101,17 +426,14 @@ and the reviewer of a pull request.
 
 The one we worried about most turned out to be the easy case. A colleague who has
 never heard of \sgt{} commits ordinary code, and the next \cmd{sgt sync} mines
-their commits into function-level records on contact, the same way \sgt{} mined the
-history that existed before it was installed. Their edits arrive at the right
-grain, they group with the work they belong to, and nothing has to be repaired. What
-does not arrive is the request, because there was no request to capture: their
-records carry no sentence, so the name for their group is drawn from their commit
-subjects, and where one subject accounts for most of a group \sgt{} uses that
-subject as the name. A colleague who writes \cmd{fix tests} and \cmd{wip} gets a
-group named from the code instead, which is the same failure
-Section~\ref{sec:names} describes for a save with no message. So the grain
-\sgt{} recovers from anybody and the request only from somebody who was running it,
-and a team that half-adopts \sgt{} gets a history that is half named.
+their commits into function-level records, the same way \sgt{} mines pre-existing
+history. Their edits arrive at the right grain and group with the work they belong
+to. What does not arrive is the request sentence, because there was none to
+capture: the name for their group is drawn from commit subjects instead. A
+colleague who writes \cmd{fix tests} and \cmd{wip} gets names derived from the
+code, the same failure Section~\ref{sec:names} describes for a save with no
+message. The grain \sgt{} recovers from anybody; the vocabulary only from somebody
+who was running it.
 
 The harder case is a colleague who does install it and runs a different version.
 \sgt{} recovers its records from code instead of being handed them, so the program
@@ -132,12 +454,19 @@ The third case is the reviewer, and here we have no answer at all. A pull reques
 carries \sgt{} records shows them as what they are on disk, a few hundred JSON files
 whose names are hashes, and no reviewer reads that; they review the code, as they
 should, and how anybody should read a large model-written change spanning many files is
-an open question being studied on its own~\cite{heander2026}. So the record that makes
-\cmd{revert} work is not part of what anybody approved, and a resolution one developer
-reasoned through and a label another corrected both enter the shared branch unexamined.
-The rule in Section~\ref{sec:fork} asks a person to settle a fork, and on a team that
-person is still one person, while the review that would have caught them being wrong
-reads a diff their decision does not appear in.
+an open question being studied on its own~\cite{heander2026}. The reason is structural,
+not incidental. Code review evaluates correctness: does this code do what it should?
+The \sgt{} records encode provenance: which request produced which function? Evaluating
+provenance requires the reviewer to read the original requests, compare them against the
+grouping, and judge whether the inference is right---which is the comprehension work
+the tool was built to eliminate, performed by a person who did not write the code and
+has even less context than the developer who did. A reviewer who cannot evaluate the
+record cannot catch a wrong resolution or a mislabelled feature, so the record that
+makes \cmd{revert} work is not part of what anybody approved, and a resolution one
+developer reasoned through and a label another corrected both enter the shared branch
+unexamined. The rule in Section~\ref{sec:fork} asks a person to settle a fork, and on
+a team that person is still one person, while the review that would have caught them
+being wrong reads a diff their decision does not appear in.
 
 \subsection{The fork rule has never met two people}
 \label{sec:forkoff}
@@ -178,10 +507,20 @@ study of larger teams would most usefully overturn.
 
 The grouping \sgt{} recovers by clustering existed before any of the code did. The
 agent held it while it worked, and every agent we have used discards it when the
-session ends. A record written by the agent, one entry per request naming the
-functions it changed, would make the inference in Section~\ref{sec:names}
-unnecessary, and it would fix the case in Section~\ref{sec:walkthrough} where a
-rename nobody asked for got a name derived from the code.
+session ends. Hutchins's account of distributed cognition explains what
+disappeared~\cite{hutchins1995}: the knowledge of which functions serve which
+purpose was formerly distributed across three supports---the developer's
+procedural memory of typing the code, the commit structure that recorded
+boundaries, and the naming conventions that made intent readable from identifiers.
+Agent-mediated development removes the first two supports (the developer typed
+sentences, not code; the commit happened once at the end, not at each boundary)
+and leaves the third intact but insufficient, since function names describe
+implementation rather than purpose. \sgt{} reconstructs what was lost by mining
+the structural channels (coupling, co-change) that survive the transition.
+A record written by the agent, one entry per request naming the functions it
+changed, would make the inference in Section~\ref{sec:names} unnecessary, and it
+would fix the case in Section~\ref{sec:walkthrough} where a rename nobody asked
+for got a name derived from the code.
 
 Half of that record we do take, and the half we take is the half a vendor cannot
 spoil. Where the developer's agent is Claude Code, \sgt{} installs a hook on
@@ -196,7 +535,11 @@ cannot make yesterday's sentence wrong.
 The half we do not take is the agent's account of which functions each request
 touched, and the reason is that a record of that kind is a claim about the files
 which we would have to either trust or check. Trusting it puts the correctness of
-a revert inside a transcript nobody validated against the code. Checking it means
+a revert inside a transcript nobody validated against the code, and Tang et
+al.'s finding that inaccurate self-reporting accounts for 22.6\% of all
+developer--agent misalignment episodes---rising even as other failure classes
+decline~\cite{tang2026agentfailures}---says directly how often that trust would
+be misplaced. Checking it means
 reading the files and computing the answer, at which point we did not need the
 account. What the agent's account would improve is the label, which is the part of
 \sgt{} that is allowed to be wrong, and improving a label is worth a hint and not
@@ -214,13 +557,13 @@ implements it, so the artefact and the evidence in this section are the same
 object: a reader can clone it, check out the commit the artefact names, run
 \cmd{sgt log --summary}, and read every number in this section off the output. Run
 at a later commit the counts will have moved, since the repository is the working
-one. The between-subjects study in Section~\ref{sec:eval-study} is pre-registered: its
+one. The within-subjects study in Section~\ref{sec:eval-study} is pre-registered: its
 design, measures, and the thresholds in Table~\ref{tab:measures} were fixed before
 recruiting, so that the first row remains the first row after we have seen the
 data. Two moderated pilots (Section~\ref{sec:pilot}) validated the tasks, the
 rubric, and the scoring script; they found twelve tool defects and four design
-defects, all fixed before the full study begins. The two repositories the study
-uses, the transcripts that produced them, and the correctness script will be
-released with the results. The study's only recorded data will be screen activity,
+defects, all fixed before the full study ran. The two repositories the study
+uses, the transcripts that produced them, and the correctness script are
+released with the results. The study's recorded data are screen activity,
 task outcomes, and interview audio from consenting professional developers, with no
 personal data beyond what consent and compensation require.

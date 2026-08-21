@@ -1,6 +1,6 @@
 import { useParticipant } from '../ParticipantApp'
 import { Markdown } from '../../ui/Markdown'
-import { tutorialFor } from '../../study/content'
+import { TUTORIAL_LEDE, tutorialFor } from '../../study/content'
 import { blockFor, type Step } from '../../study/flow'
 import { Callout } from '../../ui/bits'
 
@@ -13,11 +13,7 @@ export function TutorialStep({ step }: { step: Step }) {
       <div>
         <div className="eyebrow">{block.label}</div>
         <h1>Practice</h1>
-        <p className="lede">
-          Ten minutes on the practice project before the real requests start. This is the moment to
-          ask anything. Once the requests begin we can only answer questions about the requests
-          themselves.
-        </p>
+        <p className="lede">{TUTORIAL_LEDE}</p>
       </div>
 
       <Callout kind="accent" title="Practice on the warm-up copy, not the real project">

@@ -1,11 +1,15 @@
 \section{What the Design Bought and What It Cost}
 \label{sec:discussion-synthesis}
 
-The evaluation, the corpus, and the pilot each show a different aspect of
-the same design. We organise this section around what generalises past our
-system, because an honest account of one tool's failures is useful to a reader
-only when it explains what would fail differently had the tool been designed
-differently.
+A system paper owes the reader two things the evaluation alone does not provide:
+which design choices caused each failure class, and whether a different choice
+would have avoided the failure or merely relocated it. This section traces each
+of the four commitments of Section~\ref{sec:design} back to its evaluation
+outcome, names the alternative the designer faced at each decision point, and
+states what the alternative would have cost instead. The goal is a map a tool
+builder in the same design space can navigate without rerunning the experiment:
+here is where each path leads, here is what we found at the end of ours, and here
+is the evidence for turning earlier.
 
 \subsection{Three distinct safety properties}
 
@@ -36,15 +40,91 @@ rewrites files on their behalf, and they require different kinds of guarantee.
 Property~1 is architectural and held universally. Properties~2 and~3 are
 behavioural and failed on sequences involving layout records (the gap text
 and ordering facts that sit between functions in a file). The append-only store
-makes durability cheap, so legibility becomes the remaining problem. In every
-one of eight self-reporting failures we found across the evaluation, the data was
-present and the tool's account of how to reach it was wrong. Any system that
-maintains a semantic record alongside a repository will face this same
-separation, and the lesson is that testing durability (can the bytes be
-recovered?) answers a different question from testing agreement (did the tool do
-what it said?). Agreement is harder to test, because the only oracle that can
-verify it is a probe that independently checks the outcome. The tool's own
-report is the thing that failed.
+makes durability cheap, so legibility becomes the remaining problem.
+
+The distinction matters because the three properties fail with different
+visibility and different recovery costs. Property~1 failures are catastrophic
+and detectable: the developer's code is gone, and they know it. Property~3
+failures are non-catastrophic and detectable: the developer's code is present
+but the tool refuses to record new work, and the refusal is loud. Property~2
+failures are non-catastrophic and \emph{undetectable without an external oracle}:
+the developer's code is present, the tool claims it did the right thing, and the
+claim is wrong. In every one of eight self-reporting failures we found across the
+evaluation, the data was present and the tool's account of how to reach it was
+wrong. The tool exhibited what Bainbridge called the fundamental irony: the
+humans most in need of monitoring are the ones least able to provide it, and here
+the tool most in need of checking is the one whose reports are the only thing the
+developer has to check against~\cite{bainbridge1983}. Sarter and Woods identified
+the mechanism by which this gap widens: an operator whose feedback confirms a
+state the system is not in stops monitoring, and every subsequent action builds on
+the wrong model until a later failure exposes the divergence at a point far removed
+from its cause~\cite{sarter1995}. The green checkmark over corrupted output is
+exactly this structure---the developer's model (``the revert worked'') diverges from
+reality (``three function headers are glued onto one line''), the divergence is
+invisible because the feedback confirmed the false state, and it surfaces only when
+a test runner or a colleague finds the damage.
+
+The pattern is not unique to \sgt{}. During this evaluation, a git merge
+resolution silently reverted six previously-landed fixes. Git reported the merge
+as successful, the working tree was clean, and no test failed---because the same
+resolution removed the tests that would have caught the reversion. The code was
+present in history and absent from the working tree, with no indication that
+anything had been lost. Two of the six were found only by comparing the names
+in the test roster against the names at the prior commit, a check nobody was
+running. This is property~2 failure in the tool the paper's baseline condition
+uses, and it manifests the same way: the system reports success while silently
+doing less than the developer intended.
+
+The self-reporting pattern has a mirror that the evaluation found independently.
+Seventeen files are reported as ``unrebuildable,'' but fourteen of them are files
+\sgt{} decided never to record at function level---dot-paths and generated
+configuration that the tier filter excluded. A developer chasing seventeen
+reported breakages finds three. Over-reporting and under-reporting are the same
+defect for the same structural reason: the tool's self-report confuses what it
+\emph{chose not to record} with what it \emph{failed to record}, and a developer
+who trusts either direction---whether the news is good or bad---acts on a model
+the tool does not support.
+
+The design implication generalises to any system that maintains a semantic record
+alongside a repository. Making the store append-only gives property~1 for free
+and makes property~3 failures recoverable (the developer can always fall back to
+the raw files). Property~2 requires a different kind of assurance: the tool's
+self-report must agree with an independently checkable outcome, and the only
+oracle that can verify agreement is a probe that recomputes the result without
+consulting the tool's own state. The robustness harness is exactly this probe---it
+applies the operation, then checks the outcome against a reference computed from
+git---and its 50\% per-session hit rate (Section~\ref{sec:session-rate}) is the
+measure of how far property~2 remains from holding. Testing durability (can the
+bytes be recovered?) answers a different question from testing agreement (did the
+tool do what it said?), and a test suite that checks only durability passes with
+flying colours on a system whose self-reports are wrong half the time.
+
+Casserini et al.\ named this accumulation \emph{agentic entropy}: the systemic
+drift between what an agent does and what the developer intended, compounding over
+time and invisible to diff-based review~\cite{casserini2026entropy}. Their
+diagnosis is correct---the diff tells you what changed in one commit, not how twenty
+commits diverge from what was asked for---but their proposed remedy (conformity
+seeding, reasoning monitoring, a causal graph of agent decisions) observes the
+agent's internal trace, which is available only while the agent is running. The
+record \sgt{} maintains operates at the complementary layer: it persists after the
+agent exits and expresses drift in terms the developer already holds (``this
+function was produced by that request''), so the entropy is visible at any future
+point and actionable through the same operations that produced the work. The
+distinction matters because an agent's reasoning trace is both proprietary and
+ephemeral---it disappears when the session ends---while the request-to-function map
+is durable and belongs to the developer.
+
+\emph{Recoverability} must be defined precisely, because each imprecise version
+produced a false violation during the harness's construction. The definition that
+survived calibration: after any sequence of verbs, the bytes of every prior state
+are reachable through documented commands. Reaching this statement required six
+successive revisions to the test oracle, each removing an assertion about the
+tool's \emph{representation} (which operation-ids a set contains) that disagreed
+with the tool's \emph{content} guarantee (which bytes a file holds). The revision
+sequence is itself a finding: operation-set identity and content identity are
+different equivalences, and every safety claim in this domain must name which one
+it means. A system can satisfy one while violating the other, and the one a
+developer cares about is bytes, not identifiers.
 
 \subsection{What each design commitment cost}
 \label{sec:design-cost}
@@ -75,12 +155,21 @@ no developer would name. The robustness harness found 340 operations that left
 the repository in an unexpected state, and 68\% of those targeted an entity the
 developer would name---but the dominant violation in those cases (157 of 232) was
 a layout record being dragged along by the entity operation, while the entity
-logic itself worked correctly. The set formalism fails in two distinct ways. First, layout records: layout
+logic itself worked correctly.
+
+The set formalism fails in two distinct ways. First, layout records: layout
 facts are individually addressable because they are symbols, and individually
 revertible because they are records, but no mechanism keeps them consistent with
 the entities they sit between. Nine distinct defects trace to this decision, and
-every robustness-harness failure entered through it. Second, upward closure:
-reverting a mid-history edit originally orphaned every later edit that depended on
+every robustness-harness failure entered through it. The failure has a
+counterintuitive property: a lost separator is latent until both definitions
+flanking it are recovered, so the number of broken files \emph{rises} as the
+record becomes more complete. A developer who assumes ``more history mined,
+fewer broken files'' has it backwards, and the progress bar that shows mining
+advancing is not a progress bar toward a working write layer.
+
+Second, upward closure: reverting a mid-history edit originally orphaned every
+later edit that depended on
 it, because the closure rule excluded them from the rebuilt set. On the study
 repository this demolished 13 files when the participant asked to remove one
 feature---the worst single defect we found. The fix replaced blanket exclusion
@@ -90,38 +179,102 @@ than dropping them), which preserves the set semantics while changing what
 contribution from the tip.'' The lesson for a designer using set-based versions:
 closure is correct for the append-only store (nothing is lost) but too aggressive
 for the working tree (a developer removing one feature does not intend to remove
-everything built on top of it).
+everything built on top of it). The distinction maps onto fail-stop versus
+fail-silent behaviour: forward subtraction is fail-stop because the developer
+sees the splice and can reject it (the preview names every function that would
+change), whereas blanket exclusion is fail-silent because the developer asked
+to remove one feature and thirteen files disappeared without a question.
+Bainbridge's irony applies directly: the developer who installed automation to
+handle the decomposition is the developer least equipped to notice when the
+decomposition was too aggressive, because they have not been practising the
+skill of holding it themselves~\cite{bainbridge1983}.
 
 \paragraph{The fork rule (Section~\ref{sec:fork}).}
 Protected 162 actually-forked functions and blocked mutation on 27 of 28
 outside repositories. The amplification factor is 18: each forked function
 withdraws records covering 17.7 function keys on average, and the total
 withdrawal of 2{,}864 keys is what blocks the write guards. On the self-hosted
-repository, switching the rule off raises the rebuild rate from 0.44 to 0.88.
+repository, switching the rule off raises the rebuild rate on function-level
+files from 0.23 to 0.83---a 3.7$\times$ gap that the pooled figure (which
+includes whole-file records that trivially reconstruct) had compressed to
+2$\times$.
 On the corpus, the median rebuild of 0.33 means the guard requires 1.00 and
-most repositories are at one third of that. The rule's read benefit is real (the pilot participant was stopped before two
-conflicting edits could be silently merged), but the write cost is eighteen
-times larger than the rule's description suggests.
+most repositories are at one third of that. The one corpus repository that
+reaches 1.00 holds 293 records where the others hold 1{,}382 to 7{,}951; it
+is also the only repository where \cmd{sgt save} succeeded and the only one
+the robustness harness flagged nothing on. Three separately reported positive
+results trace to the same unit---a repository too thinly recorded to trigger
+any of the failure modes the denser stores exhibit. The rule's read benefit is
+real (the pilot participant was stopped before two conflicting edits could be
+silently merged), but the write cost is eighteen times larger than the rule's
+description suggests.
+
+The fork rule is a cognitive forcing function in
+Bu\c{c}inca et al.'s sense~\cite{bucinca2021}: a deliberate friction that
+interrupts the developer's acceptance flow and forces engagement with the
+decision the tool would otherwise make silently. Bu\c{c}inca et al.\ found
+that the most effective cognitive forcing functions---those that reduced
+overreliance on AI recommendations the most---were also the ones participants
+rated least favourably, because the subjective cost of being stopped is felt
+immediately while the objective benefit (avoiding an error) is counterfactual
+and invisible. The pilot reproduced this finding exactly: the fork rule
+stopped the participant before two conflicting edits could be silently merged
+(the safety benefit held), and the participant declined to use the session
+feature afterwards (the goodwill cost was immediate). The mechanism is that a
+forcing function pays for itself only when it fires on an actual conflict, and
+the developer cannot distinguish a true positive (the function genuinely
+diverged) from a false positive (two edits touched opposite ends of a long
+function) until they have done the inspection the rule demands. In
+Bu\c{c}inca et al.'s framework, the forcing function's value depends on the
+base rate of errors it prevents: if most firings are false positives, the
+developer learns to treat the interruption itself as noise, and the rare true
+positive arrives in a context where the developer has already learned to
+dismiss.
+
 Nelson et al.\ found that the expensive part of a merge conflict is the
 semantic investigation required to understand whether both sides can
 coexist, not the textual resolution~\cite{nelson2019}. The fork rule moves
 that investigation from the moment the merge fails to the moment the second
-edit arrives, when the developer still holds both intents.
-Kazemitabaar et al.\ showed that cognitive engagement techniques---friction
-that stops passive acceptance of AI-generated code---improve comprehension at
-the cost of goodwill~\cite{kazemitabaar2025}. The fork rule is exactly this
-tradeoff: it stops the developer from accepting a merge they have not
-inspected, and the pilot showed it costs goodwill (the participant declined to
-use the session feature afterwards). Duan et al.\ found that distrust
-propagates between teammates more readily than trust does: one person's negative
-experience, relayed by word of mouth, reduces a colleague's reliance even when
-the colleague's own experience has been positive~\cite{duan2026}. The fork
-rule has been tested only with one person, and this contagion effect suggests
-that a single developer's frustration with it could suppress adoption across a
-team even if the rule's safety guarantee would have helped the others.
-Figure~\ref{fig:fork-cost} shows the amplification visually: the 153 files
-the rule blocks come from just 162 forked functions, and switching the rule off
-recovers them but removes the safety guarantee.
+edit arrives, when the developer still holds both intents. This temporal shift
+is the rule's strongest claim: at the moment of the second edit, the developer
+still knows what both versions intended, so the investigation costs seconds
+rather than the minutes Nelson et al.\ measured at merge time.
+Kazemitabaar et al.\ showed the same structure in a pedagogical setting:
+cognitive engagement techniques that force students to think before accepting
+AI-generated code improve comprehension at the cost of completion
+speed~\cite{kazemitabaar2025}. The fork rule imposes the same trade: it stops
+passive acceptance of a merge and forces the developer to state which version
+they want, and the pilot confirms both sides of that exchange.
+
+Ferino et al.\ proposed a reliance-control framework for AI in software
+engineering that uses the developer's \emph{level of control} as the
+mechanism for identifying both over- and under-reliance~\cite{ferino2026}.
+The fork rule instantiates their framework concretely: it increases the
+developer's control at exactly the point where silent merging would decrease
+it (two edits to one function from different intents), and does so by making
+the developer state which version they want rather than accepting whatever
+the system computes. The cost is what Ferino et al.\ call unnecessary control
+retention---being forced to decide when both versions are clearly compatible
+---and the benefit is what they call appropriate reliance calibration: the
+developer knows which merges required their judgment, and which did not.
+
+Duan et al.\ found that distrust propagates between teammates more readily
+than trust does: one person's negative experience, relayed by word of mouth,
+reduces a colleague's reliance even when the colleague's own experience has
+been positive~\cite{duan2026}. The fork rule has been tested only with one
+person, and this contagion effect suggests that a single developer's
+frustration with it could suppress adoption across a team even if the rule's
+safety guarantee would have helped the others. The implication for a designer
+building forcing functions into developer tools: the function must fire rarely
+enough that most firings are true positives, because each false positive erodes
+the willingness to engage with the next interruption, and on a team that
+erosion propagates socially. On the study repository (162 forked functions in
+346 commits), the fork rule fires on roughly one function per two commits; we
+do not know whether that rate feels like signal or like noise to a developer
+who is not the system's author. Figure~\ref{fig:fork-cost} shows the
+amplification visually: the 153 files the rule blocks come from just 162
+forked functions, and switching the rule off recovers them but removes the
+safety guarantee.
 
 \begin{figure}[t]
   \centering
@@ -147,9 +300,11 @@ index into history (every request's answer is reachable in at most three
 commands) but an unreliable decomposition of it. Fifteen percent of labels
 describe a minority of their members' actual content, and reverting a 5-symbol
 feature removes 13 edits, because the structural cut crosses the episode
-boundary whenever a hub function participates. Study preparation found that 9 of 24 features in each repository owned no
+boundary whenever a hub function participates.
+
+Study preparation found that 9 of 24 features in each repository owned no
 behavioural code at all---communities formed entirely from positional gap-bytes
-that the clustering includes for structural cohesion---and three of those husks
+that the clustering includes for structural cohesion. Three of those husks
 carried the names the study's own removal requests use, so a participant following
 the map would select a feature and find nothing inside it. The fix (absorb husks
 into the feature that owns their parent entities) reduced the tree from 24 leaves
@@ -159,7 +314,55 @@ scaffold or test code would fix the 15\% label inaccuracy, but we did not build
 it, because tuning on evaluation data produces a number, not a finding.
 Figure~\ref{fig:decomposition} shows the ratio across all four transcript
 repositories. No repository reaches 1:1, and the whiskers show that the worst
-case (13 features for one request) sits on the longest-session history.
+case (13 features for one request) sits on the longest-session history. The
+variation between repositories is itself informative. The semi-git repository
+(median 2, max 13) has the lowest median because its developer explicitly saves
+after each coherent piece of work; the semipy-package repository (median 6, max
+10) has the highest because its sessions interleave multiple long-running
+concerns with shared infrastructure. The ratio measures how far the system's
+structural vocabulary diverges from the developer's intent vocabulary, and that
+divergence grows with the number of shared functions a session touches---because
+each shared function creates a coupling edge that the clustering algorithm
+treats as evidence of membership, pulling otherwise separate requests into a
+single community. The practical reading for a developer: type \cmd{sgt log}
+expecting to see your requests as you typed them, and instead find each one
+decomposed into two to six pieces named after implementation details rather than
+purposes. The tool's vocabulary is the code's vocabulary, not the developer's,
+and the gap between the two is the gap Furnas et al.\ measured in information
+retrieval~\cite{furnas1987}: the words a person uses to describe what they want
+and the words a system uses to index what it has diverge by a factor that
+averages 4--5 even in constrained domains.
+
+The mismatch goes deeper than naming---it is a difference in categorical
+level. A developer who typed ``add price caching'' thinks at what Rosch called
+the \emph{basic level}: the category that maximises within-group similarity
+while minimising between-group similarity~\cite{rosch1978}. ``The price cache'' is basic; ``the caching
+subsystem'' is too abstract to act on; ``the TTL helper'' is too specific to
+name a purpose. The tool presents subordinate categories---features defined by
+internal structural distinctions the developer never made---and asks the
+developer to act at that level (select one for revert, rename one, merge two).
+The practical cost is that a developer cannot name what they want in a single
+selection, because no single feature in the tool's vocabulary corresponds to
+the basic-level unit they decided in. The merge and regroup commands exist to
+lift subordinate features back to basic level, but that repair presupposes
+that the developer knows which pieces belong together---the knowledge the tool
+was supposed to supply.
+
+The cost has a corresponding benefit that the same category theory predicts.
+Rosch showed that experts operate fluently at the subordinate level where novices
+cannot: a bird-watcher distinguishes warblers that a non-expert calls
+``birds''~\cite{rosch1978}. A developer debugging a latency regression does not
+want to revert ``the price cache''---they want to revert the TTL helper
+specifically, because they know the TTL is the piece that aged the data. At that
+moment the subordinate vocabulary is exactly the level they need, and the
+basic-level merge would force them to take out more than they intend. The
+over-decomposition is simultaneously too fine for the request-level operations the
+scenarios describe and exactly right for the implementation-level operations an
+expert performs daily. The design tension is real: no single granularity serves
+both, and the tool chose the finer one on the ground that merging two features is
+a rename (one command, no data moved) while splitting one feature after the
+fact is not currently possible. The asymmetry in repair cost is what decides
+the default.
 
 \begin{figure}[t]
   \centering
@@ -168,6 +371,44 @@ case (13 features for one request) sits on the longest-session history.
   \Description{\FigSevenDescription}
   \label{fig:decomposition}
 \end{figure}
+
+\paragraph{The commitments as a system.}
+The four commitments do not fail independently. The function-as-unit decision
+creates the records the fork rule must protect, the fork rule's amplification
+blocks the write guards the set formalism requires, and the set formalism's
+layout seam produces the violations the inferred names must absorb into a
+coherent display. This means that fixing any one commitment's failure often
+exposes or worsens another's. Loosening the fork rule (to stop blocking 27 of 28
+outside repositories) gives up the consistency guarantee the set formalism
+depends on. Eliminating layout records (to remove 68\% of violations) degrades
+the rebuild, because the whitespace between functions is what makes the
+reconstructed file compilable. Sharpening the clustering (to reduce 2--6$\times$
+over-decomposition) requires a signal the fork rule suppresses, because a forked
+function contributes no included version and therefore no coupling edge.
+
+On the self-hosted repository, the full causal accounting closes to zero.
+Dependency grounding excludes 7 operations. The fork rule excludes 1{,}298, and
+because it drops both tips and their upward closures, those 162 forked functions
+withdraw 2{,}864 function records. The pending working tree accounts for 292
+more. Nothing is left over: the recorded ideal rebuilds exactly as many files as
+a walk through grounded, fork-free records produces. The mechanism is not a bug;
+it is three separately reasonable decisions---never silently pick a side when two
+records claim the same function, require 1.0 reconstruction before writing, and
+leave the test oracle unconfigured---that compose into a tool that cannot record
+on 27 of 28 repositories including its own. Every fork is resolvable, and the
+thing that would resolve them automatically is a test runner nobody configured.
+
+The interaction teaches a design lesson that the per-commitment analysis
+obscures. A designer in this space faces a choice not between four independent
+bets but between packages of mutually-constraining decisions. The package we
+chose optimises for correctness of a single write operation (a revert removes
+exactly the named set and nothing else) at the cost of availability (the write
+guards fire often) and learnability (the vocabulary is too fine). A different
+package---coarser grain, weaker safety, simpler surface---would trade those costs
+for a higher rate of silent errors at revert time, which is the cost
+Section~\ref{sec:scenarios} argues developers already pay and do not notice. The
+study is designed to measure whether they notice, and the answer determines which
+package is the better bargain.
 
 \subsection{The codebook that was wrong}
 \label{sec:codebook-wrong}
@@ -200,6 +441,30 @@ length or repository size. A metric computed on a history with 88\%
 continuation tokens measures the ground truth's granularity rather than the
 system's accuracy.
 
+The implication extends beyond our system. The standard evaluation protocol in
+change untangling research constructs ground truth from developer-authored commit
+messages, treating each commit as one intent~\cite{herzig2013,dias2015}. That
+protocol assumes the commit boundary aligns with the intent boundary, which
+Herzig and Zeller showed fails on 15\% of commits in well-maintained
+projects~\cite{herzig2013}. Agent transcripts make the problem worse, not better:
+a commit boundary is at least a deliberate act (the developer typed \cmd{git
+commit}), whereas a turn boundary is an artefact of the chat interface (the
+developer pressed enter). The pre-registered codebook assumed that the
+commit/turn boundary would be wrong in predictable ways---split, merge,
+mis-assign, rename---and found instead that the dominant residual was a
+disagreement about what counts as a boundary at all. The ``continuation token''
+mechanism is specific to agentic transcripts, but the underlying phenomenon
+(the ground truth's grain is finer than the intent it claims to record) will
+appear in any corpus where the recording unit (turn, commit, save) can be
+triggered without semantic content. A future evaluation protocol for intent
+recovery should filter contentless boundaries before computing any metric,
+or else report the contentless fraction alongside the score so that a reader
+can judge whether the number measures the system or the ground truth.
+This result also explains why the clustering in Section~\ref{sec:names} uses
+co-change within saves rather than within turns: a save is a developer-initiated
+boundary that contentless turns do not trigger, so the temporal signal the
+clustering reads is already filtered.
+
 The one mechanism that \emph{is} an error in the clustering---intent sharded by
 directory (F32)---appeared in both repositories and has a consistent shape: two
 leaves carry the same label and the same intent, separated only because their
@@ -217,21 +482,23 @@ tradeoffs.
 \begin{table*}[t]
 \centering
 \small
-\begin{tabular}{p{2.2cm}p{2.6cm}p{2.6cm}p{2.6cm}p{2.6cm}}
+\begin{tabular}{p{1.8cm}p{2.1cm}p{2.1cm}p{2.1cm}p{2.1cm}p{2.1cm}}
 \toprule
-Property & \textbf{Darcs/Pijul} & \textbf{GitButler} & \textbf{sem} & \textbf{\sgt{}} \\
+Property & \textbf{Darcs/Pijul} & \textbf{Jujutsu} & \textbf{GitButler} & \textbf{sem} & \textbf{\sgt{}} \\
 \midrule
-Unit of record & Line-level patch & File-level change & Function (derived cache) & Function (committed record) \\
-Cross-file dep. & Not tracked & Not tracked & Reported, not enforced & Tracked and enforced \\
-Selective revert & Pull/unpull a patch & Undo a file assignment & N/A (read-only) & Revert a named feature \\
-Adoption cost & Replace git & Add to git workflow & None (cache alongside) & Add to git workflow \\
-Failure mode & Silent (line-level) & Silent (file-level) & N/A & Fork rule stops \\
+Unit of record & Line-level patch & Commit (change id) & File-level change & Function (derived cache) & Function (committed record) \\
+Cross-file dep. & Not tracked & Not tracked & Not tracked & Reported, not enforced & Tracked and enforced \\
+Selective revert & Pull/unpull a patch & Backout a change & Undo a file assignment & N/A (read-only) & Revert a named feature \\
+Adoption cost & Replace git & Replace git & Add to git workflow & None (cache alongside) & Add to git workflow \\
+Failure mode & Silent (line-level) & Silent (commit-level) & Silent (file-level) & N/A & Fork rule stops \\
 \bottomrule
 \end{tabular}
-\caption{Design tradeoffs across four systems that address change grouping.
-Darcs and Pijul compute dependency from lines; GitButler assigns files to
-virtual branches; sem derives a function-level cache but takes no action on it;
-\sgt{} commits its record and acts on it.}
+\caption{Design tradeoffs across five systems that address change grouping.
+Darcs and Pijul compute dependency from lines; Jujutsu replaces git's commit
+model with stable change identities; GitButler assigns files to virtual branches;
+sem derives a function-level cache but takes no action on it; \sgt{} commits its
+record and acts on it. Each step down in granularity enables a more precise
+revert but introduces a failure mode the coarser system never encounters.}
 \label{tab:comparison}
 \end{table*}
 
@@ -281,17 +548,245 @@ amplification) that the coarser grain never had to solve, and the evaluation
 evidence for whether that cost is justified remains thin---we measured hub
 absorption (19--41 symbols per shared feature on the study repositories) but not
 the frequency with which real agent sessions produce the multi-request
-single-function case that motivates the finer grain. A tool builder choosing a
-granularity should treat our failure catalogue as a lower bound on the cost of
-going finer, and GitButler's adoption as evidence that the coarser grain
-satisfies most workflows today.
+single-function case that motivates the finer grain.
+
+The tradeoff is not symmetric. Moving from file to function introduces three
+problems (layout consistency, identity across renames, fork amplification) but
+addresses one: the tangled function that holds edits from multiple requests. If
+that case is rare, the three problems dominate and the finer grain is a net loss.
+If it is common---and agent sessions make it common, because a model asked to
+``add caching'' and ``add rate limiting'' will change the same handler
+function---the finer grain addresses the single case that the coarser grain
+cannot express. The question a tool builder faces is whether to optimise for
+the common case (most files serve one feature; file-level grouping suffices) or
+for the hard case (one function serves multiple features; only function-level
+grouping can separate them). GitButler chose the common case and pays nothing
+for the hard case because it does not attempt it. \sgt{} chose the hard case and
+pays for it on every file, including the majority where the hard case does not
+arise. A tool builder choosing a granularity should treat our failure catalogue
+as a lower bound on the cost of going finer, and GitButler's adoption as
+evidence that the coarser grain satisfies most workflows today.
+
+Jujutsu keeps git's line-level recording and adds what git lacks: a change
+identity that survives rewriting, divergence detection when two worktrees evolve
+the same change differently, and a working-copy model that lets a developer
+edit freely with no staging ceremony~\cite{jujutsu2026}. These are exactly the
+properties \sgt{} provides at the function level, delivered at the commit level
+with no parsing, no clustering, and no language dependency. The cost is that
+Jujutsu's change is still a commit: it cannot express ``the caching edits inside
+\sym{api.py::handle}'' as a unit, because it cannot see inside a file. The
+developer who wants to take the caching out and leave the retry policy intact
+faces the same hunk-selection problem they face in git, in a cleaner interface
+but with the same decomposition burden. A fair reading is that Jujutsu solved the
+workflow problems git's model created (detached HEAD, lost rebases, opaque
+staging) while \sgt{} attempted the representation problem underneath them (the
+commit is too coarse for a request), and the two efforts address overlapping
+symptoms from different root causes. A developer who adopts Jujutsu still needs
+to supply the decomposition at revert time; a developer who adopts \sgt{} still
+needs Jujutsu's workflow improvements for the commits \sgt{} cannot decompose
+(configuration, prose, generated files). The two are complementary rather than
+competing, and we have not tested whether \sgt{} works atop Jujutsu's storage
+model.
+
+The untangling literature (Herzig and Zeller~\cite{herzig2013}, Barnett et
+al.~\cite{barnett2015}, Dias et al.~\cite{dias2015}, Shen et
+al.~\cite{shen2021}) addresses the same problem after the fact: given a tangled
+commit, recover the partition. Their evaluation compares a computed partition
+against a human-labelled ground truth, and Section~\ref{sec:codebook-wrong}
+reports what we found when we tried the same approach on agent transcripts: the
+ground truth's grain disagrees with the semantic grain so thoroughly that the
+metric measures the disagreement rather than the system. \sgt{} differs from this
+literature in timing rather than technique---the coupling signal and community
+detection we use are the same signals they use---and the timing difference
+matters because the record is written while the session is still running, before
+the developer has lost the words that name each request. Dias et al.'s design
+comes closest to ours: they record fine-grained IDE events as the developer types
+and cluster them into ``development sessions''~\cite{dias2015}. They stopped at
+the boundary of the editor, as every tool in Section~\ref{sec:related} did, and
+the reason none of them crossed it is the same reason we argue the crossing is
+now justified: a record that sits outside the repository cannot be the record an
+operation acts on, and until a developer needed operations they could not already
+perform by hand, the crossing was cost without benefit.
+
+The comparison above treats the tools as interchangeable alternatives. They are
+not. The shift from inline completion to CLI agents changes the level at which
+version control must operate. Murphy-Hill et al.'s field study found that
+CLI-based coding agents produce a sustained 24\% lift in merged pull requests
+over four months~\cite{murphyhill2026}, while cursor-style IDE completion shows
+velocity gains that dissipate within two months as complexity accumulates and
+developers spend their gains on rework~\cite{he2026}. The persistence difference
+is structural: an inline completion changes one expression inside a function the
+developer is already reading; a CLI agent session changes fourteen functions
+across five files in response to a sentence the developer never read back. The
+first is a line-level event that git already records at the right grain. The
+second is a session-level event whose decomposition no existing tool preserves,
+and it is the second that is growing. Among professionals using AI daily, the
+share who primarily direct an agent (as opposed to accepting completions) rose
+from 12\% to 38\% in the twelve months preceding the survey that measured the
+trust decline~\cite{stackoverflow2025}. The tangled-function scenario that
+justifies function-level recording---three requests editing one handler---is
+produced specifically by the session mode, because a completion does not cross
+file boundaries and an agent does. The design space this paper occupies is
+therefore not a permanent fixture of development; it is the space that opens when
+the dominant interaction mode shifts from completing a line the developer started
+to executing a request the developer specified. If that shift reverses, the
+decomposition problem reverses with it and the finer grain becomes pure cost.
+
+Three recent empirical studies suggest the shift is accelerating rather than
+reversing, and that its artefacts persist. Rahman and Shihab tracked 200{,}000 code
+units across 201 open-source projects and found that agent-authored code survives
+\emph{longer} than human code---a 15.8 percentage-point lower modification rate---while
+carrying a modestly elevated corrective-change rate (26.3\% vs.\
+23.0\%)~\cite{rahman2026survive}. Code that persists longer while accumulating more bug
+fixes is code whose provenance question becomes more acute over time, not less: each
+surviving function is a future undo that requires tracing back to the session that
+introduced it. Liu et al.\ confirmed the scale of what survives: across 302{,}600
+AI-authored commits in 6{,}299 repositories, 22.7\% of the issues the AI
+introduced---code smells, correctness defects, security vulnerabilities---still exist at
+the latest version~\cite{liu2026debt}. Nearly one in four problems becomes permanent
+technical debt, persisting long after the session that produced it has ended and the
+developer has forgotten what they asked for. Sawada et al.\ closed the triangle from the
+maintenance side: AI-generated files receive less frequent maintenance than human-authored
+code, and when maintenance does occur, human developers perform the large majority of
+it~\cite{sawada2026maintenance}. The pattern across all three is that AI-generated code
+enters the repository, persists, accumulates corrections performed by people who did not
+write it, and the longer it persists without provenance, the harder each correction
+becomes---because the developer maintaining it cannot distinguish what was asked for from
+what was produced incidentally.
+
+\subsection{When not to adopt this design}
+\label{sec:non-adoption}
+
+The conditions under which this design should not be adopted follow directly from
+the comparison.  A repository whose functions serve one purpose each---the common
+case file-level assignment handles---gains nothing from function-level recording
+and pays its full cost (layout consistency, identity tracking, fork
+amplification).  A team whose members edit the same functions daily gains the
+fork rule's safety at a queue length that erodes goodwill faster than it prevents
+errors (Section~\ref{sec:forkoff}).  A repository too thinly recorded for any
+failure mode to trigger---the Complex-YOLOv3 case, 293 records where others hold
+thousands---pays nothing but also learns nothing; git suffices because the tool's
+guards never fire.  And any repository whose primary concern is workflow
+(staging ceremony, detached HEAD, lost rebases) is better served by Jujutsu,
+which solves those problems without parsing a single file.  The design is
+justified only when function-level tangling---multiple requests building
+overlapping logic inside shared functions---is common enough to outweigh the
+three problems the finer grain introduces.  The criterion is the interaction
+mode, not the presence of AI tooling.  A team that primarily uses inline
+completion---accepting or rejecting one expression at a time inside a function
+they are already reading---produces the same edit structure it produced before,
+and git records it at the right grain.  A team that primarily directs CLI agents
+in session mode produces the tangled-function structure this design addresses,
+and the shift between these modes is ongoing: the share of developers who
+primarily direct an agent rather than accept completions tripled in twelve
+months~\cite{stackoverflow2025}.  Handa et al.\ confirmed this split from the
+opposite direction---observed conversations rather than self-report---and found
+that 43\% of AI usage across four million interactions constitutes automation
+(the user specifies intent and receives completed work with minimal
+involvement), while 57\% constitutes augmentation (the user iterates, learns,
+and stays in the loop)~\cite{handa2025tasks}. The convergence from two methods
+(38\% self-reported agent direction, 43\% observed automation) on roughly the
+same figure suggests that the mode \sgt{} addresses is not a fringe behaviour
+but the minority that is also the fastest-growing segment.  The evaluation
+cannot yet say how common function-level tangling is on teams larger than one,
+but the mode that produces it is growing. Nanda et al.\ provided a base rate for the provenance problem:
+30\% of production agent trajectories exhibit specification drift---the agent
+deviates from what the developer asked for---and even the 70\% that complete
+without incident still interleave edits from multiple intents inside a single
+session~\cite{nanda2026wink}. Their Wink system corrects drift in real time, but a
+specification drift that Wink does not catch, or that the developer does not notice
+until a week later, becomes a provenance error that only surfaces when someone
+tries to undo one request without disturbing the others. The 30\% figure bounds
+how often a session leaves the repository with code filed under the wrong request,
+and at that rate a developer whose week involves ten agent sessions carries three
+provenance errors into the following week by default.
 
 \subsection{Design implication: build the read layer before the write layer}
 
 The evaluation, the pilot, and the comparison converge on one recommendation for
 a designer facing the same problem: build the read layer first, ship it alone,
 and defer the write operations until the developer trusts the reports.
-Parasuraman's model explains why. Automating stages one and two (parsing,
+
+The urgency of this recommendation comes from the wider ecosystem. Developers are
+adopting AI tools nearly universally (84\% report using them) while trusting
+their output less each year---accuracy trust fell from 40\% to 29\% in a single
+survey cycle~\cite{stackoverflow2025}. The gap between adoption and trust means
+that a tool entering this space inherits a context in which developers already
+expect automation to produce output they must verify, and already expect that
+verification to be expensive. A write layer whose first encounter produces a
+violation lands in an environment pre-loaded with scepticism, while a read layer
+that shows correct attributions earns trust against a low baseline---precisely
+because the developer expected it to be wrong and found it was right. He et
+al.\ confirmed the downstream half of this dynamic: velocity gains from
+AI-assisted development dissipate within two months on repositories where
+complexity rose~\cite{he2026}. Speed without legibility is self-defeating, and a
+read layer is legibility. Faros AI's engineering telemetry across 22{,}000
+developers confirmed the pattern at fleet scale: under high AI adoption,
+throughput rose (epics per developer up 66\%, PRs merged up 16\%) while quality
+degraded faster---bugs per PR up 29\%, median review time up
+5$\times$, production incidents per PR up 3$\times$, and code churn up
+10$\times$~\cite{faros2026whiplash}. The throughput gains are real; the quality
+deficits are what happens when no mechanism keeps comprehension proportional to
+output, and the review-time explosion is what happens when the burden of
+restoring that proportion falls on human reviewers reading code nobody
+understands. A read layer that maintains the request-to-function map is
+infrastructure against exactly this dynamic: it gives the reviewer a vocabulary
+for what the code is doing there, before they spend five times longer working it
+out from the diff alone. Lyu et al.\ gave the accumulated cost a name:
+\emph{comprehension debt}---code outpacing understanding---which their
+practitioner interviews surfaced as one of six central challenges in building SE
+agents~\cite{lyu2026practitioners}. Storey's Triple Debt Model distinguishes three kinds of deficit that degrade
+a codebase: technical debt (in the code), cognitive debt (in the team's shared
+understanding), and \emph{intent debt}---the absence of externalized rationale
+that developers and agents need to work safely with
+code~\cite{storey2026tripledebt}. AI-generated code can be technically clean
+while carrying maximum intent debt: every function works, and nobody knows
+which request produced it or why. The read layer prevents intent debt from
+accruing by externalizing the rationale in real time: it records which request
+produced which function, so that the ``why'' survives the session boundary. It
+also slows cognitive debt, because the developer who reads the attribution is
+maintaining the shared understanding that would otherwise erode through disuse.
+Comprehension debt, in Lyu et al.'s terms, accrues whenever a session
+ends with code nobody has mapped back to the request that produced it, and the
+read layer is the mechanism that prevents that accrual by maintaining the map in
+real time. It is the thing that makes the speed worth keeping.
+
+Vella and Blincoe measured the cost of speed without comprehension longitudinally:
+across 95 matched developers surveyed six months apart, productivity perceptions
+held stable (84\% reporting improvement at both time points) while the share
+reporting worsened developer experience nearly doubled from 14\% to
+27\%~\cite{vella2026longitudinal}. They named the new category of work this shift
+produces \emph{supervisory engineering}---direction, evaluation, and correction of
+AI output---and found that flow state and cognitive load both eroded over the six
+months while feedback loops improved. The paradox is precise: developers feel
+productive while losing the experience dimensions (flow, cognitive ease) that
+depend on understanding what is happening in their code. A read layer that
+maintains the request-to-function map is infrastructure for supervisory
+engineering---it gives the evaluation step (``what did the agent produce?'')
+a concrete answer---and without it, the supervisory work degenerates into the
+manual recovery the five scenarios describe.
+
+The calibration failure can be worse than Vella's paradox suggests. Becker et
+al.\ ran a randomised controlled trial on sixteen experienced open-source
+developers working on their own repositories---projects they had maintained for
+years---and found that AI coding tools made them 19\% slower on average, while
+the same developers perceived a 20--24\% speedup~\cite{becker2025metr}. The
+gap is not mere optimism; it is an inversion: the developers' self-report
+pointed in the opposite direction from the measurement. Rozenblit and Keil's
+illusion of explanatory depth (Section~\ref{sec:related}) supplies the
+mechanism: the developers understood their sessions at the purpose level (``I
+asked for X and got working code'') and mistook that understanding for a
+productivity gain, while the mechanism level---the one that determines actual
+speed---was absent from their self-model entirely. A developer who cannot
+perceive the productivity effect of a tool certainly cannot perceive the
+comprehension gap that same tool opens---the accumulating distance between what
+is in the repository and what the developer understands about it. External
+ground truth is what corrects the calibration, and a read layer that shows which
+request produced which function is a form of ground truth the developer can
+check against their own understanding. If the attribution surprises them, the
+gap is already there and growing.
+
+Parasuraman's model explains the mechanism. Automating stages one and two (parsing,
 clustering, dependency display) while leaving stage three to the developer
 (which feature to name, which revert to confirm) is both safer and independently
 useful~\cite{parasuraman2000}. The pilot confirmed this empirically: the
@@ -302,11 +797,25 @@ were unmet, while the read layer (attribution, dependency display, feature
 listing) ran on all 35.
 
 The practical consequence is that a tool in this design space should ship its
-read layer without waiting for write-path stability. The argument has three
-parts. Thimbleby argued that good design delays commitment until the user holds
-the information the commitment requires~\cite{thimbleby1988}, and a developer who
-has not yet seen the tool's attributions does not hold the information needed to
-decide whether to trust its reverts. Schemmer et al.\ decomposed reliance into
+read layer without waiting for write-path stability. The argument has five
+parts, each grounded in a distinct mechanism.
+
+First, \emph{commitment timing}. Thimbleby argued that good design delays
+commitment until the user holds the information the commitment
+requires~\cite{thimbleby1988}. A developer who has not yet seen the tool's
+attributions does not hold the information needed to decide whether to trust
+its reverts; the read layer is what supplies that information. Shipping the
+write layer first asks the developer to commit (accept a revert, resolve a
+fork) before they have any basis for judging whether the tool is right.
+Sarkar and Drosos confirmed this pattern empirically in extended vibe coding
+sessions: trust develops through iterative verification rather than blanket
+acceptance, and expertise redistributes toward rapid code
+evaluation~\cite{sarkar2025}. The read layer is the substrate on which that
+iterative verification operates---a developer who has seen ten correct
+attributions has built the basis for judging the eleventh, which is the
+mechanism Thimbleby's principle requires.
+
+Second, \emph{reliance decomposition}. Schemmer et al.\ decomposed reliance into
 two independent measures: the rate at which a user follows the system when it is
 right (RAIR), and the rate at which they override it when it is wrong
 (RSR)~\cite{schemmer2022}. A read layer builds RSR directly, because a developer
@@ -315,21 +824,228 @@ right set, and override it when it does not. A write layer shipped without that
 foundation offers no basis for override, and a single visible failure then
 collapses both metrics---the developer stops following even correct
 recommendations because they have no independent basis for distinguishing them.
-But there is a stronger reason. Bainbridge observed that automation degrades the
-skill it replaces, and the degraded skill is exactly what the operator needs when
-the automation fails~\cite{bainbridge1983}. A developer using an agent to write code no longer
-practises the decomposition that a revert requires; the read layer
-(attribution, dependency display, consequence preview) is what restores that
-decomposition, and without it the developer who needs to intervene is in the
-position Bainbridge described: lacking the comprehension the automation took
-from them. Cao et al.\ found that explanations improve appropriate reliance on
-automation only when they align with the user's prior
-intuition~\cite{cao2024}---a preview that names consequences is useful precisely
-because the read layer has already built the intuition it appeals to (the
-developer knows what the feature contains because they read the attribution).
-Without that prior comprehension, the same preview is an assertion the developer
-cannot evaluate. A read-only release whose attribution is correct builds both the
-trust and the comprehension that a later write release depends on.
+Section~\ref{sec:session-rate} shows the 50\% per-session violation rate; a tool
+whose write layer fails in half of all sessions cannot build RAIR faster than
+its own failures erode it. Dixon and Wickens showed that the damage mechanism
+is specific to signal type: misses (the system fails to alert) erode reliance,
+while false alarms erode compliance~\cite{dixon2007}. The write layer's
+self-reporting failures are misses---the system should signal a problem and
+instead confirms success---so they damage precisely the reliance the read layer
+needs to have already built. A read layer that works correctly for twenty
+minutes builds reliance through demonstrated accuracy; a write failure in minute
+twenty-one damages that same channel, and the asymmetry (one miss undoes many
+correct silences) is what makes temporal ordering matter.
+Tang et al.\ confirmed the pattern at ecosystem scale: across 20{,}574
+real-world coding-agent sessions, inaccurate self-reporting accounts for
+22.6\% of all developer--agent misalignment episodes, and its share is
+\emph{rising} even as overall misalignment rates
+decline~\cite{tang2026agentfailures}. The technical failures agents learn to
+avoid first---wrong implementation, wrong diagnosis---are being replaced by
+interaction-level failures that look like successes, because a model that
+produces correct code more often still reports completion when it has not
+achieved what the developer asked. The implication for temporal ordering is
+direct: the failure class the read layer must survive is not shrinking; it is
+becoming the dominant residual, and a tool that ships its write layer into that
+environment inherits a rising base rate of undetected misreporting against which
+it must build reliance from scratch.
+
+Third, \emph{situation awareness}. Endsley and Kiris showed that operators
+relegated to supervisory monitoring under automation lose the active engagement
+needed to maintain awareness of system state, and respond more slowly and less
+effectively when anomalies occur~\cite{endsley1995}. A developer who delegates
+code generation to an agent is in precisely this monitoring posture: they specify
+intent and observe output, but do not actively engage with the line-by-line
+decisions the model makes. Bainbridge's irony follows: the skill of holding the
+decomposition degrades through disuse, and the degraded skill is exactly what the
+developer needs when the automation fails~\cite{bainbridge1983}. Risko and
+Gilbert's cognitive offloading framework describes the stronger case: people
+strategically delegate cognitive work to external resources when internal
+processing is costly, and the offloaded information is never encoded in memory
+at all~\cite{risko2016}. A developer who offloads production to an agent has
+not forgotten the decomposition; they never held it, because the offloading
+\emph{succeeded}. Situation awareness support for this developer must compensate
+for absent encoding, not for degraded recall. The read layer
+(attribution, dependency display, consequence preview) functions as what Endsley
+called a ``situation awareness support system''---it restores the developer's
+model of which functions serve which purpose, \emph{without} requiring that they
+build it from reading the code. Without that support, the developer who needs to
+intervene on a failed revert is in the out-of-the-loop position: they have lost
+both the comprehension the automation took from them and the active engagement
+that would have maintained it. Cao et al.\ confirmed the dependency
+experimentally: explanations improve appropriate reliance on automation only when
+they align with the user's prior intuition~\cite{cao2024}---a preview that names
+consequences is useful precisely because the read layer has already built the
+intuition it appeals to. Without that prior comprehension, the same preview is an
+assertion the developer cannot evaluate.
+The read layer therefore serves a second function beyond trust building: it
+counteracts the deskilling the agent itself produces. Shen and Tamkin measured
+the cost directly: in a controlled experiment, developers who used AI assistance
+scored 17\% lower on post-task assessments than those who coded by hand (Cohen's
+$d$=0.74), with debugging---the ability to identify when code is wrong and
+why---showing the largest degradation~\cite{shen2026skills}. The skill most damaged
+is precisely the one a developer needs to evaluate a revert preview: judging
+whether the consequence list is complete requires understanding what each function
+does well enough to notice what is missing. Bastani et al.\ found the same pattern
+in a learning context: developers who practiced with a generative model performed
+worse on subsequent assessments without it~\cite{bastani2025}. Catalan et al.\
+observed the mechanism in real time: cognitive engagement with agent output declines
+as tasks progress, and current agentic assistants provide no affordance for the
+reflection that would maintain it~\cite{catalan2026notreading}. The developer stops
+reading before the session ends---not because the code is bad, but because the
+interface offers no way to absorb provenance without reading every line.
+
+Shen and Tamkin's archetypes make the design implication specific. Their
+highest-scoring group (``conceptual inquiry'') asked only conceptual questions and
+coded independently---they used the AI to understand rather than to produce. Their
+lowest-scoring groups delegated production entirely or drifted from independence
+into delegation as the session progressed. A read layer is infrastructure for the
+conceptual-inquiry pattern: it answers ``what did the agent produce?'' and ``which
+request is this function from?'' without producing any code itself, so a developer
+who consults it is exercising precisely the engagement pattern that preserved skill
+in the experiment. A write layer that ``just works'' enables the delegation pattern
+that degraded it. The temporal strategy---read first, write later---is therefore a
+skill-preservation sequence as much as a trust-building one: it keeps the
+developer in the evaluation posture that Shen and Tamkin showed protects learning,
+while deferring the automation that their progressive-reliance archetype showed
+erodes it.
+
+A developer who regularly reads \sgt{}'s attribution is exercising the
+comprehension skill in miniature: they see the grouping, compare it against what
+they believe, and correct it when it diverges. The attribution is the affordance
+Catalan et al.\ found missing---a structure that sustains engagement by presenting
+provenance as a scannable list rather than a wall of code. That exercise maintains
+the comprehension that agent-mediated development otherwise erodes, and the
+comprehension so maintained is what makes the write layer's previews evaluable
+when the developer eventually encounters them.
+
+Fourth, \emph{forcing-function calibration}. Bu\c{c}inca et al.\ found that the
+cognitive forcing functions which reduced overreliance most were also the ones
+participants rated least favourably~\cite{bucinca2021}. A forcing function
+encountered before the user has built a model of the system's accuracy is
+experienced as pure cost, because the user cannot tell whether the interruption
+prevented an error or merely wasted time. The fork rule is a forcing function
+(Section~\ref{sec:design-cost}), and the pilot confirms that it was experienced as
+pure cost: the participant who encountered it had no basis for knowing that the
+interruption prevented a real conflict, because they had not yet seen enough
+correct attributions to calibrate. A read-only release whose attribution is
+correct builds both the trust and the comprehension that a later write release
+depends on---including the comprehension that makes a forcing function feel like
+signal rather than noise.
+
+Fifth, \emph{mode compatibility}. Barke et al.\ found that developers interact
+with AI code tools in two distinct modes: acceleration (the developer knows what
+they want and uses the tool to get there faster) and exploration (the developer
+does not know what they want and uses the tool to discover
+options)~\cite{barke2023}. The read layer supports both modes: in acceleration,
+attribution confirms the developer's existing model; in exploration, attribution
+reveals structure the developer has not built yet. The write layer supports only
+acceleration, because a developer in exploration mode cannot verify whether a
+revert removed the right set---they lack the model against which to check.
+Mozannar et al.\ modelled this verification cost explicitly: how long a
+developer spends evaluating a code suggestion depends on their existing
+understanding of the code at the moment the suggestion
+appears~\cite{mozannar2024}. A developer with no prior model of which functions
+serve which purpose faces a verification cost that exceeds the cost of doing the
+revert by hand, at which point the tool's contribution is negative. The read
+layer is what builds that prior model; without it, the write layer's
+verification cost is unbounded. Xu et al.\ reached the same conclusion from
+the opposite direction: they argued that intelligent coding systems should
+produce \emph{justifications} alongside code---explanations that bridge model
+reasoning and user understanding---and identified cognitive alignment (matching
+how the user thinks about the task) as the critical property of such
+justifications~\cite{xu2025justifications}. Attribution \emph{is} a
+justification in their sense: it says which request produced which code, in the
+vocabulary the developer used to ask for it, so the developer can evaluate the
+record against what they remember rather than against what the code says.
+Velasco et al.\ posed the question at the model level---tracing generated code
+back through prompt, training data, and internal
+representations~\cite{velasco2026provenance}---and that explanation is orthogonal
+to \sgt{}'s: one tells the developer why a line has these particular tokens
+(the model's knowledge), the other tells the developer why this function is in
+their project at all (their own request). The second is what makes a revert
+evaluable, because ``I asked for a price cache'' is a fact the developer already
+holds and can check the attribution against.
+
+These five mechanisms converge on a prediction Rieman's field study of
+exploratory learning confirms empirically~\cite{rieman1996}. Users encountering
+new software try low-cost operations before high-cost ones, explore when a real
+task is at hand, and adopt features whose failures they can detect and reverse
+before features whose failures propagate silently. A read-only layer is exactly
+what this adoption trajectory predicts: a developer on first contact inspects
+the attribution, checks whether it matches what they believe, and either trusts
+the label or renames it---all at zero risk to their files. Only after several
+such confirmations do they attempt an operation that modifies state. Our pilot
+replicated this trajectory in miniature: the participant used \cmd{sgt show}
+and \cmd{sgt log} within the first three minutes, attempted \cmd{sgt revert}
+only after twenty minutes of reading, and articulated the exploratory strategy
+explicitly: ``I trust the reports but I don't trust the operations yet.'' A
+tool that ships only its write layer forces the developer past the exploration
+phase into commitment on first contact, which is the structure Rieman's subjects
+consistently refused to adopt. Wang et al.\ framed the same trajectory as a
+research agenda: coding agents should be evaluated on task alignment,
+verifiability, steerability, and adaptability rather than on autonomous task
+completion alone~\cite{wang2026humansmissing}. The read layer delivers
+verifiability (the developer checks what the tool recorded), the write layer
+delivers steerability (the developer removes or redirects what was recorded), and
+the temporal ordering between them---read first, write later---is adaptability
+expressed as deployment strategy rather than runtime architecture.
+
+The temporal strategy is also an acknowledgment about what a designer can know
+in advance. Suchman argued that a plan is a resource for situated action rather
+than a program that determines it: people use plans to orient themselves and then
+improvise in response to what actually happens~\cite{suchman1987}. A design
+document that specifies ``ship both layers simultaneously'' is a plan in her
+sense, and the evaluation shows what the situated action looked like: the read
+layer held on first contact and the write layer did not, in a pattern no amount
+of pre-deployment testing predicted at its actual severity. Shipping the read
+layer first is the deployment equivalent of a checkpoint: it lets the designer
+observe which parts of the plan survived contact with a real user, and defer the
+parts that did not until the observation has informed the next design. The
+alternative---shipping everything and hoping the plan holds---is what produced
+the 50\% per-session violation rate, because the plan said ``composition is
+reliable'' and the situated action discovered it was not. A designer who cannot
+predict which layer will fail (and our evaluation shows that the failure was in
+the write layer, which is the layer whose correctness is harder to verify without
+deployment) should ship the layer whose failures are cheapest first and learn
+from it.
+
+This recommendation does not assume the read layer is correct. Labels are wrong
+on 15\% of features, over-decomposition runs 2--6$\times$ at the median, and the
+identity tracker loses a function on roughly half of renames that co-occur with
+a rewrite. The read layer is shippable despite these errors because their cost
+is bounded: a wrong label costs a rename command, a wrong grouping costs a
+regroup, and an identity break costs a manual join---all attention costs, none of
+which corrupt data or leave the repository in a state the developer cannot
+reverse in one command. A write-layer error of comparable frequency (the 50\%
+per-session violation rate) corrupts files, produces silent wrong states, and
+erodes the basis for trusting subsequent reports. The asymmetry is what makes the
+temporal strategy viable: a read layer whose errors cost attention can earn trust
+while being imperfect, whereas a write layer whose errors cost data cannot.
+
+The transfer mechanism is not faith. The pilot participant explicitly
+compartmentalised: ``I trust the reports but I don't trust the operations
+yet.'' Trust earned through correct attributions did not generalise to write
+operations. What transferred was comprehension---a mental model of which
+functions belong to which feature, built by reading the tool's reports over
+twenty minutes. The cognitive mechanism is that attribution converts a recall
+task (``which functions did my request produce?'') into a recognition task
+(``does this grouping match what I remember?''), and recognition operates at
+lower confidence thresholds than recall for the same
+material~\cite{mandler1980}. Twenty minutes of reading attributions builds a
+model that twenty minutes of reading code does not, because the attribution
+presents the decomposition as something to verify rather than something to
+reconstruct. That model is what made the revert preview evaluable: the
+participant could judge whether the consequence list was complete because they
+already knew what the feature contained. Without that prior model, the same
+preview would be an assertion they could not check, and the pilot's corruption
+case (a preview that asserted completeness over a result that was wrong) shows
+what happens when a developer accepts an uncheckable assertion. The temporal
+strategy therefore depends not on trust transfer but on comprehension transfer:
+the developer who has read the map can verify the operation's preview
+independently, and independent verification is what builds write-layer trust
+through demonstrated correctness under observation rather than through faith
+inherited from a different mode of use.
+
 Lee and See's review of trust in automation found that a single visible error
 erodes trust faster than a string of correct outcomes restores
 it~\cite{lee2004}. Trust is harder to earn after a write failure than before
@@ -337,9 +1053,24 @@ one. This recommendation is in tension with the
 paper's own motivation: Section~\ref{sec:scenarios} argues for operations
 (revert, restore, switch) that require writing, and a read-only tool cannot
 offer them. The resolution is temporal. Ship the read layer now, and ship the
-write layer when its failure rate is low enough that the trust the read layer
-earned survives a session. The pilot is evidence that we shipped the write layer too
-early.
+write layer when its failure rate is low enough that the comprehension the read
+layer built lets the developer verify each operation's preview before
+confirming it. The per-session violation rate of 50\%
+(Section~\ref{sec:session-rate}) says we have not crossed that threshold. The
+pilot is evidence that we shipped the write layer too early. The read layer also
+has a structural role that the trust argument alone does not capture: it is the
+external reference that breaks the circularity Zietsman identified in
+AI-reviewing-AI pipelines~\cite{zietsman2026}. Without it, the developer's only
+check on a revert preview is their own reading of the code---the same reading
+that the tool was built to make unnecessary---and the verification degenerates
+into the manual recovery the five scenarios describe. Treude's analysis of terms
+of service makes the same point from the governance side: providers consistently
+shift responsibility for correctness onto the developer while providing no
+mechanism for exercising that responsibility at agent
+granularity~\cite{treude2026accountable}. The read layer is that mechanism---not
+a safety net the provider offers, but an infrastructure the developer builds
+for themselves, using the one artefact they do control (the request they typed) as
+the anchor for everything the agent subsequently produced.
 
 \subsection{What would change our conclusion}
 
@@ -349,18 +1080,25 @@ unintended removals at the same rate as developers using \sgt{}'s preview, then
 the comprehension benefit Section~\ref{sec:scenarios} argues for does not exist
 in practice, and the fork rule, the layout seam, and the naming instability
 provide no benefit. The
-pilot cannot settle this because one participant per condition (with the
-researcher present) measures tool fitness rather than developer behaviour, and
-the sgt condition's mutation failures make the comparison one-sided, and the
-trailer confound (Section~\ref{sec:pilot-trailers}) degrades the git fallback
+pilot cannot settle this. One participant per condition (with the
+researcher present) measures tool fitness rather than developer behaviour.
+The sgt condition's mutation failures make the comparison one-sided.
+The trailer confound (Section~\ref{sec:pilot-trailers}) degrades the git fallback
 in the treatment arm, so any comprehension advantage we observed could partly
-reflect a weakened baseline rather than a strengthened treatment. A
-between-subjects study on tasks where both conditions finish (which the pilot
-showed they can) would answer it.
+reflect a weakened baseline rather than a strengthened treatment. The
+within-subjects study of Section~\ref{sec:eval-study}, on tasks where both
+conditions finish (which the pilot showed they can), answers it in
+Section~\ref{sec:findings}. The reach-prediction measure provides the
+complementary test: if \texttt{gain} (the movement from blind prediction toward
+ground truth after consulting the tool) is zero or negative under \sgt{}, the
+representation does not change what the developer expects, and the read layer
+claimed more than it delivered. If \texttt{gain} is positive but paired with
+high confidence over a wrong answer, the tool confidently misleads---the
+inferred-label failure mode this design is most likely to produce.
 
 Two secondary results would reshape specific claims. First, if the fork rule's
 amplification factor holds on repositories recorded live (rather than mined
-retroactively), then the 0.44 rebuild rate is a property of the design under its
+retroactively), then the 0.23 rebuild rate is a property of the design under its
 intended workflow, and the distinction Section~\ref{sec:unreproducible} draws
 between the two regimes would collapse. We have partial evidence against this: on the two study repositories,
 recorded entirely through \cmd{sgt save}, reconstruction is exact (0 drifted
@@ -372,4 +1110,83 @@ unsuited to this domain and the over-decomposition ratio (2--6$\times$ at the
 median, up to 13) is the only stable measurement available. We report both findings so that future work
 on intent recovery can calibrate its metrics before discovering the same
 instability we found.
+
+A third result would complicate even a positive study finding. Bansal et al.\
+showed that AI explanations increase acceptance of recommendations regardless of
+whether the recommendation is correct~\cite{bansal2021}. If the study finds
+that \sgt{} participants detect more errors than git participants, the mechanism
+could be either that the preview \emph{reveals} consequences the participant
+would have missed (the mechanism we claim) or that the preview \emph{increases
+confidence} in whatever state the participant already believes, including states
+that contain undetected errors. The study's third scoring criterion---no function
+outside the intended set differs from the reference---distinguishes the two: a
+participant who accepts a preview's completeness assertion and submits a
+repository with unreported damage has been made \emph{more} wrong by the
+explanation, not less. If this pattern appears---participants in the sgt condition
+submitting more confidently while carrying hidden damage---then the preview has
+the same pathology Bansal et al.\ measured: it makes acceptance feel safer
+without making it actually safer. Vasconcelos et al.'s finding that
+miscalibrated uncertainty indicators produce worse outcomes than no indicator at
+all~\cite{vasconcelos2025} predicts the same failure mode for a preview whose
+completeness varies silently across operations. The pre-registered measure
+(undetected errors) would catch this, because a participant who trusts a
+wrong preview produces more undetected errors, not fewer. We flag this in
+advance so that a positive result on the error-rate measure can be read as
+genuine rather than as a confidence artefact.
+
+\subsection{The instrument shapes the claim}
+\label{sec:instrument-shapes-claim}
+
+Six corrections to published numbers were required during the evaluation, and
+each followed the same shape: a rate was reported before the sentence naming its
+population was checked against the denominator's actual content. Four of the six
+favoured the system. None was a transcription error; all were a denominator whose
+\emph{label} implied one set and whose \emph{content} was another. ``Files in a
+parsed language'' included 63 Markdown files that reconstruct trivially;
+``operations targeting an entity'' included 878 operations that tested a
+dependency path no fixture could reach. In each case the arithmetic was correct
+and the population sentence was wrong, and the population sentence was what a
+reader would take away.
+
+This error has a precise structure that a reader evaluating any self-built system
+should recognise. A metric's denominator determines which failures are visible.
+A surplus file---one the rebuild invents that does not exist at \cmd{HEAD}---cannot
+appear in the numerator of a rate defined over files at \cmd{HEAD}, so a metric
+that only asks ``how many of the working tree's files can the record reproduce?''
+is structurally blind to the rebuild producing files the working tree never had.
+We measured that rate for a month before asking the complementary question, and
+the complementary question moved the headline from 0.33 to 0.24. No amount of
+careful measurement within a one-sided metric would have found it.
+
+The broader lesson is that the fixture corpus we built to exercise our invariants
+was structurally incapable of testing the case real repositories present. Fixtures
+round-trip by construction, so the write guard that fires when the store does not
+reproduce committed bytes was unreachable. Fixtures write every caller and callee
+in a single commit, so the cross-commit dependency path was untestable. Both
+constraints followed from reasonable design choices (fixtures should be
+deterministic; fixtures should be self-contained), and both made the instruments
+blind to the behaviours that dominate on external input. The lesson for any
+evaluation of this kind: a corpus designed to \emph{exercise} a system's laws
+will systematically avoid the states where those laws have no force, because the
+designer optimises for the same conditions the system optimises for. The
+evaluator's attention is non-uniform for the same structural reason: a number
+that flatters the system looks right, so it passes without the check that would
+have found the denominator was wrong. Four of six corrections moved in the same
+direction, and each was found by a question we asked about a \emph{different}
+number---never by auditing the one we were comfortable with.
+
+A complementary error appeared in the harness itself. Ten thousand operations
+reads as thorough, and it is thorough about the guards that check the working
+tree against the record. But the subtraction report has four output
+branches---the splice report, the broken-reference warning, the carried-forward
+notice, and the no-consequence confirmation---and 10{,}237 uniform draws
+exercised only two of the four. The two untested branches shared a gate that
+required a creation-bearing removal, and creation ops constitute 3--5\% of a
+typical live ideal, so a uniform draw over the full population produces too few
+creation-bearing removals to reach either branch in any reasonable sample. Volume
+measures effort, not coverage: a ten-thousand-operation sweep over one
+distribution can be structurally incapable of reaching a code path that a
+fifty-operation sweep over a different distribution would exercise on the first
+draw. The fix---a weighted draw that over-samples creation ops---found both
+branches immediately and produced a defect within a single sitting.
 

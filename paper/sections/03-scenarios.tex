@@ -1,43 +1,68 @@
 \section{Five Operations a Developer Cannot Name}
 \label{sec:scenarios}
 
-All five scenarios below fail for the same reason: the developer names their
-work by the request that produced it (``the caching,'' ``the rate limiter''),
-because that is the level their understanding of the code is pitched
-at~\cite{naur1985}, while the record they have to operate through holds lines
-inside commits (Figure~\ref{fig:granularity}). Every scenario has a workaround
-and all the workarounds work. The argument is about what the workarounds cost,
-and what they cost is recovering from the code which function served which
-request---a decomposition the developer stated in their own words before any code
-existed, and that nothing wrote down.
+The five scenarios below follow one developer through a single afternoon and
+the week after it. We use them to name specific operations---things a developer
+wants to do to a repository---that require knowing which functions served which
+request and that nothing in the existing record preserves.
 
-The five scenarios follow one developer through a single afternoon and the
-week after it. The project is a Python service that answers price quotes for a
-trading dashboard; its request handling lives in \sym{api.py::handle}, its database
-access in \sym{db.py::query}, and the developer asked a coding agent for three
-things in one sitting: a rate limiter, a price cache, and a retry policy.
+The running example is a Python service that answers price quotes.
+In one sitting the developer asked a coding agent for three things: rate limiting,
+a price cache, and a retry policy. The agent implemented all three by editing
+the same two functions---\sym{api.py::handle} (we write \sym{file::function}
+throughout) and \sym{db.py::query}---and
+renamed a helper while it worked. By 15:00 the developer had three features
+interleaved inside two functions and no record of which lines served which
+purpose (Figure~\ref{fig:two-records}).
+
+What the developer sees on screen at 15:00 is not the problem. The file is
+correct, the tests pass, and three features work. What they see a week later is
+the problem. They open \sym{api.py::handle} and find sixty lines: a bucket
+check at the top (rate limiting), a cache lookup before the database call (price
+cache), a retry loop around the database call (retry policy), and the cache
+write after it. They did not write these lines, and the agent that did write them
+no longer exists. They typed three sentences and they are looking at sixty lines,
+and the question each scenario below asks is what happens when they need to act
+on one of those sentences---take it out, move it, show it to a reviewer---and
+the only record that connects a sentence to the lines it produced is the one
+inside the developer's memory, which has been decaying since 15:00.
+
+Every scenario below has a workaround in git. The workaround always requires the
+same labour: reading the code to figure out which functions belong to which
+request (Figure~\ref{fig:granularity}). That labour was once free, because the
+developer who typed the lines already knew. It is no longer free, because the
+developer typed three sentences and an agent produced the code.
+
+Naur argued that programming builds a \emph{theory}---a specific understanding
+of how each part of the solution maps onto the problem---and that this theory is
+what makes modification possible~\cite{naur1985}. An agent produces the code
+without building the theory in the developer. The five scenarios are five faces
+of one cost: recovering a decomposition that nobody recorded.
 
 \subsection{``Commit this when it is done, and I do not know yet when that is''}
 
 A developer working through an agent still has to choose when to commit, and in
-this hour every moment available to them is wrong in a different way. Committing
-after each request writes a version of \sym{api.py::handle} into the permanent
-history that existed for twenty-nine minutes and that nobody ever ran the test
-suite against, and it files the agent's rework of the cache under the retry commit,
-because the agent did that rework while adding the retry. Committing once at the
-end produces one commit holding all three requests and the rename, and this
-developer split the difference by committing twice, which is the pair
-Figure~\ref{fig:two-records} draws, each of them mixing two requests with the
-rename. Staging hunk by hunk produces four clean
-commits and asks the developer to decide, for each of fifteen hunks, which of those
-four purposes it serves. Green and Petre named the first two costs premature
-commitment, where a notation forces a decision before the information it needs
-exists, and the third viscosity, the resistance a notation puts up once a decision
-turns out to be wrong~\cite{green1996,blackwell2003}. Git asks for the
-decomposition at the moment of writing, and in a session driven by requests the
-boundary does exist at that moment. The developer stated the boundary themselves
-before any of the code existed. What they lack is the list of functions on either
-side of it, which only the agent ever had.
+this hour every moment available to them is wrong in a different way:
+
+\begin{itemize}
+\item Commit after each request: writes a version of \sym{api.py::handle} that
+  existed for twenty-nine minutes and that nobody tested. The retry commit
+  also contains cache changes, because the agent reworked the cache while
+  adding the retry---so even one-request-per-commit mixes two purposes.
+\item Commit once at the end: one commit holding all three requests and the rename.
+\item Split the difference (what this developer did): two commits, each mixing
+  two requests with the rename (Figure~\ref{fig:two-records}).
+\item Stage hunk by hunk: asks the developer to decide, for each of fifteen
+  hunks, which of four purposes it serves.
+\end{itemize}
+
+\noindent Green and Petre named these costs. The first three are \emph{premature
+commitment}: a notation that forces a decision before the information it needs
+exists~\cite{green1996,blackwell2003}. The fourth is \emph{viscosity}: the
+resistance a notation puts up when a decision turns out to be wrong. In
+a session driven by requests, however, the boundary itself is not
+missing---the developer stated it before any code existed. What is missing is
+the list of functions on either side of it, which only the agent ever held.
 
 \smallskip\noindent\emph{The operation.} Record the boundary the developer already
 stated, without asking them to state it a second time in a different notation.
@@ -47,17 +72,21 @@ stated, without asking them to state it a second time in a different notation.
 The rate limiting from 14:02 used a fixed one-minute window, and three days later
 it needs a sliding one. The work lands in two of the four functions the original
 request produced, and the developer's first question is what the rate limiting
-looked like before they touched it. Git can follow one function at a time:
-\cmd{git log -L :handle:api.py} follows a function by matching a name pattern and
-\cmd{git log -S} finds the commits where a string appeared or disappeared, so the
-developer runs the first command four times, once per function they believe was
-involved, and assembles the four answers themselves. The set has no name, so
-nothing checks whether four was the right number. Codoban et al.\ asked developers
-why they examine history and found the most common reason to be understanding the
-rationale behind a piece of code~\cite{codoban2015}, and LaToza and Myers found
-questions about why code is the way it is among the hardest developers report
-answering~\cite{latoza2010}. The rationale in this case was one sentence of
-English, typed three days ago into a window that is now closed.
+looked like before they touched it.
+
+Git can follow one function at a time:
+\cmd{git log -L :handle:api.py} matches a function by name pattern;
+\cmd{git log -S} finds commits where a string appeared or disappeared.
+The developer runs the first command four times---once per function they
+believe was involved---and assembles the answers manually. Because the set of
+functions belonging to ``rate limiting'' has no name in git, nothing checks
+whether four is the right count or whether a fifth function was missed.
+
+The question being answered---``why is this code this way?''---is among the
+hardest developers face~\cite{latoza2010}, and understanding prior
+rationale is the most common reason developers examine history at
+all~\cite{codoban2015}. Here the rationale was one sentence of English, typed
+three days ago into a chat window that is now closed.
 
 \smallskip\noindent\emph{The operation.} Name the work one request produced, see
 its current state and its previous state, and change it as a unit.
@@ -66,16 +95,24 @@ its current state and its previous state, and change it as a unit.
 
 The caching turned out to serve a stale price for up to sixty seconds, and it has
 to go. Its six edits are spread over three files and two commits, mixed with nine
-hunks belonging to three other purposes. One cache edit adds a parameter to
-\sym{db.py::query}; another passes that parameter from \sym{api.py::handle}. Three
-functions the rename rewrote afterwards call a helper the caching introduced.
-\cmd{git revert} takes back a whole commit, so reverting either of these two
-removes work the developer is keeping. The developer therefore checks out both
-commits, selects the six hunks by hand, reverses them, and then confirms that
-removing the parameter did not break \sym{handle} and that the three functions the
-rename rewrote no longer call \sym{get\_cached}. The confirmation takes the time,
-because the record contains no statement that the \sym{db.py::query} signature and
-the \sym{handle} call site were changed for the same reason.
+hunks belonging to three other purposes:
+
+\smallskip
+\begin{tabular}{@{\quad}l@{\quad}l@{}}
+  \sym{db.py::query}   & added a \texttt{ttl} parameter \\
+  \sym{api.py::handle}  & passes that parameter at the call site \\
+  \sym{cache.py::get\_cached} & the helper itself (three call sites) \\
+\end{tabular}
+\smallskip
+
+\noindent\cmd{git revert} takes back a whole commit, so reverting either of these
+two removes work the developer is keeping. The developer therefore checks out both
+commits, selects the six hunks by hand, reverses them, and confirms the result
+compiles. The confirmation is what takes the time: nothing in the record says that
+the \sym{db.py::query} signature change and the \sym{handle} call-site change were
+made for the same reason, so the developer must re-derive that relationship by
+reading the code---the same decomposition recovery that costs nothing when the
+person paying it wrote the code.
 
 \smallskip\noindent\emph{The operation.} Remove a named set of edits, leave every
 other edit to the same files in place, and name the code that still depends on the
@@ -83,16 +120,20 @@ removed set before anything is applied.
 
 \subsection{``Send just the export work to the release branch''}
 
-An export endpoint has to ship today, and it was written on a branch that also
-carries a half finished retry policy. \cmd{git cherry-pick} moves a commit, and the
-export work is two functions in a commit that also carries part of that retry
-policy, so the usual answer is a temporary branch and an interactive rebase
-that splits that commit, and the split has to be done again if more export work
-arrives before the release. Darcs solves the part of this that is about lines,
-since a Darcs patch carries the dependencies it was recorded with and moving it
-involves no reapplication (Section~\ref{sec:related}). But the export code calls a
-helper the rate limiter introduced, no line-level record states that call, and the
-developer finds out when the release branch fails to import.
+Two days later the same developer adds a fourth request on the same branch: an
+export endpoint that serialises the quotes for a downstream consumer. The branch
+now carries the export work and a half-finished retry policy that shares a helper
+with it. The export has to ship today; the retry does not. The developer needs to
+move just the export work to the release branch. Git's mechanism for moving individual commits
+(\cmd{git cherry-pick}) operates on whole commits, and the export work shares a
+commit with part of the retry policy, so extracting it means splitting the commit
+manually---a step that must be repeated every time new export work arrives.
+Darcs solves the part of this problem that is about lines: a Darcs patch
+carries its line-level dependencies, so moving it requires no manual
+reapplication (Section~\ref{sec:related}). The export code, however, calls a
+helper that the rate limiter introduced---a function-level dependency that no
+line-level record captures. The developer discovers this only when the release
+branch fails to build.
 
 \smallskip\noindent\emph{The operation.} Carry a named set of edits and its
 dependencies to another branch, and be told before the operation which dependencies
@@ -100,22 +141,22 @@ would come along.
 
 \subsection{``Let someone review the rate limiter while I keep building on it''}
 
-The rate limiter was finished at 14:30 and the caching that followed calls
-\sym{api.py::\_bucket}, so the two form a stack of two layers with the rate limiter
-underneath. Submitting them that way required the rate limiter to be on its own
-branch at 14:30, which required knowing at 14:30 that the caching would build on
-it. Stacked pull requests exist because review works best on small changes arriving
-often~\cite{rigby2013} and because a reviewer's main difficulty is understanding
-the change in front of them~\cite{bacchelli2013}, and Graphite and GitHub automate
-every step after the decision, including rebasing the upper layer when a reviewer
-asks for a change to the lower one (Section~\ref{sec:related}). The decision itself
-belongs to the developer and has to be made before the work exists, and in an agent
-session the layering becomes visible only once both layers are written. Green and
-Petre's framework has a name for this, the hidden dependency, a relationship the
-system relies on that the notation does not show, and Church et al.\ traced its
-effects through version control in particular~\cite{green1996,church2014}. The
-notation here is the branch, and a
-branch says nothing about which functions call which.
+Back on the original afternoon: the rate limiter was finished at 14:30 and the
+caching that followed calls one of its functions (\sym{api.py::\_bucket}), so the
+two form a stack: the rate limiter underneath, the cache on top. Submitting the rate limiter for review while continuing to build the cache
+requires the two to live on separate branches---a decision the developer would
+have had to make at 14:30, before they knew the cache would depend on the
+limiter. Stacked pull requests address this: review works best on small changes
+arriving often~\cite{rigby2013}, and a reviewer's main difficulty is
+understanding the change in front of them~\cite{bacchelli2013}. Graphite and
+GitHub automate the mechanics---rebasing the upper layer when the lower one
+changes (Section~\ref{sec:related})---but the decision of what constitutes a
+layer must still be made before the work exists. In an agent session the
+layering becomes visible only after both layers are written. Green and Petre
+call this a hidden dependency: a relationship the system relies on that the
+notation does not show~\cite{green1996}. Church et al.\ traced the same effect
+through version control~\cite{church2014}: a branch says nothing about which
+functions call which.
 
 \smallskip\noindent\emph{The operation.} Discover the layering after the work
 exists, and submit one layer while continuing to work on the layer above it.
@@ -125,12 +166,19 @@ exists, and submit one layer while continuing to work on the layer above it.
 Every one of these operations takes a set of edits as its argument, and the
 developer identifies that set by the purpose the edits served. Git expresses a set
 of lines, a set of files, and a set of commits, and a developer can build all five
-operations out of those three. The price of building them is recovering a
-decomposition that nobody recorded, and that recovery was affordable when the
-person paying it was the person who had written the code---because they held the
-answer already, having typed the lines minutes earlier. A developer who typed
-``add a retry policy'' instead does not hold the answer, and the longer the session
+operations out of those three primitives. The price is recovering the
+decomposition that nobody recorded.
+
+That recovery was affordable when the person paying it wrote the code---they held
+the answer already, having typed the lines minutes earlier. A developer who typed
+``add a retry policy'' instead does not hold the answer. The longer the session
 ran, the less they remember of the code it produced, until the recovery costs more
 than the operation it serves.
-Section~\ref{sec:design} describes what we changed so that a developer can type the
-argument these five operations want.
+
+Beaudouin-Lafon named the design move for this situation \emph{reification}:
+turning something that exists only in a user's description of their work into a
+first-class object the system can display and they can
+manipulate~\cite{beaudouinlafon2000}. Here the concept to reify is ``the set of
+edits that served one request.'' Once that set is an object with a name, each of
+the five operations above becomes a one-argument command instead of a manual
+reconstruction. Section~\ref{sec:design} describes how we build that object.

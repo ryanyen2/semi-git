@@ -21,8 +21,8 @@ study-code
 That opens the practice project in VS Code with **GitLens** installed. Three things are worth finding now, because you will want them later:
 
 - **Source Control** in the left bar, for what has changed and where you commit.
-- **Commit Graph** — the GitLens icon in the left bar, or *GitLens: Show Commit Graph* from the command palette. The history as a graph you can click through.
-- **File History** — right-click any file, *Open File History*. Blame also appears greyed out at the end of whichever line your cursor is on.
+- **Commit Graph.** The GitLens icon in the left bar, or *GitLens: Show Commit Graph* from the command palette. The history as a graph you can click through.
+- **File History.** Right-click any file, *Open File History*. Blame also appears greyed out at the end of whichever line your cursor is on.
 
 Open `shipping.py` and look at its file history. Four commits touch it. That is the shape of the thing you will be asked about later.
 

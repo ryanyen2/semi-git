@@ -7,7 +7,14 @@
 // and the timings match docs/study/protocol.md §4.
 
 import type { Condition, Project } from '../lib/types'
-import { BLOCK_CAP_MIN } from './tasks'
+import {
+  BLOCK_CAP_MIN,
+  REACH_TRIALS,
+  REQUEST_COUNT,
+  SCENARIO,
+  requestHeading,
+  taskCards,
+} from './tasks'
 import { TOTAL_ESTIMATE_MIN } from './flow'
 
 // The numbers in the schedule below are read from the step list and the card
@@ -83,6 +90,20 @@ Nothing you do can break anything that matters. Every project is a fresh copy. I
 The setup step installs everything inside one folder and uses its own Python. It does not change your shell, your global packages, or your existing AI assistant account. The assistant runs on a key we issue for this session and revoke afterwards, so nothing is billed to you.
 `.trim()
 
+/**
+ * The same welcome, as the printed handout in `docs/study/materials/00-welcome.md`.
+ *
+ * That file used to be written by hand alongside this one. It said "about two
+ * hours", "three requests", and a table adding up to 100 minutes, while this said
+ * two and a half hours, five cards, and 129. Both were handed to the participant,
+ * so which one they happened to read decided what they thought they had agreed to.
+ * `npm run gen:materials` writes the file from here, and a test fails if it drifts.
+ *
+ * The only difference is the title: the website renders its own, a printed page
+ * needs one in the text.
+ */
+export const HANDOUT_MD = `# Welcome\n\n${WELCOME_MD}\n`
+
 // ---------------------------------------------------------------------------
 // The project brief
 // ---------------------------------------------------------------------------
@@ -112,7 +133,7 @@ A university department runs course registration by hand every term: a spreadshe
 
 Someone in the office types commands at a terminal. There is no web page and no login. A normal term looks like this:
 
-- At the start of term they add the **courses** the department is running, and for each course the **sections** it is taught in — a section is one timetabled group, with a teacher, a room, a weekly time slot, and a cap on how many people fit.
+- At the start of term they add the **courses** the department is running, and for each course the **sections** it is taught in. A section is one timetabled group, with a teacher, a room, a weekly time slot, and a cap on how many people fit.
 - Students get added to the system, then **enrolled** into sections.
 - When a student wants out, they are **dropped** from a section, which frees the seat.
 
@@ -149,7 +170,7 @@ A conference committee plans its two-day program by hand every year: a spreadshe
 
 Someone on the committee types commands at a terminal. There is no web page and no login. A normal year looks like this:
 
-- While the program is being built they add the **talks** that were accepted, and for each talk the **sessions** it is given — a session is one scheduled slot, with a speaker, a room, a time on one of the two days, and a cap on how many people fit.
+- While the program is being built they add the **talks** that were accepted, and for each talk the **sessions** it is given. A session is one scheduled slot, with a speaker, a room, a time on one of the two days, and a cap on how many people fit.
 - Attendees get added to the system, then **registered** into sessions.
 - When an attendee wants out, they are **unregistered** from a session, which frees the seat.
 
@@ -176,6 +197,33 @@ It works and it has a test suite that passes. It has never had a second maintain
 `.trim(),
 }
 
+/**
+ * The same brief as a printed page.
+ *
+ * The website wraps the text above in chrome: a heading, a lede naming the
+ * project, and a callout saying the requests will tell you what to change. A
+ * printed page has no chrome, so the two sentences a reader needs before they
+ * start reading go in the text. They used to be typed a second time by hand in
+ * docs/study/materials/, which is how the printed welcome came to promise a
+ * different session length than the website did.
+ *
+ * The note goes above the brief rather than after its first paragraph, where the
+ * hand-written file had it. Knowing the page is untimed is worth more before
+ * someone starts reading it than a paragraph in.
+ */
+export const BRIEF_UNTIMED =
+  'Nothing is timed on this page. Read it at whatever pace you want and ask anything you like ' +
+  'before you continue.'
+
+export const BRIEF_NO_MEMORISE =
+  'The requests tell you what needs to change, and this is here so that finding your way around ' +
+  'is not the first thing you have to do under a clock.'
+
+export function sheetBriefMd(project: Project): string {
+  const note = `${BRIEF_UNTIMED} You do not have to memorise any of it. ${BRIEF_NO_MEMORISE}`
+  return `# The project: ${project}\n\n${note}\n\n${PROJECT_BRIEF[project]}\n`
+}
+
 // The two practice sheets.
 //
 // Both are written editor-first. Pilots read a sheet made entirely of terminal
@@ -191,8 +239,6 @@ It works and it has a test suite that passes. It has never had a second maintain
 // did in the sgt condition was watch search return nothing.
 
 const TUTORIAL_GIT = `
-Ten minutes on a practice project first. Ask anything now. Once the real requests start we can only answer questions about the requests themselves.
-
 You already know git. This is not a lesson. It is here so that nothing on this machine surprises you later, and so that you have seen the editor before you need it.
 
 ## The practice project
@@ -212,8 +258,8 @@ study-code
 That opens the practice project in VS Code with **GitLens** installed. Three things are worth finding now, because you will want them later:
 
 - **Source Control** in the left bar, for what has changed and where you commit.
-- **Commit Graph** — the GitLens icon in the left bar, or *GitLens: Show Commit Graph* from the command palette. The history as a graph you can click through.
-- **File History** — right-click any file, *Open File History*. Blame also appears greyed out at the end of whichever line your cursor is on.
+- **Commit Graph.** The GitLens icon in the left bar, or *GitLens: Show Commit Graph* from the command palette. The history as a graph you can click through.
+- **File History.** Right-click any file, *Open File History*. Blame also appears greyed out at the end of whichever line your cursor is on.
 
 Open \`shipping.py\` and look at its file history. Four commits touch it. That is the shape of the thing you will be asked about later.
 
@@ -280,8 +326,6 @@ Tell us if any of that behaved differently from what you expected.
 `.trim()
 
 const TUTORIAL_SGT = `
-Ten minutes on a practice project first. Ask anything now. Once the real requests start we can only answer questions about the requests themselves.
-
 ## What it is
 
 \`sgt\` sits on top of an ordinary git repository. Git records which lines in which files changed. \`sgt\` records which functions and classes changed, and groups related work under a name. It calls those groups **features**.
@@ -303,7 +347,7 @@ Run \`study-practice\`. It puts you in a throwaway copy of a small shopping cart
 
 Those names are what you hand back to the commands below.
 
-Every command on this sheet runs in the practice copy, and the four names above only exist there. If \`sgt log --tree\` shows anything else, you are in the real project: run \`study-practice\` and try again — nothing on this sheet applies to the real project's history.
+Every command on this sheet runs in the practice copy, and the four names above only exist there. If \`sgt log --tree\` shows anything else, you are in the real project: run \`study-practice\` and try again. Nothing on this sheet applies to the real project's history.
 
 ## 1. The editor first
 
@@ -332,7 +376,7 @@ sgt log --map     one row per feature, across time
 sgt log --tree    just the four features and their handles
 \`\`\`
 
-In \`--map\`, the bars are how busy a feature was at that moment, and the \`@0\`, \`@1\`, \`@2\` chips underneath are its **checkpoints** — the chapters within one feature.
+In \`--map\`, the bars are how busy a feature was at that moment, and the \`@0\`, \`@1\`, \`@2\` chips underneath are its **checkpoints**, the chapters within one feature.
 
 ## 3. Ask what one thing is
 
@@ -364,7 +408,7 @@ It ranks features, saves and functions against your words and hands you back the
 
 ## 5. Record a change
 
-Edit anything — a function, or just the README — then:
+Edit anything, a function or just the README, then:
 
 \`\`\`
 sgt save -m "what you changed, in your own words"
@@ -380,7 +424,7 @@ Do this whole sequence. It is the most useful thing in these ten minutes.
 sgt revert "Receipts"
 \`\`\`
 
-Nothing has happened yet. That was a preview, and three things in it are worth reading: which chapters would go, that it removes 14 edits across 2 files, and the line saying **3 other feature(s) unchanged**. Now do it:
+Nothing has happened yet. That was a preview, and three things in it are worth reading: which chapters would go, that it removes 14 edits across 2 files, and the line saying **3 other features unchanged**. Now do it:
 
 \`\`\`
 sgt revert "Receipts" --yes
@@ -399,7 +443,7 @@ Eleven again. \`sgt undo\` reverses the last thing sgt did; \`sgt restore "<name
 You can also take out one chapter rather than a whole feature:
 
 \`\`\`
-sgt revert Shipping@2
+sgt revert "Shipping"@2
 \`\`\`
 
 Preview first is the rule everywhere, including in the editor.
@@ -426,14 +470,114 @@ export function tutorialFor(condition: Condition): string {
   return condition === 'git' ? TUTORIAL_GIT : TUTORIAL_SGT
 }
 
+/**
+ * What the practice step says before the sheet itself, on both surfaces.
+ *
+ * It used to be the first line of each tutorial body and a differently worded
+ * paragraph in Tutorial.tsx, so the website showed a participant the same
+ * instruction twice, in two wordings, one directly under the other.
+ */
+export const TUTORIAL_LEDE =
+  'Ten minutes on a practice project first. Ask anything now. Once the real requests start we ' +
+  'can only answer questions about the requests themselves.'
+
+/**
+ * The same practice sheet as a printed page. See `sheetBriefMd` for why the
+ * printed pages are generated rather than typed again.
+ *
+ * The facilitator hands this over at the practice step and a participant keeps it
+ * next to the keyboard through the requests, so the commands on it have to be the
+ * commands the website taught, character for character. The hand-written copy of
+ * this sheet quoted `sgt revert "Shipping"@2` while the website said `sgt revert
+ * Shipping@2`, which fails on any feature name with a space in it.
+ */
+export function sheetTutorialMd(condition: Condition): string {
+  return `# Practice: ${condition}\n\n${TUTORIAL_LEDE}\n\n${tutorialFor(condition)}\n`
+}
+
+/** Spells the small counts the prose below quotes. `3 requests` in a sentence reads
+ * like a field in a form. Only the numbers this file can produce are covered. */
+const spell = (n: number) =>
+  ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'][n] ?? String(n)
+
+/**
+ * What the participant is told before the first card of a block.
+ *
+ * The counts and the total come from the request list. Written down, they went
+ * stale the moment the two reach trials were added: this said "three requests,
+ * about twenty minutes in total" while the block was five cards and 28 minutes,
+ * and a participant who had read that met two cards they were never told about.
+ */
 export const TASK_PREAMBLE = (app: string, maintainer: string, blurb: string) =>
   `
-You are the new maintainer of **${app}**, the program you just read about — ${blurb}. ${maintainer} built it over the last six weeks, partly by working with an AI assistant, and has now left the team.
+You are the new maintainer of **${app}**, the program you just read about, ${blurb}. ${maintainer} built it over the last six weeks, partly by working with an AI assistant, and has now left the team.
 
-You have the code, its full history, and your assistant. Three requests, in order, about twenty minutes in total. Each has its own clock and running out of time on one is a normal result.
+You have the code, its full history, and your assistant. There are ${spell(REQUEST_COUNT)} requests to work through in order and ${spell(REACH_TRIALS.length)} short questions about what a past piece of work touched, ${BLOCK_CAP_MIN} minutes of work in total. Every card has its own clock, and running out of time on one is a normal result.
 
 Tell us what you are thinking as you go.
 `.trim()
+
+/**
+ * The requests as a printed page, for the participant to keep beside the keyboard.
+ *
+ * Built from the same request list the cards render, because this is the sheet
+ * where drift does real damage: the multiple-choice options are the answer the
+ * participant gives, so a sheet listing four options against a screen listing five
+ * makes a recorded answer mean nothing. The hand-written copy had already gone
+ * stale on the preamble, promising three requests and twenty minutes against a
+ * block of five cards and 28 minutes.
+ *
+ * The reach trials are left out on purpose. They are a grid of twelve checkboxes
+ * answered twice against two separate clocks, which a sheet cannot represent
+ * without inviting someone to fill it in on paper, so the preamble says where they
+ * are instead.
+ */
+export function sheetTasksMd(project: Project): string {
+  const { app, maintainer, blurb } = SCENARIO[project]
+  const out = [
+    '# Your tasks',
+    '',
+    TASK_PREAMBLE(app, maintainer, blurb),
+    '',
+    `The ${spell(REACH_TRIALS.length)} short questions are answered on screen, not on this sheet.`,
+  ]
+
+  for (const card of taskCards(project)) {
+    const printed = card.requests.filter((r) => !r.reach)
+    if (!printed.length) continue
+
+    out.push('', `## ${card.heading}: ${card.title}`, '')
+    out.push(
+      printed.length > 1
+        ? `You have ${card.capMin} minutes for ${card.heading.toLowerCase()} together.`
+        : `You have ${card.capMin} minutes.`,
+    )
+
+    for (const r of printed) {
+      // Only a shared card headings its requests separately; on a card of one the
+      // card heading already covers it. Numbered, because request 3 opens with
+      // "One correction to the last request".
+      if (printed.length > 1) out.push('', `### ${requestHeading(r)}: ${r.title[project]}`)
+      out.push('', r.body[project])
+      // The tip is a callout on screen. A blockquote is the printed equivalent:
+      // set apart from the request, and clearly not part of it.
+      if (r.tip) out.push('', quote(r.tip[project]))
+      for (const q of r.choices) {
+        out.push('', `**${q.prompt}**`, '')
+        out.push(...q.options[project].map((o) => `- ${o}`))
+      }
+      if (r.wantsConfidence) out.push('', 'Then say how sure you are, anywhere from guessing to certain.')
+    }
+  }
+  return out.join('\n') + '\n'
+}
+
+/** Indents a block as a markdown quote, preserving its own blank lines. */
+const quote = (text: string) =>
+  text
+    .split('\n')
+    .map((line) => (line ? `> ${line}` : '>'))
+    .join('\n')
 
 export const HANDOVER_MD = `
 Almost done. Two things and you can close everything.
@@ -468,7 +612,7 @@ That is everything. Thank you.
 
 Version control records history as lines in files. When you work with an AI assistant you describe what you want in sentences, and then the record of what you did comes back to you as diffs. We built a tool that records history as the pieces of work someone meant to do, and we wanted to know whether that helps a person who arrives afterwards.
 
-One of the two setups you used was that tool. The other was ordinary git. We deliberately did not say which was which, and we asked the same three requests of both, because we are measuring the difference between the two representations and not the difference between you and anyone else.
+One of the two setups you used was that tool. The other was ordinary git. We deliberately did not say which was which, and we asked the same ${spell(REQUEST_COUNT)} requests and ${spell(REACH_TRIALS.length)} questions of both, because we are measuring the difference between the two representations and not the difference between you and anyone else.
 
 ## What happens to your data
 

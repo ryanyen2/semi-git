@@ -2,7 +2,7 @@
 %%% Do NOT edit. File created by BibTeX with style
 %%% ACM-Reference-Format-Journals [18-Jan-2012].
 
-\begin{thebibliography}{101}
+\begin{thebibliography}{159}
 
 %%% ====================================================================
 %%% NOTE TO THE USER: you can override these defaults by providing
@@ -36,23 +36,24 @@
 \providecommand\natexlab[1]{#1}
 \providecommand\showeprint[2][]{arXiv:#2}
 
+\bibitem[Al~Mujahid and Imran(2026)]%
+        {mujahid2026}
+\bibfield{author}{\bibinfo{person}{Abdullah Al~Mujahid} {and} \bibinfo{person}{Mia~Mohammad Imran}.} \bibinfo{year}{2026}\natexlab{}.
+\newblock \showarticletitle{``{TODO}: Fix the Mess {Gemini} Created'': Towards understanding {GenAI}-induced self-admitted technical debt}.
+\newblock \bibinfo{journal}{\emph{arXiv preprint arXiv:2601.07786}} (\bibinfo{year}{2026}).
+\newblock
+
+
 \bibitem[Apel et~al\mbox{.}(2011)]%
         {apel2011}
-\bibfield{author}{\bibinfo{person}{Sven Apel}, \bibinfo{person}{J\"{o}rg
-  Liebig}, \bibinfo{person}{Benjamin Brandl}, \bibinfo{person}{Christian
-  Lengauer}, {and} \bibinfo{person}{Christian K\"{a}stner}.}
-  \bibinfo{year}{2011}\natexlab{}.
-\newblock \showarticletitle{Semistructured merge: rethinking merge in revision
-  control systems}. In \bibinfo{booktitle}{\emph{Proceedings of the 19th ACM
-  SIGSOFT Symposium on the Foundations of Software Engineering (ESEC/FSE)}}.
-  \bibinfo{pages}{190--200}.
+\bibfield{author}{\bibinfo{person}{Sven Apel}, \bibinfo{person}{J\"{o}rg Liebig}, \bibinfo{person}{Benjamin Brandl}, \bibinfo{person}{Christian Lengauer}, {and} \bibinfo{person}{Christian K\"{a}stner}.} \bibinfo{year}{2011}\natexlab{}.
+\newblock \showarticletitle{Semistructured merge: rethinking merge in revision control systems}. In \bibinfo{booktitle}{\emph{Proceedings of the 19th ACM SIGSOFT Symposium on the Foundations of Software Engineering (ESEC/FSE)}}. \bibinfo{pages}{190--200}.
 \newblock
 
 
 \bibitem[{Ataraxy Labs}(2026)]%
         {sem2026}
-\bibfield{author}{\bibinfo{person}{{Ataraxy Labs}}.}
-  \bibinfo{year}{2026}\natexlab{}.
+\bibfield{author}{\bibinfo{person}{{Ataraxy Labs}}.} \bibinfo{year}{2026}\natexlab{}.
 \newblock \bibinfo{title}{sem: Semantic version control built on Git}.
 \newblock \bibinfo{howpublished}{\url{https://github.com/ataraxy-labs/sem}}.
 \newblock
@@ -62,344 +63,360 @@
 
 \bibitem[Bacchelli and Bird(2013)]%
         {bacchelli2013}
-\bibfield{author}{\bibinfo{person}{Alberto Bacchelli} {and}
-  \bibinfo{person}{Christian Bird}.} \bibinfo{year}{2013}\natexlab{}.
-\newblock \showarticletitle{Expectations, outcomes, and challenges of modern
-  code review}. In \bibinfo{booktitle}{\emph{Proceedings of the 35th
-  International Conference on Software Engineering (ICSE)}}.
-  \bibinfo{pages}{712--721}.
+\bibfield{author}{\bibinfo{person}{Alberto Bacchelli} {and} \bibinfo{person}{Christian Bird}.} \bibinfo{year}{2013}\natexlab{}.
+\newblock \showarticletitle{Expectations, outcomes, and challenges of modern code review}. In \bibinfo{booktitle}{\emph{Proceedings of the 35th International Conference on Software Engineering (ICSE)}}. \bibinfo{pages}{712--721}.
 \newblock
 \href{https://doi.org/10.1109/ICSE.2013.6606617}{doi:\nolinkurl{10.1109/ICSE.2013.6606617}}
 
 
 \bibitem[Bainbridge(1983)]%
         {bainbridge1983}
-\bibfield{author}{\bibinfo{person}{Lisanne Bainbridge}.}
-  \bibinfo{year}{1983}\natexlab{}.
+\bibfield{author}{\bibinfo{person}{Lisanne Bainbridge}.} \bibinfo{year}{1983}\natexlab{}.
 \newblock \showarticletitle{Ironies of automation}.
-\newblock \bibinfo{journal}{\emph{Automatica}} \bibinfo{volume}{19},
-  \bibinfo{number}{6} (\bibinfo{year}{1983}), \bibinfo{pages}{775--779}.
+\newblock \bibinfo{journal}{\emph{Automatica}} \bibinfo{volume}{19}, \bibinfo{number}{6} (\bibinfo{year}{1983}), \bibinfo{pages}{775--779}.
 \newblock
 \href{https://doi.org/10.1016/0005-1098(83)90046-8}{doi:\nolinkurl{10.1016/0005-1098(83)90046-8}}
 
 
+\bibitem[Bansal et~al\mbox{.}(2021)]%
+        {bansal2021}
+\bibfield{author}{\bibinfo{person}{Gagan Bansal}, \bibinfo{person}{Tongshuang Wu}, \bibinfo{person}{Joyce Zhou}, \bibinfo{person}{Raymond Fok}, \bibinfo{person}{Besmira Nushi}, \bibinfo{person}{Ece Kamar}, \bibinfo{person}{Marco~Tulio Ribeiro}, {and} \bibinfo{person}{Daniel Weld}.} \bibinfo{year}{2021}\natexlab{}.
+\newblock \showarticletitle{Does the whole exceed its parts? {The} effect of {AI} explanations on complementary team performance}. In \bibinfo{booktitle}{\emph{Proceedings of the 2021 CHI Conference on Human Factors in Computing Systems}}. Article \bibinfo{articleno}{81}.
+\newblock
+\href{https://doi.org/10.1145/3411764.3445717}{doi:\nolinkurl{10.1145/3411764.3445717}}
+
+
 \bibitem[Barke et~al\mbox{.}(2023)]%
         {barke2023}
-\bibfield{author}{\bibinfo{person}{Shraddha Barke}, \bibinfo{person}{Michael~B.
-  James}, {and} \bibinfo{person}{Nadia Polikarpova}.}
-  \bibinfo{year}{2023}\natexlab{}.
-\newblock \showarticletitle{Grounded Copilot: How programmers interact with
-  code-generating models}.
-\newblock \bibinfo{journal}{\emph{Proceedings of the ACM on Programming
-  Languages}} \bibinfo{volume}{7}, \bibinfo{number}{OOPSLA1}
-  (\bibinfo{year}{2023}), \bibinfo{pages}{85--111}.
+\bibfield{author}{\bibinfo{person}{Shraddha Barke}, \bibinfo{person}{Michael~B. James}, {and} \bibinfo{person}{Nadia Polikarpova}.} \bibinfo{year}{2023}\natexlab{}.
+\newblock \showarticletitle{Grounded Copilot: How programmers interact with code-generating models}.
+\newblock \bibinfo{journal}{\emph{Proceedings of the ACM on Programming Languages}} \bibinfo{volume}{7}, \bibinfo{number}{OOPSLA1} (\bibinfo{year}{2023}), \bibinfo{pages}{85--111}.
 \newblock
 \href{https://doi.org/10.1145/3586030}{doi:\nolinkurl{10.1145/3586030}}
 
 
 \bibitem[Barnett et~al\mbox{.}(2015)]%
         {barnett2015}
-\bibfield{author}{\bibinfo{person}{Mike Barnett}, \bibinfo{person}{Christian
-  Bird}, \bibinfo{person}{João Brunet}, {and} \bibinfo{person}{Shuvendu~K.
-  Lahiri}.} \bibinfo{year}{2015}\natexlab{}.
-\newblock \showarticletitle{Helping developers help themselves: Automatic
-  decomposition of code review changesets}. In
-  \bibinfo{booktitle}{\emph{Proceedings of the 37th International Conference on
-  Software Engineering (ICSE)}}. \bibinfo{pages}{134--144}.
+\bibfield{author}{\bibinfo{person}{Mike Barnett}, \bibinfo{person}{Christian Bird}, \bibinfo{person}{João Brunet}, {and} \bibinfo{person}{Shuvendu~K. Lahiri}.} \bibinfo{year}{2015}\natexlab{}.
+\newblock \showarticletitle{Helping developers help themselves: Automatic decomposition of code review changesets}. In \bibinfo{booktitle}{\emph{Proceedings of the 37th International Conference on Software Engineering (ICSE)}}. \bibinfo{pages}{134--144}.
 \newblock
 \href{https://doi.org/10.1109/ICSE.2015.35}{doi:\nolinkurl{10.1109/ICSE.2015.35}}
 
 
 \bibitem[Bastani et~al\mbox{.}(2025)]%
         {bastani2025}
-\bibfield{author}{\bibinfo{person}{Hamsa Bastani}, \bibinfo{person}{Osbert
-  Bastani}, \bibinfo{person}{Alp Sungu}, \bibinfo{person}{Haosen Ge},
-  \bibinfo{person}{Özge Kabakcı}, {and} \bibinfo{person}{Rei Mariman}.}
-  \bibinfo{year}{2025}\natexlab{}.
+\bibfield{author}{\bibinfo{person}{Hamsa Bastani}, \bibinfo{person}{Osbert Bastani}, \bibinfo{person}{Alp Sungu}, \bibinfo{person}{Haosen Ge}, \bibinfo{person}{Özge Kabakcı}, {and} \bibinfo{person}{Rei Mariman}.} \bibinfo{year}{2025}\natexlab{}.
 \newblock \showarticletitle{Generative {AI} can harm learning}.
-\newblock \bibinfo{journal}{\emph{Proceedings of the National Academy of
-  Sciences}} \bibinfo{volume}{122}, \bibinfo{number}{26}
-  (\bibinfo{year}{2025}), \bibinfo{pages}{e2422633122}.
+\newblock \bibinfo{journal}{\emph{Proceedings of the National Academy of Sciences}} \bibinfo{volume}{122}, \bibinfo{number}{26} (\bibinfo{year}{2025}), \bibinfo{pages}{e2422633122}.
 \newblock
 \href{https://doi.org/10.1073/pnas.2422633122}{doi:\nolinkurl{10.1073/pnas.2422633122}}
 
 
+\bibitem[Beaudouin-Lafon(2000)]%
+        {beaudouinlafon2000}
+\bibfield{author}{\bibinfo{person}{Michel Beaudouin-Lafon}.} \bibinfo{year}{2000}\natexlab{}.
+\newblock \showarticletitle{Instrumental Interaction: An Interaction Model for Designing Post-{WIMP} User Interfaces}. In \bibinfo{booktitle}{\emph{Proceedings of the SIGCHI Conference on Human Factors in Computing Systems (CHI)}}. \bibinfo{publisher}{ACM}, \bibinfo{pages}{446--453}.
+\newblock
+
+
+\bibitem[Becker et~al\mbox{.}(2025)]%
+        {becker2025metr}
+\bibfield{author}{\bibinfo{person}{Joel Becker}, \bibinfo{person}{Nate Rush}, \bibinfo{person}{Rosie Saunders}, \bibinfo{person}{Lauro Langosco}, \bibinfo{person}{Kaylee Burns}, \bibinfo{person}{Beth Barnes}, {and} \bibinfo{person}{David Rein}.} \bibinfo{year}{2025}\natexlab{}.
+\newblock \showarticletitle{Evidence on the Impact of Generative {AI} on Experienced Open-Source Developer Productivity}.
+\newblock \bibinfo{journal}{\emph{METR Technical Report}} (\bibinfo{year}{2025}).
+\newblock
+\shownote{\url{https://metr.org/blog/2025-07-10-ai-experienced-os-developers/}}.
+\newblock
+
+
 \bibitem[Biggerstaff et~al\mbox{.}(1993)]%
         {biggerstaff1993}
-\bibfield{author}{\bibinfo{person}{Ted~J. Biggerstaff},
-  \bibinfo{person}{Bharat~G. Mitbander}, {and} \bibinfo{person}{Dallas
-  Webster}.} \bibinfo{year}{1993}\natexlab{}.
-\newblock \showarticletitle{The concept assignment problem in program
-  understanding}. In \bibinfo{booktitle}{\emph{Proceedings of the 15th
-  International Conference on Software Engineering (ICSE)}}.
-  \bibinfo{pages}{482--498}.
+\bibfield{author}{\bibinfo{person}{Ted~J. Biggerstaff}, \bibinfo{person}{Bharat~G. Mitbander}, {and} \bibinfo{person}{Dallas Webster}.} \bibinfo{year}{1993}\natexlab{}.
+\newblock \showarticletitle{The concept assignment problem in program understanding}. In \bibinfo{booktitle}{\emph{Proceedings of the 15th International Conference on Software Engineering (ICSE)}}. \bibinfo{pages}{482--498}.
 \newblock
 \href{https://doi.org/10.1109/ICSE.1993.346017}{doi:\nolinkurl{10.1109/ICSE.1993.346017}}
 
 
 \bibitem[Blackwell and Green(2003)]%
         {blackwell2003}
-\bibfield{author}{\bibinfo{person}{Alan~F. Blackwell} {and}
-  \bibinfo{person}{Thomas R.~G. Green}.} \bibinfo{year}{2003}\natexlab{}.
-\newblock \showarticletitle{Notational systems: The Cognitive Dimensions of
-  Notations framework}.
-\newblock In \bibinfo{booktitle}{\emph{HCI Models, Theories, and Frameworks:
-  Toward a Multidisciplinary Science}},
-  \bibfield{editor}{\bibinfo{person}{John~M. Carroll}} (Ed.).
-  \bibinfo{publisher}{Morgan Kaufmann}, \bibinfo{pages}{103--134}.
+\bibfield{author}{\bibinfo{person}{Alan~F. Blackwell} {and} \bibinfo{person}{Thomas R.~G. Green}.} \bibinfo{year}{2003}\natexlab{}.
+\newblock \showarticletitle{Notational systems: The Cognitive Dimensions of Notations framework}.
+\newblock In \bibinfo{booktitle}{\emph{HCI Models, Theories, and Frameworks: Toward a Multidisciplinary Science}}, \bibfield{editor}{\bibinfo{person}{John~M. Carroll}} (Ed.). \bibinfo{publisher}{Morgan Kaufmann}, \bibinfo{pages}{103--134}.
 \newblock
+
+
+\bibitem[Braun and Clarke(2006)]%
+        {braun2006}
+\bibfield{author}{\bibinfo{person}{Virginia Braun} {and} \bibinfo{person}{Victoria Clarke}.} \bibinfo{year}{2006}\natexlab{}.
+\newblock \showarticletitle{Using thematic analysis in psychology}.
+\newblock \bibinfo{journal}{\emph{Qualitative Research in Psychology}} \bibinfo{volume}{3}, \bibinfo{number}{2} (\bibinfo{year}{2006}), \bibinfo{pages}{77--101}.
+\newblock
+\href{https://doi.org/10.1191/1478088706qp063oa}{doi:\nolinkurl{10.1191/1478088706qp063oa}}
 
 
 \bibitem[Brunsfeld and {the tree-sitter contributors}(2026)]%
         {treesitter}
-\bibfield{author}{\bibinfo{person}{Max Brunsfeld} {and} \bibinfo{person}{{the
-  tree-sitter contributors}}.} \bibinfo{year}{2026}\natexlab{}.
-\newblock \bibinfo{title}{tree-sitter: An incremental parsing system for
-  programming tools}.
+\bibfield{author}{\bibinfo{person}{Max Brunsfeld} {and} \bibinfo{person}{{the tree-sitter contributors}}.} \bibinfo{year}{2026}\natexlab{}.
+\newblock \bibinfo{title}{tree-sitter: An incremental parsing system for programming tools}.
 \newblock \bibinfo{howpublished}{\url{https://tree-sitter.github.io/}}.
 \newblock
 \shownote{Accessed 2026}.
 \newblock
 
 
+\bibitem[Bu\c{c}inca et~al\mbox{.}(2021)]%
+        {bucinca2021}
+\bibfield{author}{\bibinfo{person}{Zana Bu\c{c}inca}, \bibinfo{person}{Maja~Barbara Malaya}, {and} \bibinfo{person}{Krzysztof~Z. Gajos}.} \bibinfo{year}{2021}\natexlab{}.
+\newblock \showarticletitle{To trust or to think: Cognitive forcing functions can reduce overreliance on {AI} in {AI}-assisted decision-making}. In \bibinfo{booktitle}{\emph{Proceedings of the ACM on Human-Computer Interaction}}, Vol.~\bibinfo{volume}{5}. Article \bibinfo{articleno}{188}.
+\newblock
+\href{https://doi.org/10.1145/3449287}{doi:\nolinkurl{10.1145/3449287}}
+
+
 \bibitem[Buse and Weimer(2010)]%
         {buse2010}
-\bibfield{author}{\bibinfo{person}{Raymond P.~L. Buse} {and}
-  \bibinfo{person}{Westley~R. Weimer}.} \bibinfo{year}{2010}\natexlab{}.
-\newblock \showarticletitle{Automatically documenting program changes}. In
-  \bibinfo{booktitle}{\emph{Proceedings of the 25th IEEE/ACM International
-  Conference on Automated Software Engineering (ASE)}}.
-  \bibinfo{pages}{33--42}.
+\bibfield{author}{\bibinfo{person}{Raymond P.~L. Buse} {and} \bibinfo{person}{Westley~R. Weimer}.} \bibinfo{year}{2010}\natexlab{}.
+\newblock \showarticletitle{Automatically documenting program changes}. In \bibinfo{booktitle}{\emph{Proceedings of the 25th IEEE/ACM International Conference on Automated Software Engineering (ASE)}}. \bibinfo{pages}{33--42}.
 \newblock
 \href{https://doi.org/10.1145/1858996.1859005}{doi:\nolinkurl{10.1145/1858996.1859005}}
 
 
 \bibitem[Cao et~al\mbox{.}(2024)]%
         {cao2024}
-\bibfield{author}{\bibinfo{person}{Ruijia Cao}, \bibinfo{person}{Zhuoren Lu},
-  {and} \bibinfo{person}{Chun-Wei Huang}.} \bibinfo{year}{2024}\natexlab{}.
-\newblock \showarticletitle{Toward appropriate reliance: complementary
-  explanations reduce both over- and under-reliance on {AI}}.
-\newblock \bibinfo{journal}{\emph{Proceedings of the ACM on Human-Computer
-  Interaction}} \bibinfo{volume}{8}, \bibinfo{number}{CSCW2}
-  (\bibinfo{year}{2024}).
+\bibfield{author}{\bibinfo{person}{Ruijia Cao}, \bibinfo{person}{Zhuoren Lu}, {and} \bibinfo{person}{Chun-Wei Huang}.} \bibinfo{year}{2024}\natexlab{}.
+\newblock \showarticletitle{Toward appropriate reliance: complementary explanations reduce both over- and under-reliance on {AI}}.
+\newblock \bibinfo{journal}{\emph{Proceedings of the ACM on Human-Computer Interaction}} \bibinfo{volume}{8}, \bibinfo{number}{CSCW2} (\bibinfo{year}{2024}).
 \newblock
 \href{https://doi.org/10.1145/3687054}{doi:\nolinkurl{10.1145/3687054}}
 
 
 \bibitem[Carroll and Rosson(1987)]%
         {carroll1987}
-\bibfield{author}{\bibinfo{person}{John~M. Carroll} {and}
-  \bibinfo{person}{Mary~Beth Rosson}.} \bibinfo{year}{1987}\natexlab{}.
+\bibfield{author}{\bibinfo{person}{John~M. Carroll} {and} \bibinfo{person}{Mary~Beth Rosson}.} \bibinfo{year}{1987}\natexlab{}.
 \newblock \showarticletitle{Paradox of the active user}.
-\newblock \bibinfo{journal}{\emph{Interfacing Thought: Cognitive Aspects of
-  Human-Computer Interaction}} (\bibinfo{year}{1987}),
-  \bibinfo{pages}{80--111}.
+\newblock \bibinfo{journal}{\emph{Interfacing Thought: Cognitive Aspects of Human-Computer Interaction}} (\bibinfo{year}{1987}), \bibinfo{pages}{80--111}.
 \newblock
+
+
+\bibitem[Casserini et~al\mbox{.}(2026)]%
+        {casserini2026entropy}
+\bibfield{author}{\bibinfo{person}{Matteo Casserini}, \bibinfo{person}{Alessandro Facchini}, {and} \bibinfo{person}{Andrea Ferrario}.} \bibinfo{year}{2026}\natexlab{}.
+\newblock \showarticletitle{Beyond the `Diff': Addressing Agentic Entropy in Agentic Software Development}. In \bibinfo{booktitle}{\emph{HCXAI Workshop at CHI}}.
+\newblock
+\shownote{arXiv:2604.16323}.
+\newblock
+
+
+\bibitem[Catalan et~al\mbox{.}(2026)]%
+        {catalan2026notreading}
+\bibfield{author}{\bibinfo{person}{Carlos~Rafael Catalan}, \bibinfo{person}{Lheane~Marie Dizon}, \bibinfo{person}{Patricia~Nicole Monderin}, {and} \bibinfo{person}{Emily Kuang}.} \bibinfo{year}{2026}\natexlab{}.
+\newblock \showarticletitle{``{I}'m Not Reading All of That'': Understanding Software Engineers' Level of Cognitive Engagement with Agentic Coding Assistants}. In \bibinfo{booktitle}{\emph{CHI Workshop on Tools for Thought}}.
+\newblock
+\shownote{arXiv:2603.14225}.
+\newblock
+
+
+\bibitem[Cavalcanti et~al\mbox{.}(2017)]%
+        {cavalcanti2017}
+\bibfield{author}{\bibinfo{person}{Guilherme Cavalcanti}, \bibinfo{person}{Paulo Borba}, {and} \bibinfo{person}{Paola Accioly}.} \bibinfo{year}{2017}\natexlab{}.
+\newblock \showarticletitle{Evaluating and improving semistructured merge}.
+\newblock \bibinfo{journal}{\emph{Proceedings of the ACM on Programming Languages}} \bibinfo{volume}{1}, \bibinfo{number}{OOPSLA} (\bibinfo{year}{2017}), \bibinfo{pages}{1--27}.
+\newblock
+\href{https://doi.org/10.1145/3133883}{doi:\nolinkurl{10.1145/3133883}}
 
 
 \bibitem[Cheng et~al\mbox{.}(2024)]%
         {cheng2024}
-\bibfield{author}{\bibinfo{person}{Ruijia Cheng}, \bibinfo{person}{Ruotong
-  Wang}, \bibinfo{person}{Thomas Zimmermann}, {and} \bibinfo{person}{Denae
-  Ford}.} \bibinfo{year}{2024}\natexlab{}.
-\newblock \showarticletitle{``It would work for me too'': How online
-  communities shape software developers' trust in AI-powered code generation
-  tools}.
-\newblock \bibinfo{journal}{\emph{ACM Transactions on Interactive Intelligent
-  Systems}} (\bibinfo{year}{2024}).
+\bibfield{author}{\bibinfo{person}{Ruijia Cheng}, \bibinfo{person}{Ruotong Wang}, \bibinfo{person}{Thomas Zimmermann}, {and} \bibinfo{person}{Denae Ford}.} \bibinfo{year}{2024}\natexlab{}.
+\newblock \showarticletitle{``It would work for me too'': How online communities shape software developers' trust in AI-powered code generation tools}.
+\newblock \bibinfo{journal}{\emph{ACM Transactions on Interactive Intelligent Systems}} (\bibinfo{year}{2024}).
 \newblock
 \href{https://doi.org/10.1145/3651990}{doi:\nolinkurl{10.1145/3651990}}
 
 
 \bibitem[Chu-Carroll and Sprenkle(2000)]%
         {chucarroll2000}
-\bibfield{author}{\bibinfo{person}{Mark~C. Chu-Carroll} {and}
-  \bibinfo{person}{Sara Sprenkle}.} \bibinfo{year}{2000}\natexlab{}.
-\newblock \showarticletitle{Coven: brewing better collaboration through
-  software configuration management}. In \bibinfo{booktitle}{\emph{Proceedings
-  of the 8th ACM SIGSOFT Symposium on Foundations of Software Engineering
-  (FSE)}}. \bibinfo{pages}{88--97}.
+\bibfield{author}{\bibinfo{person}{Mark~C. Chu-Carroll} {and} \bibinfo{person}{Sara Sprenkle}.} \bibinfo{year}{2000}\natexlab{}.
+\newblock \showarticletitle{Coven: brewing better collaboration through software configuration management}. In \bibinfo{booktitle}{\emph{Proceedings of the 8th ACM SIGSOFT Symposium on Foundations of Software Engineering (FSE)}}. \bibinfo{pages}{88--97}.
 \newblock
 
 
 \bibitem[Chu-Carroll et~al\mbox{.}(2002)]%
         {chucarroll2002}
-\bibfield{author}{\bibinfo{person}{Mark~C. Chu-Carroll}, \bibinfo{person}{James
-  Wright}, {and} \bibinfo{person}{David Shields}.}
-  \bibinfo{year}{2002}\natexlab{}.
-\newblock \showarticletitle{Supporting aggregation in fine grained software
-  configuration management}. In \bibinfo{booktitle}{\emph{Proceedings of the
-  10th ACM SIGSOFT Symposium on Foundations of Software Engineering (FSE)}}.
-  \bibinfo{pages}{99--108}.
+\bibfield{author}{\bibinfo{person}{Mark~C. Chu-Carroll}, \bibinfo{person}{James Wright}, {and} \bibinfo{person}{David Shields}.} \bibinfo{year}{2002}\natexlab{}.
+\newblock \showarticletitle{Supporting aggregation in fine grained software configuration management}. In \bibinfo{booktitle}{\emph{Proceedings of the 10th ACM SIGSOFT Symposium on Foundations of Software Engineering (FSE)}}. \bibinfo{pages}{99--108}.
 \newblock
 
 
 \bibitem[Church et~al\mbox{.}(2014)]%
         {church2014}
-\bibfield{author}{\bibinfo{person}{Luke Church}, \bibinfo{person}{Emma
-  Söderberg}, {and} \bibinfo{person}{Bhargava Elango}.}
-  \bibinfo{year}{2014}\natexlab{}.
-\newblock \showarticletitle{A case of computational thinking: The subtle effect
-  of hidden dependencies on the user experience of version control}. In
-  \bibinfo{booktitle}{\emph{Proceedings of the 25th Annual Workshop of the
-  Psychology of Programming Interest Group (PPIG)}}.
+\bibfield{author}{\bibinfo{person}{Luke Church}, \bibinfo{person}{Emma Söderberg}, {and} \bibinfo{person}{Bhargava Elango}.} \bibinfo{year}{2014}\natexlab{}.
+\newblock \showarticletitle{A case of computational thinking: The subtle effect of hidden dependencies on the user experience of version control}. In \bibinfo{booktitle}{\emph{Proceedings of the 25th Annual Workshop of the Psychology of Programming Interest Group (PPIG)}}.
+\newblock
+
+
+\bibitem[Clark(1996)]%
+        {clark1996}
+\bibfield{author}{\bibinfo{person}{Herbert~H. Clark}.} \bibinfo{year}{1996}\natexlab{}.
+\newblock \bibinfo{booktitle}{\emph{Using Language}}.
+\newblock \bibinfo{publisher}{Cambridge University Press}, \bibinfo{address}{Cambridge, UK}.
 \newblock
 
 
 \bibitem[Codoban et~al\mbox{.}(2015)]%
         {codoban2015}
-\bibfield{author}{\bibinfo{person}{Mihai Codoban},
-  \bibinfo{person}{Sruti~Srinivasa Ragavan}, \bibinfo{person}{Danny Dig}, {and}
-  \bibinfo{person}{Brian Bailey}.} \bibinfo{year}{2015}\natexlab{}.
-\newblock \showarticletitle{Software history under the lens: A study on why and
-  how developers examine it}. In \bibinfo{booktitle}{\emph{Proceedings of the
-  2015 IEEE International Conference on Software Maintenance and Evolution
-  (ICSME)}}. \bibinfo{pages}{1--10}.
+\bibfield{author}{\bibinfo{person}{Mihai Codoban}, \bibinfo{person}{Sruti~Srinivasa Ragavan}, \bibinfo{person}{Danny Dig}, {and} \bibinfo{person}{Brian Bailey}.} \bibinfo{year}{2015}\natexlab{}.
+\newblock \showarticletitle{Software history under the lens: A study on why and how developers examine it}. In \bibinfo{booktitle}{\emph{Proceedings of the 2015 IEEE International Conference on Software Maintenance and Evolution (ICSME)}}. \bibinfo{pages}{1--10}.
 \newblock
 \href{https://doi.org/10.1109/ICSM.2015.7332446}{doi:\nolinkurl{10.1109/ICSM.2015.7332446}}
 
 
 \bibitem[Cui et~al\mbox{.}(2025)]%
         {cui2025}
-\bibfield{author}{\bibinfo{person}{Zheyuan~(Kevin) Cui}, \bibinfo{person}{Mert
-  Demirer}, \bibinfo{person}{Sonia Jaffe}, \bibinfo{person}{Leon Musolff},
-  \bibinfo{person}{Sida Peng}, {and} \bibinfo{person}{Tobias Salz}.}
-  \bibinfo{year}{2025}\natexlab{}.
-\newblock \showarticletitle{The effects of generative AI on high-skilled work:
-  Evidence from three field experiments with software developers}.
-\newblock \bibinfo{journal}{\emph{SSRN Electronic Journal}}
-  (\bibinfo{year}{2025}).
+\bibfield{author}{\bibinfo{person}{Zheyuan~(Kevin) Cui}, \bibinfo{person}{Mert Demirer}, \bibinfo{person}{Sonia Jaffe}, \bibinfo{person}{Leon Musolff}, \bibinfo{person}{Sida Peng}, {and} \bibinfo{person}{Tobias Salz}.} \bibinfo{year}{2025}\natexlab{}.
+\newblock \showarticletitle{The effects of generative AI on high-skilled work: Evidence from three field experiments with software developers}.
+\newblock \bibinfo{journal}{\emph{SSRN Electronic Journal}} (\bibinfo{year}{2025}).
 \newblock
 \href{https://doi.org/10.2139/ssrn.4945566}{doi:\nolinkurl{10.2139/ssrn.4945566}}
 
 
+\bibitem[Cynthia et~al\mbox{.}(2026)]%
+        {cynthia2026gohome}
+\bibfield{author}{\bibinfo{person}{Shamse~Tasnim Cynthia}, \bibinfo{person}{Ratnadira Widyasari}, \bibinfo{person}{Banani Roy}, \bibinfo{person}{Ting Zhang}, {and} \bibinfo{person}{David Lo}.} \bibinfo{year}{2026}\natexlab{}.
+\newblock \showarticletitle{``{Go Home Copilot, You're Drunk}'': Understanding Developer Responses to Agent-Generated Code Review Comments}.
+\newblock \bibinfo{journal}{\emph{arXiv preprint arXiv:2607.21997}} (\bibinfo{year}{2026}).
+\newblock
+
+
+\bibitem[Deng et~al\mbox{.}(2026)]%
+        {deng2026untangling}
+\bibfield{author}{\bibinfo{person}{Yuanzhe Deng}, \bibinfo{person}{Shutong Zhang}, \bibinfo{person}{Kathy Cheng}, \bibinfo{person}{Alison Olechowski}, {and} \bibinfo{person}{Shurui Zhou}.} \bibinfo{year}{2026}\natexlab{}.
+\newblock \showarticletitle{Untangling the Timeline: Challenges and Opportunities in Supporting Version Control in Modern Computer-Aided Design}. In \bibinfo{booktitle}{\emph{Proceedings of the 2026 CHI Conference on Human Factors in Computing Systems}}. \bibinfo{publisher}{ACM}.
+\newblock
+
+
+\bibitem[Dhanorkar et~al\mbox{.}(2026)]%
+        {dhanorkar2026oversight}
+\bibfield{author}{\bibinfo{person}{Shipi Dhanorkar}, \bibinfo{person}{Samir Passi}, {and} \bibinfo{person}{Mihaela Vorvoreanu}.} \bibinfo{year}{2026}\natexlab{}.
+\newblock \showarticletitle{Human oversight of agentic systems in practice: Examining the oversight work, challenges, and heuristics of developers using software agents}.
+\newblock \bibinfo{journal}{\emph{arXiv preprint arXiv:2606.05391}} (\bibinfo{year}{2026}).
+\newblock
+
+
 \bibitem[Dias et~al\mbox{.}(2015)]%
         {dias2015}
-\bibfield{author}{\bibinfo{person}{Martín Dias}, \bibinfo{person}{Alberto
-  Bacchelli}, \bibinfo{person}{Georgios Gousios}, \bibinfo{person}{Damien
-  Cassou}, {and} \bibinfo{person}{Stéphane Ducasse}.}
-  \bibinfo{year}{2015}\natexlab{}.
-\newblock \showarticletitle{Untangling fine-grained code changes}. In
-  \bibinfo{booktitle}{\emph{Proceedings of the 22nd IEEE International
-  Conference on Software Analysis, Evolution, and Reengineering (SANER)}}.
-  \bibinfo{pages}{341--350}.
+\bibfield{author}{\bibinfo{person}{Martín Dias}, \bibinfo{person}{Alberto Bacchelli}, \bibinfo{person}{Georgios Gousios}, \bibinfo{person}{Damien Cassou}, {and} \bibinfo{person}{Stéphane Ducasse}.} \bibinfo{year}{2015}\natexlab{}.
+\newblock \showarticletitle{Untangling fine-grained code changes}. In \bibinfo{booktitle}{\emph{Proceedings of the 22nd IEEE International Conference on Software Analysis, Evolution, and Reengineering (SANER)}}. \bibinfo{pages}{341--350}.
 \newblock
 \href{https://doi.org/10.1109/SANER.2015.7081844}{doi:\nolinkurl{10.1109/SANER.2015.7081844}}
 
 
 \bibitem[Dig et~al\mbox{.}(2007)]%
         {dig2007}
-\bibfield{author}{\bibinfo{person}{Danny Dig}, \bibinfo{person}{Kashif
-  Manzoor}, \bibinfo{person}{Ralph Johnson}, {and} \bibinfo{person}{Tien~N.
-  Nguyen}.} \bibinfo{year}{2007}\natexlab{}.
-\newblock \showarticletitle{Refactoring-aware configuration management for
-  object-oriented programs}. In \bibinfo{booktitle}{\emph{Proceedings of the
-  29th International Conference on Software Engineering (ICSE)}}.
-  \bibinfo{pages}{427--436}.
+\bibfield{author}{\bibinfo{person}{Danny Dig}, \bibinfo{person}{Kashif Manzoor}, \bibinfo{person}{Ralph Johnson}, {and} \bibinfo{person}{Tien~N. Nguyen}.} \bibinfo{year}{2007}\natexlab{}.
+\newblock \showarticletitle{Refactoring-aware configuration management for object-oriented programs}. In \bibinfo{booktitle}{\emph{Proceedings of the 29th International Conference on Software Engineering (ICSE)}}. \bibinfo{pages}{427--436}.
 \newblock
 
 
 \bibitem[Dit et~al\mbox{.}(2013)]%
         {dit2013}
-\bibfield{author}{\bibinfo{person}{Bogdan Dit}, \bibinfo{person}{Meghan
-  Revelle}, \bibinfo{person}{Malcom Gethers}, {and} \bibinfo{person}{Denys
-  Poshyvanyk}.} \bibinfo{year}{2013}\natexlab{}.
-\newblock \showarticletitle{Feature location in source code: A taxonomy and
-  survey}.
-\newblock \bibinfo{journal}{\emph{Journal of Software: Evolution and Process}}
-  \bibinfo{volume}{25}, \bibinfo{number}{1} (\bibinfo{year}{2013}),
-  \bibinfo{pages}{53--95}.
+\bibfield{author}{\bibinfo{person}{Bogdan Dit}, \bibinfo{person}{Meghan Revelle}, \bibinfo{person}{Malcom Gethers}, {and} \bibinfo{person}{Denys Poshyvanyk}.} \bibinfo{year}{2013}\natexlab{}.
+\newblock \showarticletitle{Feature location in source code: A taxonomy and survey}.
+\newblock \bibinfo{journal}{\emph{Journal of Software: Evolution and Process}} \bibinfo{volume}{25}, \bibinfo{number}{1} (\bibinfo{year}{2013}), \bibinfo{pages}{53--95}.
 \newblock
 \href{https://doi.org/10.1002/smr.567}{doi:\nolinkurl{10.1002/smr.567}}
 
 
+\bibitem[Dixon and Wickens(2007)]%
+        {dixon2007}
+\bibfield{author}{\bibinfo{person}{Stephen~R. Dixon} {and} \bibinfo{person}{Christopher~D. Wickens}.} \bibinfo{year}{2007}\natexlab{}.
+\newblock \showarticletitle{On the Independence of Compliance and Reliance: Are Automation False Alarms Worse Than Misses?}
+\newblock \bibinfo{journal}{\emph{Human Factors}} \bibinfo{volume}{49}, \bibinfo{number}{4} (\bibinfo{year}{2007}), \bibinfo{pages}{717--729}.
+\newblock
+\href{https://doi.org/10.1518/001872007X215656}{doi:\nolinkurl{10.1518/001872007X215656}}
+
+
 \bibitem[Drosos and Sarkar(2025)]%
         {sarkar2025}
-\bibfield{author}{\bibinfo{person}{Ian Drosos} {and} \bibinfo{person}{Advait
-  Sarkar}.} \bibinfo{year}{2025}\natexlab{}.
-\newblock \showarticletitle{Vibe coding: Programming through conversation with
-  artificial intelligence}.
-\newblock \bibinfo{journal}{\emph{arXiv preprint arXiv:2506.23253}}
-  (\bibinfo{year}{2025}).
+\bibfield{author}{\bibinfo{person}{Ian Drosos} {and} \bibinfo{person}{Advait Sarkar}.} \bibinfo{year}{2025}\natexlab{}.
+\newblock \showarticletitle{Vibe coding: Programming through conversation with artificial intelligence}.
+\newblock \bibinfo{journal}{\emph{arXiv preprint arXiv:2506.23253}} (\bibinfo{year}{2025}).
 \newblock
 
 
 \bibitem[Duan et~al\mbox{.}(2026)]%
         {duan2026}
-\bibfield{author}{\bibinfo{person}{Ruoxi Duan}, \bibinfo{person}{Jina Suh},
-  \bibinfo{person}{Alex Gu}, \bibinfo{person}{Zijian Liu},
-  \bibinfo{person}{Hussein Mozannar}, {and} \bibinfo{person}{Gagan Bansal}.}
-  \bibinfo{year}{2026}\natexlab{}.
-\newblock \showarticletitle{I don't trust it because my friend said so: trust
-  contagion in human--{AI} teams}. In \bibinfo{booktitle}{\emph{Proceedings of
-  the 2026 ACM Conference on Computer-Supported Cooperative Work and Social
-  Computing}}.
+\bibfield{author}{\bibinfo{person}{Ruoxi Duan}, \bibinfo{person}{Jina Suh}, \bibinfo{person}{Alex Gu}, \bibinfo{person}{Zijian Liu}, \bibinfo{person}{Hussein Mozannar}, {and} \bibinfo{person}{Gagan Bansal}.} \bibinfo{year}{2026}\natexlab{}.
+\newblock \showarticletitle{I don't trust it because my friend said so: trust contagion in human--{AI} teams}. In \bibinfo{booktitle}{\emph{Proceedings of the 2026 ACM Conference on Computer-Supported Cooperative Work and Social Computing}}.
 \newblock
 \href{https://doi.org/10.1145/3706598.3713903}{doi:\nolinkurl{10.1145/3706598.3713903}}
 
 
+\bibitem[Endsley and Kiris(1995)]%
+        {endsley1995}
+\bibfield{author}{\bibinfo{person}{Mica~R. Endsley} {and} \bibinfo{person}{Esin~O. Kiris}.} \bibinfo{year}{1995}\natexlab{}.
+\newblock \showarticletitle{The out-of-the-loop performance problem and level of control in automation}.
+\newblock \bibinfo{journal}{\emph{Human Factors}} \bibinfo{volume}{37}, \bibinfo{number}{2} (\bibinfo{year}{1995}), \bibinfo{pages}{381--394}.
+\newblock
+\href{https://doi.org/10.1518/001872095779064555}{doi:\nolinkurl{10.1518/001872095779064555}}
+
+
 \bibitem[Falleri et~al\mbox{.}(2014)]%
         {falleri2014}
-\bibfield{author}{\bibinfo{person}{Jean-Rémy Falleri},
-  \bibinfo{person}{Floréal Morandat}, \bibinfo{person}{Xavier Blanc},
-  \bibinfo{person}{Matias Martinez}, {and} \bibinfo{person}{Martin Monperrus}.}
-  \bibinfo{year}{2014}\natexlab{}.
-\newblock \showarticletitle{Fine-grained and accurate source code
-  differencing}. In \bibinfo{booktitle}{\emph{Proceedings of the 29th ACM/IEEE
-  International Conference on Automated Software Engineering (ASE)}}.
-  \bibinfo{pages}{313--324}.
+\bibfield{author}{\bibinfo{person}{Jean-Rémy Falleri}, \bibinfo{person}{Floréal Morandat}, \bibinfo{person}{Xavier Blanc}, \bibinfo{person}{Matias Martinez}, {and} \bibinfo{person}{Martin Monperrus}.} \bibinfo{year}{2014}\natexlab{}.
+\newblock \showarticletitle{Fine-grained and accurate source code differencing}. In \bibinfo{booktitle}{\emph{Proceedings of the 29th ACM/IEEE International Conference on Automated Software Engineering (ASE)}}. \bibinfo{pages}{313--324}.
 \newblock
 \href{https://doi.org/10.1145/2642937.2642982}{doi:\nolinkurl{10.1145/2642937.2642982}}
 
 
+\bibitem[{Faros AI}(2026)]%
+        {faros2026whiplash}
+\bibfield{author}{\bibinfo{person}{{Faros AI}}.} \bibinfo{year}{2026}\natexlab{}.
+\newblock \bibinfo{title}{The 2026 Engineering Acceleration Report}.
+\newblock \bibinfo{howpublished}{\url{https://www.faros.ai/report}}.
+\newblock
+\shownote{Telemetry from 22{,}000 developers across 4{,}000 teams}.
+\newblock
+
+
 \bibitem[Ferdowsi et~al\mbox{.}(2024)]%
         {ferdowsi2024}
-\bibfield{author}{\bibinfo{person}{Kasra Ferdowsi},
-  \bibinfo{person}{Ruanqianqian Huang}, \bibinfo{person}{Madeline~B. James},
-  \bibinfo{person}{Nadia Polikarpova}, {and} \bibinfo{person}{Sorin Lerner}.}
-  \bibinfo{year}{2024}\natexlab{}.
-\newblock \showarticletitle{Validating {AI}-generated code with live
-  programming}. In \bibinfo{booktitle}{\emph{Proceedings of the 2024 CHI
-  Conference on Human Factors in Computing Systems}}.
+\bibfield{author}{\bibinfo{person}{Kasra Ferdowsi}, \bibinfo{person}{Ruanqianqian Huang}, \bibinfo{person}{Madeline~B. James}, \bibinfo{person}{Nadia Polikarpova}, {and} \bibinfo{person}{Sorin Lerner}.} \bibinfo{year}{2024}\natexlab{}.
+\newblock \showarticletitle{Validating {AI}-generated code with live programming}. In \bibinfo{booktitle}{\emph{Proceedings of the 2024 CHI Conference on Human Factors in Computing Systems}}.
 \newblock
 \href{https://doi.org/10.1145/3613904.3642495}{doi:\nolinkurl{10.1145/3613904.3642495}}
 
 
+\bibitem[Ferino et~al\mbox{.}(2026)]%
+        {ferino2026}
+\bibfield{author}{\bibinfo{person}{Samuel Ferino}, \bibinfo{person}{Rashina Hoda}, \bibinfo{person}{John Grundy}, {and} \bibinfo{person}{Christoph Treude}.} \bibinfo{year}{2026}\natexlab{}.
+\newblock \showarticletitle{Towards an appropriate level of reliance on {AI}: A preliminary reliance-control framework for {AI} in software engineering}.
+\newblock \bibinfo{journal}{\emph{arXiv preprint arXiv:2604.10530}} (\bibinfo{year}{2026}).
+\newblock
+
+
 \bibitem[Fluri et~al\mbox{.}(2007)]%
         {fluri2007}
-\bibfield{author}{\bibinfo{person}{Beat Fluri}, \bibinfo{person}{Michael
-  Würsch}, \bibinfo{person}{Martin Pinzger}, {and} \bibinfo{person}{Harald~C.
-  Gall}.} \bibinfo{year}{2007}\natexlab{}.
-\newblock \showarticletitle{Change distilling: Tree differencing for
-  fine-grained source code change extraction}.
-\newblock \bibinfo{journal}{\emph{IEEE Transactions on Software Engineering}}
-  \bibinfo{volume}{33}, \bibinfo{number}{11} (\bibinfo{year}{2007}),
-  \bibinfo{pages}{725--743}.
+\bibfield{author}{\bibinfo{person}{Beat Fluri}, \bibinfo{person}{Michael Würsch}, \bibinfo{person}{Martin Pinzger}, {and} \bibinfo{person}{Harald~C. Gall}.} \bibinfo{year}{2007}\natexlab{}.
+\newblock \showarticletitle{Change distilling: Tree differencing for fine-grained source code change extraction}.
+\newblock \bibinfo{journal}{\emph{IEEE Transactions on Software Engineering}} \bibinfo{volume}{33}, \bibinfo{number}{11} (\bibinfo{year}{2007}), \bibinfo{pages}{725--743}.
 \newblock
 \href{https://doi.org/10.1109/TSE.2007.70731}{doi:\nolinkurl{10.1109/TSE.2007.70731}}
 
 
 \bibitem[Furnas et~al\mbox{.}(1987)]%
         {furnas1987}
-\bibfield{author}{\bibinfo{person}{George~W. Furnas},
-  \bibinfo{person}{Thomas~K. Landauer}, \bibinfo{person}{Louis~M. Gomez}, {and}
-  \bibinfo{person}{Susan~T. Dumais}.} \bibinfo{year}{1987}\natexlab{}.
-\newblock \showarticletitle{The vocabulary problem in human-system
-  communication}.
-\newblock \bibinfo{journal}{\emph{Commun. ACM}} \bibinfo{volume}{30},
-  \bibinfo{number}{11} (\bibinfo{year}{1987}), \bibinfo{pages}{964--971}.
+\bibfield{author}{\bibinfo{person}{George~W. Furnas}, \bibinfo{person}{Thomas~K. Landauer}, \bibinfo{person}{Louis~M. Gomez}, {and} \bibinfo{person}{Susan~T. Dumais}.} \bibinfo{year}{1987}\natexlab{}.
+\newblock \showarticletitle{The vocabulary problem in human-system communication}.
+\newblock \bibinfo{journal}{\emph{Commun. ACM}} \bibinfo{volume}{30}, \bibinfo{number}{11} (\bibinfo{year}{1987}), \bibinfo{pages}{964--971}.
 \newblock
 \href{https://doi.org/10.1145/32206.32212}{doi:\nolinkurl{10.1145/32206.32212}}
 
 
 \bibitem[{GitButler}(2026)]%
         {gitbutler2026}
-\bibfield{author}{\bibinfo{person}{{GitButler}}.}
-  \bibinfo{year}{2026}\natexlab{}.
+\bibfield{author}{\bibinfo{person}{{GitButler}}.} \bibinfo{year}{2026}\natexlab{}.
 \newblock \bibinfo{title}{GitButler documentation: Parallel branches}.
-\newblock
-  \bibinfo{howpublished}{\url{https://docs.gitbutler.com/features/virtual-branches/virtual-branches}}.
+\newblock \bibinfo{howpublished}{\url{https://docs.gitbutler.com/features/virtual-branches/virtual-branches}}.
 \newblock
 \shownote{Accessed 2026}.
 \newblock
@@ -407,15 +424,11 @@
 
 \bibitem[{GitClear}(2025)]%
         {gitclear2025}
-\bibfield{author}{\bibinfo{person}{{GitClear}}.}
-  \bibinfo{year}{2025}\natexlab{}.
-\newblock \bibinfo{title}{AI copilot code quality: 2025 look back at 12 months
-  of data}.
+\bibfield{author}{\bibinfo{person}{{GitClear}}.} \bibinfo{year}{2025}\natexlab{}.
+\newblock \bibinfo{title}{AI copilot code quality: 2025 look back at 12 months of data}.
+\newblock \bibinfo{howpublished}{\url{https://www.gitclear.com/ai_assistant_code_quality_2025_research}}.
 \newblock
-  \bibinfo{howpublished}{\url{https://www.gitclear.com/ai_assistant_code_quality_2025_research}}.
-\newblock
-\shownote{211 million changed lines of code authored January 2020 to December
-  2024}.
+\shownote{211 million changed lines of code authored January 2020 to December 2024}.
 \newblock
 
 
@@ -423,8 +436,7 @@
         {githubstacked2026}
 \bibfield{author}{\bibinfo{person}{{GitHub}}.} \bibinfo{year}{2026}\natexlab{}.
 \newblock \bibinfo{title}{Stacked pull requests are now in public preview}.
-\newblock
-  \bibinfo{howpublished}{\url{https://github.blog/changelog/2026-07-30-stacked-pull-requests-are-now-in-public-preview/}}.
+\newblock \bibinfo{howpublished}{\url{https://github.blog/changelog/2026-07-30-stacked-pull-requests-are-now-in-public-preview/}}.
 \newblock
 \shownote{Accessed 2026}.
 \newblock
@@ -432,24 +444,18 @@
 
 \bibitem[Godfrey and Zou(2005)]%
         {godfrey2005}
-\bibfield{author}{\bibinfo{person}{Michael~W. Godfrey} {and}
-  \bibinfo{person}{Lijie Zou}.} \bibinfo{year}{2005}\natexlab{}.
-\newblock \showarticletitle{Using origin analysis to detect merging and
-  splitting of source code entities}.
-\newblock \bibinfo{journal}{\emph{IEEE Transactions on Software Engineering}}
-  \bibinfo{volume}{31}, \bibinfo{number}{2} (\bibinfo{year}{2005}),
-  \bibinfo{pages}{166--181}.
+\bibfield{author}{\bibinfo{person}{Michael~W. Godfrey} {and} \bibinfo{person}{Lijie Zou}.} \bibinfo{year}{2005}\natexlab{}.
+\newblock \showarticletitle{Using origin analysis to detect merging and splitting of source code entities}.
+\newblock \bibinfo{journal}{\emph{IEEE Transactions on Software Engineering}} \bibinfo{volume}{31}, \bibinfo{number}{2} (\bibinfo{year}{2005}), \bibinfo{pages}{166--181}.
 \newblock
 \href{https://doi.org/10.1109/TSE.2005.28}{doi:\nolinkurl{10.1109/TSE.2005.28}}
 
 
 \bibitem[{Graphite}(2026)]%
         {graphite2026}
-\bibfield{author}{\bibinfo{person}{{Graphite}}.}
-  \bibinfo{year}{2026}\natexlab{}.
+\bibfield{author}{\bibinfo{person}{{Graphite}}.} \bibinfo{year}{2026}\natexlab{}.
 \newblock \bibinfo{title}{Stacked diffs and how to use them}.
-\newblock
-  \bibinfo{howpublished}{\url{https://graphite.com/guides/stacked-diffs}}.
+\newblock \bibinfo{howpublished}{\url{https://graphite.com/guides/stacked-diffs}}.
 \newblock
 \shownote{Accessed 2026}.
 \newblock
@@ -457,312 +463,301 @@
 
 \bibitem[Green and Petre(1996)]%
         {green1996}
-\bibfield{author}{\bibinfo{person}{Thomas R.~G. Green} {and}
-  \bibinfo{person}{Marian Petre}.} \bibinfo{year}{1996}\natexlab{}.
-\newblock \showarticletitle{Usability analysis of visual programming
-  environments: A `cognitive dimensions' framework}.
-\newblock \bibinfo{journal}{\emph{Journal of Visual Languages and Computing}}
-  \bibinfo{volume}{7}, \bibinfo{number}{2} (\bibinfo{year}{1996}),
-  \bibinfo{pages}{131--174}.
+\bibfield{author}{\bibinfo{person}{Thomas R.~G. Green} {and} \bibinfo{person}{Marian Petre}.} \bibinfo{year}{1996}\natexlab{}.
+\newblock \showarticletitle{Usability analysis of visual programming environments: A `cognitive dimensions' framework}.
+\newblock \bibinfo{journal}{\emph{Journal of Visual Languages and Computing}} \bibinfo{volume}{7}, \bibinfo{number}{2} (\bibinfo{year}{1996}), \bibinfo{pages}{131--174}.
 \newblock
 \href{https://doi.org/10.1006/jvlc.1996.0009}{doi:\nolinkurl{10.1006/jvlc.1996.0009}}
 
 
 \bibitem[Grossman et~al\mbox{.}(2010)]%
         {grossman2010}
-\bibfield{author}{\bibinfo{person}{Tovi Grossman}, \bibinfo{person}{Justin
-  Matejka}, {and} \bibinfo{person}{George Fitzmaurice}.}
-  \bibinfo{year}{2010}\natexlab{}.
-\newblock \showarticletitle{Chronicle: Capture, exploration, and playback of
-  document workflow histories}. In \bibinfo{booktitle}{\emph{Proceedings of the
-  23rd Annual ACM Symposium on User Interface Software and Technology (UIST)}}.
-  \bibinfo{pages}{143--152}.
+\bibfield{author}{\bibinfo{person}{Tovi Grossman}, \bibinfo{person}{Justin Matejka}, {and} \bibinfo{person}{George Fitzmaurice}.} \bibinfo{year}{2010}\natexlab{}.
+\newblock \showarticletitle{Chronicle: Capture, exploration, and playback of document workflow histories}. In \bibinfo{booktitle}{\emph{Proceedings of the 23rd Annual ACM Symposium on User Interface Software and Technology (UIST)}}. \bibinfo{pages}{143--152}.
 \newblock
 \href{https://doi.org/10.1145/1866029.1866054}{doi:\nolinkurl{10.1145/1866029.1866054}}
 
 
 \bibitem[Guimarães and Silva(2012)]%
         {guimaraes2012}
-\bibfield{author}{\bibinfo{person}{Mário~Luís Guimarães} {and}
-  \bibinfo{person}{António~Rito Silva}.} \bibinfo{year}{2012}\natexlab{}.
-\newblock \showarticletitle{Improving early detection of software merge
-  conflicts}. In \bibinfo{booktitle}{\emph{Proceedings of the 34th
-  International Conference on Software Engineering (ICSE)}}.
-  \bibinfo{pages}{342--352}.
+\bibfield{author}{\bibinfo{person}{Mário~Luís Guimarães} {and} \bibinfo{person}{António~Rito Silva}.} \bibinfo{year}{2012}\natexlab{}.
+\newblock \showarticletitle{Improving early detection of software merge conflicts}. In \bibinfo{booktitle}{\emph{Proceedings of the 34th International Conference on Software Engineering (ICSE)}}. \bibinfo{pages}{342--352}.
 \newblock
 \href{https://doi.org/10.1109/ICSE.2012.6227180}{doi:\nolinkurl{10.1109/ICSE.2012.6227180}}
 
 
+\bibitem[Handa et~al\mbox{.}(2025)]%
+        {handa2025tasks}
+\bibfield{author}{\bibinfo{person}{Kunal Handa}, \bibinfo{person}{Alex Tamkin}, \bibinfo{person}{Miles McCain}, \bibinfo{person}{Saffron Huang}, \bibinfo{person}{Esin Durmus}, \bibinfo{person}{Sarah Heck}, \bibinfo{person}{Jared Mueller}, \bibinfo{person}{Jerry Hong}, \bibinfo{person}{Stuart Ritchie}, \bibinfo{person}{Tim Belonax}, \bibinfo{person}{Kevin~K. Troy}, \bibinfo{person}{Dario Amodei}, \bibinfo{person}{Jared Kaplan}, \bibinfo{person}{Jack Clark}, {and} \bibinfo{person}{Deep Ganguli}.} \bibinfo{year}{2025}\natexlab{}.
+\newblock \showarticletitle{Which Economic Tasks are Performed with {AI}? Evidence from Millions of {Claude} Conversations}.
+\newblock \bibinfo{journal}{\emph{arXiv preprint arXiv:2503.04761}} (\bibinfo{year}{2025}).
+\newblock
+
+
 \bibitem[Hartmann et~al\mbox{.}(2008)]%
         {hartmann2008}
-\bibfield{author}{\bibinfo{person}{Björn Hartmann}, \bibinfo{person}{Loren
-  Yu}, \bibinfo{person}{Abel Allison}, \bibinfo{person}{Yeonsoo Yang}, {and}
-  \bibinfo{person}{Scott~R. Klemmer}.} \bibinfo{year}{2008}\natexlab{}.
-\newblock \showarticletitle{Design as exploration: Creating interface
-  alternatives through parallel authoring and runtime tuning}. In
-  \bibinfo{booktitle}{\emph{Proceedings of the 21st Annual ACM Symposium on
-  User Interface Software and Technology (UIST)}}. \bibinfo{pages}{91--100}.
+\bibfield{author}{\bibinfo{person}{Björn Hartmann}, \bibinfo{person}{Loren Yu}, \bibinfo{person}{Abel Allison}, \bibinfo{person}{Yeonsoo Yang}, {and} \bibinfo{person}{Scott~R. Klemmer}.} \bibinfo{year}{2008}\natexlab{}.
+\newblock \showarticletitle{Design as exploration: Creating interface alternatives through parallel authoring and runtime tuning}. In \bibinfo{booktitle}{\emph{Proceedings of the 21st Annual ACM Symposium on User Interface Software and Technology (UIST)}}. \bibinfo{pages}{91--100}.
 \newblock
 \href{https://doi.org/10.1145/1449715.1449732}{doi:\nolinkurl{10.1145/1449715.1449732}}
 
 
 \bibitem[Hata et~al\mbox{.}(2011)]%
         {hata2011}
-\bibfield{author}{\bibinfo{person}{Hideaki Hata}, \bibinfo{person}{Osamu
-  Mizuno}, {and} \bibinfo{person}{Tohru Kikuno}.}
-  \bibinfo{year}{2011}\natexlab{}.
-\newblock \showarticletitle{Historage: fine-grained version control system for
-  Java}. In \bibinfo{booktitle}{\emph{Proceedings of the 12th International
-  Workshop on Principles of Software Evolution and the 7th Annual ERCIM
-  Workshop on Software Evolution (IWPSE-EVOL)}}. \bibinfo{pages}{96--100}.
+\bibfield{author}{\bibinfo{person}{Hideaki Hata}, \bibinfo{person}{Osamu Mizuno}, {and} \bibinfo{person}{Tohru Kikuno}.} \bibinfo{year}{2011}\natexlab{}.
+\newblock \showarticletitle{Historage: fine-grained version control system for Java}. In \bibinfo{booktitle}{\emph{Proceedings of the 12th International Workshop on Principles of Software Evolution and the 7th Annual ERCIM Workshop on Software Evolution (IWPSE-EVOL)}}. \bibinfo{pages}{96--100}.
+\newblock
+
+
+\bibitem[He et~al\mbox{.}(2026a)]%
+        {he2026review}
+\bibfield{author}{\bibinfo{person}{Hao He}, \bibinfo{person}{Shyam Agarwal}, \bibinfo{person}{Yegor Denisov-Blanch}, \bibinfo{person}{Pavel Azaletskiy}, \bibinfo{person}{Sanmi Koyejo}, {and} \bibinfo{person}{Bogdan Vasilescu}.} \bibinfo{year}{2026}\natexlab{a}.
+\newblock \showarticletitle{{AI} writes faster than humans can review: A longitudinal study of an enterprise 2x mandate}.
+\newblock \bibinfo{journal}{\emph{arXiv preprint arXiv:2607.01904}} (\bibinfo{year}{2026}).
+\newblock
+
+
+\bibitem[He et~al\mbox{.}(2026b)]%
+        {he2026}
+\bibfield{author}{\bibinfo{person}{Junwen He}, \bibinfo{person}{Luís Cruz}, {and} \bibinfo{person}{Meiyappan Nagappan}.} \bibinfo{year}{2026}\natexlab{b}.
+\newblock \showarticletitle{The velocity mirage: {AI}-assisted development speed and its downstream costs}. In \bibinfo{booktitle}{\emph{Proc.\ MSR}}. \bibinfo{publisher}{IEEE}.
 \newblock
 
 
 \bibitem[Head et~al\mbox{.}(2019)]%
         {head2019}
-\bibfield{author}{\bibinfo{person}{Andrew Head}, \bibinfo{person}{Fred Hohman},
-  \bibinfo{person}{Titus Barik}, \bibinfo{person}{Steven~M. Drucker}, {and}
-  \bibinfo{person}{Robert DeLine}.} \bibinfo{year}{2019}\natexlab{}.
-\newblock \showarticletitle{Managing messes in computational notebooks}. In
-  \bibinfo{booktitle}{\emph{Proceedings of the 2019 CHI Conference on Human
-  Factors in Computing Systems}}. \bibinfo{pages}{1--12}.
+\bibfield{author}{\bibinfo{person}{Andrew Head}, \bibinfo{person}{Fred Hohman}, \bibinfo{person}{Titus Barik}, \bibinfo{person}{Steven~M. Drucker}, {and} \bibinfo{person}{Robert DeLine}.} \bibinfo{year}{2019}\natexlab{}.
+\newblock \showarticletitle{Managing messes in computational notebooks}. In \bibinfo{booktitle}{\emph{Proceedings of the 2019 CHI Conference on Human Factors in Computing Systems}}. \bibinfo{pages}{1--12}.
 \newblock
 \href{https://doi.org/10.1145/3290605.3300776}{doi:\nolinkurl{10.1145/3290605.3300776}}
 
 
 \bibitem[Heander et~al\mbox{.}(2026)]%
         {heander2026}
-\bibfield{author}{\bibinfo{person}{Lars Heander}, \bibinfo{person}{Agnia
-  Sergeyuk}, \bibinfo{person}{Ilya Zakharov}, {et~al\mbox{.}}}
-  \bibinfo{year}{2026}\natexlab{}.
-\newblock \showarticletitle{Trust-calibrated code review: A participatory
-  design study of review workflows for LLM-generated multi-file changes}.
+\bibfield{author}{\bibinfo{person}{Lars Heander}, \bibinfo{person}{Agnia Sergeyuk}, \bibinfo{person}{Ilya Zakharov}, {et~al\mbox{.}}} \bibinfo{year}{2026}\natexlab{}.
+\newblock \showarticletitle{Trust-calibrated code review: A participatory design study of review workflows for LLM-generated multi-file changes}.
 \newblock \bibinfo{journal}{\emph{arXiv preprint}} (\bibinfo{year}{2026}).
 \newblock
 
 
 \bibitem[Herzig et~al\mbox{.}(2016)]%
         {herzig2016}
-\bibfield{author}{\bibinfo{person}{Kim Herzig}, \bibinfo{person}{Sascha Just},
-  {and} \bibinfo{person}{Andreas Zeller}.} \bibinfo{year}{2016}\natexlab{}.
-\newblock \showarticletitle{The impact of tangled code changes on defect
-  prediction models}.
-\newblock \bibinfo{journal}{\emph{Empirical Software Engineering}}
-  \bibinfo{volume}{21}, \bibinfo{number}{2} (\bibinfo{year}{2016}),
-  \bibinfo{pages}{303--336}.
+\bibfield{author}{\bibinfo{person}{Kim Herzig}, \bibinfo{person}{Sascha Just}, {and} \bibinfo{person}{Andreas Zeller}.} \bibinfo{year}{2016}\natexlab{}.
+\newblock \showarticletitle{The impact of tangled code changes on defect prediction models}.
+\newblock \bibinfo{journal}{\emph{Empirical Software Engineering}} \bibinfo{volume}{21}, \bibinfo{number}{2} (\bibinfo{year}{2016}), \bibinfo{pages}{303--336}.
 \newblock
 \href{https://doi.org/10.1007/s10664-015-9376-6}{doi:\nolinkurl{10.1007/s10664-015-9376-6}}
 
 
 \bibitem[Herzig and Zeller(2013)]%
         {herzig2013}
-\bibfield{author}{\bibinfo{person}{Kim Herzig} {and} \bibinfo{person}{Andreas
-  Zeller}.} \bibinfo{year}{2013}\natexlab{}.
-\newblock \showarticletitle{The impact of tangled code changes}. In
-  \bibinfo{booktitle}{\emph{Proceedings of the 10th Working Conference on
-  Mining Software Repositories (MSR)}}. \bibinfo{pages}{121--130}.
+\bibfield{author}{\bibinfo{person}{Kim Herzig} {and} \bibinfo{person}{Andreas Zeller}.} \bibinfo{year}{2013}\natexlab{}.
+\newblock \showarticletitle{The impact of tangled code changes}. In \bibinfo{booktitle}{\emph{Proceedings of the 10th Working Conference on Mining Software Repositories (MSR)}}. \bibinfo{pages}{121--130}.
 \newblock
 \href{https://doi.org/10.1109/MSR.2013.6624018}{doi:\nolinkurl{10.1109/MSR.2013.6624018}}
 
 
 \bibitem[Higo et~al\mbox{.}(2020)]%
         {higo2020}
-\bibfield{author}{\bibinfo{person}{Yoshiki Higo}, \bibinfo{person}{Shinpei
-  Hayashi}, {and} \bibinfo{person}{Shinji Kusumoto}.}
-  \bibinfo{year}{2020}\natexlab{}.
+\bibfield{author}{\bibinfo{person}{Yoshiki Higo}, \bibinfo{person}{Shinpei Hayashi}, {and} \bibinfo{person}{Shinji Kusumoto}.} \bibinfo{year}{2020}\natexlab{}.
 \newblock \showarticletitle{On tracking Java methods with Git mechanisms}.
-\newblock \bibinfo{journal}{\emph{Journal of Systems and Software}}
-  \bibinfo{volume}{165} (\bibinfo{year}{2020}), \bibinfo{pages}{110571}.
+\newblock \bibinfo{journal}{\emph{Journal of Systems and Software}}  \bibinfo{volume}{165} (\bibinfo{year}{2020}), \bibinfo{pages}{110571}.
 \newblock
 
 
 \bibitem[Horwitz et~al\mbox{.}(1989)]%
         {horwitz1989}
-\bibfield{author}{\bibinfo{person}{Susan Horwitz}, \bibinfo{person}{Jan Prins},
-  {and} \bibinfo{person}{Thomas Reps}.} \bibinfo{year}{1989}\natexlab{}.
+\bibfield{author}{\bibinfo{person}{Susan Horwitz}, \bibinfo{person}{Jan Prins}, {and} \bibinfo{person}{Thomas Reps}.} \bibinfo{year}{1989}\natexlab{}.
 \newblock \showarticletitle{Integrating noninterfering versions of programs}.
-\newblock \bibinfo{journal}{\emph{ACM Transactions on Programming Languages and
-  Systems}} \bibinfo{volume}{11}, \bibinfo{number}{3} (\bibinfo{year}{1989}),
-  \bibinfo{pages}{345--387}.
+\newblock \bibinfo{journal}{\emph{ACM Transactions on Programming Languages and Systems}} \bibinfo{volume}{11}, \bibinfo{number}{3} (\bibinfo{year}{1989}), \bibinfo{pages}{345--387}.
+\newblock
+
+
+\bibitem[Hutchins(1995)]%
+        {hutchins1995}
+\bibfield{author}{\bibinfo{person}{Edwin Hutchins}.} \bibinfo{year}{1995}\natexlab{}.
+\newblock \bibinfo{booktitle}{\emph{Cognition in the Wild}}.
+\newblock \bibinfo{publisher}{MIT Press}, \bibinfo{address}{Cambridge, MA}.
 \newblock
 
 
 \bibitem[Jackson(2021)]%
         {jackson2021}
-\bibfield{author}{\bibinfo{person}{Daniel Jackson}.}
-  \bibinfo{year}{2021}\natexlab{}.
-\newblock \bibinfo{booktitle}{\emph{The Essence of Software: Why Concepts
-  Matter for Great Design}}.
+\bibfield{author}{\bibinfo{person}{Daniel Jackson}.} \bibinfo{year}{2021}\natexlab{}.
+\newblock \bibinfo{booktitle}{\emph{The Essence of Software: Why Concepts Matter for Great Design}}.
 \newblock \bibinfo{publisher}{Princeton University Press}.
 \newblock
 
 
 \bibitem[Jacobson(2009)]%
         {jacobson2009}
-\bibfield{author}{\bibinfo{person}{Judah Jacobson}.}
-  \bibinfo{year}{2009}\natexlab{}.
-\newblock \showarticletitle{A formalization of Darcs patch theory using inverse
-  semigroups}.
-\newblock \bibinfo{journal}{\emph{Computational and Applied Mathematics
-  Reports, University of California, Los Angeles}} (\bibinfo{year}{2009}).
+\bibfield{author}{\bibinfo{person}{Judah Jacobson}.} \bibinfo{year}{2009}\natexlab{}.
+\newblock \showarticletitle{A formalization of Darcs patch theory using inverse semigroups}.
+\newblock \bibinfo{journal}{\emph{Computational and Applied Mathematics Reports, University of California, Los Angeles}} (\bibinfo{year}{2009}).
 \newblock
 \shownote{CAM report 09-83}.
 \newblock
 
 
+\bibitem[Jian et~al\mbox{.}(2000)]%
+        {jian2000}
+\bibfield{author}{\bibinfo{person}{Jiun-Yin Jian}, \bibinfo{person}{Ann~M. Bisantz}, {and} \bibinfo{person}{Colin~G. Drury}.} \bibinfo{year}{2000}\natexlab{}.
+\newblock \showarticletitle{Foundations for an empirically determined scale of trust in automated systems}.
+\newblock \bibinfo{journal}{\emph{International Journal of Cognitive Ergonomics}} \bibinfo{volume}{4}, \bibinfo{number}{1} (\bibinfo{year}{2000}), \bibinfo{pages}{53--71}.
+\newblock
+\href{https://doi.org/10.1207/S15327566IJCE0401_04}{doi:\nolinkurl{10.1207/S15327566IJCE0401_04}}
+
+
 \bibitem[Jimenez et~al\mbox{.}(2024)]%
         {jimenez2024}
-\bibfield{author}{\bibinfo{person}{Carlos~E. Jimenez}, \bibinfo{person}{John
-  Yang}, \bibinfo{person}{Alexander Wettig}, \bibinfo{person}{Shunyu Yao},
-  \bibinfo{person}{Kexin Pei}, \bibinfo{person}{Ofir Press}, {and}
-  \bibinfo{person}{Karthik Narasimhan}.} \bibinfo{year}{2024}\natexlab{}.
-\newblock \showarticletitle{SWE-bench: Can language models resolve real-world
-  GitHub issues?}. In \bibinfo{booktitle}{\emph{Proceedings of the 12th
-  International Conference on Learning Representations (ICLR)}}.
+\bibfield{author}{\bibinfo{person}{Carlos~E. Jimenez}, \bibinfo{person}{John Yang}, \bibinfo{person}{Alexander Wettig}, \bibinfo{person}{Shunyu Yao}, \bibinfo{person}{Kexin Pei}, \bibinfo{person}{Ofir Press}, {and} \bibinfo{person}{Karthik Narasimhan}.} \bibinfo{year}{2024}\natexlab{}.
+\newblock \showarticletitle{SWE-bench: Can language models resolve real-world GitHub issues?}. In \bibinfo{booktitle}{\emph{Proceedings of the 12th International Conference on Learning Representations (ICLR)}}.
 \newblock
+
+
+\bibitem[Kaur et~al\mbox{.}(2020)]%
+        {kaur2020}
+\bibfield{author}{\bibinfo{person}{Harmanpreet Kaur}, \bibinfo{person}{Hanna Nori}, \bibinfo{person}{Samuel Jenkins}, \bibinfo{person}{Rich Caruana}, \bibinfo{person}{Hanna Wallach}, {and} \bibinfo{person}{Jennifer~Wortman Vaughan}.} \bibinfo{year}{2020}\natexlab{}.
+\newblock \showarticletitle{Interpreting Interpretability: Understanding Data Scientists' Use of Interpretability Tools for Machine Learning}. In \bibinfo{booktitle}{\emph{Proceedings of the 2020 CHI Conference on Human Factors in Computing Systems}}. \bibinfo{pages}{1--14}.
+\newblock
+\href{https://doi.org/10.1145/3313831.3376219}{doi:\nolinkurl{10.1145/3313831.3376219}}
 
 
 \bibitem[Kazemitabaar et~al\mbox{.}(2025)]%
         {kazemitabaar2025}
-\bibfield{author}{\bibinfo{person}{Majeed Kazemitabaar},
-  \bibinfo{person}{Olivia Huang}, \bibinfo{person}{Sangho Suh},
-  \bibinfo{person}{Austin~Z. Henley}, {and} \bibinfo{person}{Tovi Grossman}.}
-  \bibinfo{year}{2025}\natexlab{}.
-\newblock \showarticletitle{Exploring the design space of cognitive engagement
-  techniques with {AI}-generated code for enhanced learning}. In
-  \bibinfo{booktitle}{\emph{Proceedings of the 30th International Conference on
-  Intelligent User Interfaces}}.
+\bibfield{author}{\bibinfo{person}{Majeed Kazemitabaar}, \bibinfo{person}{Olivia Huang}, \bibinfo{person}{Sangho Suh}, \bibinfo{person}{Austin~Z. Henley}, {and} \bibinfo{person}{Tovi Grossman}.} \bibinfo{year}{2025}\natexlab{}.
+\newblock \showarticletitle{Exploring the design space of cognitive engagement techniques with {AI}-generated code for enhanced learning}. In \bibinfo{booktitle}{\emph{Proceedings of the 30th International Conference on Intelligent User Interfaces}}.
 \newblock
 \href{https://doi.org/10.1145/3708359.3712104}{doi:\nolinkurl{10.1145/3708359.3712104}}
 
 
 \bibitem[Kersten and Murphy(2006)]%
         {kersten2006}
-\bibfield{author}{\bibinfo{person}{Mik Kersten} {and} \bibinfo{person}{Gail~C.
-  Murphy}.} \bibinfo{year}{2006}\natexlab{}.
-\newblock \showarticletitle{Using task context to improve programmer
-  productivity}. In \bibinfo{booktitle}{\emph{Proceedings of the 14th ACM
-  SIGSOFT International Symposium on Foundations of Software Engineering
-  (FSE)}}. \bibinfo{pages}{1--11}.
+\bibfield{author}{\bibinfo{person}{Mik Kersten} {and} \bibinfo{person}{Gail~C. Murphy}.} \bibinfo{year}{2006}\natexlab{}.
+\newblock \showarticletitle{Using task context to improve programmer productivity}. In \bibinfo{booktitle}{\emph{Proceedings of the 14th ACM SIGSOFT International Symposium on Foundations of Software Engineering (FSE)}}. \bibinfo{pages}{1--11}.
 \newblock
 \href{https://doi.org/10.1145/1181775.1181777}{doi:\nolinkurl{10.1145/1181775.1181777}}
 
 
 \bibitem[Kery et~al\mbox{.}(2017)]%
         {kery2017}
-\bibfield{author}{\bibinfo{person}{Mary~Beth Kery}, \bibinfo{person}{Amber
-  Horvath}, {and} \bibinfo{person}{Brad~A. Myers}.}
-  \bibinfo{year}{2017}\natexlab{}.
-\newblock \showarticletitle{Variolite: Supporting exploratory programming by
-  data scientists}. In \bibinfo{booktitle}{\emph{Proceedings of the 2017 CHI
-  Conference on Human Factors in Computing Systems}}.
-  \bibinfo{pages}{1265--1276}.
+\bibfield{author}{\bibinfo{person}{Mary~Beth Kery}, \bibinfo{person}{Amber Horvath}, {and} \bibinfo{person}{Brad~A. Myers}.} \bibinfo{year}{2017}\natexlab{}.
+\newblock \showarticletitle{Variolite: Supporting exploratory programming by data scientists}. In \bibinfo{booktitle}{\emph{Proceedings of the 2017 CHI Conference on Human Factors in Computing Systems}}. \bibinfo{pages}{1265--1276}.
 \newblock
 \href{https://doi.org/10.1145/3025453.3025626}{doi:\nolinkurl{10.1145/3025453.3025626}}
 
 
 \bibitem[Kery et~al\mbox{.}(2018)]%
         {kery2018}
-\bibfield{author}{\bibinfo{person}{Mary~Beth Kery}, \bibinfo{person}{Marissa
-  Radensky}, \bibinfo{person}{Mahima Arya}, \bibinfo{person}{Bonnie~E. John},
-  {and} \bibinfo{person}{Brad~A. Myers}.} \bibinfo{year}{2018}\natexlab{}.
-\newblock \showarticletitle{The story in the notebook: Exploratory data science
-  using a literate programming tool}. In \bibinfo{booktitle}{\emph{Proceedings
-  of the 2018 CHI Conference on Human Factors in Computing Systems}}.
-  \bibinfo{pages}{1--11}.
+\bibfield{author}{\bibinfo{person}{Mary~Beth Kery}, \bibinfo{person}{Marissa Radensky}, \bibinfo{person}{Mahima Arya}, \bibinfo{person}{Bonnie~E. John}, {and} \bibinfo{person}{Brad~A. Myers}.} \bibinfo{year}{2018}\natexlab{}.
+\newblock \showarticletitle{The story in the notebook: Exploratory data science using a literate programming tool}. In \bibinfo{booktitle}{\emph{Proceedings of the 2018 CHI Conference on Human Factors in Computing Systems}}. \bibinfo{pages}{1--11}.
 \newblock
 \href{https://doi.org/10.1145/3173574.3173748}{doi:\nolinkurl{10.1145/3173574.3173748}}
 
 
 \bibitem[Kim et~al\mbox{.}(2005)]%
         {kim2005}
-\bibfield{author}{\bibinfo{person}{Sunghun Kim}, \bibinfo{person}{Kai Pan},
-  {and} \bibinfo{person}{E.~James Whitehead}.} \bibinfo{year}{2005}\natexlab{}.
-\newblock \showarticletitle{When functions change their names: Automatic
-  detection of origin relationships}. In \bibinfo{booktitle}{\emph{Proceedings
-  of the 12th Working Conference on Reverse Engineering (WCRE)}}.
-  \bibinfo{pages}{143--152}.
+\bibfield{author}{\bibinfo{person}{Sunghun Kim}, \bibinfo{person}{Kai Pan}, {and} \bibinfo{person}{E.~James Whitehead}.} \bibinfo{year}{2005}\natexlab{}.
+\newblock \showarticletitle{When functions change their names: Automatic detection of origin relationships}. In \bibinfo{booktitle}{\emph{Proceedings of the 12th Working Conference on Reverse Engineering (WCRE)}}. \bibinfo{pages}{143--152}.
 \newblock
 \href{https://doi.org/10.1109/WCRE.2005.33}{doi:\nolinkurl{10.1109/WCRE.2005.33}}
 
 
 \bibitem[Ko et~al\mbox{.}(2006)]%
         {ko2006}
-\bibfield{author}{\bibinfo{person}{Andrew~J. Ko}, \bibinfo{person}{Brad~A.
-  Myers}, \bibinfo{person}{Michael~J. Coblenz}, {and}
-  \bibinfo{person}{Htet~Htet Aung}.} \bibinfo{year}{2006}\natexlab{}.
-\newblock \showarticletitle{An exploratory study of how developers seek,
-  relate, and collect relevant information during software maintenance tasks}.
-\newblock \bibinfo{journal}{\emph{IEEE Transactions on Software Engineering}}
-  \bibinfo{volume}{32}, \bibinfo{number}{12} (\bibinfo{year}{2006}),
-  \bibinfo{pages}{971--987}.
+\bibfield{author}{\bibinfo{person}{Andrew~J. Ko}, \bibinfo{person}{Brad~A. Myers}, \bibinfo{person}{Michael~J. Coblenz}, {and} \bibinfo{person}{Htet~Htet Aung}.} \bibinfo{year}{2006}\natexlab{}.
+\newblock \showarticletitle{An exploratory study of how developers seek, relate, and collect relevant information during software maintenance tasks}.
+\newblock \bibinfo{journal}{\emph{IEEE Transactions on Software Engineering}} \bibinfo{volume}{32}, \bibinfo{number}{12} (\bibinfo{year}{2006}), \bibinfo{pages}{971--987}.
 \newblock
 \href{https://doi.org/10.1109/TSE.2006.116}{doi:\nolinkurl{10.1109/TSE.2006.116}}
 
 
+\bibitem[Kula and Treude(2025)]%
+        {kula2025}
+\bibfield{author}{\bibinfo{person}{Raula~Gaikovina Kula} {and} \bibinfo{person}{Christoph Treude}.} \bibinfo{year}{2025}\natexlab{}.
+\newblock \showarticletitle{The shift from writing to pruning software: A Bonsai-inspired {IDE} for reshaping {AI} generated code}. In \bibinfo{booktitle}{\emph{SE 2030 Software Engineering Roadmap Workshop}}.
+\newblock
+\shownote{arXiv:2503.02833}.
+\newblock
+
+
 \bibitem[LaToza and Myers(2010)]%
         {latoza2010}
-\bibfield{author}{\bibinfo{person}{Thomas~D. LaToza} {and}
-  \bibinfo{person}{Brad~A. Myers}.} \bibinfo{year}{2010}\natexlab{}.
-\newblock \showarticletitle{Hard-to-answer questions about code}. In
-  \bibinfo{booktitle}{\emph{Evaluation and Usability of Programming Languages
-  and Tools (PLATEAU)}}. \bibinfo{pages}{1--6}.
+\bibfield{author}{\bibinfo{person}{Thomas~D. LaToza} {and} \bibinfo{person}{Brad~A. Myers}.} \bibinfo{year}{2010}\natexlab{}.
+\newblock \showarticletitle{Hard-to-answer questions about code}. In \bibinfo{booktitle}{\emph{Evaluation and Usability of Programming Languages and Tools (PLATEAU)}}. \bibinfo{pages}{1--6}.
 \newblock
 \href{https://doi.org/10.1145/1937117.1937125}{doi:\nolinkurl{10.1145/1937117.1937125}}
 
 
 \bibitem[Lee and See(2004)]%
         {lee2004}
-\bibfield{author}{\bibinfo{person}{John~D. Lee} {and}
-  \bibinfo{person}{Katrina~A. See}.} \bibinfo{year}{2004}\natexlab{}.
-\newblock \showarticletitle{Trust in automation: Designing for appropriate
-  reliance}.
-\newblock \bibinfo{journal}{\emph{Human Factors}} \bibinfo{volume}{46},
-  \bibinfo{number}{1} (\bibinfo{year}{2004}), \bibinfo{pages}{50--80}.
+\bibfield{author}{\bibinfo{person}{John~D. Lee} {and} \bibinfo{person}{Katrina~A. See}.} \bibinfo{year}{2004}\natexlab{}.
+\newblock \showarticletitle{Trust in automation: Designing for appropriate reliance}.
+\newblock \bibinfo{journal}{\emph{Human Factors}} \bibinfo{volume}{46}, \bibinfo{number}{1} (\bibinfo{year}{2004}), \bibinfo{pages}{50--80}.
 \newblock
 \href{https://doi.org/10.1518/hfes.46.1.50.30392}{doi:\nolinkurl{10.1518/hfes.46.1.50.30392}}
 
 
+\bibitem[Letovsky(1987)]%
+        {letovsky1987}
+\bibfield{author}{\bibinfo{person}{Stanley Letovsky}.} \bibinfo{year}{1987}\natexlab{}.
+\newblock \showarticletitle{Cognitive processes in program comprehension}. In \bibinfo{booktitle}{\emph{Journal of Systems and Software}}, Vol.~\bibinfo{volume}{7}. \bibinfo{pages}{325--339}.
+\newblock
+\href{https://doi.org/10.1016/0164-1212(87)90032-X}{doi:\nolinkurl{10.1016/0164-1212(87)90032-X}}
+
+
 \bibitem[Liang et~al\mbox{.}(2024)]%
         {liang2024}
-\bibfield{author}{\bibinfo{person}{Jenny~T. Liang}, \bibinfo{person}{Chenyang
-  Yang}, {and} \bibinfo{person}{Brad~A. Myers}.}
-  \bibinfo{year}{2024}\natexlab{}.
-\newblock \showarticletitle{A large-scale survey on the usability of AI
-  programming assistants: Successes and challenges}. In
-  \bibinfo{booktitle}{\emph{Proceedings of the 46th IEEE/ACM International
-  Conference on Software Engineering (ICSE)}}. \bibinfo{pages}{1--13}.
+\bibfield{author}{\bibinfo{person}{Jenny~T. Liang}, \bibinfo{person}{Chenyang Yang}, {and} \bibinfo{person}{Brad~A. Myers}.} \bibinfo{year}{2024}\natexlab{}.
+\newblock \showarticletitle{A large-scale survey on the usability of AI programming assistants: Successes and challenges}. In \bibinfo{booktitle}{\emph{Proceedings of the 46th IEEE/ACM International Conference on Software Engineering (ICSE)}}. \bibinfo{pages}{1--13}.
 \newblock
 \href{https://doi.org/10.1145/3597503.3608128}{doi:\nolinkurl{10.1145/3597503.3608128}}
 
 
 \bibitem[Lippe and van Oosterom(1992)]%
         {lippe1992}
-\bibfield{author}{\bibinfo{person}{Ernst Lippe} {and} \bibinfo{person}{Norbert
-  van Oosterom}.} \bibinfo{year}{1992}\natexlab{}.
-\newblock \showarticletitle{Operation-based merging}. In
-  \bibinfo{booktitle}{\emph{Proceedings of the Fifth ACM SIGSOFT Symposium on
-  Software Development Environments (SDE)}}. \bibinfo{pages}{78--87}.
+\bibfield{author}{\bibinfo{person}{Ernst Lippe} {and} \bibinfo{person}{Norbert van Oosterom}.} \bibinfo{year}{1992}\natexlab{}.
+\newblock \showarticletitle{Operation-based merging}. In \bibinfo{booktitle}{\emph{Proceedings of the Fifth ACM SIGSOFT Symposium on Software Development Environments (SDE)}}. \bibinfo{pages}{78--87}.
+\newblock
+
+
+\bibitem[Liu et~al\mbox{.}(2026)]%
+        {liu2026debt}
+\bibfield{author}{\bibinfo{person}{Yue Liu}, \bibinfo{person}{Ratnadira Widyasari}, \bibinfo{person}{Yanjie Zhao}, \bibinfo{person}{Ivana~Clairine Irsan}, \bibinfo{person}{Junkai Chen}, {and} \bibinfo{person}{David Lo}.} \bibinfo{year}{2026}\natexlab{}.
+\newblock \showarticletitle{Debt Behind the {AI} Boom: A Large-Scale Empirical Study of {AI}-Generated Code in the Wild}.
+\newblock \bibinfo{journal}{\emph{arXiv preprint arXiv:2603.28592}} (\bibinfo{year}{2026}).
+\newblock
+
+
+\bibitem[Lyu et~al\mbox{.}(2026)]%
+        {lyu2026practitioners}
+\bibfield{author}{\bibinfo{person}{Yunbo Lyu}, \bibinfo{person}{David Williams}, \bibinfo{person}{Jieke Shi}, \bibinfo{person}{Zhensu Sun}, \bibinfo{person}{Chao Peng}, \bibinfo{person}{Zhou Yang}, \bibinfo{person}{Federica Sarro}, {and} \bibinfo{person}{David Lo}.} \bibinfo{year}{2026}\natexlab{}.
+\newblock \showarticletitle{How Do Practitioners Build {SE} Agents? Insights from a Mixed-Methods Study}.
+\newblock \bibinfo{journal}{\emph{arXiv preprint arXiv:2607.10856}} (\bibinfo{year}{2026}).
 \newblock
 
 
 \bibitem[Madhavan and Wiegmann(2007)]%
         {madhavan2007}
-\bibfield{author}{\bibinfo{person}{Poornima Madhavan} {and}
-  \bibinfo{person}{Douglas~A. Wiegmann}.} \bibinfo{year}{2007}\natexlab{}.
-\newblock \showarticletitle{Similarities and differences between human--human
-  and human--automation trust: An integrative review}.
-\newblock \bibinfo{journal}{\emph{Theoretical Issues in Ergonomics Science}}
-  \bibinfo{volume}{8}, \bibinfo{number}{4} (\bibinfo{year}{2007}),
-  \bibinfo{pages}{277--301}.
+\bibfield{author}{\bibinfo{person}{Poornima Madhavan} {and} \bibinfo{person}{Douglas~A. Wiegmann}.} \bibinfo{year}{2007}\natexlab{}.
+\newblock \showarticletitle{Similarities and differences between human--human and human--automation trust: An integrative review}.
+\newblock \bibinfo{journal}{\emph{Theoretical Issues in Ergonomics Science}} \bibinfo{volume}{8}, \bibinfo{number}{4} (\bibinfo{year}{2007}), \bibinfo{pages}{277--301}.
 \newblock
 \href{https://doi.org/10.1080/14639220500337708}{doi:\nolinkurl{10.1080/14639220500337708}}
 
 
+\bibitem[Mandler(1980)]%
+        {mandler1980}
+\bibfield{author}{\bibinfo{person}{George Mandler}.} \bibinfo{year}{1980}\natexlab{}.
+\newblock \showarticletitle{Recognizing: The judgment of previous occurrence}.
+\newblock \bibinfo{journal}{\emph{Psychological Review}} \bibinfo{volume}{87}, \bibinfo{number}{3} (\bibinfo{year}{1980}), \bibinfo{pages}{252--271}.
+\newblock
+\href{https://doi.org/10.1037/0033-295X.87.3.252}{doi:\nolinkurl{10.1037/0033-295X.87.3.252}}
+
+
 \bibitem[Meunier and Becker(2024)]%
         {pijul2024}
-\bibfield{author}{\bibinfo{person}{Pierre-Étienne Meunier} {and}
-  \bibinfo{person}{Florent Becker}.} \bibinfo{year}{2024}\natexlab{}.
+\bibfield{author}{\bibinfo{person}{Pierre-Étienne Meunier} {and} \bibinfo{person}{Florent Becker}.} \bibinfo{year}{2024}\natexlab{}.
 \newblock \bibinfo{title}{The Pijul manual}.
 \newblock \bibinfo{howpublished}{\url{https://pijul.org/manual/}}.
 \newblock
@@ -772,64 +767,78 @@
 
 \bibitem[Mikami et~al\mbox{.}(2017)]%
         {mikami2017}
-\bibfield{author}{\bibinfo{person}{Hiroaki Mikami}, \bibinfo{person}{Daisuke
-  Sakamoto}, {and} \bibinfo{person}{Takeo Igarashi}.}
-  \bibinfo{year}{2017}\natexlab{}.
-\newblock \showarticletitle{Micro-versioning tool to support experimentation in
-  exploratory programming}. In \bibinfo{booktitle}{\emph{Proceedings of the
-  2017 CHI Conference on Human Factors in Computing Systems}}.
-  \bibinfo{pages}{6208--6219}.
+\bibfield{author}{\bibinfo{person}{Hiroaki Mikami}, \bibinfo{person}{Daisuke Sakamoto}, {and} \bibinfo{person}{Takeo Igarashi}.} \bibinfo{year}{2017}\natexlab{}.
+\newblock \showarticletitle{Micro-versioning tool to support experimentation in exploratory programming}. In \bibinfo{booktitle}{\emph{Proceedings of the 2017 CHI Conference on Human Factors in Computing Systems}}. \bibinfo{pages}{6208--6219}.
 \newblock
 \href{https://doi.org/10.1145/3025453.3025597}{doi:\nolinkurl{10.1145/3025453.3025597}}
 
 
 \bibitem[Mimram and Di~Giusto(2013)]%
         {mimram2013}
-\bibfield{author}{\bibinfo{person}{Samuel Mimram} {and} \bibinfo{person}{Cinzia
-  Di~Giusto}.} \bibinfo{year}{2013}\natexlab{}.
+\bibfield{author}{\bibinfo{person}{Samuel Mimram} {and} \bibinfo{person}{Cinzia Di~Giusto}.} \bibinfo{year}{2013}\natexlab{}.
 \newblock \showarticletitle{A categorical theory of patches}.
-\newblock \bibinfo{journal}{\emph{Electronic Notes in Theoretical Computer
-  Science}}  \bibinfo{volume}{298} (\bibinfo{year}{2013}),
-  \bibinfo{pages}{283--307}.
+\newblock \bibinfo{journal}{\emph{Electronic Notes in Theoretical Computer Science}}  \bibinfo{volume}{298} (\bibinfo{year}{2013}), \bibinfo{pages}{283--307}.
 \newblock
 \href{https://doi.org/10.1016/j.entcs.2013.09.018}{doi:\nolinkurl{10.1016/j.entcs.2013.09.018}}
 
 
 \bibitem[Mishler and Chen(2023)]%
         {mishler2023}
-\bibfield{author}{\bibinfo{person}{Scott Mishler} {and} \bibinfo{person}{Jamy
-  Chen}.} \bibinfo{year}{2023}\natexlab{}.
-\newblock \showarticletitle{The effect of automation errors on trust: A
-  meta-analysis}. In \bibinfo{booktitle}{\emph{Proceedings of the Human Factors
-  and Ergonomics Society Annual Meeting}}, Vol.~\bibinfo{volume}{67}.
-  \bibinfo{pages}{279--284}.
+\bibfield{author}{\bibinfo{person}{Scott Mishler} {and} \bibinfo{person}{Jamy Chen}.} \bibinfo{year}{2023}\natexlab{}.
+\newblock \showarticletitle{The effect of automation errors on trust: A meta-analysis}. In \bibinfo{booktitle}{\emph{Proceedings of the Human Factors and Ergonomics Society Annual Meeting}}, Vol.~\bibinfo{volume}{67}. \bibinfo{pages}{279--284}.
 \newblock
 \href{https://doi.org/10.1177/21695067231192235}{doi:\nolinkurl{10.1177/21695067231192235}}
 
 
+\bibitem[Monroe et~al\mbox{.}(2008)]%
+        {monroe2008}
+\bibfield{author}{\bibinfo{person}{Burt~L. Monroe}, \bibinfo{person}{Michael~P. Colaresi}, {and} \bibinfo{person}{Kevin~M. Quinn}.} \bibinfo{year}{2008}\natexlab{}.
+\newblock \showarticletitle{Fightin' words: Lexical feature selection and evaluation for identifying the content of political text}.
+\newblock \bibinfo{journal}{\emph{Political Analysis}} \bibinfo{volume}{16}, \bibinfo{number}{4} (\bibinfo{year}{2008}), \bibinfo{pages}{372--403}.
+\newblock
+\href{https://doi.org/10.1093/pan/mpn018}{doi:\nolinkurl{10.1093/pan/mpn018}}
+
+
 \bibitem[Mozannar et~al\mbox{.}(2024)]%
         {mozannar2024}
-\bibfield{author}{\bibinfo{person}{Hussein Mozannar}, \bibinfo{person}{Valerie
-  Chen}, \bibinfo{person}{Mohammed Alsobay}, \bibinfo{person}{Subhro Das},
-  \bibinfo{person}{Sebastian Zhao}, \bibinfo{person}{Dennis Wei},
-  \bibinfo{person}{Manish Nagireddy}, \bibinfo{person}{Prasanna Sattigeri},
-  \bibinfo{person}{Ameet Talwalkar}, {and} \bibinfo{person}{David Sontag}.}
-  \bibinfo{year}{2024}\natexlab{}.
-\newblock \showarticletitle{The RealHumanEval: Evaluating large language
-  models' abilities to support programmers}.
-\newblock \bibinfo{journal}{\emph{arXiv preprint arXiv:2404.02806}}
-  (\bibinfo{year}{2024}).
+\bibfield{author}{\bibinfo{person}{Hussein Mozannar}, \bibinfo{person}{Valerie Chen}, \bibinfo{person}{Mohammed Alsobay}, \bibinfo{person}{Subhro Das}, \bibinfo{person}{Sebastian Zhao}, \bibinfo{person}{Dennis Wei}, \bibinfo{person}{Manish Nagireddy}, \bibinfo{person}{Prasanna Sattigeri}, \bibinfo{person}{Ameet Talwalkar}, {and} \bibinfo{person}{David Sontag}.} \bibinfo{year}{2024}\natexlab{}.
+\newblock \showarticletitle{The RealHumanEval: Evaluating large language models' abilities to support programmers}.
+\newblock \bibinfo{journal}{\emph{arXiv preprint arXiv:2404.02806}} (\bibinfo{year}{2024}).
+\newblock
+
+
+\bibitem[Muir(1994)]%
+        {muir1994}
+\bibfield{author}{\bibinfo{person}{Bonnie~M. Muir}.} \bibinfo{year}{1994}\natexlab{}.
+\newblock \showarticletitle{Trust in automation: {Part I}. {Theoretical} issues in the study of trust and human intervention in automated systems}.
+\newblock \bibinfo{journal}{\emph{Ergonomics}} \bibinfo{volume}{37}, \bibinfo{number}{11} (\bibinfo{year}{1994}), \bibinfo{pages}{1905--1922}.
+\newblock
+\href{https://doi.org/10.1080/00140139408964957}{doi:\nolinkurl{10.1080/00140139408964957}}
+
+
+\bibitem[Murphy-Hill et~al\mbox{.}(2026)]%
+        {murphyhill2026}
+\bibfield{author}{\bibinfo{person}{Emerson Murphy-Hill}, \bibinfo{person}{Ciera Jaspan}, \bibinfo{person}{Caitlin Sadowski}, \bibinfo{person}{David Shepherd}, \bibinfo{person}{Brendan Dolan-Gavitt}, \bibinfo{person}{Kivan\c{c} Muşlu}, {and} \bibinfo{person}{Kathryn~T. Stolee}.} \bibinfo{year}{2026}\natexlab{}.
+\newblock \showarticletitle{How developers use {AI} coding assistants: A field study of {CLI} agents in professional practice}.
+\newblock \bibinfo{journal}{\emph{IEEE Transactions on Software Engineering}} (\bibinfo{year}{2026}).
+\newblock
+\shownote{Preprint: arXiv:2607.01418}.
+\newblock
+
+
+\bibitem[Nanda et~al\mbox{.}(2026)]%
+        {nanda2026wink}
+\bibfield{author}{\bibinfo{person}{Rahul Nanda}, \bibinfo{person}{Chandra Maddila}, \bibinfo{person}{Smriti Jha}, \bibinfo{person}{Euna~Mehnaz Khan}, \bibinfo{person}{Matteo Paltenghi}, {and} \bibinfo{person}{Satish Chandra}.} \bibinfo{year}{2026}\natexlab{}.
+\newblock \showarticletitle{Wink: Recovering from Misbehaviors in Coding Agents}.
+\newblock \bibinfo{journal}{\emph{arXiv preprint arXiv:2602.17037}} (\bibinfo{year}{2026}).
 \newblock
 
 
 \bibitem[Naur(1985)]%
         {naur1985}
-\bibfield{author}{\bibinfo{person}{Peter Naur}.}
-  \bibinfo{year}{1985}\natexlab{}.
+\bibfield{author}{\bibinfo{person}{Peter Naur}.} \bibinfo{year}{1985}\natexlab{}.
 \newblock \showarticletitle{Programming as Theory Building}.
-\newblock \bibinfo{journal}{\emph{Microprocessing and Microprogramming}}
-  \bibinfo{volume}{15}, \bibinfo{number}{5} (\bibinfo{year}{1985}),
-  \bibinfo{pages}{253--261}.
+\newblock \bibinfo{journal}{\emph{Microprocessing and Microprogramming}} \bibinfo{volume}{15}, \bibinfo{number}{5} (\bibinfo{year}{1985}), \bibinfo{pages}{253--261}.
 \newblock
 \shownote{Reprinted in \emph{Computing: A Human Activity}, ACM Press, 1992}.
 \newblock
@@ -837,242 +846,322 @@
 
 \bibitem[Nelson et~al\mbox{.}(2019)]%
         {nelson2019}
-\bibfield{author}{\bibinfo{person}{Nicholas Nelson}, \bibinfo{person}{Caius
-  Brindescu}, \bibinfo{person}{Shane McKee}, \bibinfo{person}{Anita Sarma},
-  {and} \bibinfo{person}{Danny Dig}.} \bibinfo{year}{2019}\natexlab{}.
-\newblock \showarticletitle{The life-cycle of merge conflicts: Processes,
-  barriers, and strategies}.
-\newblock \bibinfo{journal}{\emph{Empirical Software Engineering}}
-  \bibinfo{volume}{24}, \bibinfo{number}{5} (\bibinfo{year}{2019}),
-  \bibinfo{pages}{2863--2906}.
+\bibfield{author}{\bibinfo{person}{Nicholas Nelson}, \bibinfo{person}{Caius Brindescu}, \bibinfo{person}{Shane McKee}, \bibinfo{person}{Anita Sarma}, {and} \bibinfo{person}{Danny Dig}.} \bibinfo{year}{2019}\natexlab{}.
+\newblock \showarticletitle{The life-cycle of merge conflicts: Processes, barriers, and strategies}.
+\newblock \bibinfo{journal}{\emph{Empirical Software Engineering}} \bibinfo{volume}{24}, \bibinfo{number}{5} (\bibinfo{year}{2019}), \bibinfo{pages}{2863--2906}.
 \newblock
 \href{https://doi.org/10.1007/s10664-018-9674-x}{doi:\nolinkurl{10.1007/s10664-018-9674-x}}
 
 
 \bibitem[Nguyen and Glassman(2024)]%
         {nguyen2024}
-\bibfield{author}{\bibinfo{person}{Tuan~Anh Nguyen} {and}
-  \bibinfo{person}{Elena~L. Glassman}.} \bibinfo{year}{2024}\natexlab{}.
-\newblock \showarticletitle{How beginning programmers and code {LLMs} (mis)read
-  each other}. In \bibinfo{booktitle}{\emph{Proceedings of the 2024 CHI
-  Conference on Human Factors in Computing Systems}}.
+\bibfield{author}{\bibinfo{person}{Tuan~Anh Nguyen} {and} \bibinfo{person}{Elena~L. Glassman}.} \bibinfo{year}{2024}\natexlab{}.
+\newblock \showarticletitle{How beginning programmers and code {LLMs} (mis)read each other}. In \bibinfo{booktitle}{\emph{Proceedings of the 2024 CHI Conference on Human Factors in Computing Systems}}.
 \newblock
 \href{https://doi.org/10.1145/3613904.3642706}{doi:\nolinkurl{10.1145/3613904.3642706}}
 
 
 \bibitem[Norman(1988)]%
         {norman1986}
-\bibfield{author}{\bibinfo{person}{Donald~A. Norman}.}
-  \bibinfo{year}{1988}\natexlab{}.
+\bibfield{author}{\bibinfo{person}{Donald~A. Norman}.} \bibinfo{year}{1988}\natexlab{}.
 \newblock \bibinfo{booktitle}{\emph{The Design of Everyday Things}}.
 \newblock \bibinfo{publisher}{Basic Books}.
 \newblock
-\shownote{Originally published as \emph{The Psychology of Everyday Things},
-  1988; revised edition 2013}.
+\shownote{Originally published as \emph{The Psychology of Everyday Things}, 1988; revised edition 2013}.
 \newblock
 
 
 \bibitem[Parasuraman et~al\mbox{.}(2000)]%
         {parasuraman2000}
-\bibfield{author}{\bibinfo{person}{Raja Parasuraman},
-  \bibinfo{person}{Thomas~B. Sheridan}, {and} \bibinfo{person}{Christopher~D.
-  Wickens}.} \bibinfo{year}{2000}\natexlab{}.
-\newblock \showarticletitle{A model for types and levels of human interaction
-  with automation}.
-\newblock \bibinfo{journal}{\emph{IEEE Transactions on Systems, Man, and
-  Cybernetics---Part A: Systems and Humans}} \bibinfo{volume}{30},
-  \bibinfo{number}{3} (\bibinfo{year}{2000}), \bibinfo{pages}{286--297}.
+\bibfield{author}{\bibinfo{person}{Raja Parasuraman}, \bibinfo{person}{Thomas~B. Sheridan}, {and} \bibinfo{person}{Christopher~D. Wickens}.} \bibinfo{year}{2000}\natexlab{}.
+\newblock \showarticletitle{A model for types and levels of human interaction with automation}.
+\newblock \bibinfo{journal}{\emph{IEEE Transactions on Systems, Man, and Cybernetics---Part A: Systems and Humans}} \bibinfo{volume}{30}, \bibinfo{number}{3} (\bibinfo{year}{2000}), \bibinfo{pages}{286--297}.
 \newblock
 \href{https://doi.org/10.1109/3468.844354}{doi:\nolinkurl{10.1109/3468.844354}}
 
 
+\bibitem[Parnin and Rugaber(2011)]%
+        {parnin2011}
+\bibfield{author}{\bibinfo{person}{Chris Parnin} {and} \bibinfo{person}{Spencer Rugaber}.} \bibinfo{year}{2011}\natexlab{}.
+\newblock \showarticletitle{Resumption strategies for interrupted programming tasks}. In \bibinfo{booktitle}{\emph{Proceedings of the 2011 IEEE 19th International Conference on Program Comprehension (ICPC)}}. \bibinfo{publisher}{IEEE}, \bibinfo{pages}{81--90}.
+\newblock
+\href{https://doi.org/10.1109/ICPC.2011.5970167}{doi:\nolinkurl{10.1109/ICPC.2011.5970167}}
+
+
 \bibitem[Perez De~Rosso and Jackson(2013)]%
         {perezderosso2013}
-\bibfield{author}{\bibinfo{person}{Santiago Perez De~Rosso} {and}
-  \bibinfo{person}{Daniel Jackson}.} \bibinfo{year}{2013}\natexlab{}.
-\newblock \showarticletitle{What's wrong with git? A conceptual design
-  analysis}. In \bibinfo{booktitle}{\emph{Proceedings of the 2013 ACM
-  International Symposium on New Ideas, New Paradigms, and Reflections on
-  Programming \& Software (Onward!)}}. \bibinfo{publisher}{ACM},
-  \bibinfo{pages}{37--52}.
+\bibfield{author}{\bibinfo{person}{Santiago Perez De~Rosso} {and} \bibinfo{person}{Daniel Jackson}.} \bibinfo{year}{2013}\natexlab{}.
+\newblock \showarticletitle{What's wrong with git? A conceptual design analysis}. In \bibinfo{booktitle}{\emph{Proceedings of the 2013 ACM International Symposium on New Ideas, New Paradigms, and Reflections on Programming \& Software (Onward!)}}. \bibinfo{publisher}{ACM}, \bibinfo{pages}{37--52}.
 \newblock
 \href{https://doi.org/10.1145/2509578.2509584}{doi:\nolinkurl{10.1145/2509578.2509584}}
 
 
 \bibitem[Perez De~Rosso and Jackson(2016)]%
         {perezderosso2016}
-\bibfield{author}{\bibinfo{person}{Santiago Perez De~Rosso} {and}
-  \bibinfo{person}{Daniel Jackson}.} \bibinfo{year}{2016}\natexlab{}.
-\newblock \showarticletitle{Purposes, concepts, misfits, and a redesign of
-  git}. In \bibinfo{booktitle}{\emph{Proceedings of the 2016 ACM SIGPLAN
-  International Conference on Object-Oriented Programming, Systems, Languages,
-  and Applications (OOPSLA)}}. \bibinfo{publisher}{ACM},
-  \bibinfo{pages}{292--310}.
+\bibfield{author}{\bibinfo{person}{Santiago Perez De~Rosso} {and} \bibinfo{person}{Daniel Jackson}.} \bibinfo{year}{2016}\natexlab{}.
+\newblock \showarticletitle{Purposes, concepts, misfits, and a redesign of git}. In \bibinfo{booktitle}{\emph{Proceedings of the 2016 ACM SIGPLAN International Conference on Object-Oriented Programming, Systems, Languages, and Applications (OOPSLA)}}. \bibinfo{publisher}{ACM}, \bibinfo{pages}{292--310}.
 \newblock
 \href{https://doi.org/10.1145/2983990.2984018}{doi:\nolinkurl{10.1145/2983990.2984018}}
 
 
 \bibitem[Perry et~al\mbox{.}(2023)]%
         {perry2023}
-\bibfield{author}{\bibinfo{person}{Neil Perry}, \bibinfo{person}{Megha
-  Srivastava}, \bibinfo{person}{Deepak Kumar}, {and} \bibinfo{person}{Dan
-  Boneh}.} \bibinfo{year}{2023}\natexlab{}.
-\newblock \showarticletitle{Do users write more insecure code with AI
-  assistants?}. In \bibinfo{booktitle}{\emph{Proceedings of the 2023 ACM SIGSAC
-  Conference on Computer and Communications Security (CCS)}}.
-  \bibinfo{pages}{2785--2799}.
+\bibfield{author}{\bibinfo{person}{Neil Perry}, \bibinfo{person}{Megha Srivastava}, \bibinfo{person}{Deepak Kumar}, {and} \bibinfo{person}{Dan Boneh}.} \bibinfo{year}{2023}\natexlab{}.
+\newblock \showarticletitle{Do users write more insecure code with AI assistants?}. In \bibinfo{booktitle}{\emph{Proceedings of the 2023 ACM SIGSAC Conference on Computer and Communications Security (CCS)}}. \bibinfo{pages}{2785--2799}.
 \newblock
 \href{https://doi.org/10.1145/3576915.3623157}{doi:\nolinkurl{10.1145/3576915.3623157}}
 
 
+\bibitem[Pirolli and Card(1999)]%
+        {pirolli1999}
+\bibfield{author}{\bibinfo{person}{Peter Pirolli} {and} \bibinfo{person}{Stuart Card}.} \bibinfo{year}{1999}\natexlab{}.
+\newblock \showarticletitle{Information foraging}.
+\newblock \bibinfo{journal}{\emph{Psychological Review}} \bibinfo{volume}{106}, \bibinfo{number}{4} (\bibinfo{year}{1999}), \bibinfo{pages}{643--675}.
+\newblock
+\href{https://doi.org/10.1037/0033-295X.106.4.643}{doi:\nolinkurl{10.1037/0033-295X.106.4.643}}
+
+
 \bibitem[Pârțachi et~al\mbox{.}(2020)]%
         {partachi2020}
-\bibfield{author}{\bibinfo{person}{Profir-Petru Pârțachi},
-  \bibinfo{person}{Santanu~Kumar Dash}, \bibinfo{person}{Christoph Treude},
-  {and} \bibinfo{person}{Earl~T. Barr}.} \bibinfo{year}{2020}\natexlab{}.
-\newblock \showarticletitle{Flexeme: Untangling commits using lexical flows}.
-  In \bibinfo{booktitle}{\emph{Proceedings of the 28th ACM Joint European
-  Software Engineering Conference and Symposium on the Foundations of Software
-  Engineering (ESEC/FSE)}}. \bibinfo{pages}{63--74}.
+\bibfield{author}{\bibinfo{person}{Profir-Petru Pârțachi}, \bibinfo{person}{Santanu~Kumar Dash}, \bibinfo{person}{Christoph Treude}, {and} \bibinfo{person}{Earl~T. Barr}.} \bibinfo{year}{2020}\natexlab{}.
+\newblock \showarticletitle{Flexeme: Untangling commits using lexical flows}. In \bibinfo{booktitle}{\emph{Proceedings of the 28th ACM Joint European Software Engineering Conference and Symposium on the Foundations of Software Engineering (ESEC/FSE)}}. \bibinfo{pages}{63--74}.
 \newblock
 \href{https://doi.org/10.1145/3368089.3409693}{doi:\nolinkurl{10.1145/3368089.3409693}}
 
 
+\bibitem[Rahman and Shihab(2026)]%
+        {rahman2026survive}
+\bibfield{author}{\bibinfo{person}{Musfiqur Rahman} {and} \bibinfo{person}{Emad Shihab}.} \bibinfo{year}{2026}\natexlab{}.
+\newblock \showarticletitle{Will It Survive? Deciphering the Fate of {AI}-Generated Code in Open Source}. In \bibinfo{booktitle}{\emph{Proc. EASE}}.
+\newblock
+\shownote{arXiv:2601.16809}.
+\newblock
+
+
+\bibitem[Rieman(1996)]%
+        {rieman1996}
+\bibfield{author}{\bibinfo{person}{John Rieman}.} \bibinfo{year}{1996}\natexlab{}.
+\newblock \showarticletitle{A field study of exploratory learning strategies}. In \bibinfo{booktitle}{\emph{ACM Transactions on Computer-Human Interaction}}, Vol.~\bibinfo{volume}{3}. \bibinfo{pages}{189--218}.
+\newblock
+\href{https://doi.org/10.1145/234526.234527}{doi:\nolinkurl{10.1145/234526.234527}}
+
+
 \bibitem[Rigby and Bird(2013)]%
         {rigby2013}
-\bibfield{author}{\bibinfo{person}{Peter~C. Rigby} {and}
-  \bibinfo{person}{Christian Bird}.} \bibinfo{year}{2013}\natexlab{}.
-\newblock \showarticletitle{Convergent contemporary software peer review
-  practices}. In \bibinfo{booktitle}{\emph{Proceedings of the 2013 9th Joint
-  Meeting on Foundations of Software Engineering (ESEC/FSE)}}.
-  \bibinfo{pages}{202--212}.
+\bibfield{author}{\bibinfo{person}{Peter~C. Rigby} {and} \bibinfo{person}{Christian Bird}.} \bibinfo{year}{2013}\natexlab{}.
+\newblock \showarticletitle{Convergent contemporary software peer review practices}. In \bibinfo{booktitle}{\emph{Proceedings of the 2013 9th Joint Meeting on Foundations of Software Engineering (ESEC/FSE)}}. \bibinfo{pages}{202--212}.
 \newblock
 \href{https://doi.org/10.1145/2491411.2491444}{doi:\nolinkurl{10.1145/2491411.2491444}}
 
 
+\bibitem[Risko and Gilbert(2016)]%
+        {risko2016}
+\bibfield{author}{\bibinfo{person}{Evan~F. Risko} {and} \bibinfo{person}{Sam~J. Gilbert}.} \bibinfo{year}{2016}\natexlab{}.
+\newblock \showarticletitle{Cognitive Offloading}.
+\newblock \bibinfo{journal}{\emph{Trends in Cognitive Sciences}} \bibinfo{volume}{20}, \bibinfo{number}{9} (\bibinfo{year}{2016}), \bibinfo{pages}{676--688}.
+\newblock
+\href{https://doi.org/10.1016/j.tics.2016.07.002}{doi:\nolinkurl{10.1016/j.tics.2016.07.002}}
+
+
+\bibitem[Rosch(1978)]%
+        {rosch1978}
+\bibfield{author}{\bibinfo{person}{Eleanor Rosch}.} \bibinfo{year}{1978}\natexlab{}.
+\newblock \showarticletitle{Principles of categorization}.
+\newblock In \bibinfo{booktitle}{\emph{Cognition and Categorization}}, \bibfield{editor}{\bibinfo{person}{Eleanor Rosch} {and} \bibinfo{person}{Barbara~B. Lloyd}} (Eds.). \bibinfo{publisher}{Lawrence Erlbaum}, \bibinfo{address}{Hillsdale, NJ}, \bibinfo{pages}{27--48}.
+\newblock
+
+
 \bibitem[Roundy(2005)]%
         {roundy2005}
-\bibfield{author}{\bibinfo{person}{David Roundy}.}
-  \bibinfo{year}{2005}\natexlab{}.
-\newblock \showarticletitle{Darcs: Distributed version management in Haskell}.
-  In \bibinfo{booktitle}{\emph{Proceedings of the 2005 ACM SIGPLAN Workshop on
-  Haskell}}. \bibinfo{pages}{1--4}.
+\bibfield{author}{\bibinfo{person}{David Roundy}.} \bibinfo{year}{2005}\natexlab{}.
+\newblock \showarticletitle{Darcs: Distributed version management in Haskell}. In \bibinfo{booktitle}{\emph{Proceedings of the 2005 ACM SIGPLAN Workshop on Haskell}}. \bibinfo{pages}{1--4}.
 \newblock
 \href{https://doi.org/10.1145/1088348.1088349}{doi:\nolinkurl{10.1145/1088348.1088349}}
 
 
+\bibitem[Rozenblit and Keil(2002)]%
+        {rozenblit2002}
+\bibfield{author}{\bibinfo{person}{Leonid Rozenblit} {and} \bibinfo{person}{Frank Keil}.} \bibinfo{year}{2002}\natexlab{}.
+\newblock \showarticletitle{The misunderstood limits of folk science: An illusion of explanatory depth}.
+\newblock \bibinfo{journal}{\emph{Cognitive Science}} \bibinfo{volume}{26}, \bibinfo{number}{5} (\bibinfo{year}{2002}), \bibinfo{pages}{521--562}.
+\newblock
+\href{https://doi.org/10.1207/s15516709cog2605_1}{doi:\nolinkurl{10.1207/s15516709cog2605_1}}
+
+
 \bibitem[Sabouri et~al\mbox{.}(2025)]%
         {sabouri2025}
-\bibfield{author}{\bibinfo{person}{S. Sabouri}, \bibinfo{person}{P. Eibl},
-  \bibinfo{person}{X. Zhou}, \bibinfo{person}{M. Ziyadi}, \bibinfo{person}{N.
-  Medvidovic}, \bibinfo{person}{L. Lindemann}, {and} \bibinfo{person}{S.
-  Chattopadhyay}.} \bibinfo{year}{2025}\natexlab{}.
-\newblock \showarticletitle{Trust dynamics in {AI}-assisted development:
-  definitions, factors, and implications}. In
-  \bibinfo{booktitle}{\emph{Proceedings of the 47th International Conference on
-  Software Engineering}}.
+\bibfield{author}{\bibinfo{person}{S. Sabouri}, \bibinfo{person}{P. Eibl}, \bibinfo{person}{X. Zhou}, \bibinfo{person}{M. Ziyadi}, \bibinfo{person}{N. Medvidovic}, \bibinfo{person}{L. Lindemann}, {and} \bibinfo{person}{S. Chattopadhyay}.} \bibinfo{year}{2025}\natexlab{}.
+\newblock \showarticletitle{Trust dynamics in {AI}-assisted development: definitions, factors, and implications}. In \bibinfo{booktitle}{\emph{Proceedings of the 47th International Conference on Software Engineering}}.
 \newblock
 \href{https://doi.org/10.1109/ICSE55347.2025.11029928}{doi:\nolinkurl{10.1109/ICSE55347.2025.11029928}}
 
 
 \bibitem[Sarkar et~al\mbox{.}(2022)]%
         {sarkar2022}
-\bibfield{author}{\bibinfo{person}{Advait Sarkar}, \bibinfo{person}{Andrew~D.
-  Gordon}, \bibinfo{person}{Carina Negreanu}, \bibinfo{person}{Christian
-  Poelitz}, \bibinfo{person}{Sruti~Srinivasa Ragavan}, {and}
-  \bibinfo{person}{Ben Zorn}.} \bibinfo{year}{2022}\natexlab{}.
-\newblock \showarticletitle{What is it like to program with artificial
-  intelligence?}. In \bibinfo{booktitle}{\emph{Proceedings of the 33rd Annual
-  Workshop of the Psychology of Programming Interest Group (PPIG)}}.
+\bibfield{author}{\bibinfo{person}{Advait Sarkar}, \bibinfo{person}{Andrew~D. Gordon}, \bibinfo{person}{Carina Negreanu}, \bibinfo{person}{Christian Poelitz}, \bibinfo{person}{Sruti~Srinivasa Ragavan}, {and} \bibinfo{person}{Ben Zorn}.} \bibinfo{year}{2022}\natexlab{}.
+\newblock \showarticletitle{What is it like to program with artificial intelligence?}. In \bibinfo{booktitle}{\emph{Proceedings of the 33rd Annual Workshop of the Psychology of Programming Interest Group (PPIG)}}.
+\newblock
+
+
+\bibitem[Sarter and Woods(1995)]%
+        {sarter1995}
+\bibfield{author}{\bibinfo{person}{Nadine~B. Sarter} {and} \bibinfo{person}{David~D. Woods}.} \bibinfo{year}{1995}\natexlab{}.
+\newblock \showarticletitle{How in the world did we ever get into that mode? {Mode} error and awareness in supervisory control}.
+\newblock \bibinfo{journal}{\emph{Human Factors}} \bibinfo{volume}{37}, \bibinfo{number}{1} (\bibinfo{year}{1995}), \bibinfo{pages}{5--19}.
+\newblock
+\href{https://doi.org/10.1518/001872095779049516}{doi:\nolinkurl{10.1518/001872095779049516}}
+
+
+\bibitem[Sawada et~al\mbox{.}(2026)]%
+        {sawada2026maintenance}
+\bibfield{author}{\bibinfo{person}{Shota Sawada}, \bibinfo{person}{Tatsuya Shirai}, \bibinfo{person}{Yutaro Kashiwa}, \bibinfo{person}{Ken'ichi Yamaguchi}, \bibinfo{person}{Hiroshi Iwata}, {and} \bibinfo{person}{Hajimu Iida}.} \bibinfo{year}{2026}\natexlab{}.
+\newblock \showarticletitle{To What Extent Does Agent-generated Code Require Maintenance? An Empirical Study}. In \bibinfo{booktitle}{\emph{Proc. 30th International Conference on Evaluation and Assessment in Software Engineering (EASE)}}.
 \newblock
 
 
 \bibitem[Schemmer et~al\mbox{.}(2022)]%
         {schemmer2022}
-\bibfield{author}{\bibinfo{person}{Max Schemmer}, \bibinfo{person}{Niklas
-  K{\"u}hl}, \bibinfo{person}{Carina Benz}, {and} \bibinfo{person}{Gerhard
-  Satzger}.} \bibinfo{year}{2022}\natexlab{}.
-\newblock \showarticletitle{Appropriate reliance on {AI} advice:
-  conceptualization and the effect of explanations}. In
-  \bibinfo{booktitle}{\emph{Proceedings of the 2022 AAAI/ACM Conference on AI,
-  Ethics, and Society}}.
+\bibfield{author}{\bibinfo{person}{Max Schemmer}, \bibinfo{person}{Niklas K{\"u}hl}, \bibinfo{person}{Carina Benz}, {and} \bibinfo{person}{Gerhard Satzger}.} \bibinfo{year}{2022}\natexlab{}.
+\newblock \showarticletitle{Appropriate reliance on {AI} advice: conceptualization and the effect of explanations}. In \bibinfo{booktitle}{\emph{Proceedings of the 2022 AAAI/ACM Conference on AI, Ethics, and Society}}.
 \newblock
 \href{https://doi.org/10.1145/3514094.3534089}{doi:\nolinkurl{10.1145/3514094.3534089}}
 
 
+\bibitem[Schlichting and Schneider(1983)]%
+        {schlichting1983}
+\bibfield{author}{\bibinfo{person}{Richard~D. Schlichting} {and} \bibinfo{person}{Fred~B. Schneider}.} \bibinfo{year}{1983}\natexlab{}.
+\newblock \showarticletitle{Fail-Stop Processors: An Approach to Designing Fault-Tolerant Computing Systems}.
+\newblock \bibinfo{journal}{\emph{ACM Transactions on Computer Systems}} \bibinfo{volume}{1}, \bibinfo{number}{3} (\bibinfo{year}{1983}), \bibinfo{pages}{222--238}.
+\newblock
+\href{https://doi.org/10.1145/357369.357371}{doi:\nolinkurl{10.1145/357369.357371}}
+
+
+\bibitem[Sedlmair et~al\mbox{.}(2012)]%
+        {sedlmair2012}
+\bibfield{author}{\bibinfo{person}{Michael Sedlmair}, \bibinfo{person}{Miriah Meyer}, {and} \bibinfo{person}{Tamara Munzner}.} \bibinfo{year}{2012}\natexlab{}.
+\newblock \showarticletitle{Design Study Methodology: Reflections from the Trenches and the Stacks}. In \bibinfo{booktitle}{\emph{IEEE Transactions on Visualization and Computer Graphics}}, Vol.~\bibinfo{volume}{18}. \bibinfo{pages}{2431--2440}.
+\newblock
+\href{https://doi.org/10.1109/TVCG.2012.213}{doi:\nolinkurl{10.1109/TVCG.2012.213}}
+
+
+\bibitem[Sergeyuk et~al\mbox{.}(2026)]%
+        {sergeyuk2026}
+\bibfield{author}{\bibinfo{person}{Agnia Sergeyuk}, \bibinfo{person}{Eric Huang}, \bibinfo{person}{Dariia Karaeva}, \bibinfo{person}{Anastasiia Serova}, \bibinfo{person}{Yaroslav Golubev}, {and} \bibinfo{person}{Iftekhar Ahmed}.} \bibinfo{year}{2026}\natexlab{}.
+\newblock \showarticletitle{Evolving with {AI}: A longitudinal analysis of developer logs}.
+\newblock \bibinfo{journal}{\emph{arXiv preprint arXiv:2601.10258}} (\bibinfo{year}{2026}).
+\newblock
+
+
+\bibitem[Shen and Tamkin(2026)]%
+        {shen2026skills}
+\bibfield{author}{\bibinfo{person}{Alex Shen} {and} \bibinfo{person}{Alex Tamkin}.} \bibinfo{year}{2026}\natexlab{}.
+\newblock \showarticletitle{How {AI} Impacts Skill Formation: Evidence from a Coding Experiment}.
+\newblock \bibinfo{journal}{\emph{Anthropic Research}} (\bibinfo{year}{2026}).
+\newblock
+\urldef\tempurl%
+\url{https://www.anthropic.com/research/AI-assistance-coding-skills}
+\showURL{%
+\tempurl}
+
+
 \bibitem[Shen et~al\mbox{.}(2021)]%
         {shen2021}
-\bibfield{author}{\bibinfo{person}{Bo Shen}, \bibinfo{person}{Wei Zhang},
-  \bibinfo{person}{Christian Kästner}, \bibinfo{person}{Haiyan Zhao},
-  \bibinfo{person}{Zhao Wei}, \bibinfo{person}{Guangtai Liang}, {and}
-  \bibinfo{person}{Zhi Jin}.} \bibinfo{year}{2021}\natexlab{}.
-\newblock \showarticletitle{SmartCommit: A graph-based interactive assistant
-  for activity-oriented commits}. In \bibinfo{booktitle}{\emph{Proceedings of
-  the 29th ACM Joint European Software Engineering Conference and Symposium on
-  the Foundations of Software Engineering (ESEC/FSE)}}.
-  \bibinfo{pages}{379--390}.
+\bibfield{author}{\bibinfo{person}{Bo Shen}, \bibinfo{person}{Wei Zhang}, \bibinfo{person}{Christian Kästner}, \bibinfo{person}{Haiyan Zhao}, \bibinfo{person}{Zhao Wei}, \bibinfo{person}{Guangtai Liang}, {and} \bibinfo{person}{Zhi Jin}.} \bibinfo{year}{2021}\natexlab{}.
+\newblock \showarticletitle{SmartCommit: A graph-based interactive assistant for activity-oriented commits}. In \bibinfo{booktitle}{\emph{Proceedings of the 29th ACM Joint European Software Engineering Conference and Symposium on the Foundations of Software Engineering (ESEC/FSE)}}. \bibinfo{pages}{379--390}.
 \newblock
 \href{https://doi.org/10.1145/3468264.3468551}{doi:\nolinkurl{10.1145/3468264.3468551}}
 
 
 \bibitem[Shipman and Marshall(1999)]%
         {shipman1999}
-\bibfield{author}{\bibinfo{person}{Frank~M. Shipman} {and}
-  \bibinfo{person}{Catherine~C. Marshall}.} \bibinfo{year}{1999}\natexlab{}.
-\newblock \showarticletitle{Formality Considered Harmful: Experiences, Emerging
-  Themes, and Directions on the Use of Formal Representations in Interactive
-  Systems}.
-\newblock \bibinfo{journal}{\emph{Computer Supported Cooperative Work}}
-  \bibinfo{volume}{8}, \bibinfo{number}{4} (\bibinfo{year}{1999}),
-  \bibinfo{pages}{333--352}.
+\bibfield{author}{\bibinfo{person}{Frank~M. Shipman} {and} \bibinfo{person}{Catherine~C. Marshall}.} \bibinfo{year}{1999}\natexlab{}.
+\newblock \showarticletitle{Formality Considered Harmful: Experiences, Emerging Themes, and Directions on the Use of Formal Representations in Interactive Systems}.
+\newblock \bibinfo{journal}{\emph{Computer Supported Cooperative Work}} \bibinfo{volume}{8}, \bibinfo{number}{4} (\bibinfo{year}{1999}), \bibinfo{pages}{333--352}.
+\newblock
+
+
+\bibitem[Simon(1962)]%
+        {simon1962}
+\bibfield{author}{\bibinfo{person}{Herbert~A. Simon}.} \bibinfo{year}{1962}\natexlab{}.
+\newblock \showarticletitle{The Architecture of Complexity}.
+\newblock \bibinfo{journal}{\emph{Proceedings of the American Philosophical Society}} \bibinfo{volume}{106}, \bibinfo{number}{6} (\bibinfo{year}{1962}), \bibinfo{pages}{467--482}.
+\newblock
+
+
+\bibitem[{Stack Overflow}(2025)]%
+        {stackoverflow2025}
+\bibfield{author}{\bibinfo{person}{{Stack Overflow}}.} \bibinfo{year}{2025}\natexlab{}.
+\newblock \bibinfo{title}{2025 Developer Survey}.
+\newblock
+\shownote{Accessed 2026-08-20}.
+\newblock
+\urldef\tempurl%
+\url{https://survey.stackoverflow.co/2025/}
+\showURL{%
+\tempurl}
+
+
+\bibitem[Storey(2026)]%
+        {storey2026tripledebt}
+\bibfield{author}{\bibinfo{person}{Margaret-Anne Storey}.} \bibinfo{year}{2026}\natexlab{}.
+\newblock \showarticletitle{From Technical Debt to Cognitive and Intent Debt: Rethinking Software Health in the Age of {AI}}.
+\newblock \bibinfo{journal}{\emph{arXiv preprint arXiv:2603.22106}} (\bibinfo{year}{2026}).
+\newblock
+
+
+\bibitem[Suchman(1987)]%
+        {suchman1987}
+\bibfield{author}{\bibinfo{person}{Lucy~A. Suchman}.} \bibinfo{year}{1987}\natexlab{}.
+\newblock \bibinfo{booktitle}{\emph{Plans and Situated Actions: The Problem of Human-Machine Communication}}.
+\newblock \bibinfo{publisher}{Cambridge University Press}.
+\newblock
+
+
+\bibitem[Tambon et~al\mbox{.}(2024)]%
+        {tambon2024}
+\bibfield{author}{\bibinfo{person}{Florian Tambon}, \bibinfo{person}{Arghavan Moradi~Dakhel}, \bibinfo{person}{Amin Nikanjam}, \bibinfo{person}{Foutse Khomh}, \bibinfo{person}{Michel~C. Desmarais}, {and} \bibinfo{person}{Giuliano Antoniol}.} \bibinfo{year}{2024}\natexlab{}.
+\newblock \showarticletitle{Bugs in large language models generated code: An empirical study}.
+\newblock \bibinfo{journal}{\emph{Empirical Software Engineering}} \bibinfo{volume}{29}, \bibinfo{number}{3} (\bibinfo{year}{2024}), \bibinfo{pages}{69}.
+\newblock
+\href{https://doi.org/10.1007/s10664-024-10468-0}{doi:\nolinkurl{10.1007/s10664-024-10468-0}}
+
+
+\bibitem[Tang et~al\mbox{.}(2026)]%
+        {tang2026agentfailures}
+\bibfield{author}{\bibinfo{person}{Ningzhi Tang}, \bibinfo{person}{Chaoran Chen}, \bibinfo{person}{Gelei Xu}, \bibinfo{person}{Yiyu Shi}, \bibinfo{person}{Yu Huang}, \bibinfo{person}{Collin McMillan}, \bibinfo{person}{Tao Dong}, {and} \bibinfo{person}{Toby Jia-Jun Li}.} \bibinfo{year}{2026}\natexlab{}.
+\newblock \showarticletitle{How Coding Agents Fail Their Users: A Large-Scale Analysis of Developer--Agent Misalignment in 20,574 Real-World Sessions}.
+\newblock \bibinfo{journal}{\emph{arXiv preprint arXiv:2605.29442}} (\bibinfo{year}{2026}).
 \newblock
 
 
 \bibitem[Tang et~al\mbox{.}(2024)]%
         {tang2024}
-\bibfield{author}{\bibinfo{person}{Ningzhi Tang}, \bibinfo{person}{Meng Chen},
-  \bibinfo{person}{Zheng Ning}, \bibinfo{person}{Aakash Bansal},
-  \bibinfo{person}{Yu Huang}, \bibinfo{person}{Collin McMillan}, {and}
-  \bibinfo{person}{Toby Jia-Jun Li}.} \bibinfo{year}{2024}\natexlab{}.
-\newblock \showarticletitle{Developer behaviors in validating and repairing
-  LLM-generated code using IDE and eye tracking}. In
-  \bibinfo{booktitle}{\emph{Proceedings of the 2024 IEEE Symposium on Visual
-  Languages and Human-Centric Computing (VL/HCC)}}. \bibinfo{pages}{40--46}.
+\bibfield{author}{\bibinfo{person}{Ningzhi Tang}, \bibinfo{person}{Meng Chen}, \bibinfo{person}{Zheng Ning}, \bibinfo{person}{Aakash Bansal}, \bibinfo{person}{Yu Huang}, \bibinfo{person}{Collin McMillan}, {and} \bibinfo{person}{Toby Jia-Jun Li}.} \bibinfo{year}{2024}\natexlab{}.
+\newblock \showarticletitle{Developer behaviors in validating and repairing LLM-generated code using IDE and eye tracking}. In \bibinfo{booktitle}{\emph{Proceedings of the 2024 IEEE Symposium on Visual Languages and Human-Centric Computing (VL/HCC)}}. \bibinfo{pages}{40--46}.
 \newblock
 
 
 \bibitem[Tao and Kim(2015)]%
         {tao2015}
-\bibfield{author}{\bibinfo{person}{Yida Tao} {and} \bibinfo{person}{Sunghun
-  Kim}.} \bibinfo{year}{2015}\natexlab{}.
-\newblock \showarticletitle{Partitioning composite code changes to facilitate
-  code review}. In \bibinfo{booktitle}{\emph{Proceedings of the 12th Working
-  Conference on Mining Software Repositories (MSR)}}.
-  \bibinfo{pages}{180--190}.
+\bibfield{author}{\bibinfo{person}{Yida Tao} {and} \bibinfo{person}{Sunghun Kim}.} \bibinfo{year}{2015}\natexlab{}.
+\newblock \showarticletitle{Partitioning composite code changes to facilitate code review}. In \bibinfo{booktitle}{\emph{Proceedings of the 12th Working Conference on Mining Software Repositories (MSR)}}. \bibinfo{pages}{180--190}.
 \newblock
 \href{https://doi.org/10.1109/MSR.2015.24}{doi:\nolinkurl{10.1109/MSR.2015.24}}
 
 
 \bibitem[Terry et~al\mbox{.}(2004)]%
         {terry2004}
-\bibfield{author}{\bibinfo{person}{Michael Terry},
-  \bibinfo{person}{Elizabeth~D. Mynatt}, \bibinfo{person}{Kumiyo Nakakoji},
-  {and} \bibinfo{person}{Yasuhiro Yamamoto}.} \bibinfo{year}{2004}\natexlab{}.
-\newblock \showarticletitle{Variation in element and action: Supporting
-  simultaneous development of alternative solutions}. In
-  \bibinfo{booktitle}{\emph{Proceedings of the 2004 CHI Conference on Human
-  Factors in Computing Systems}}. \bibinfo{pages}{711--718}.
+\bibfield{author}{\bibinfo{person}{Michael Terry}, \bibinfo{person}{Elizabeth~D. Mynatt}, \bibinfo{person}{Kumiyo Nakakoji}, {and} \bibinfo{person}{Yasuhiro Yamamoto}.} \bibinfo{year}{2004}\natexlab{}.
+\newblock \showarticletitle{Variation in element and action: Supporting simultaneous development of alternative solutions}. In \bibinfo{booktitle}{\emph{Proceedings of the 2004 CHI Conference on Human Factors in Computing Systems}}. \bibinfo{pages}{711--718}.
 \newblock
 \href{https://doi.org/10.1145/985692.985782}{doi:\nolinkurl{10.1145/985692.985782}}
 
 
 \bibitem[{The Mercurial contributors}(2026)]%
         {mercurial2026}
-\bibfield{author}{\bibinfo{person}{{The Mercurial contributors}}.}
-  \bibinfo{year}{2026}\natexlab{}.
+\bibfield{author}{\bibinfo{person}{{The Mercurial contributors}}.} \bibinfo{year}{2026}\natexlab{}.
 \newblock \bibinfo{title}{Mercurial wiki: Changeset evolution}.
-\newblock
-  \bibinfo{howpublished}{\url{https://wiki.mercurial-scm.org/ChangesetEvolution}}.
+\newblock \bibinfo{howpublished}{\url{https://wiki.mercurial-scm.org/ChangesetEvolution}}.
 \newblock
 \shownote{Accessed August 2026}.
 \newblock
@@ -1080,20 +1169,16 @@
 
 \bibitem[Thimbleby(1988)]%
         {thimbleby1988}
-\bibfield{author}{\bibinfo{person}{Harold Thimbleby}.}
-  \bibinfo{year}{1988}\natexlab{}.
+\bibfield{author}{\bibinfo{person}{Harold Thimbleby}.} \bibinfo{year}{1988}\natexlab{}.
 \newblock \showarticletitle{Delaying commitment}.
-\newblock \bibinfo{journal}{\emph{IEEE Software}} \bibinfo{volume}{5},
-  \bibinfo{number}{3} (\bibinfo{year}{1988}), \bibinfo{pages}{78--86}.
+\newblock \bibinfo{journal}{\emph{IEEE Software}} \bibinfo{volume}{5}, \bibinfo{number}{3} (\bibinfo{year}{1988}), \bibinfo{pages}{78--86}.
 \newblock
 \href{https://doi.org/10.1109/52.2027}{doi:\nolinkurl{10.1109/52.2027}}
 
 
 \bibitem[Torvalds et~al\mbox{.}(2026)]%
         {git2026}
-\bibfield{author}{\bibinfo{person}{Linus Torvalds}, \bibinfo{person}{Junio~C.
-  Hamano}, {and} \bibinfo{person}{{the Git contributors}}.}
-  \bibinfo{year}{2026}\natexlab{}.
+\bibfield{author}{\bibinfo{person}{Linus Torvalds}, \bibinfo{person}{Junio~C. Hamano}, {and} \bibinfo{person}{{the Git contributors}}.} \bibinfo{year}{2026}\natexlab{}.
 \newblock \bibinfo{title}{Git: Distributed version control system}.
 \newblock \bibinfo{howpublished}{\url{https://git-scm.com/}}.
 \newblock
@@ -1103,78 +1188,77 @@
 
 \bibitem[Traag et~al\mbox{.}(2011)]%
         {traag2011}
-\bibfield{author}{\bibinfo{person}{V.~A. Traag}, \bibinfo{person}{P.
-  Van~Dooren}, {and} \bibinfo{person}{Y. Nesterov}.}
-  \bibinfo{year}{2011}\natexlab{}.
-\newblock \showarticletitle{Narrow scope for resolution-limit-free community
-  detection}.
-\newblock \bibinfo{journal}{\emph{Physical Review E}}  \bibinfo{volume}{84}
-  (\bibinfo{year}{2011}), \bibinfo{pages}{016114}.
+\bibfield{author}{\bibinfo{person}{V.~A. Traag}, \bibinfo{person}{P. Van~Dooren}, {and} \bibinfo{person}{Y. Nesterov}.} \bibinfo{year}{2011}\natexlab{}.
+\newblock \showarticletitle{Narrow scope for resolution-limit-free community detection}.
+\newblock \bibinfo{journal}{\emph{Physical Review E}}  \bibinfo{volume}{84} (\bibinfo{year}{2011}), \bibinfo{pages}{016114}.
 \newblock
 \href{https://doi.org/10.1103/PhysRevE.84.016114}{doi:\nolinkurl{10.1103/PhysRevE.84.016114}}
 
 
 \bibitem[Traag et~al\mbox{.}(2019)]%
         {traag2019}
-\bibfield{author}{\bibinfo{person}{V.~A. Traag}, \bibinfo{person}{L. Waltman},
-  {and} \bibinfo{person}{N.~J. van Eck}.} \bibinfo{year}{2019}\natexlab{}.
-\newblock \showarticletitle{From Louvain to Leiden: Guaranteeing well-connected
-  communities}.
-\newblock \bibinfo{journal}{\emph{Scientific Reports}}  \bibinfo{volume}{9}
-  (\bibinfo{year}{2019}), \bibinfo{pages}{5233}.
+\bibfield{author}{\bibinfo{person}{V.~A. Traag}, \bibinfo{person}{L. Waltman}, {and} \bibinfo{person}{N.~J. van Eck}.} \bibinfo{year}{2019}\natexlab{}.
+\newblock \showarticletitle{From Louvain to Leiden: Guaranteeing well-connected communities}.
+\newblock \bibinfo{journal}{\emph{Scientific Reports}}  \bibinfo{volume}{9} (\bibinfo{year}{2019}), \bibinfo{pages}{5233}.
 \newblock
 \href{https://doi.org/10.1038/s41598-019-41695-z}{doi:\nolinkurl{10.1038/s41598-019-41695-z}}
 
 
+\bibitem[Treude(2026)]%
+        {treude2026accountable}
+\bibfield{author}{\bibinfo{person}{Christoph Treude}.} \bibinfo{year}{2026}\natexlab{}.
+\newblock \showarticletitle{Accountable Agents in Software Engineering: An Analysis of Terms of Service and a Research Roadmap}. In \bibinfo{booktitle}{\emph{AIware '26: Proc. 3rd ACM International Conference on AI-powered Software}}.
+\newblock
+\shownote{arXiv:2605.04532}.
+\newblock
+
+
 \bibitem[Tsantalis et~al\mbox{.}(2018)]%
         {tsantalis2018}
-\bibfield{author}{\bibinfo{person}{Nikolaos Tsantalis}, \bibinfo{person}{Matin
-  Mansouri}, \bibinfo{person}{Laleh~M. Eshkevari}, \bibinfo{person}{Davood
-  Mazinanian}, {and} \bibinfo{person}{Danny Dig}.}
-  \bibinfo{year}{2018}\natexlab{}.
-\newblock \showarticletitle{Accurate and efficient refactoring detection in
-  commit history}. In \bibinfo{booktitle}{\emph{Proceedings of the 40th
-  International Conference on Software Engineering (ICSE)}}.
-  \bibinfo{pages}{483--494}.
+\bibfield{author}{\bibinfo{person}{Nikolaos Tsantalis}, \bibinfo{person}{Matin Mansouri}, \bibinfo{person}{Laleh~M. Eshkevari}, \bibinfo{person}{Davood Mazinanian}, {and} \bibinfo{person}{Danny Dig}.} \bibinfo{year}{2018}\natexlab{}.
+\newblock \showarticletitle{Accurate and efficient refactoring detection in commit history}. In \bibinfo{booktitle}{\emph{Proceedings of the 40th International Conference on Software Engineering (ICSE)}}. \bibinfo{pages}{483--494}.
 \newblock
 \href{https://doi.org/10.1145/3180155.3180206}{doi:\nolinkurl{10.1145/3180155.3180206}}
 
 
 \bibitem[Vaithilingam et~al\mbox{.}(2022)]%
         {vaithilingam2022}
-\bibfield{author}{\bibinfo{person}{Priyan Vaithilingam},
-  \bibinfo{person}{Tianyi Zhang}, {and} \bibinfo{person}{Elena~L. Glassman}.}
-  \bibinfo{year}{2022}\natexlab{}.
-\newblock \showarticletitle{Expectation vs. experience: Evaluating the
-  usability of code generation tools powered by large language models}. In
-  \bibinfo{booktitle}{\emph{CHI Conference on Human Factors in Computing
-  Systems Extended Abstracts}}. \bibinfo{pages}{1--7}.
+\bibfield{author}{\bibinfo{person}{Priyan Vaithilingam}, \bibinfo{person}{Tianyi Zhang}, {and} \bibinfo{person}{Elena~L. Glassman}.} \bibinfo{year}{2022}\natexlab{}.
+\newblock \showarticletitle{Expectation vs. experience: Evaluating the usability of code generation tools powered by large language models}. In \bibinfo{booktitle}{\emph{CHI Conference on Human Factors in Computing Systems Extended Abstracts}}. \bibinfo{pages}{1--7}.
 \newblock
 \href{https://doi.org/10.1145/3491101.3519665}{doi:\nolinkurl{10.1145/3491101.3519665}}
 
 
 \bibitem[Vasconcelos et~al\mbox{.}(2025)]%
         {vasconcelos2025}
-\bibfield{author}{\bibinfo{person}{Helena Vasconcelos}, \bibinfo{person}{Gagan
-  Bansal}, \bibinfo{person}{Adam Fourney}, \bibinfo{person}{Q.~Vera Liao},
-  {and} \bibinfo{person}{Jennifer Wortman~Vaughan}.}
-  \bibinfo{year}{2025}\natexlab{}.
-\newblock \showarticletitle{Generation probabilities are not enough:
-  Uncertainty highlighting in AI code completions}.
-\newblock \bibinfo{journal}{\emph{ACM Transactions on Computer-Human
-  Interaction}} (\bibinfo{year}{2025}).
+\bibfield{author}{\bibinfo{person}{Helena Vasconcelos}, \bibinfo{person}{Gagan Bansal}, \bibinfo{person}{Adam Fourney}, \bibinfo{person}{Q.~Vera Liao}, {and} \bibinfo{person}{Jennifer Wortman~Vaughan}.} \bibinfo{year}{2025}\natexlab{}.
+\newblock \showarticletitle{Generation probabilities are not enough: Uncertainty highlighting in AI code completions}.
+\newblock \bibinfo{journal}{\emph{ACM Transactions on Computer-Human Interaction}} (\bibinfo{year}{2025}).
 \newblock
 \href{https://doi.org/10.1145/3702320}{doi:\nolinkurl{10.1145/3702320}}
 
 
+\bibitem[Velasco et~al\mbox{.}(2026)]%
+        {velasco2026provenance}
+\bibfield{author}{\bibinfo{person}{Alejandro Velasco}, \bibinfo{person}{Nathan Wintersgill}, \bibinfo{person}{Trevor Stalnaker}, \bibinfo{person}{Oscar Chaparro}, {and} \bibinfo{person}{Denys Poshyvanyk}.} \bibinfo{year}{2026}\natexlab{}.
+\newblock \showarticletitle{On Automated and Explainable Provenance of {AI}-Generated Code}.
+\newblock \bibinfo{journal}{\emph{arXiv preprint arXiv:2608.02329}} (\bibinfo{year}{2026}).
+\newblock
+
+
+\bibitem[Vella and Blincoe(2026)]%
+        {vella2026longitudinal}
+\bibfield{author}{\bibinfo{person}{Annie Vella} {and} \bibinfo{person}{Kelly Blincoe}.} \bibinfo{year}{2026}\natexlab{}.
+\newblock \showarticletitle{The Impact of {AI} Coding Assistants on Software Engineering: A Longitudinal Study}.
+\newblock \bibinfo{journal}{\emph{arXiv preprint arXiv:2605.23135}} (\bibinfo{year}{2026}).
+\newblock
+
+
 \bibitem[von Zweigbergk and {the Jujutsu contributors}(2026a)]%
         {jujutsu2026}
-\bibfield{author}{\bibinfo{person}{Martin von Zweigbergk} {and}
-  \bibinfo{person}{{the Jujutsu contributors}}.}
-  \bibinfo{year}{2026}\natexlab{a}.
+\bibfield{author}{\bibinfo{person}{Martin von Zweigbergk} {and} \bibinfo{person}{{the Jujutsu contributors}}.} \bibinfo{year}{2026}\natexlab{a}.
 \newblock \bibinfo{title}{Jujutsu documentation: Comparison with Git}.
-\newblock
-  \bibinfo{howpublished}{\url{http://docs.jj-vcs.dev/latest/git-comparison/}}.
+\newblock \bibinfo{howpublished}{\url{http://docs.jj-vcs.dev/latest/git-comparison/}}.
 \newblock
 \shownote{Accessed August 2026}.
 \newblock
@@ -1182,12 +1266,9 @@
 
 \bibitem[von Zweigbergk and {the Jujutsu contributors}(2026b)]%
         {jjglossary2026}
-\bibfield{author}{\bibinfo{person}{Martin von Zweigbergk} {and}
-  \bibinfo{person}{{the Jujutsu contributors}}.}
-  \bibinfo{year}{2026}\natexlab{b}.
+\bibfield{author}{\bibinfo{person}{Martin von Zweigbergk} {and} \bibinfo{person}{{the Jujutsu contributors}}.} \bibinfo{year}{2026}\natexlab{b}.
 \newblock \bibinfo{title}{Jujutsu documentation: Glossary}.
-\newblock
-  \bibinfo{howpublished}{\url{http://docs.jj-vcs.dev/latest/glossary/}}.
+\newblock \bibinfo{howpublished}{\url{http://docs.jj-vcs.dev/latest/glossary/}}.
 \newblock
 \shownote{Accessed August 2026}.
 \newblock
@@ -1195,108 +1276,104 @@
 
 \bibitem[Wang et~al\mbox{.}(2019)]%
         {wang2019}
-\bibfield{author}{\bibinfo{person}{Min Wang}, \bibinfo{person}{Zeqi Lin},
-  \bibinfo{person}{Yanzhen Zou}, {and} \bibinfo{person}{Bing Xie}.}
-  \bibinfo{year}{2019}\natexlab{}.
-\newblock \showarticletitle{CoRA: Decomposing and describing tangled code
-  changes for reviewer}. In \bibinfo{booktitle}{\emph{Proceedings of the 34th
-  IEEE/ACM International Conference on Automated Software Engineering (ASE)}}.
-  \bibinfo{pages}{1050--1061}.
+\bibfield{author}{\bibinfo{person}{Min Wang}, \bibinfo{person}{Zeqi Lin}, \bibinfo{person}{Yanzhen Zou}, {and} \bibinfo{person}{Bing Xie}.} \bibinfo{year}{2019}\natexlab{}.
+\newblock \showarticletitle{CoRA: Decomposing and describing tangled code changes for reviewer}. In \bibinfo{booktitle}{\emph{Proceedings of the 34th IEEE/ACM International Conference on Automated Software Engineering (ASE)}}. \bibinfo{pages}{1050--1061}.
 \newblock
 \href{https://doi.org/10.1109/ASE.2019.00101}{doi:\nolinkurl{10.1109/ASE.2019.00101}}
 
 
 \bibitem[Wang et~al\mbox{.}(2024)]%
         {wang2024trust}
-\bibfield{author}{\bibinfo{person}{Ruotong Wang}, \bibinfo{person}{Ruijia
-  Peng}, \bibinfo{person}{Chin-Wei Cheng}, \bibinfo{person}{Yun-Chien Chen},
-  \bibinfo{person}{Chia-Yi Kuo}, {and} \bibinfo{person}{Hao-Chuan Hsieh}.}
-  \bibinfo{year}{2024}\natexlab{}.
-\newblock \showarticletitle{Trust calibration in AI-assisted code generation}.
-  In \bibinfo{booktitle}{\emph{Proceedings of the 2024 CHI Conference on Human
-  Factors in Computing Systems}}.
+\bibfield{author}{\bibinfo{person}{Ruotong Wang}, \bibinfo{person}{Ruijia Peng}, \bibinfo{person}{Chin-Wei Cheng}, \bibinfo{person}{Yun-Chien Chen}, \bibinfo{person}{Chia-Yi Kuo}, {and} \bibinfo{person}{Hao-Chuan Hsieh}.} \bibinfo{year}{2024}\natexlab{}.
+\newblock \showarticletitle{Trust calibration in AI-assisted code generation}. In \bibinfo{booktitle}{\emph{Proceedings of the 2024 CHI Conference on Human Factors in Computing Systems}}.
 \newblock
 \href{https://doi.org/10.1145/3613904.3642503}{doi:\nolinkurl{10.1145/3613904.3642503}}
 
 
+\bibitem[Wang et~al\mbox{.}(2026)]%
+        {wang2026humansmissing}
+\bibfield{author}{\bibinfo{person}{Zora~Z. Wang}, \bibinfo{person}{John Yang}, \bibinfo{person}{Kilian Lieret}, \bibinfo{person}{Alexa Tartaglini}, \bibinfo{person}{Valerie Chen}, \bibinfo{person}{Yuxiang Wei}, \bibinfo{person}{Zijian Wang}, \bibinfo{person}{Lingming Zhang}, \bibinfo{person}{Karthik Narasimhan}, \bibinfo{person}{Ludwig Schmidt}, \bibinfo{person}{Graham Neubig}, \bibinfo{person}{Daniel Fried}, {and} \bibinfo{person}{Diyi Yang}.} \bibinfo{year}{2026}\natexlab{}.
+\newblock \showarticletitle{Humans are Missing from {AI} Coding Agent Research}.
+\newblock \bibinfo{journal}{\emph{arXiv preprint arXiv:2608.12355}} (\bibinfo{year}{2026}).
+\newblock
+
+
+\bibitem[Winograd and Flores(1986)]%
+        {winograd1986}
+\bibfield{author}{\bibinfo{person}{Terry Winograd} {and} \bibinfo{person}{Fernando Flores}.} \bibinfo{year}{1986}\natexlab{}.
+\newblock \bibinfo{booktitle}{\emph{Understanding Computers and Cognition: A New Foundation for Design}}.
+\newblock \bibinfo{publisher}{Ablex Publishing}, \bibinfo{address}{Norwood, NJ}.
+\newblock
+
+
+\bibitem[Xu et~al\mbox{.}(2025)]%
+        {xu2025justifications}
+\bibfield{author}{\bibinfo{person}{Xiangzhe Xu}, \bibinfo{person}{Shiwei Feng}, \bibinfo{person}{Zian Su}, \bibinfo{person}{Chengpeng Wang}, {and} \bibinfo{person}{Xiangyu Zhang}.} \bibinfo{year}{2025}\natexlab{}.
+\newblock \showarticletitle{Position: Intelligent coding systems should write programs with justifications}.
+\newblock \bibinfo{journal}{\emph{arXiv preprint arXiv:2508.06017}} (\bibinfo{year}{2025}).
+\newblock
+
+
 \bibitem[Yang et~al\mbox{.}(2024)]%
         {yang2024}
-\bibfield{author}{\bibinfo{person}{John Yang}, \bibinfo{person}{Carlos~E.
-  Jimenez}, \bibinfo{person}{Alexander Wettig}, \bibinfo{person}{Kilian
-  Lieret}, \bibinfo{person}{Shunyu Yao}, \bibinfo{person}{Karthik Narasimhan},
-  {and} \bibinfo{person}{Ofir Press}.} \bibinfo{year}{2024}\natexlab{}.
-\newblock \showarticletitle{SWE-agent: Agent-computer interfaces enable
-  automated software engineering}. In \bibinfo{booktitle}{\emph{Advances in
-  Neural Information Processing Systems (NeurIPS)}}.
+\bibfield{author}{\bibinfo{person}{John Yang}, \bibinfo{person}{Carlos~E. Jimenez}, \bibinfo{person}{Alexander Wettig}, \bibinfo{person}{Kilian Lieret}, \bibinfo{person}{Shunyu Yao}, \bibinfo{person}{Karthik Narasimhan}, {and} \bibinfo{person}{Ofir Press}.} \bibinfo{year}{2024}\natexlab{}.
+\newblock \showarticletitle{SWE-agent: Agent-computer interfaces enable automated software engineering}. In \bibinfo{booktitle}{\emph{Advances in Neural Information Processing Systems (NeurIPS)}}.
 \newblock
 
 
 \bibitem[Ying et~al\mbox{.}(2004)]%
         {ying2004}
-\bibfield{author}{\bibinfo{person}{Annie T.~T. Ying}, \bibinfo{person}{Gail~C.
-  Murphy}, \bibinfo{person}{Raymond Ng}, {and} \bibinfo{person}{Mark~C.
-  Chu-Carroll}.} \bibinfo{year}{2004}\natexlab{}.
-\newblock \showarticletitle{Predicting source code changes by mining change
-  history}.
-\newblock \bibinfo{journal}{\emph{IEEE Transactions on Software Engineering}}
-  \bibinfo{volume}{30}, \bibinfo{number}{9} (\bibinfo{year}{2004}),
-  \bibinfo{pages}{574--586}.
+\bibfield{author}{\bibinfo{person}{Annie T.~T. Ying}, \bibinfo{person}{Gail~C. Murphy}, \bibinfo{person}{Raymond Ng}, {and} \bibinfo{person}{Mark~C. Chu-Carroll}.} \bibinfo{year}{2004}\natexlab{}.
+\newblock \showarticletitle{Predicting source code changes by mining change history}.
+\newblock \bibinfo{journal}{\emph{IEEE Transactions on Software Engineering}} \bibinfo{volume}{30}, \bibinfo{number}{9} (\bibinfo{year}{2004}), \bibinfo{pages}{574--586}.
 \newblock
 \href{https://doi.org/10.1109/TSE.2004.52}{doi:\nolinkurl{10.1109/TSE.2004.52}}
 
 
 \bibitem[Yoon and Myers(2014)]%
         {yoon2014}
-\bibfield{author}{\bibinfo{person}{YoungSeok Yoon} {and}
-  \bibinfo{person}{Brad~A. Myers}.} \bibinfo{year}{2014}\natexlab{}.
-\newblock \showarticletitle{A longitudinal study of programmers' backtracking}.
-  In \bibinfo{booktitle}{\emph{Proceedings of the 2014 IEEE Symposium on Visual
-  Languages and Human-Centric Computing (VL/HCC)}}. \bibinfo{pages}{101--108}.
+\bibfield{author}{\bibinfo{person}{YoungSeok Yoon} {and} \bibinfo{person}{Brad~A. Myers}.} \bibinfo{year}{2014}\natexlab{}.
+\newblock \showarticletitle{A longitudinal study of programmers' backtracking}. In \bibinfo{booktitle}{\emph{Proceedings of the 2014 IEEE Symposium on Visual Languages and Human-Centric Computing (VL/HCC)}}. \bibinfo{pages}{101--108}.
 \newblock
 \href{https://doi.org/10.1109/VLHCC.2014.6883030}{doi:\nolinkurl{10.1109/VLHCC.2014.6883030}}
 
 
 \bibitem[Yoon and Myers(2015)]%
         {yoon2015}
-\bibfield{author}{\bibinfo{person}{YoungSeok Yoon} {and}
-  \bibinfo{person}{Brad~A. Myers}.} \bibinfo{year}{2015}\natexlab{}.
-\newblock \showarticletitle{Supporting selective undo in a code editor}. In
-  \bibinfo{booktitle}{\emph{Proceedings of the 37th International Conference on
-  Software Engineering (ICSE)}}. \bibinfo{pages}{223--233}.
+\bibfield{author}{\bibinfo{person}{YoungSeok Yoon} {and} \bibinfo{person}{Brad~A. Myers}.} \bibinfo{year}{2015}\natexlab{}.
+\newblock \showarticletitle{Supporting selective undo in a code editor}. In \bibinfo{booktitle}{\emph{Proceedings of the 37th International Conference on Software Engineering (ICSE)}}. \bibinfo{pages}{223--233}.
 \newblock
 \href{https://doi.org/10.1109/ICSE.2015.43}{doi:\nolinkurl{10.1109/ICSE.2015.43}}
 
 
 \bibitem[Yoon et~al\mbox{.}(2013)]%
         {yoon2013}
-\bibfield{author}{\bibinfo{person}{YoungSeok Yoon}, \bibinfo{person}{Brad~A.
-  Myers}, {and} \bibinfo{person}{Sebon Koo}.} \bibinfo{year}{2013}\natexlab{}.
-\newblock \showarticletitle{Visualization of fine-grained code change history}.
-  In \bibinfo{booktitle}{\emph{Proceedings of the 2013 IEEE Symposium on Visual
-  Languages and Human-Centric Computing (VL/HCC)}}. \bibinfo{pages}{119--126}.
+\bibfield{author}{\bibinfo{person}{YoungSeok Yoon}, \bibinfo{person}{Brad~A. Myers}, {and} \bibinfo{person}{Sebon Koo}.} \bibinfo{year}{2013}\natexlab{}.
+\newblock \showarticletitle{Visualization of fine-grained code change history}. In \bibinfo{booktitle}{\emph{Proceedings of the 2013 IEEE Symposium on Visual Languages and Human-Centric Computing (VL/HCC)}}. \bibinfo{pages}{119--126}.
 \newblock
 \href{https://doi.org/10.1109/VLHCC.2013.6645254}{doi:\nolinkurl{10.1109/VLHCC.2013.6645254}}
 
 
 \bibitem[Zeller and Snelting(1997)]%
         {zeller1997}
-\bibfield{author}{\bibinfo{person}{Andreas Zeller} {and}
-  \bibinfo{person}{Gregor Snelting}.} \bibinfo{year}{1997}\natexlab{}.
+\bibfield{author}{\bibinfo{person}{Andreas Zeller} {and} \bibinfo{person}{Gregor Snelting}.} \bibinfo{year}{1997}\natexlab{}.
 \newblock \showarticletitle{Unified versioning through feature logic}.
-\newblock \bibinfo{journal}{\emph{ACM Transactions on Software Engineering and
-  Methodology}} \bibinfo{volume}{6}, \bibinfo{number}{4}
-  (\bibinfo{year}{1997}), \bibinfo{pages}{398--441}.
+\newblock \bibinfo{journal}{\emph{ACM Transactions on Software Engineering and Methodology}} \bibinfo{volume}{6}, \bibinfo{number}{4} (\bibinfo{year}{1997}), \bibinfo{pages}{398--441}.
+\newblock
+
+
+\bibitem[Zietsman(2026)]%
+        {zietsman2026}
+\bibfield{author}{\bibinfo{person}{Christo Zietsman}.} \bibinfo{year}{2026}\natexlab{}.
+\newblock \showarticletitle{The specification as quality gate: Three hypotheses on {AI}-assisted code review}.
+\newblock \bibinfo{journal}{\emph{arXiv preprint arXiv:2603.25773}} (\bibinfo{year}{2026}).
 \newblock
 
 
 \bibitem[Zimmermann et~al\mbox{.}(2004)]%
         {zimmermann2004}
-\bibfield{author}{\bibinfo{person}{Thomas Zimmermann}, \bibinfo{person}{Peter
-  Weißgerber}, \bibinfo{person}{Stephan Diehl}, {and} \bibinfo{person}{Andreas
-  Zeller}.} \bibinfo{year}{2004}\natexlab{}.
-\newblock \showarticletitle{Mining version histories to guide software
-  changes}. In \bibinfo{booktitle}{\emph{Proceedings of the 26th International
-  Conference on Software Engineering (ICSE)}}. \bibinfo{pages}{563--572}.
+\bibfield{author}{\bibinfo{person}{Thomas Zimmermann}, \bibinfo{person}{Peter Weißgerber}, \bibinfo{person}{Stephan Diehl}, {and} \bibinfo{person}{Andreas Zeller}.} \bibinfo{year}{2004}\natexlab{}.
+\newblock \showarticletitle{Mining version histories to guide software changes}. In \bibinfo{booktitle}{\emph{Proceedings of the 26th International Conference on Software Engineering (ICSE)}}. \bibinfo{pages}{563--572}.
 \newblock
 \href{https://doi.org/10.1109/ICSE.2004.1317478}{doi:\nolinkurl{10.1109/ICSE.2004.1317478}}
 

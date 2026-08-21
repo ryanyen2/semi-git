@@ -6,11 +6,15 @@ quotes for a trading dashboard, and the first sitting is the hour
 Figure~\ref{fig:two-records} draws. We assembled the sequence from sessions we ran
 while building \sgt{} so that one repository contains the five operations
 Section~\ref{sec:scenarios} asked for, in that order, followed by the one case
-where \sgt{} stops and asks. Every command below runs and every block of output
-came out of \sgt{} as it is today, with lines too wide for this column wrapped at
-the \ttdot{} separators, with two displays too tall for this column replaced by a
-description of them in brackets, and otherwise unchanged. The sequence is arranged to show
+where \sgt{} stops and asks. Every command below runs and every block of output came out of \sgt{} as it is
+today---lines too wide for this column are wrapped at \ttdot{} separators, two
+displays too tall are replaced by bracketed descriptions, and the rest is
+unchanged. The sequence is arranged to show
 which decisions the developer is left to make and when in the work each one arrives.
+This is the case the design was built for: a repository recorded live, by one
+developer, save by save. Section~\ref{sec:discussion} reports what happens on
+repositories the tool did not record live and under randomised sequences that
+exercise combinations no developer would hit in a single sitting.
 
 \subsection{Monday, 14:02 to 15:20: two saves and four names}
 
@@ -38,8 +42,11 @@ have no names yet, because \sgt{} writes records when the developer saves and wo
 out the names when the developer next reads, and a name costs a language model call
 that has no business running while somebody is mid-session. The warning is the one
 line here that resembles what git asks for, and \sgt{} printed it after the save was
-already written; the developer read it, agreed the sitting had been mixed, and
-carried on, which is the case Section~\ref{sec:scenarios} opened with.
+already written---a deliberate ordering, because blocking the save to ask ``are you
+sure this is one thing?'' is the formalization tax Shipman and Marshall showed
+drives people away from structured tools~\cite{shipman1999}. The developer read it,
+agreed the sitting had been mixed, and carried on, which is the case
+Section~\ref{sec:scenarios} opened with.
 
 The second save at 15:20 covered the retry policy and a rework of the cache the
 agent made while adding the retry. By then the first save's groups had names, so its echo listed
@@ -175,6 +182,11 @@ three call site repairs the developer had made in between alone, because a resto
 adds records to the set and rebuilds the files from the result without reapplying
 a patch. They had wanted the cache gone, so they reverted it a second time, and
 that run printed the same three consequence lines as the first.
+Both times the report fired because the revert was a removal: six records left the
+set entirely, and three functions lost the definition they called. Rolling a
+checkpoint back---\cmd{sgt revert "Rate Limiting:sliding-window"}, had the developer
+needed it---would leave every function present in some version, so nothing the
+remaining code references would disappear and the report would be empty.
 
 \subsection{Wednesday: shipping the export fix alone}
 
@@ -249,10 +261,14 @@ The developer picked \cmd{e}, merged the two by hand in about thirty seconds, an
 \sgt{} ran the project's test command before including the result. We are not going to
 claim the textual merge would have been wrong here, because it would most likely have
 been right, and \sgt{} charged thirty seconds and one interruption to establish that.
-We designed for the case where the merge is wrong, one edit adding an early return and
-the other edit's new code sitting below it, with the test run that would have caught it
+We designed for the case where the merge is wrong---one edit adding an early return and
+the other edit's new code sitting below it---with the test run that would have caught it
 happening on a branch nobody has pushed yet. A developer who merges often and reads
-carefully is paying us for a certainty they already had.
+carefully pays thirty seconds for a certainty they already had; the design bets that
+when the developer did not write either version of the function, they do not read
+carefully enough for the certainty to be free, and the evidence in
+Section~\ref{sec:pilot-lessons} is that even careful developers missed consequences the
+preview named.
 
 \subsection{What this cost}
 
@@ -270,4 +286,8 @@ the work; the revert left \sym{api.py::handle} holding text nobody had read, so 
 test suite decided whether the revert had worked; and the fork stopped them on a merge
 that was probably fine. The second and third are direct consequences of
 Section~\ref{sec:sets} and Section~\ref{sec:fork}, and on a repository this size we
-would choose both again.
+would choose both again, because both are costs a test suite and thirty seconds can
+settle. The costs git would have charged instead are the ones
+Section~\ref{sec:scenarios} describes: reading the diff to find which hunks belong to
+which request, rebuilding a decomposition the developer never held, and discovering a
+consequence nobody named when the release branch fails to import.

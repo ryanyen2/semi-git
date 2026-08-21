@@ -670,6 +670,51 @@ def test_prune_empty_leaves_removes_member_less_leaves_and_cascades():
     assert roots == ["N0"]
 
 
+def test_single_child_internal_left_by_the_prune_is_collapsed_away():
+    # The confplan fixture grew a subsystem whose label was its only child's label verbatim:
+    # "rooms and the two-day slot grid with parsing" nested inside a node of the same name. The
+    # splitter cut N1 in two, `_rehome_pseudo_members` emptied the residue-only half, the prune
+    # dropped it, and nothing collapsed the parent that was left holding one child. A group of one
+    # groups nothing, so the level goes and the child -- which owns the id, members and ops -- stays.
+    nodes = {
+        "N0": {"id": "N0", "parent": None, "depth": 0, "members": ["a.py::foo", "b.py::bar"],
+               "size": 2, "dir": "pkg", "children": ["N1", "N4"], "split_reason": None},
+        "N1": {"id": "N1", "parent": "N0", "depth": 1, "members": ["a.py::foo"], "size": 1,
+               "dir": "pkg", "children": ["N2", "N3"], "split_reason": "closest_arity"},
+        "N2": _leaf("N2", "N1", ["a.py::foo"], "pkg"),                     # the real survivor
+        "N3": _leaf("N3", "N1", ["a.py::__residue__::foo"], "pkg"),        # empties, then pruned
+        "N4": _leaf("N4", "N0", ["b.py::bar"], "pkg"),                     # keeps the root plural
+    }
+    roots = ["N0"]
+
+    tree._rehome_pseudo_members(nodes)
+    tree._prune_empty_leaves(nodes, roots)
+    survivor_members = list(nodes["N2"]["members"])   # rehoming gave N2 the residue it anchors
+    tree._collapse_single_child_internals(nodes, roots)
+
+    assert set(nodes) == {"N0", "N2", "N4"}            # the group of one is gone, the child is not
+    assert sorted(nodes["N0"]["children"]) == ["N2", "N4"]
+    assert nodes["N2"]["parent"] == "N0"
+    assert nodes["N2"]["depth"] == 1                   # moved up a level, so depth is restamped
+    assert nodes["N2"]["members"] == survivor_members  # the collapse moves a leaf, it never edits one
+
+
+def test_single_child_root_is_left_alone():
+    # Promoting a lone root child would change which node `roots` names -- a different forest, not a
+    # redundant level inside one. `test_prune_empty_leaves...` depends on this: it ends on a root
+    # holding exactly one child.
+    nodes = {
+        "N0": {"id": "N0", "parent": None, "depth": 0, "members": ["a"], "size": 1, "dir": "pkg",
+               "children": ["N1"], "split_reason": None},
+        "N1": _leaf("N1", "N0", ["a"], "pkg"),
+    }
+    roots = ["N0"]
+
+    tree._collapse_single_child_internals(nodes, roots)
+
+    assert set(nodes) == {"N0", "N1"}
+    assert roots == ["N0"]
+
 def test_residue_members_rehome_to_their_anchor_entitys_leaf():
     # F21: the clusterer can group residue/anchor pseudo-symbols together into a leaf of their own,
     # which then gets a feature id, a label from its commit subject, and a `sgt log` row -- while
@@ -853,6 +898,38 @@ def test_label_tree_offline_fallback_is_deterministic(tmp_path, monkeypatch):
 
     assert all(lbl for lbl in labels_of(a).values())  # every node named, no crash offline
     assert labels_of(a) == labels_of(b)  # deterministic fallback
+
+
+def test_the_root_is_named_after_the_repo_not_by_the_labeler(tmp_path, monkeypatch):
+    """The root holds every alive symbol, so a name for it is a name for the whole repo. Asked for
+    one anyway, the labeler produced the only thing it could: with no client, the study's practice
+    copy headed both `sgt log --tree` and `sgt log --map` with `README.md add_item remove_item total
+    cart.py`, on the first command a participant runs. A root with no children is a repo with one
+    feature, and that node is a feature, so it keeps a feature's name."""
+    import sgt.config
+
+    monkeypatch.setattr(sgt.config, "get_client",
+                        lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("no API key")))
+    repo = tmp_path / "confplan"
+    repo.mkdir()
+    result = {
+        "roots": ["N0"],
+        "nodes": {
+            "N0": {"id": "N0", "parent": None, "children": ["f-1", "f-2"], "kind": "subsystem",
+                   "members": ["cart.py::total", "shipping.py::postage"]},
+            "f-1": {"id": "f-1", "parent": "N0", "children": [], "kind": "feature",
+                    "members": ["cart.py::total"]},
+            "f-2": {"id": "f-2", "parent": "N0", "children": [], "kind": "feature",
+                    "members": ["shipping.py::postage"]},
+        },
+        "op_leaf": {},
+    }
+
+    tree.label_tree(result, repo, ops=[])
+
+    assert result["nodes"]["N0"]["label"] == "confplan"
+    # The leaves below still earn their own names, so nothing was skipped along with the root.
+    assert result["nodes"]["f-1"]["label"] and result["nodes"]["f-2"]["label"]
 
 
 def test_internal_dirty_leaves_fires_at_the_max_of_floor_and_fraction_threshold():

@@ -3,11 +3,15 @@
 
 We ran three pilots before the full study: one in each condition (sgt and git,
 both on the same task set) and a third exercising the study apparatus end to end.
-The first two were designed to find defects in the tool that would cost a real
-participant their data point, and defects in the study design that would make a
-result uninterpretable. The third tested the machinery between the participant's
-machine and the facilitator's console---exactly the seam nobody had
-exercised---and found a validity threat that neither task pilot could surface.
+All three used AI coding agents as participants rather than human developers,
+because the purpose was to stress-test the tool and the protocol (can the tasks
+be completed? do the verbs work? does the scoring script produce a result?) rather
+than to measure human behaviour. The first two were designed to find defects in
+the tool that would cost a real participant their data point, and defects in the
+study design that would make a result uninterpretable. The third tested the
+machinery between the participant's machine and the facilitator's console---exactly
+the seam nobody had exercised---and found a validity threat that neither task pilot
+could surface.
 We report all three because the defects they found are consequences of design
 commitments rather than accidents of implementation: a technical evaluation
 establishes that a property holds across 10{,}237 operations; it takes a new
@@ -178,6 +182,23 @@ where the participant consulted git history is weaker than it appears, and we
 cannot retrospectively subtract the effect. The pre-registered analysis
 acknowledges it as a confound.
 
+\paragraph{The instrument broke the thing it measured.}
+The recording tool ran \cmd{git add -A --intent-to-add} on the participant's
+repository to fingerprint the current state. That stages every untracked file---including
+\sgt{}'s own \texttt{.sgt/} directory---as index entries pointing at git's empty
+blob. Where that blob is absent from the object store, every subsequent
+\cmd{git write-tree} fails, and \sgt{} calls \cmd{write-tree} whenever it
+snapshots the repository. Confirmed live: a measurement tool was capable of
+silently disabling \cmd{sgt save} and \cmd{sgt revert} for the remainder of a
+session, and the facilitator's console showed no indication that anything was
+wrong. The fix includes a regression test that asserts the tool under study can
+still snapshot the repository after the recorder has run. The structure is the
+same one the evaluation journal found independently
+(Section~\ref{sec:findings}): a measurement that modifies its own
+object---here by staging files that break the tool, there by rebuilding the store
+that changes its labels---and a guard on the participant path that catches a
+state the evaluation path walks into silently.
+
 \paragraph{Carry-over between isomorphic tasks.}
 The two test repositories are isomorphic by design (same episode script, nouns
 swapped) so nobody sees the same project twice. The pilot participant reported
@@ -192,12 +213,12 @@ relative to the condition effect on a twelve-person sample.
 
 We coded all three pilots' observations against the design commitments of
 Section~\ref{sec:design}, interpreting each through three lenses from the
-automation trust literature: Parasuraman et al.'s four-stage model of
-automation~\cite{parasuraman2000} (which stage failed?), Lee and See's trust
-calibration framework~\cite{lee2004} (what did the failure teach the user about
-the system's reliability?), and Norman's gulfs of evaluation and
-execution~\cite{norman1986} (could the user perceive the state, and could they
-act on it?). Six themes emerged that generalise past the individual defects.
+automation trust literature. Parasuraman et al.'s four-stage model asks which
+stage failed~\cite{parasuraman2000}. Lee and See's trust calibration framework
+asks what the failure taught the user about the system's
+reliability~\cite{lee2004}. Norman's gulfs of evaluation and execution ask
+whether the user could perceive the state and act on
+it~\cite{norman1986}. Six themes emerged that generalise past the individual defects.
 
 \paragraph{Comprehension held; mutation did not.}
 The comprehension operations---attribution, revert preview, dependency
@@ -246,7 +267,9 @@ corruption cost twenty minutes of repair work, left the participant unwilling to
 trust checkmarks, and propagated forward: when the session feature later
 reported ``86 new ops'' on a workspace with zero edits, the participant
 declined to use it. The number was explainable, but the tool had spent its
-credibility on an earlier false~positive. Lee and See's model predicts exactly this: a crash provides
+credibility on an earlier false~positive.
+
+Lee and See's model predicts exactly this: a crash provides
 correct calibration information (the system failed and said so), whereas a false
 positive undermines the calibration mechanism itself, because the user can no
 longer distinguish a true positive from the next false
@@ -254,46 +277,116 @@ one~\cite{lee2004}. Wang et al.\ found the same asymmetry in developers using
 AI code generation: one bad recommendation erases the credibility of three good
 ones, and a single negative experience with a category of output causes
 developers to stop reading that category
-entirely~\cite{wang2024trust}. Madhavan and Wiegmann's integrative review
-explains why the recovery never came: people hold automation to a higher initial
-standard than they hold humans, and a single failure triggers categorical
-attribution---the system is \emph{broken}---with no intermediate state between
-working perfectly and being untrustworthy~\cite{madhavan2007}. Sabouri et al.\
-measured the downstream consequence: developers retained only 52\% of initially
-accepted AI suggestions on revisitation, and the retention rate dropped further
-after encountering a single incorrect suggestion they had initially
+entirely~\cite{wang2024trust}. Madhavan and Wiegmann explain why the recovery
+never came: people hold automation to a higher initial standard than they hold
+humans, and a single failure triggers categorical attribution---the system is
+\emph{broken}---with no intermediate state between working perfectly and being
+untrustworthy~\cite{madhavan2007}. Sabouri et al.\ measured the downstream
+consequence: developers retained only 52\% of initially accepted AI suggestions
+on revisitation, and the retention rate dropped further after encountering a
+single incorrect suggestion they had initially
 accepted~\cite{sabouri2025}. Trust is not per-operation but cumulative, and one
 self-reporting failure costs more than the task it belongs to.
+
 Eight such failures appeared across the full evaluation period,
 four of which we had not found after eight months of daily use and
 found only by auditing the evaluation's own results---the newest was a revert
 that reported ``removes 0 edits'' and then rewrote two files, a command whose
 entire pitch is legible consequences telling the developer nothing will happen
-before changing their code.
+before changing their code. The eight share a structural pattern: in each case,
+a named command succeeded (exit code zero, affirmative message) while performing
+either nothing or something other than what was named. Three were empty
+successes (a revert that removed nothing, a save that saved nothing, a sync that
+synced nothing), and five were misdirected successes (a revert that targeted the
+wrong records, a merge resolution that dropped a fix, a reference warning that
+fired on the wrong commit). The empty-success variant is harder to detect because
+the developer has no reason to inspect an operation whose output confirms their
+expectation; the misdirected variant is harder to recover from because the
+developer's next actions build on a state they believe they verified.
+
+The pattern is not specific to \sgt{}: any tool whose output is a self-report
+rather than an independently verifiable artefact is vulnerable. The robustness
+harness's design (Section~\ref{sec:session-rate}) addresses this class directly,
+by checking every operation's outcome against a reference that does not depend on
+the tool's own state. Without such a probe, the silent-success failure can persist
+indefinitely, because no test fails, no user complains, and the tool's own
+diagnostics confirm that the system is working. The phase-one evaluation found two
+instances that had persisted through eight months of daily use by the developer
+who wrote the warning paths: the revert-warning code was unreachable (a boolean
+gate was always false), and reference warnings fired on 7 of 33 operations that
+should have triggered them (the coverage window stopped at 10 seconds of history
+on side branches). Both passed every test, because the test suite verified that
+the warning \emph{code} ran rather than that the warning \emph{fired when it
+should}.
 
 \paragraph{The tool's value was in the punch list.}
 The participant reframed the revert as ``a fast, accurate first pass that
-leaves me a punch list'' rather than an operation that completes on its own. Every item on the
-removal's consequence report came true: the three functions that still
-referenced removed code broke, and nothing else did. The preview was the
-product; the execution was the problem. The participant's exit debrief sharpened
-this: ``It indexes your history by function instead of by file, so you can ask
-`what changed this symbol, and what else came along for the ride' and get a real
+leaves me a punch list'' rather than an operation that completes on its own.
+Every item on the removal's consequence report came true: the three functions
+that still referenced removed code broke, and nothing else did. The preview was
+the product; the execution was the problem. The exit debrief sharpened this:
+``It indexes your history by function instead of by file, so you can ask `what
+changed this symbol, and what else came along for the ride' and get a real
 answer in one command---that part is excellent. Use it to find things, then make
-the change yourself with git.'' Ferdowsi et al.\ found that continuously displaying runtime values mitigates
-both over-reliance and under-reliance on AI-generated code, by lowering the cost
-of validation through execution~\cite{ferdowsi2024}. The preview serves the same
-function: it lowers the cost of evaluating a revert by showing the consequence
-before it happens, and the pilot confirms both halves of Ferdowsi's finding.
-Where the preview was correct (the three named functions broke, nothing else
-did), the participant relied on the tool appropriately. Where it was incorrect
-(the green checkmark over corruption), the lowered validation cost produced
-worse outcomes than no tool at all, because the participant trusted the preview
-and did not verify independently. A partially-working tool can
-deliver value through its read layer alone---it tells the developer what to
-change, and they change it with the tools they already trust---provided the
-reports are accurate. The accuracy condition circles back to the previous theme:
-a tool whose punch lists are wrong on one task stops being consulted on the next.
+the change yourself with git.''
+
+Ferdowsi et al.\ found that continuously displaying runtime values mitigates
+both over-reliance and under-reliance on AI-generated code, by lowering the
+cost of validation through execution~\cite{ferdowsi2024}. The consequence
+preview serves the same function: it shows what a revert would break before
+executing it. The pilot confirms both halves of Ferdowsi's finding. Where the
+preview was correct, the participant relied on the tool appropriately. Where it
+was incorrect (the green checkmark over corruption), the lowered validation cost
+produced worse outcomes than no tool at all, because the participant trusted
+the preview and did not verify independently. Cynthia et al.\ found the same
+asymmetry at scale in 54{,}791 agent-generated code review comments: the
+strongest predictor of a comment being acted on was a concise inline
+suggestion, while lengthy explanations went unresolved regardless of
+correctness~\cite{cynthia2026gohome}. The consequence preview is the inline
+suggestion of version control---short, checkable, and wrong in a way the
+developer can see---and its effectiveness depends on staying a list rather than
+becoming a paragraph.
+
+\smallskip\noindent
+Bansal et al.\ found the mechanism that explains both halves: AI explanations
+increase human acceptance of the system's recommendation regardless of
+whether the recommendation is correct~\cite{bansal2021}. The explanation does
+not help the human distinguish right from wrong; it makes the recommendation
+\emph{feel} more trustworthy whether or not it is. A consequence preview is an
+explanation in Bansal et al.'s sense---it provides a reason to accept the
+revert---and the pilot shows the predicted failure mode: the participant
+accepted the revert \emph{because} the preview named consequences, without
+independently checking whether the named consequences were complete. The
+distinction between a preview that lists what will break (which the developer
+can verify cheaply by scanning the list) and a preview that claims nothing
+else will break (which the developer can verify only by reading the entire
+diff) is the distinction between an explanation that supports appropriate
+reliance and one that manufactures inappropriate reliance. The pilot's
+corruption case was the second kind: the checkmark asserted completeness,
+and the participant had no path to discovering the assertion was wrong without
+doing the full inspection the tool promised to save them.
+
+\smallskip\noindent
+Kaur et al.\ found the same structure in a closer domain: data scientists using
+interpretability tools over-trusted and misused them, and few could accurately
+describe what the visualizations actually showed~\cite{kaur2020}. The tools were correct; the failure was that users could not distinguish what
+the output \emph{claimed} from what it \emph{demonstrated}. A SHAP plot shows feature
+attributions for one prediction; users read it as showing feature importance
+globally. A consequence preview shows which functions will change; a user reads it
+as showing which functions \emph{could} change. The gap between the claim and the
+reading is where over-reliance enters, and it enters through expertise rather
+than around it---Kaur's participants were practicing data scientists, not novices.
+
+A partially-working tool can deliver value through its read layer alone---it
+tells the developer what to change, and they change it with the tools they
+already trust---provided the reports list what they found without asserting
+completeness. The punch-list framing the participant independently arrived at
+(``leaves me a punch list'') is the correct interface contract: the tool
+reports what it knows, the developer treats the report as a lower bound, and
+the absence of an item from the list means ``not found'' rather than
+``verified absent.'' The accuracy condition circles back to the previous theme:
+a tool whose punch lists are wrong on one task stops being consulted on the
+next.
 
 \paragraph{Vocabulary mismatch across surfaces.}
 Four counting units---edits, ops, symbols, saves---appeared in different
@@ -329,7 +422,19 @@ conditions can finish, and the question is how many commands, how many errors,
 and how much the developer trusts the result. That is a stronger design than one
 where the baseline cannot finish, because it makes both directions of the
 comparison informative---the git condition can win on tasks where the tool's
-mutation failures cost more time than the workaround saves.
+mutation failures cost more time than the workaround saves. The reframing also
+constrains what counts as evidence for the design. A tool that enables tasks the
+baseline cannot complete proves its necessity by existence; a tool that does the
+same tasks faster or with fewer errors proves its value by degree, which requires
+both more participants and a more precise measure. The first row of
+Table~\ref{tab:measures} (undetected errors) is the measure that survives this
+reframing, because an error the developer did not notice is a cost neither
+condition can address through more effort---it is a structural gap in what the
+developer saw, and the gap either widens or narrows when the tool changes what
+is visible. The pilot's git participant independently described wanting exactly
+what the sgt condition provides (``ask history a question about a symbol, not
+a file''), which confirms that the operation is desired and the question is only
+whether the implementation delivers it at acceptable cost.
 
 \paragraph{The treatment degrades its own fallback.}
 The apparatus pilot found that the sgt condition makes plain git---the tool a
@@ -363,8 +468,51 @@ rather than completion. The sixth (treatment degrades control) constrains the
 interpretation: any advantage we observe in the treatment arm is weakened by a
 confound we cannot remove.
 
-The twenty-one fixes and four design corrections together mean that the study we
-will run differs substantially from the study we would have run two weeks
+A seventh observation sits across the six themes rather than within any of them:
+within each pilot session the participant's willingness to issue comprehension
+commands stayed flat or grew, while their willingness to issue mutation commands
+declined monotonically after the first silent failure. The two curves are
+independent because the comprehension layer never committed an error that the
+participant saw---its failures were refusals (a query syntax that was rejected) or
+confusions (which count unit does this report use?), both of which teach the
+developer to rephrase rather than to stop asking. Mutation failures, by contrast,
+violated an already-verified expectation: a preview said one thing and the
+execution did another, or a report said nothing would happen and something did.
+Each such violation moved the participant further from the tool's write path and
+closer to the fallback (``I'll do it in git''), without moving them further from
+the tool's read path. The implication for sequential deployment is that the two
+layers can be released on different schedules: a team that ships the read layer
+first builds familiarity, and a write layer released later enters a context where
+the developer already knows what the tool claims and can tell when the claim is
+wrong. Releasing both simultaneously means a mutation failure on day one poisons a
+comprehension layer the developer would have found trustworthy on its own, because
+the developer attributes the failure to the system rather than to its action
+subsystem.
+
+Reflecting back through the four design commitments of Section~\ref{sec:design},
+the pilots identify which commitment caused each class of failure. The
+comprehension successes trace to commitment~1 (the function as unit) and
+commitment~4 (inferred names): parsing succeeded, grouping was reachable, and
+the vocabulary was the developer's. The mutation failures trace to commitment~2
+(set-based versions, whose layout seam produced the corruption) and commitment~3
+(the fork rule, whose amplification blocked the write guards). The
+counterfactual is sharp: had we shipped with a weaker fork rule---merging two
+edits to one function textually whenever they touch no common line, the way
+Apel et al.'s semistructured merge does~\cite{apel2011}---the write layer would
+have worked on repositories it currently refuses. The tradeoff would then be
+silent merge errors instead of refusal-to-act, which is Cavalcanti et al.'s
+finding stated as a design question: semi-structured merge reduces false
+positives (spurious conflicts) but introduces false negatives (missed
+integration problems)~\cite{cavalcanti2017}. The fork rule is the maximally
+conservative position on that spectrum, and the pilot shows the cost of
+conservatism: the developer who is stopped every time eventually stops using the
+tool. The study is designed to answer whether the alternative---a textual merge
+inside a function that sometimes produces wrong code nobody notices---is actually
+the worse outcome, because that is the claim this paper makes and the pilot
+cannot settle.
+
+The twenty-one fixes and four design corrections together mean that the study
+differs substantially from the study we would have run two weeks
 earlier. Three consequences follow for its design. First, the primary dependent
 variable is now time and error count per task rather than task completion, since
 both conditions finish. Second, the exit interview asks whether the participant

@@ -10,9 +10,8 @@
 \end{figure*}
 
 A version control system's unit of record decides which questions a developer can
-put to their own history, and the questions a developer actually has are the ones
-their understanding of the codebase produces, so the unit should be the one that
-understanding is already organised around. \sgt{} records one edit per changed function
+ask of their own history. The unit should match the grain a developer thinks
+at---because those are the questions they will actually ask. \sgt{} records one edit per changed function
 and files it under the request the edit was made for. This section states that
 commitment and the three that follow from it, each with the price it carries.
 Figure~\ref{fig:model} shows the first two of them at work on the sitting from
@@ -66,11 +65,11 @@ files~\cite{biggerstaff1993,dit2013}.
 \sgt{} finds functions in Python, TypeScript, and TSX with
 tree-sitter~\cite{treesitter} and records every other file as its whole content, at
 the grain git already offers, so the rest of this section applies only to files
-\sgt{} can parse. Within the three parsed languages a function can be smaller than a purpose: the rename in
-Figure~\ref{fig:two-records} moved \sym{db.py::fetch} to \sym{fetch\_row} and
-updated four call sites, so \sgt{} writes five records for what the developer thinks
-of as one action, and because those five are one named group the mismatch shows up
-only when somebody reads the edit list underneath the name. A function can also be
+\sgt{} can parse. Within the three parsed languages a function can be smaller than a purpose. The
+rename in Figure~\ref{fig:two-records} moved \sym{db.py::fetch} to
+\sym{fetch\_row} and updated four call sites, so \sgt{} writes five records for
+what the developer thinks of as one action. Because those five records share one
+name, the mismatch is invisible until somebody reads the list underneath it. A function can also be
 larger than a purpose, which happens when two requests change opposite ends of one
 fifty line function, and Section~\ref{sec:fork} describes what \sgt{} does then.
 
@@ -81,7 +80,10 @@ Two rules decide which sets are versions. No edit is included without the edits 
 was built on, and each function has one included version. \sgt{} rebuilds each file
 by writing out the included version of every function it contains and keeping the
 text between functions exactly as it was, which produces the bytes that are checked
-out. The middle panel of Figure~\ref{fig:model} is one such set before and after a
+out. That interstitial text (whitespace, comments between definitions) is itself
+recorded as a layout symbol so that its position is deterministic under
+set operations. (Section~\ref{sec:layout-seam} reports the cost of that choice.)
+The middle panel of Figure~\ref{fig:model} is one such set before and after a
 revert, and the right panel is the file each set produces.
 
 The alternative is to store patches and replay them, which is what Darcs and Pijul
@@ -106,19 +108,25 @@ happens, since working out the resulting files takes no more than rebuilding the
 from the proposed set: \cmd{sgt revert "price cache"} draws the twelve edits that
 would remain, names the functions whose text would change, and asks
 \cmd{apply this revert? [y/N]}. Run with no terminal attached it prints the same
-preview and declines, so a revert nobody watched does not happen.
+preview and declines, so a revert nobody watched does not happen. The safety
+property (no mutation without confirmation) held throughout the evaluation; the
+\emph{information} property did not. During the evaluation the machine-readable
+preview omitted the subtraction report entirely and its one-line summary asserted
+``nothing depends on it'' while its own payload carried a non-zero dependent
+count, so an agent that checked the preview to decide whether to confirm was given
+less information than a developer reading the terminal.
 
 Three requests wrote \sym{api.py::handle}, and in Figure~\ref{fig:model} it carries
 an edit from the rate limiter, one from the cache, and one from the retry policy, in
-that order. Removing the cache's edit under the first rule alone means removing
-everything recorded above it in that function, and the retry policy is above it. We
-shipped that behaviour first, and on a history where features interleave inside a
-shared function it removed a later feature in order to remove an earlier one, with a
-preview that counted the edits coming out and never said which features they belonged
-to, until it emptied a test repository we were using for exactly this measurement and
-we changed the default in August 2026. The default now keeps the later edits and subtracts the reverted
-feature's lines from the current text of the shared function with a three-way merge,
-the same operation git performs when it merges a text file. The version of
+that order. The retry policy was built on the cache's edit (it starts from the
+version the cache left behind), so the dependency rule chains them: removing the
+cache alone would orphan the retry. We shipped that strict interpretation first---a
+revert of the cache also removed the retry---and it emptied a test repository,
+because on any history where features interleave inside a shared function, removing
+an early edit takes every later edit with it. The default now keeps the later edits
+and subtracts the reverted feature's contribution from the current text of the
+shared function with a three-way merge, the same operation git performs when it
+merges a text file. The version of
 \sym{api.py::handle} that Figure~\ref{fig:model} leaves in the file is produced that
 way, and the hollow diamond beside it is how \sgt{} says so. The old behaviour
 remains available as \cmd{revert --take-dependents}, and its help text says what it
@@ -130,12 +138,20 @@ leave alone. When the subtraction overlaps a line a later edit changed, \sgt{} l
 the function exactly as it is and prints \cmd{kept unchanged (the removal overlaps
 later edits\ttdash needs your edit)} with the function named, and when a function
 \sgt{} is keeping still calls a function the revert removed, it prints
-\cmd{still references removed code (fix or revert separately)}. Both are reports and
-neither stops the revert, because the alternative is a command that refuses to
-finish over a consequence the developer may already intend. The cost of the default is
-that after the merge the shared function is text the developer has not read, and
-their test suite decides whether the revert was correct. Naming the function before
-the revert runs is as far as we are willing to go on the developer's behalf.
+\cmd{still references removed code (fix or revert separately)}. Both are reports and neither stops the revert, because the alternative is a
+command that refuses to finish over a consequence the developer may already
+intend. The second warning depends on the reference field described in
+Section~\ref{sec:grain}, which requires a globally unique function name, so on
+repositories where short names recur (monorepos, projects with many modules) the
+warning is structurally absent and the developer's test suite is the only oracle.
+Across the evaluation corpus, 6.7\% of records carry any reference edge (the
+per-repository range is 0.0--20.5\%), so the dependency-based refusal in
+Section~\ref{sec:walkthrough}'s Wednesday scenario represents a capability most
+records cannot trigger; a repository whose function names are not globally unique
+sees none of it. The cost of the default is that after the merge the shared function is text the
+developer has not read, and their test suite decides whether the revert was
+correct. Naming the function before the revert runs is as far as we are willing
+to go on the developer's behalf.
 
 \subsection{Two versions of one function, and a person decides}
 \label{sec:fork}
@@ -153,7 +169,7 @@ records both, includes neither, and asks the developer. This is the commitment t
 costs the most goodwill in the first week, so we want to be precise about whose
 behaviour we are departing from and why theirs is right.
 
-Git merges text and knows nothing about what a function is, and a system that has
+Git merges text and knows nothing about what a function is. A system that has
 to work on every text file in every language anyone will ever write can afford to
 know nothing else, which is why \cmd{git merge} is useful on a Makefile. In the case
 Figure~\ref{fig:fork} draws, two people had last saved the same version of
@@ -175,11 +191,41 @@ A developer pays for this by being stopped in cases where the merge would have b
 fine, and in one of those cases \sgt{} stops for nothing at all, since deleting a
 function and adding it back with byte-identical content in two places produces two
 versions from one parent and \sgt{} treats content that agrees exactly as a
-disagreement. Our position is that the cost of being asked is bounded and visible at
-the moment it is paid, and the cost of a silent textual merge inside one function is
-a failure that surfaces later somewhere else. We hold that loosely, because a
+disagreement. The design is a fail-stop commitment in Schlichting and Schneider's
+sense~\cite{schlichting1983}: the system converts a potentially-wrong state (a
+textual merge whose correctness nobody has verified) into a detectable halt (the
+developer is asked). Fail-stop costs availability---the tool is unavailable until the
+developer answers---in exchange for a guarantee about everything it does let through:
+if the system did not stop, the included version is one a person chose, not one a
+program composed. The read layer inherits this property: every attribution,
+dependency display, and consequence preview rests on versions that entered through a
+human decision, so the reports are as trustworthy as the decisions they trace back to.
+A silent textual merge would break that chain, because the function it produces has
+never been chosen by anybody, and the next revert that touches it would be operating on
+text whose provenance is a program's guess rather than a person's act.
+
+We hold the commitment loosely, because a
 developer who merges thirty branches a day would reasonably weigh the two the other
-way, and for them the current design is worse.
+way, and for them the current design is worse. The 18$\times$ amplification
+Section~\ref{sec:session-rate} reports is the measured cost of choosing correctness
+over availability at this grain, and a tool builder facing the same choice should
+treat that number as a lower bound on what fail-stop costs at the function level.
+
+The deeper reason for accepting that cost is the context in which the tool
+operates. A developer who typed the competing versions themselves would have read
+both, would hold a model of what each does, and could evaluate a textual merge in
+seconds. A developer whose agent produced one version while a colleague's agent
+produced the other has read neither, holds no model of the interaction between them,
+and would accept a textual merge not because they verified it but because the tool
+offered no reason to look. Shen and Tamkin measured this directly: developers who
+relied on AI assistance scored 17\% lower on assessments of the code they had just
+produced, with debugging---recognising when code is wrong---showing the largest
+gap~\cite{shen2026skills}. The fork rule is designed for the developer in that
+degraded state: it forces a decision point that requires looking at the two versions,
+which is the cognitive engagement their earlier delegation removed. A tool that
+silently merges code its user has not read, in a context where the user's capacity to
+read critically has already declined, is compounding the problem it was built to
+address.
 
 \subsection{The names are inferred, and correcting one moves labels only}
 \label{sec:names}
@@ -189,30 +235,74 @@ Every figure in this paper labels a group of edits with a name like
 that changed in the same saves and that refer to one another are grouped together,
 using the change coupling signal established by Zimmermann et al.\ and Ying et
 al.~\cite{zimmermann2004,ying2004} and a community detection method over the
-resulting graph~\cite{traag2019}. A language model then reads the saves in a group
+resulting graph~\cite{traag2019}. The reason a graph algorithm finds real features
+rather than arbitrary cuts is that codebases exhibit what Simon called
+\emph{near-decomposability}: interactions within a subsystem are strong and frequent
+while interactions between subsystems are weak and
+infrequent~\cite{simon1962}. Community detection recovers that structure because
+it was designed to, and the known exception---a hub function called from
+everywhere---is the same entity that breaks feature location in the literature and
+that Section~\ref{sec:discussion-synthesis} reports as the main source of
+grouping errors here: it pulls otherwise separate requests into one community
+because the coupling signal cannot tell structural proximity from shared purpose.
+
+A language model then reads the saves in a group
 and writes the label, which is the descendant of a task attempted before language
 models existed, when Buse and Weimer generated a description of a change out of the
 change itself~\cite{buse2010}. The label draws from the developer's words rather than
-from the code's identifier names, because those two vocabularies diverge: Nguyen and
+from the code's identifier names. Nguyen and
 Glassman showed that the naming a model uses in its output and the naming a
 developer uses to describe the same behaviour systematically
-mismatch~\cite{nguyen2024}, so a label derived from identifier names would speak the
+mismatch~\cite{nguyen2024}. A label derived from identifier names would therefore speak the
 model's language rather than the developer's, and the developer who later searches
 for ``the caching'' would find nothing under whatever the model called its cache
 class. Membership is computed from the code and the label is written from the words,
-and those two steps fail in different ways, so we treat them separately.
+and those two steps fail in different ways, so we treat them separately. The
+grouping is also systematically finer than the request: a community detection
+algorithm cuts where the coupling is weak, not where the developer stopped
+typing, so one request that touches several disjoint parts of the code becomes
+several features. Section~\ref{sec:discussion-synthesis} reports a median of
+4--6 features per request across four repositories. The result is a sub-intent
+decomposition rather than an intent recovery---the developer gets a vocabulary
+for the structural neighbourhoods their request produced, not a map back to what
+they asked for. The finer grain has a cost and a benefit. The cost is that the
+developer cannot name what they asked for in one selection; they must merge or
+select several. The benefit is that operations work at a finer level than the
+request: the developer who asked for caching and later wants only the TTL
+helper removed can name that piece without reverting the whole request. The
+mismatch is in level as well as in number: the
+developer thinks at the level of ``the price cache'' (one purpose, one name) while
+the tool presents four structural communities inside it, a difference
+Section~\ref{sec:discussion-synthesis} traces to Rosch's distinction between
+basic-level and subordinate categories~\cite{rosch1978}.
+
+We chose to operate at the subordinate level rather than the basic level for a
+reason that becomes clear only when the developer acts on the grouping. A
+request boundary is unstable: it depends on what the developer typed, which changes
+between ``implement caching'' (one request) and ``add a TTL helper, then wire it
+into the handler'' (two requests for the same code). A structural boundary is
+stable: it depends on which functions call which others, which does not change when
+the developer rephrases. A revert, a restore, or a dependency warning all need a
+boundary that means the same thing regardless of when the developer asks---and a
+boundary defined by coupling has that property while a boundary defined by request
+phrasing does not. The over-decomposition is therefore not an error in the
+clustering but a consequence of choosing stability over correspondence: the tool
+gives four addressable pieces where the developer expected one, because those four
+pieces are the ones whose membership will not shift when the next request arrives.
+The cost (merging to act at the request level) is paid once; the benefit (stable
+addresses for operations) pays on every subsequent use.
 
 We considered asking the developer to confirm the grouping at save time and decided
 against it, because answering that question takes the same knowledge commit hygiene
 takes, and a developer who could reliably answer it could also have staged the
-hunks. Shipman and Marshall collected the reasons people abandon systems that ask
-them to formalise their own work, premature structure among them, and the design
-they arrived at has the system propose a structure that its user may accept, modify,
-reject, or leave alone~\cite{shipman1999}. That is the arrangement here, and we are
-applying it under easier conditions than the ones they wrote about. The structure
-their systems tried to elicit was tacit, so a user asked to state it had first to
-work out what they thought, where the structure \sgt{} recovers was said out loud,
-in a request, before any of the code existed, and the only reason it needs recovering
+hunks. Shipman and Marshall showed that systems which ask users to formalise their
+own work get abandoned~\cite{shipman1999}; the design they arrived at has the system
+propose a structure the user may accept, modify, reject, or leave alone, which is
+the arrangement here. Our conditions are easier than theirs: the structure their
+systems tried to elicit was tacit, so a user had first to work out what they thought.
+The structure \sgt{} recovers was spoken in a request before any of the code
+existed---though not at the grain the tool produces, since one request typically
+splits into several structural clusters. The reason it needs recovering at all
 is that nothing wrote it down. What matters is therefore not whether the guess is
 right but what a wrong one costs, and correcting one moves labels and touches no
 recorded edit. \cmd{sgt feature rename 001f73c2 "price cache"} renames a group whose
@@ -222,11 +312,28 @@ already exists. Because identifiers survive all three, a revert written down in 
 code review comment last month still removes the same edits after somebody renames
 the group today.
 
+The deeper function of inferred names is coordination. Clark's analysis of language
+use shows that people who need to refer to the same thing build a shared
+vocabulary through proposal and acceptance: one party offers a term, the other
+either adopts it or repairs it, and after a few exchanges the term is common
+ground~\cite{clark1996}. A version control system that infers feature names is
+proposing one half of that exchange---offering ``price cache'' as the term both the
+developer and the tool will use to pick out a set of edits. If the developer types
+\cmd{sgt revert "price cache"} the proposal has been accepted and the name is
+grounded; if they rename it, the repair has completed the same grounding through a
+different path. Either way, the tool and developer now share a vocabulary for the
+codebase, and that vocabulary enters the developer's prompts to the AI assistant,
+which is why the ``prompt specificity'' measure in Section~\ref{sec:findings-process}
+tests whether the tool's names reached the developer's language. A wrong label costs
+a rename (one command, no data moved); a missing shared vocabulary costs every
+subsequent conversation about the code, because the developer and the tool have no
+common referent for the set of edits they both need to name.
+
 Two failures show up often enough that a reader will hit them. A function that
 everything calls, an argument parser or a logging helper, changes in nearly every
 save and pulls otherwise unrelated work into one group, and the fix is a regroup the
 developer has to notice they need. A save with no message gives the language model
-less to read, and \sgt{} says so at the time, printing \cmd{· no words captured}
+less to read, and \sgt{} says so at the time, printing \cmd{\textperiodcentered{} no words captured}
 under the save it just wrote, because the label summarises what the developer said
 about the work and a developer who says nothing gets a name derived from the code
 alone.
@@ -245,7 +352,26 @@ argued this tool should eliminate. A revert whose output is computed from the
 records the developer already validated produces a file whose correctness follows
 from the records, and the developer's test suite decides whether the composition
 is sound. The cost is that a subtraction which overlaps later work requires a hand
-edit; the benefit is that the developer knows what they are reading.
+edit; the benefit is that the developer knows what they are reading. Bansal et
+al.\ found that AI explanations increase acceptance whether or not the underlying
+recommendation is correct~\cite{bansal2021}; a model-in-the-loop revert would
+face the same problem, because the developer would have to judge whether the
+model's redrafted function is correct, and the tool's report that it passed tests
+is exactly the kind of explanation that increases acceptance without increasing
+accuracy. The refusal has a deeper justification. A version control system is
+infrastructure: it sits beneath every other decision, and a revert that is wrong
+invalidates every test, every review, and every deployment that followed it. An
+AI assistant is a collaborator: its suggestions are proposals that a developer
+accepts, modifies, or rejects one at a time, and a wrong suggestion costs one
+undo. The failure modes are not symmetric. A wrong line completion costs the
+developer a delete; a wrong revert costs them their codebase state, and the
+difference in blast radius is the difference between a tool that should reach for
+a model (the assistant) and one that should not (the substrate). The trend toward
+model-in-the-loop for every operation conflates the two roles, and the
+conflation is invisible as long as the model is correct. The moment it is wrong,
+the developer discovers that the substrate contained a guess they never verified,
+and the cost of discovering it late is what Section~\ref{sec:discussion}
+measures.
 
 \sgt{} also does not stand between a developer and git. The records are files under
 \cmd{.sgt/} committed alongside the code, \cmd{sgt git <args>} passes through to git
@@ -282,13 +408,35 @@ stretch of work on it alone. Removing a named set is
 \cmd{sgt propose land --subset "export"}, which declines a subset that omits a group
 another chosen group depends on and names the group that is missing. Each of those
 four takes as its argument a phrase somebody used while the work was happening, so
-the recovery Section~\ref{sec:scenarios} described is eliminated entirely. Discovering the
+the manual recovery Section~\ref{sec:scenarios} described is replaced by a named
+command---on repositories where the store reproduces the committed bytes. Where
+it does not (27 of 28 outside repositories), the command refuses rather than
+producing a wrong file, and the developer is back to the manual recovery with no
+help from the tool (Section~\ref{sec:session-rate}).
+
+Discovering the
 layering needs no command at all wherever the references resolved, because the cache
 edits record that they were built on \sym{api.py::\_bucket} and therefore on the rate
 limiter, so the developer has at any later moment the fact they needed at 14:30 and
-did not have. Where they did not resolve the layering is simply absent rather than
-wrong, and the developer is back to reading the code, which is the position the
-ambiguity rule above trades down to on purpose. The rest of
+did not have. Where they did not resolve, the layering is simply absent rather than wrong, and the
+developer is back to reading the code, which is the position the ambiguity rule
+above trades down to on purpose. On 35 corpus repositories, 93\% of ops carry no
+reference at all, because resolution requires a globally unique function name---so
+the absence is the common case, not a rare failure. The 7\% that do resolve tend to
+be cross-module calls (a handler calling a cache function in another file, a test
+importing a fixture), which are precisely the dependencies whose absence would break
+the code silently---so the coverage is thin but concentrated on the cases where a
+human would not have noticed the dependency either. Where resolution is absent, the
+developer's test suite is the only oracle, and \sgt{} says so in the revert output
+(``still references removed code'') only when it can, which on most repositories is
+never. The implication for adoption is blunt: a developer whose repository has few
+cross-module calls will never see a dependency warning, and will discover that the
+tool offers no protection there only when a revert breaks something silently.
+
+A reader should treat the dependency display as a bonus that fires
+occasionally rather than a guarantee the design rests on; the design rests on set
+arithmetic over edits, and the dependency enriches a revert without being required
+for one. The rest of
 what a developer types is housekeeping around those nine, \cmd{sgt init} to begin,
 \cmd{sgt log} and \cmd{sgt sync} to see where things stand, and the
 \cmd{sgt feature rename} of Section~\ref{sec:names} to correct a name, none of which

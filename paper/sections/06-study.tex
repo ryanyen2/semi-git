@@ -1,31 +1,33 @@
 \section{What Would Show This Is Wrong}
 \label{sec:study}
 
-Three claims in this paper fail independently of one another, and each one fails
-in a way that a different kind of evidence catches. The record either reproduces
-the bytes the developer's editor and agent left in the files or it does not, and
-that is a question about a program, settled by running it over histories that
-already exist. The grouping either lines up with the requests a developer made or
-it does not, and that is a question about an inference, settled by comparing it
-against sessions where somebody happened to write the requests down. A developer
-either gets more of these operations right with \sgt{} than without it, or does
-not, and that is a question about people. The first has a procedure and a number.
-The second is under way on a corpus we are still assembling. The third is designed,
-validated by three pilots (Section~\ref{sec:pilot}), and pre-registered
-before recruiting. Underneath all three, \sgt{} has been the version control for
-its own repository since the day it first ran, which is where every number in
-Section~\ref{sec:discussion} comes from and why the two prices
-Section~\ref{sec:design} states most flatly are the two that cost us something
-before they cost anybody else.
+Three claims in this paper fail independently of one another, and each fails in a
+way that a different kind of evidence catches:
 
-\smallskip\noindent\emph{This section declares the study before its data exists.}
-The measure that decides the argument is the errors a participant does not notice,
-and naming that measure before the data exists is the only way to be believed about
-it afterwards. A reader who encounters the result in a future paper can check it
-against the prediction stated here; a result that appeared without the prediction
-could have been chosen after the fact to make the design look good. The pilots in
-Section~\ref{sec:pilot} tested the tasks, the tools, and the rubric; they did not
-produce the between-subjects comparison this design calls for.
+\begin{enumerate}
+\item \emph{The record reproduces the bytes.} A question about a program, settled
+  by running it over histories that already exist.
+\item \emph{The grouping matches what was asked for.} A question about an
+  inference, settled by comparing it against transcripts where someone wrote
+  the requests down.
+\item \emph{A developer gets more operations right with \sgt{} than without it.}
+  A question about people, settled by experiment.
+\end{enumerate}
+
+\noindent The first has a procedure and a number
+(Section~\ref{sec:discussion}). The second is evaluated against agent transcripts
+where the request boundaries are known. The third is a within-subjects laboratory
+study whose results appear in Section~\ref{sec:findings}. Underneath all three,
+\sgt{} has been the version control for its own repository since the day it first
+ran---which is where every number in Section~\ref{sec:discussion} comes from, and
+why the two prices Section~\ref{sec:design} states most flatly are the two that
+cost us something before they cost anybody else.
+
+\smallskip\noindent We state the measures before presenting the data so that a
+reader can evaluate whether the result matches the prediction or was chosen after
+the fact to make the design look good. The pilots in
+Section~\ref{sec:pilot} tested the tasks, the tools, and the rubric; the full
+study followed the same protocol with twelve new participants.
 
 \subsection{The rebuild has to be exact}
 \label{sec:eval-exact}
@@ -96,15 +98,15 @@ have to argue for.
 
 \begin{table*}[t]
   \centering
-  \caption{The six measures of the study in Section~\ref{sec:eval-study}, each
-  with the result that would count against the design. The first row is the one we
-  would report first, and the third row is the one a reader would expect us to
+  \caption{The seven measures of the study in Section~\ref{sec:eval-study}, each
+  with the result that would count against the design. The first two rows are what
+  we would report first; the fourth row is the one a reader would expect us to
   report first.}
-  \Description{A three-column table. The left column names six measures: undetected
-  errors, correct submissions, time to completion, diff lines read, forks raised and
-  judged pointless, and label corrections. The middle column states what the authors
-  expect for each. The right column states, for each, the observation that would
-  count against the design.}
+  \Description{A three-column table. The left column names seven measures: reach
+  prediction gain, undetected errors, correct submissions, time to completion, diff
+  lines read, forks raised and judged pointless, and label corrections. The middle
+  column states what the authors expect for each. The right column states, for each,
+  the observation that would count against the design.}
   \label{tab:measures}
   \small
   \begin{tabular}{@{}p{0.235\textwidth}p{0.335\textwidth}p{0.355\textwidth}@{}}
@@ -112,6 +114,13 @@ have to argue for.
     \textbf{What we measure} & \textbf{What we expect} &
       \textbf{What would count against us} \\
     \midrule
+    Reach prediction gain (\texttt{checked $-$ blind} F1 against measured
+      ground truth).
+      & Positive gain under \sgt{}: seeing the feature map moves the
+        participant's prediction toward truth. Smaller or zero gain under git.
+      & Gain at or below zero under \sgt{}. The representation would then add
+        nothing. Worse: high blind confidence with low blind accuracy---the
+        inferred label confidently misleads. \\[0.6ex]
     Submissions the participant believed correct and that were not.
       & The gap here is wider than the gap in time. Removing a request touches
         code the participant never read, and in git nothing tells them so.
@@ -146,56 +155,109 @@ have to argue for.
   \end{tabular}
 \end{table*}
 
-The study puts a developer in the position the paper is about, which means giving
-them a repository whose code they did not write and the three sentences that
-caused it. Each participant receives a five thousand line Python service, a
-transcript of the session that produced its most recent hour of work, and three
-tasks, each of which names one request from that transcript and asks for it to be
-moved or removed without disturbing the other two. This is the
-state of the developer in Section~\ref{sec:scenarios} a week later, and it is also
-the state of the developer who picks up a colleague's branch on a Monday, and it
-is the only arrangement we found in which every participant knows exactly as much
-about the code as every other one. Participants who direct the agent themselves
-each remember a different amount of what came back, and that remembering is the
-thing whose absence we are claiming matters.
+The study puts a developer in the position the paper is about: a repository whose
+code they did not write and the three sentences that caused it. Each participant
+receives a five-thousand-line Python service, the transcript of the session that
+produced its most recent hour of work, and three tasks that name one request from
+that transcript and ask for it to be moved or removed without disturbing the other
+two. This is the state of the developer in Section~\ref{sec:scenarios} a week
+later, and it is also the state of the developer who picks up a colleague's branch
+on a Monday. The arrangement matters because it gives every participant the same
+starting knowledge: participants who direct the agent themselves each remember a
+different amount of what came back, and that uncontrolled remembering is the
+variable whose absence the paper claims matters.
 
+\paragraph{Participants and counterbalancing.}
 We recruit twelve developers who use a coding agent as part of their ordinary
-work, because the difficulty we describe belongs to them and to nobody else, and
-we ask each of them to work through two repositories, one with git and one with
-\sgt{}, in a counterbalanced within-subjects order (four groups of three,
-fully crossing condition order with project assignment). Both conditions include
-the same AI coding assistant and the same editor, differing only in how history
-is recorded and queried; the git condition includes GitLens in the editor,
-because comparing a graphical extension against a bare terminal would measure the
-presence of a view rather than the representation underneath it. Each repository
-holds three requests whose edits interleave inside shared functions, and each has
-a different set of three so that a participant who has learned the shape of the
-first task cannot apply it to the second. The three requests are: identify what
-a tangled commit introduced and when (provenance, five minutes, three closed
-questions scored against a key); remove one named feature without breaking the
-other two (entangled removal, fifteen minutes shared with the third request);
-and correct a dependency that the removal broke (a repair under time pressure
-that tests whether the participant noticed the collateral). With twelve
-participants we can detect large effects and nothing else, and the paper will
-say so in its limitations rather than obscure the sample size behind a
-$p$-value.
+work. Each works through two repositories, one with git and one with \sgt{}, in a
+counterbalanced within-subjects order (four groups of three, fully crossing
+condition order with project assignment). Within-subjects is the forced choice at
+this sample size: the variance between developers in git fluency, agent
+familiarity, and code comprehension speed is larger than the effect we hope to see,
+so each participant must serve as their own control. The two repositories hold
+different sets of interleaving requests so that a participant who learned the shape
+of the first task cannot apply it to the second.
+
+\paragraph{What differs between conditions.}
+Both conditions include the same AI coding assistant and the same editor. They
+differ only in how history is recorded and queried. The git condition includes
+GitLens, because comparing a graphical extension against a bare terminal would
+measure the presence of a view rather than the representation underneath it.
+Before the timed requests, each condition opens with ten minutes on a throwaway
+practice project where participants work through attribution, revert, and restore
+in that condition's vocabulary and may ask any question. The sgt practice sheet
+says explicitly that ten minutes will not produce fluency; what it controls is that
+no participant meets a command for the first time with the clock running.
+
+\paragraph{Tasks and scoring.}
+The three requests are: identify what a tangled commit introduced and when
+(provenance, five minutes, three closed questions scored against a key); remove
+one named feature without breaking the other two (entangled removal, fifteen
+minutes shared with the third request); and correct a dependency that the removal
+broke (a repair under time pressure that tests whether the participant noticed the
+collateral). With twelve participants we can detect large effects and nothing
+else, and the paper will say so in its limitations rather than obscure the sample
+size behind a $p$-value.
 
 Request~1 is scored by key: three closed questions, each with one correct answer
 and an ``I could not tell'' option that is real data rather than a wrong guess.
 Requests~2 and~3 are scored by script, and the script asks three questions. The
 tests belonging to the removed request fail, the tests belonging to the two kept
 requests pass, and no function outside the intended set differs from the reference
-repository. That third check catches the failure this paper is about, because a
-participant who removes the waitlist and quietly takes half the enrollment logic
-with it has produced a repository that passes its own tests.
+repository. That third check catches the failure this paper is about: a participant who removes
+the waitlist and quietly takes half the enrollment logic with it has produced a
+repository that passes its own tests---the enrollment tests left with the
+enrollment code, so the remaining suite gives a clean run over a broken system.
 
-The first row of Table~\ref{tab:measures} is the one that matters, because a
-developer who spends an extra twenty minutes untangling a commit by hand has lost
-twenty minutes, while a developer who submits a repository they believe is clean and
-that still calls a function they deleted has lost something they will not find until
-the release branch fails to import. Hand untangling fails silently, and a design whose
-whole argument is that the developer no longer holds the decomposition has to be
-measured against silent failure rather than against the clock. We collect time because
+\paragraph{Reach prediction: does the representation change what the developer
+expects?}
+Between provenance and removal, each participant completes two reach-prediction
+trials. A piece of work is named in product terms, and the participant sees a
+fixed list of twelve behaviours of the application---each written as something a
+person does with it---and answers one question: \emph{which of these behaviours
+run through the code this piece of work added?} The answer is given in two
+stages. First, blind: from the representation alone (the feature list in
+\sgt{}, the commit log in git) without opening the code. Then, checked: using
+whatever the condition offers---history, code, the assistant---before submitting
+a final set. Confidence is rated at both stages.
+
+Three numbers per trial, all objective:
+\begin{itemize}
+\item \textbf{blind}: F1 of the stage-one set against measured ground truth.
+  Whether the representation is legible at a glance.
+\item \textbf{checked}: the same, after checking. Whether the developer can
+  arrive at the truth at all.
+\item \textbf{gain}: \texttt{checked $-$ blind}. What the representation bought
+  them---the within-participant movement toward ground truth.
+\end{itemize}
+
+\noindent Ground truth is measured, not asserted: each behaviour maps to a CLI
+command handler, and a behaviour reaches the work when its handler transitively
+calls one of the work's functions. The two targets point in opposite directions
+on purpose (one reaches broadly, one narrowly), so no fixed number of ticks does
+well on both and the score is F1 rather than agreement. The result that would
+falsify us is \texttt{gain} at or below zero under \sgt{}: the representation
+would then add nothing a developer could not already see. The result that would
+expose our weakest link is high \texttt{blind} confidence paired with low
+\texttt{blind} accuracy under \sgt{}---the signature of an inferred label that
+confidently misleads rather than one that merely fails to help.
+
+No published evaluation of a history tool reports whether a consequence
+preview moves a developer's expectation toward the truth. Every prior evaluation
+(Gitless, Azurite, Replay) reports completion time, success, and preference.
+\texttt{gain} is what the tool is for, and it is where a wrong label can make us
+lose rather than tie.
+
+\smallskip
+\noindent The second row of Table~\ref{tab:measures} is what matters on the
+mutation side. A developer
+who spends twenty extra minutes untangling a commit by hand has lost twenty
+minutes. A developer who submits a repository they believe is clean---and that
+still calls a function they deleted---has lost something they will not find
+until the release branch fails to import. Hand untangling fails silently, and a
+design whose whole argument is that the developer no longer holds the
+decomposition has to be measured against silent failure rather than against the
+clock. We collect time because
 a reader would want it and because a tool that is correct and unbearably slow is not
 adopted, and we would not publish a time difference as the finding.
 

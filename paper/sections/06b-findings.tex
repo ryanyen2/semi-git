@@ -1,0 +1,828 @@
+\section{What the Study Found}
+\label{sec:findings}
+
+Twelve developers completed both conditions. This section reports what they did,
+what they got right, and what they said---in that order, because the primary
+measure (Section~\ref{sec:eval-study}) is errors a participant does not notice,
+and everything else is context for interpreting that number. A tool that helps a
+developer finish faster while leaving hidden damage is worse than one that slows
+them down and catches it, because the developer who submits with confidence has
+spent their verification budget and will not look again.
+
+Mozannar et al.\ modelled this budget formally: the dominant cost in AI-assisted
+programming is not generation but verification---a developer spends more time
+evaluating whether generated code is correct than they saved by not writing
+it~\cite{mozannar2024}. The cost scales with the developer's existing
+comprehension of the surrounding code, which is exactly the variable our two
+conditions manipulate. In the git condition, the developer's comprehension of
+which functions serve which request must be constructed from reading diffs. In
+the sgt condition, the tool's attribution supplies that comprehension directly,
+so the verification cost of a revert preview should be lower---if the attribution
+is correct. If it is wrong, the developer inherits a false model and the
+verification cost rises above the git baseline, because they must now correct
+both the code and their understanding of it. Parasuraman et al.'s model predicts
+this asymmetry---automating information analysis (stage~2) without adequate
+information acquisition (stage~1) produces exactly the undetected
+error~\cite{parasuraman2000}---and the study's primary measure is designed to
+catch it: an error that survives the participant's verification is evidence that
+the budget was spent on the wrong model.
+
+We pre-registered the measures and the analysis before the first session; the
+predictions stated in Table~\ref{tab:measures} were fixed before the data
+existed, and the reader can check each one against the result below.
+
+All confidence intervals are 95\% studentized bootstrap over participants
+(10{,}000 resamples), because at $n=12$ the sampling distribution of the mean
+is not guaranteed to be normal and a $t$-interval would require that assumption.
+We report paired estimates (sgt minus git) throughout, so each participant
+serves as their own control and individual variation cancels.
+
+\subsection{Participants}
+
+We recruited twelve developers who use a coding agent as part of their ordinary
+work. \placeholder{Background: mean years coding, mean years git, git expertise
+composite (0--24), agent tools used, AI share of shipped code.} Four groups of
+three, fully crossing condition order with project assignment (coursecraft and
+confplan). No participant had used \sgt{} before the session.
+
+\subsection{Task outcomes}
+\label{sec:findings-outcomes}
+
+Figure~\ref{fig:outcomes} shows the three primary outcome measures, paired by
+participant. The measure the paper committed to first is collateral damage:
+tests broken outside the set the participant was asked to remove.
+
+\begin{figure*}[t]
+  \centering
+  % \input{figures/fig-outcomes}   % PairedEstimation chart, 3 panels
+  \placeholder{Figure: PairedEstimation with panels R1 provenance (0--3),
+  R2+R3 removal (0--4 rubric points), and collateral damage (inverted axis).
+  Lines connect each participant's git and sgt scores. Thick bars are condition
+  means. Below each panel, the paired mean difference with its bootstrap
+  distribution and 95\% interval.}
+  \caption{Task outcomes by participant and condition. Every participant appears
+  twice, joined by a line. Below each panel, the paired mean difference (sgt
+  minus git) with its bootstrap distribution and 95\% studentized interval.
+  Collateral damage is plotted with the axis inverted, so up is better in all
+  three panels.}
+  \Description{Three paired estimation panels showing per-participant scores on
+  R1 provenance, R2+R3 removal, and collateral damage, each with a bootstrap
+  difference estimate below.}
+  \label{fig:outcomes}
+\end{figure*}
+
+\paragraph{Provenance (request~1).}
+Three closed questions, scored against a key.
+\placeholder{Git mean, sgt mean, paired difference, CI, $d_z$, n.}
+The confidence calibration (stated confidence minus proportion correct)
+was \placeholder{git calibration, sgt calibration, difference} --- positive is
+overconfident. \placeholder{Interpret: did sgt participants know more, or merely
+believe they knew more? If calibration is flat while score rises, the tool
+helped them be right. If calibration also shifts, they were also more sure of
+what they got right --- or more sure of what they got wrong.}
+
+\paragraph{Reach prediction (Foresee block).}
+Two trials, each scored as F1 against measured ground truth (call-graph reach).
+\placeholder{Per-trial blind, checked, gain means by condition. Paired gain
+difference (sgt minus git), CI. Confidence calibration at both stages.}
+
+\noindent Trial F1 (agenda export, narrow reach): \placeholder{blind, checked,
+gain per condition.}
+Trial F2 (slot-comparison normalisation, broad reach): \placeholder{blind,
+checked, gain per condition.}
+
+\placeholder{Interpret: (1) Is gain positive under sgt?  If so, the
+representation moved the participant's prediction toward truth. (2) Is gain
+larger under sgt than under git?  That is the between-condition test. (3) Did
+any participant show high blind confidence paired with low blind accuracy under
+sgt?  That is the inferred-label failure mode---confidently wrong rather than
+helpfully wrong---and if it appears on F2 (the pre-registered risk case), it is
+reported as a U1 failure.  (4) Does the narrow-reach trial (F1) produce
+different gain than the broad-reach trial (F2)?  If gain is asymmetric, the
+representation helps in one direction (pulling predictions down or pushing them
+out) but not the other, which says something specific about which kind of
+provenance question the tool serves.}
+
+\paragraph{Removal and correction (requests~2 and~3).}
+Task score (rubric points): \placeholder{git mean, sgt mean, difference, CI}.
+Collateral damage (failing tests outside the target):
+\placeholder{git mean, sgt mean, difference, CI}.
+\placeholder{Interpret: the critical question is whether the sgt condition's
+consequence preview let participants avoid the collateral that the git condition
+could not see coming. If collateral is equal, recovery is something developers
+already do reliably and Section~\ref{sec:scenarios} overstates the difficulty.}
+
+\paragraph{Time and cap pressure.}
+\placeholder{Proportion hitting the cap per condition. Mean active time.
+Manipulation check: felt time pressure response distribution per condition.}
+We report time because a reader would want it, and we would not publish a time
+difference alone: a tool that is correct and unbearably slow is not adopted, but
+a tool that is fast and wrong is worse.
+
+\subsection{How the work was done}
+\label{sec:findings-process}
+
+Outcome measures say whether a tool helped; process measures say how. Two
+conditions can produce the same error rate through different strategies---one
+because the developer checked carefully, the other because the tool caught
+things the developer missed---and the distinction matters for design. The
+process telemetry also grounds the preference data: a developer who says ``I
+trusted it'' while the telemetry shows frequent verification is better
+calibrated than one whose telemetry confirms the trust.
+
+\begin{figure*}[t]
+  \centering
+  % \input{figures/fig-process}   % ProcessSignature chart
+  \placeholder{Figure: ProcessSignature with (a) share of action categories
+  across normalized request time, pooled per condition, with one strip per
+  participant beneath; (b) action bigrams that most distinguish the conditions,
+  by weighted log-odds with informative Dirichlet prior.}
+  \caption{(a)~Share of action categories across normalised request time, pooled
+  per condition, with one strip per participant beneath.
+  (b)~Action bigrams that most distinguish the conditions (weighted log-odds,
+  informative Dirichlet prior; positive leans sgt).}
+  \Description{A process signature chart showing action category distributions
+  over time for both conditions, plus distinguishing bigram sequences.}
+  \label{fig:process}
+\end{figure*}
+
+The process telemetry recorded every command, prompt, and edit action,
+categorised into nine kinds (orient, inspect, search, prompt, agent edit, manual
+edit, history operation, verify, recover). The first three are navigation (the
+developer is looking for something); the next three are transformation (the
+developer or assistant is changing something); the last three are quality
+assurance (the developer is checking or undoing). Figure~\ref{fig:process}a
+shows how those three phases distribute over normalised request time.
+
+\paragraph{Verification ratio.}
+\placeholder{Git mean, sgt mean, difference, CI.}
+The verification ratio is the proportion of actions in the ``verify'' category
+(running tests, reading diffs, inspecting output) relative to all actions within
+a request. The direction of this measure is ambiguous by design: a higher ratio
+in sgt could mean the preview gave participants something concrete to check
+(supporting appropriate reliance), or it could mean the tool's unfamiliarity
+forced more checking (friction). A lower ratio in sgt could mean participants
+trusted the consequence display and skipped verification (efficient trust, or
+dangerous complacency). The self-report item q14 (accepted unreviewed work,
+reversed; Section~\ref{sec:findings-perception})
+disambiguates: if verification drops AND q14 rises, participants skipped checks
+they felt they should have made.
+\placeholder{Report the numbers and which disambiguation holds.}
+
+\paragraph{Prompt specificity.}
+\placeholder{Git mean (0--3), sgt mean, difference, CI.}
+Each prompt to the AI assistant was coded on a four-point specificity scale: 0
+(no target named) through 3 (names a file, a function, and what to do). The
+coding was applied to the raw prompt text by the taxonomy of
+Section~\ref{sec:eval-study}, not by a human judge, so inter-rater reliability
+is not a concern and every prompt across both conditions received the same
+treatment. The measure tests whether the tool's vocabulary---feature names,
+checkpoint labels, symbol identifiers visible in the map---entered the
+developer's prompts. Two opposing mechanisms are plausible. If sgt's names gave
+participants concrete referents they otherwise lacked, specificity should rise:
+a developer who can see that the waitlist is feature \texttt{f-7ab21c}
+writes ``revert f-7ab21c'' (level~3) instead of ``undo the waitlist stuff''
+(level~1). If the tool substituted for the developer's own precision---they
+delegated navigation to sgt and therefore never acquired the vocabulary
+themselves---specificity should fall, which is the scaffolding-removal concern
+Kazemitabaar et al.\ measured in learners~\cite{kazemitabaar2025}. The
+distinction matters for the design's long-term effect: a tool that raises
+specificity is augmenting the developer's coordination with the assistant; a
+tool that lowers it is creating a dependency the developer cannot sustain when
+the tool is absent.
+\placeholder{Report which direction holds and connect to the vocabulary theme
+of Section~\ref{sec:findings-reflection}.}
+
+\paragraph{Wrong turns.}
+\placeholder{Git sum, sgt sum, per-condition.} A wrong turn is a history
+operation followed by a recovery action (undo, restore, or manual repair) within
+two minutes---the participant tried something, saw it was wrong, and backed out.
+The direction of this measure is the sharpest test of whether the pilot's
+mutation failures persist in the fixed version. If wrong turns are higher in
+sgt, participants reached the write layer and found it still unreliable: the
+tool stopped them (good) but stopping is work, and enough stops constitute a
+wrong-turn tax that erodes the time the comprehension layer saved. If wrong
+turns are lower in sgt, participants either avoided the write layer entirely
+(using sgt only to read, then acting in git) or the fixes actually stabilised
+it. The telemetry distinguishes these two explanations: an absent write layer
+shows up as zero history\_op events of the mutating kind, while a stable write
+layer shows up as history\_op events without recovery following them.
+\placeholder{Report numbers and which explanation holds.}
+In Ferino et al.'s reliance-control framework~\cite{ferino2026}, a wrong turn
+followed by recovery is a developer exercising control at the appropriate
+moment---they detected a problem and corrected it. A wrong turn followed by
+abandonment (switching to git for the remainder) is control escalation: the
+developer decided the tool's level of reliability does not merit continued
+engagement. The telemetry distinguishes these, and the second pattern is the
+one that would count against the design, because a tool that drives developers
+away from its write layer on first contact has failed to build the reliance its
+read layer earned.
+
+\paragraph{Distinguishing sequences.}
+\placeholder{Top 3--5 bigrams that lean sgt, top 3--5 that lean git, with
+log-odds and count. Interpret each: what does the sequence mean as behaviour?
+For example, if ``history\_op → verify'' is strongly sgt, participants checked
+what the tool did. If ``search → search'' is strongly git, participants were
+hunting through files.}
+
+The bigram comparison uses weighted log-odds with an informative Dirichlet prior
+(Monroe et al.~\cite{monroe2008}), which controls for frequency: a rare bigram
+that appears only in one condition produces a high ratio but a low weight,
+preventing one participant's idiosyncratic strategy from dominating the
+comparison. A positive $z$-score leans sgt; negative leans git. We report
+bigrams above a minimum corpus frequency of five, and state how many rare
+sequences were dropped, because silent truncation reads as ``we looked at
+everything'' when we did not.
+
+In information foraging terms~\cite{pirolli1999}, the two conditions differ in
+how rich each information ``patch'' is. Feature names and consequence previews
+are scent: proximal cues that predict what an operation will reveal before the
+developer commits to it. The n-gram analysis tests this directly. If the sgt
+condition shows fewer search$\to$search cycles and more
+history\_op$\to$verify sequences, the tool enriched the history record as a
+foraging patch---developers spend less time in between-patch navigation and
+more in within-patch exploitation, which is the 35\% of maintenance time Ko
+et al.\ measured as pure navigation cost~\cite{ko2006}.
+
+Two further patterns would be informative. First,
+inspect$\to$history\_op in sgt would mean that seeing the record's structure
+gives participants enough confidence to act without further search---the
+attribution serves as Pirolli and Card's ``information scent,'' a proximal cue
+of distal content. Second, history\_op$\to$recover in sgt would mean write
+operations failed often enough that participants had to undo them---the mutation
+layer's residual instability showing up as a behavioural signature. If both
+conditions show the same cycling, feature names carry no more scent than commit
+messages and the vocabulary is not reaching the developer's search behaviour.
+
+Letovsky's comprehension model offers a finer prediction~\cite{letovsky1987}.
+Programmers reading unfamiliar code generate questions (``why is this here?'',
+``what does this call?'') and conjectures (``I think this handles retries''),
+and the questions drive their navigation. In the git condition, the
+provenance question---\emph{which request produced this function?}---has no
+answer in the record, so the developer must generate it as a conjecture, test
+it against the code, and revise. In the sgt condition, the attribution answers
+it directly: the developer reads the feature label, confirms or renames, and
+moves to the next question. The observable difference is a shift from \emph{generative} inquiry
+(conjectures, with their risk of wrong turns) to \emph{verificatory} inquiry
+(checking a provided answer), which shows up as fewer search events and a
+different sequence structure. The telemetry can distinguish these: generative
+inquiry shows up as search$\to$search$\to$inspect sequences where the
+developer builds understanding incrementally; verificatory inquiry shows up as
+inspect$\to$history\_op, where a single inspection provides enough confidence
+to act. If the sgt condition shifts the balance toward verification while
+maintaining accuracy, the tool's attribution is doing what Letovsky's model says
+a programmer's own memory does when reading code they wrote themselves: supplying
+answers to the questions before the search has to generate them.
+
+\subsection{What the two conditions felt like}
+\label{sec:findings-perception}
+
+\begin{figure*}[t]
+  \centering
+  % \input{figures/fig-perception}  % LikertDiverging chart
+  \placeholder{Figure: LikertDiverging showing 14 HLAC items grouped in 4
+  blocks (Finding your way around, Changing things, What you came away with,
+  Working with the assistant), one panel per condition, with paired mean
+  differences and CIs as dots and bars.}
+  \caption{Perceived experience on fourteen 7-point items (HLAC battery),
+  grouped into four ad-hoc blocks. Reverse-coded items (marked~$\hookleftarrow$)
+  are recoded so agreement always means better. Dots are paired mean differences
+  (sgt minus git); bars are 95\% bootstrap intervals.}
+  \Description{A diverging Likert chart with 14 items across two conditions,
+  showing response distributions and paired mean differences.}
+  \label{fig:perception}
+\end{figure*}
+
+The HLAC battery (History Legibility and Agent Collaboration) asked fourteen
+7-point items after each half, grouped into four blocks.
+No validated scale exists for history comprehension in AI-assisted development;
+general trust-in-automation instruments~\cite{jian2000} measure disposition
+toward automated systems but cannot distinguish provenance legibility from
+consequence awareness from retained mental model, which are the three mechanisms
+this paper claims.  We therefore wrote items that map one-to-one to specific
+design claims, report them as ad-hoc Likert-type items rather than construct
+scores, and ground interpretation in the exit interview where participants state
+what they experienced in their own terms.
+Figure~\ref{fig:perception} shows the full response distribution
+and the paired difference per item.
+
+\paragraph{Finding your way around (C1).}
+Four items: found when it changed, found why it changed, saw the whole piece of
+work, guessed at names (reversed).
+\placeholder{Item-level means and paired differences. Interpret: these map
+directly to claim C1. If sgt participants found provenance more legible, these
+items should shift. The reversed item (guessing at names) tests whether inferred
+labels helped or confused.}
+
+\paragraph{Changing things (C2).}
+Four items: knew what else it would touch, removed a feature safely, recovered
+from mistakes, surprised by the result (reversed). These four map to the
+consequence-preview mechanism of Section~\ref{sec:design}: the tool shows,
+before applying a revert, which other functions still depend on something being
+removed. That display is the bridge between comprehension (seeing what would
+break) and action (deciding to proceed). If participants in the sgt condition
+rated ``knew what else it would touch'' higher, the preview reached them---they
+read the consequence list and it calibrated their expectation. The reversed
+item (q12, ``surprised by the result'') tests whether that calibration held
+through execution: a participant can report knowing what would happen and still
+be surprised if the tool's execution differed from its preview.
+\placeholder{Item-level means and paired differences. If collateral is lower
+AND q4 (knew consequences) shifts, participants both did better and knew they
+would---the preview set accurate expectations AND the execution honoured them.
+If q4 shifts but collateral is flat, participants felt more informed without
+producing fewer errors, which is Bansal et al.'s finding restated: explanations
+increase confidence without increasing accuracy~\cite{bansal2021}.}
+
+\paragraph{What you came away with (C3).}
+Two items: clear picture of the project (q7), would get back up to speed (q13).
+This is the weakest block in the battery and we state why rather than papering
+over it. Two items cannot establish a construct. They are here because the claim
+they probe---that the tool leaves the developer with a transferable mental model
+of the codebase---is central to the paper's argument but too diffuse to measure
+with four items in a two-hour session. A developer's ``picture of the project''
+accumulates across days, and what two hours can measure is at best whether the
+tool planted the seed of one. The study design compensates by grounding whatever
+signal these items produce in the exit interview, where a participant can say what
+they came away with in their own terms rather than rating an abstraction.
+\placeholder{Item-level means and paired differences. If both items shift toward
+sgt, the tool's attribution gave participants more than task-local comprehension---it
+left them with a model of the project's structure they believe they could return
+to. If neither shifts, the twenty-minute window was too short for the seed to take
+root, and a longitudinal deployment study would be needed to test C3. Report
+honestly either way: a null on two items in twenty minutes does not refute the claim,
+but neither does it support it, and the reader should know that.}
+
+\paragraph{Working with the assistant (Q4).}
+Four items: directed the assistant precisely, checked the assistant's work,
+accepted unreviewed work (reversed), fought the tool (reversed). The two
+reversed items serve as honesty valves: a participant who straight-lines
+``agree'' on every positive item is caught by the negative ones. But they also
+measure real phenomena. ``Accepted unreviewed work'' (q14) is the
+over-reliance signal: a developer who trusts the tool's consequence preview
+and skips independent verification has delegated the check to the tool, and the
+tool's guarantee is only as strong as its rebuild fidelity (Section~\ref{sec:eval-exact}).
+If sgt wins on comprehension items (C1, C2) while q14 also rises in sgt, the
+tool improved understanding \emph{and} reduced the verification that keeps
+understanding honest---which is Bansal et al.'s finding that explanations
+increase acceptance regardless of correctness~\cite{bansal2021}.
+``Fought the tool'' (q10) is the interface-friction signal. The pilot's
+vocabulary-mismatch theme predicted that even a fixed tool would impose a
+learning cost---the concepts are unfamiliar, the operations are new, and twenty
+minutes is not enough to build fluency. If q10 is higher in sgt while outcome
+measures also favour sgt, the tool is useful but abrasive, and a developer who
+adopted it would pay a front-loaded cost the study's two-hour window cannot
+observe amortising.
+\placeholder{Report item-level means and paired differences. State which pattern holds.}
+
+\paragraph{Workload and usability.}
+NASA-TLX (raw, unweighted): \placeholder{git mean, sgt mean, difference, CI.}
+UMUX-Lite (0--100): \placeholder{git mean, sgt mean, difference, CI.}
+TLX measures what the task cost; UMUX-Lite measures whether the developer
+thought the setup met their requirements. The two instruments answer different
+questions and can point in opposite directions. A tool that is useful but
+demanding (higher UMUX-Lite, equal or higher TLX) is a tool worth learning: it
+delivers capability that justifies its cognitive cost, and the cost may
+amortise with fluency. A tool that is easy but insufficient (lower TLX, lower
+UMUX-Lite) failed to provide what the developer needed, regardless of how
+little it asked. The combination the pilot would predict---based on the
+vocabulary-mismatch finding and the mutation failures---is higher TLX in sgt
+(the unfamiliar interface costs effort) with higher UMUX-Lite in sgt (the
+consequence preview and attribution answer questions git cannot). If TLX is
+flat while UMUX-Lite rises, the tool did not impose measurable additional
+load---which would mean the learning cost the pilot predicted did not
+materialise in a twenty-minute window, either because the fixes removed the
+friction or because the task was short enough to stay below the threshold where
+unfamiliarity binds.
+\placeholder{Report numbers and which pattern holds.}
+
+\subsection{Preference}
+\label{sec:findings-preference}
+
+After both halves, each participant compared the two setups on seven job-level
+items (five-point scale, symmetric, neither tool named) and two hypothetical
+scenarios. The seven items span a gradient from low-stakes contexts (a throwaway
+prototype) to high-stakes ones (the participant's own production codebase), so a
+participant who differentiates across contexts---preferring sgt for their real
+code but indifferent on a throwaway---is telling us that the tool's value scales
+with the cost of getting things wrong, which is the claim Section~\ref{sec:scenarios}
+makes. A participant who straight-lines the same answer across all seven items is
+either genuinely undifferentiated (both tools felt the same) or not engaging with
+the gradient, and the two hypothetical scenarios (``a codebase you inherited from
+a colleague'' and ``a fresh project you are starting alone'') separate the two:
+the inherited case is the paper's scenario and the solo case is the control where
+the developer holds the decomposition themselves.
+\placeholder{Report per item: distribution, recoded mean. Do participants
+differentiate across the gradient? If so, where does the preference cross zero---at
+what level of stakes does the tool's cost (learning, friction) start being
+justified by its value (comprehension, fewer errors)?}
+
+The ``what made the difference'' multi-select gives the reasons in the
+participants' own language. The ``what would put you off'' multi-select collects
+the price in the same terms. These two together answer a question no Likert item
+can: whether the developer's stated reason for preferring or rejecting the tool
+matches the mechanism the design predicted. If the reasons cluster around
+comprehension (``I could see what belonged together,'' ``the consequence preview
+helped'') the read layer is carrying the value. If they cluster around mutation
+(``I could take things out cleanly'') the write layer is carrying it despite the
+pilot's predictions. If the costs cluster around trust (``not sure what it had
+done'') the pilot's strongest finding survived the fixes.
+\placeholder{Report both distributions. Map each selected reason back to the
+design commitment it reflects.}
+
+The preference data answers a question the outcome data cannot: whether a tool
+that helps is also a tool a developer would install. Lee and See's framework
+predicts that the two can diverge---a tool whose occasional failures are
+dramatic enough to remember can be distrusted even when its aggregate
+performance is positive, because the availability heuristic weights vivid
+single events over base rates~\cite{lee2004}. Two items in the cost
+multi-select test this directly: ``not being sure what it had done'' (trust
+erosion surviving from the pilot's strongest finding) and ``it grouped or named
+things in ways I disagreed with'' (commitment~4, inferred names, costing more
+than the pilots predicted). If either appears at high frequency while the
+outcome measures favour sgt, the tool is useful and unwanted---which is
+Bu\c{c}inca et al.'s finding for the most effective cognitive forcing
+functions, restated as a product problem~\cite{bucinca2021}.
+
+\paragraph{Exit interview: thematic analysis.}
+After the preference items, each participant answered three open questions: what
+they noticed about how the two setups differed, what they would want changed in
+the setup they preferred less, and whether they thought about the code
+differently after the session than before it. The analysis follows Braun and
+Clarke's reflexive thematic analysis~\cite{braun2006}: transcripts are coded
+inductively, codes are grouped into themes, and themes are checked against the
+design commitments to see whether the participant's account of their experience
+maps onto the mechanism the design predicted or onto a mechanism the design did
+not anticipate.
+
+Four a priori themes derive from the four commitments: (1)~\emph{granularity
+mismatch}, where the participant describes the tool's units as too fine, too
+coarse, or misaligned with what they wanted to name; (2)~\emph{consequence
+awareness}, where the participant describes knowing (or failing to know) what
+an operation would affect before it ran; (3)~\emph{trust trajectory}, where the
+participant describes a moment that changed how much they believed the tool's
+reports; and (4)~\emph{vocabulary adoption}, where the participant uses the
+tool's names (feature labels, checkpoint names, symbol identifiers) in their own
+description of the codebase rather than speaking in file or function terms. A
+fifth theme is reserved for mechanisms the design did not predict: any coherent
+account of value or cost that does not map onto the four commitments is coded
+separately and reported as a finding about the design space rather than a finding
+about this system.
+\placeholder{Report: which themes appeared, how many participants generated each,
+and the one or two quotations that most sharply illustrate the mechanism. Map
+each theme back to its design commitment. If theme~5 appears with more than two
+participants, it is the finding that matters most, because it means the
+developer's experience of the tool is shaped by something the designer did not
+control.}
+
+\subsection{Reflecting on the design commitments}
+\label{sec:findings-reflection}
+
+The pilots predicted a specific shape: comprehension holds, mutation fails
+(Section~\ref{sec:pilot-lessons}). Twenty-one fixes and four design corrections
+separated the pilot version from the version participants used. The question this
+subsection answers is whether those fixes changed the shape or merely moved it.
+
+\paragraph{Did the read/write split survive?}
+The pilot participant's exit verdict was ``for reading history, yes, starting
+today; for anything that writes, no.'' The study's R1 (provenance) is a pure
+read task and R2+R3 (removal/correction) require writing. A split that
+survives twelve participants is a finding about the design rather than about
+one person's session: it says that the representation (edits filed under
+requests) is independently valuable even when the operations over it (revert,
+restore) are not yet trustworthy, because the representation answers questions
+git cannot express---\emph{which request produced this function, and what else
+came with it}---without requiring the developer to act on the answer through
+any particular tool. A split that closes (R2+R3 also improved) is a different
+finding: the pilot's mutation failures were implementation defects rather than
+design costs, and fixing them unlocked the operations the representation makes
+possible.
+\placeholder{If R1 shows a clear advantage and R2+R3 does not, the split
+survived the fixes. If R2+R3 also improved, the fixes changed the story ---
+the mutation layer's defects were the bottleneck, not the design.
+If neither improved, the pilot's read benefit was an artefact of one participant
+rather than a property of the representation.}
+
+\paragraph{Did trust recover?}
+The pilot's strongest finding was that a single false positive (green checkmark
+over corruption) eroded trust for the remainder of the session, and the trust
+did not recover within that session even after correct operations followed. Lee
+and See's framework explains why: trust calibration requires multiple consistent
+observations to revise, and a single session provides too few trials after a
+failure for recalibration to occur~\cite{lee2004}. The version participants used
+fixed all twelve defects the pilot found, so the question shifts from ``can
+trust recover within a session'' to ``does a tool that never produces the
+failure build trust from scratch in the time available.'' The HLAC item
+``surprised by the result'' (q12, reversed) and the preference item ``not being
+sure what it had done'' are the signals. These two measure different things: q12
+asks whether the tool's behaviour matched expectations (a property of the
+current session), while the cost item asks whether the developer would carry
+uncertainty forward (a property of anticipated future sessions). A tool can
+score well on q12 (no surprises today) while still triggering the cost item
+(I would not trust it tomorrow), and that combination would mean the pilot's
+trust damage left a residue in the design's reputation that the fixes did not
+fully erase.
+\placeholder{If q12 is flat, participants in the fixed version were not
+surprised. If ``not being sure'' still appears frequently in the cost
+multi-select, trust did not fully recover despite the fixes --- meaning the
+tool's legibility gap is structural (commitment~4, inferred names) rather than
+a bug in the mutation layer.}
+
+\paragraph{Did the vocabulary reach the developer?}
+The pilot's vocabulary-mismatch theme (four counting units, selector namespaces
+varying per verb) predicted that even the comprehension layer would be hard to
+reach. The study version unified to one counting unit (symbols) and one
+selector namespace. The HLAC item ``guessed at names'' (q11, reversed) and the
+process measure ``prompt specificity'' are the signals.
+
+This question matters beyond usability. A version control system that infers
+feature names is proposing a shared vocabulary for a codebase---the same
+function Furnas et al.\ showed designers cannot predict for their
+users~\cite{furnas1987}. If a developer adopts the tool's names into their
+prompts, those names become the vocabulary through which they and the assistant
+coordinate about the code. The tool has then changed how the developer talks about what they are
+doing, which is a stronger form of value than a faster workflow.
+
+\placeholder{If q11 improved and prompt specificity is higher in sgt, the
+tool's vocabulary entered the developer's prompts --- they used feature names to
+direct the assistant. If specificity is lower, the tool substituted for the
+developer's precision rather than augmenting it, which is the over-reliance
+concern of Bansal et al.~\cite{bansal2021}.}
+
+The vocabulary question also tests a specific design bet about the
+over-decomposition. The tool presents four to six structural communities where
+the developer expects one named request, and the design bets that developers will
+adopt the finer vocabulary for the same reason they adopt file names: a
+structural boundary that stays stable across sessions is more useful as a
+referent than a purpose boundary that shifts with rephrasing. If the vocabulary
+enters prompts, developers found the subordinate-level labels (``Rate Limiting,''
+``Price Cache,'' ``Row Accessors'') useful as handles for directing the
+assistant, even though none of them names the request they typed. If it does
+not, the over-decomposition is finer than the developer wants to
+\emph{talk about}, and a vocabulary nobody adopts fails Clark's grounding
+test~\cite{clark1996}, regardless of whether it is structurally
+correct. The pilot's git participant provides the sharpest test: they
+asked for ``a question about a symbol, not a file,'' which is the structural
+level, not the request level. If study participants in the sgt condition adopt
+feature names at comparable frequency, the design bet is confirmed: developers
+prefer structural referents when they are available, and the mismatch between
+tool grain and intent grain matters less than whether the tool's vocabulary is
+learnable.
+
+\paragraph{What the preparation found.}
+Building the study repositories and running three pilots produced thirty-five
+defects, and the pattern across them is informative independent of their
+individual fixes. Twenty-two entered through the write path (revert, restore,
+save, fulfill) and zero through the read path (log, show, map, find). Twelve
+of the twenty-two shared a structural cause: a mutation that removes or
+rearranges records leaves metadata (layout chains, anchor positions, residue
+sentinels) pointing at records that are no longer present, and the rebuild
+produces invalid output from valid arithmetic. This is commitment~2 (set-based
+versions) failing at the seam it was designed to hide: files are rebuilt from
+sets of edits, and the rebuild is exact only when every piece of metadata that
+governs placement is consistent with the set it reads. The remaining ten write failures shared a different cause---one worth naming
+as a class: the silent success. A command reports that it finished, or a view
+displays a confident summary, and neither did what it claimed. A revert printed ``removes 0 edits'' and
+then rewrote two files. A feature named \texttt{Waitlist Queue} held the CLI
+scaffold and no waitlist code, sitting one row above the real waitlist. A
+save recorded 366 of 370 operations with no provenance because the clustering
+signal read a field that the save path never populated---the quality degraded
+specifically on the workflow the study asks participants to use.
+Ten instances of this pattern surfaced across the preparation, all
+recoverable (via \cmd{undo} in every case), all telling the developer something false about what to do next.
+The common mechanism is that a tool whose entire pitch is legible consequences
+can produce illegible consequences from correct internal arithmetic: every
+number was computed honestly, and the sentence it was placed into was wrong.
+
+The silent-success class is architecturally distinct from a crash. A crash
+teaches the developer something true about the system's limits: this operation
+failed, and the developer can reason about which operations share its structure
+and might fail the same way. A silent success teaches something false: this
+operation worked, which the developer generalises to other operations of the
+same kind. Tang et al.\ found that across 20{,}574 real-world coding-agent
+sessions, inaccurate self-reporting---the agent claiming success on work it did
+not complete correctly---accounts for 22.6\% of all developer--agent
+misalignment episodes, and its share is \emph{rising} even as other failure
+classes decline~\cite{tang2026agentfailures}. A tool that adds its own
+self-reporting failures to a context already saturated with them is compounding
+the ecosystem's dominant residual failure mode rather than compensating for it.
+Shen and Tamkin found that the skill most degraded by AI assistance
+is debugging---the ability to recognise when code is wrong and
+why~\cite{shen2026skills}---and a tool that undermines that same skill by
+confirming a wrong state as correct is compounding the very deficit it was
+built to address. A version control system that exists because the developer
+can no longer hold a model of what the agent wrote must not itself produce
+states the developer cannot distinguish from correct ones, because the
+developer's degraded capacity to detect wrongness is the tool's entire
+reason for existing. The gap between the twelve metadata failures (which
+produce visibly wrong output: code that does not parse) and the ten
+silent-success failures (which produce invisibly wrong output: code that
+parses but does not do what the report claimed) is therefore not a severity
+spectrum but a category boundary: the first class fails safely, the second
+fails in the specific way the tool was designed to prevent.
+
+If the study's process telemetry shows history\_op events followed by recovery
+in the sgt condition, these residual write-path failures are the likely
+mechanism. If it shows history\_op events followed by verify (and no recovery),
+the twenty-one fixes closed the path and participants reached the stable
+operations that survived the preparation intact.
+
+\paragraph{What the robustness harness measured.}
+The harness ran 289 randomised sequences totalling 10{,}237 operations across
+nineteen repository shapes (fourteen synthetic fixtures, five open-source
+repositories \sgt{} had never recorded). Each sequence applies a random
+interleaving of saves, reverts, restores, undos, merges, and renames, then
+checks every file against the byte-identical reference git holds. A sequence
+passes only if every operation leaves every file matching; a single differing
+byte on a single file is a violation.
+
+Of 289 sequences, 145 (50\%) contained at least one violation on a
+user-issuable operation---meaning a developer working through the same sequence
+would have encountered a file whose contents silently differed from what the
+tool's report described. At the per-operation level the rate is lower: 340 of
+10{,}237 (3.3\%), concentrated on entity-target operations (8.1\% of 2{,}447)
+and layout-target operations (4.1\% of 2{,}308), with non-entity, non-layout
+operations at 0.8\% (46 of 5{,}482). No sequence produced a traceback---the
+system never crashed---and no sequence lost data (the append-only store held
+throughout). What it produced instead was the failure mode the preparation
+identified: operations that succeed while leaving the files in a state the
+report does not describe.
+
+The 50\% per-session rate is the number a developer meets. A developer who uses
+\sgt{} for a morning of interleaved saves and reverts has a coinflip chance
+of producing a file that silently disagrees with the tool's last report. The
+3.3\% per-operation rate describes a different experience: most commands work,
+and the developer has no way of predicting which one will not without running
+the verification the tool was built to replace. The gap between the two numbers
+is the gap between ``it usually works'' and ``I cannot trust any single result
+without checking,'' and the second is what governs adoption. Four of the five
+real (non-fixture) repositories produced at least one violation, so the rate
+is not an artefact of adversarial synthetic inputs.
+
+\paragraph{What the transcript evaluation measured.}
+Coding pairwise agreement between \sgt{}'s grouping and four agent transcripts
+found that the dominant disagreement was not a clustering error but a
+ground-truth problem. In CodeNav (30 coded pairs), 15 were ``consecutive turns
+of one feature''---the transcript's turn boundary fell inside a continuous piece
+of work, so neither system was wrong; they disagreed about where a boundary
+should be. In eico (30 coded pairs), 15 were ``continuation tokens, not
+intents'': the transcript carried requests like ``resume,'' ``move on,'' and
+``ok sure,'' whose footprint is everything an autonomous agent then did over a
+long uninterrupted run. A pairwise F1 computed on a history whose ground truth
+is 50\% continuation tokens measures the grain of the ground truth rather than
+the quality of the clustering. The share of contentless turns varies from 0\%
+to 88\% across the four repositories, and any aggregate metric that pools them
+without reporting the contentless fraction hides a confound larger than the
+signal.
+
+The one mechanism that \emph{is} an error in the clustering---intent sharded
+across leaves (coded F32)---appeared in both repositories and has a consistent
+shape: two leaves carry the same label and the same intent, separated only
+because their symbols live in different directories, with no interior node
+uniting them. In eico, F32 accounts for 11 of 30 coded disagreements. The
+fix is structural: a merge pass that detects identically-labelled sibling
+leaves would eliminate it without changing any clustering parameter. That it
+was not implemented before the evaluation is evidence that the evaluation
+found a defect the developer's own use did not surface---precisely the role
+the transcript corpus was designed to play.
+
+The thematic pattern across both repositories reflects back on a design choice
+Section~\ref{sec:names} defends. The tool's grouping disagrees with the ground
+truth for two structurally different reasons: the ground truth is at the wrong
+grain (30 of 60 coded pairs across both repositories), or the tool shards one
+intent across leaves that share a label but not a directory (14 of 60). The
+first is not fixable by improving the clustering---it is a property of the
+ground truth, which counts ``resume'' as a boundary---and the second is fixable
+by a single post-processing pass. No coded disagreement traced to the coupling
+signal itself producing a wrong boundary between genuinely different intents.
+The implication is that commitment~4 (inferred names from structural coupling)
+holds as a grouping mechanism, but the grain it recovers is finer than what a
+developer would call ``one thing I asked for,'' which is the over-decomposition
+the conclusion reports. A tool builder choosing between coupling-based grouping
+and request-boundary grouping should know that coupling gives stable structural
+communities whose boundaries reflect code architecture, while request boundaries
+give unstable units whose meaning depends on whether the developer typed
+``implement caching'' or ``resume.''
+
+Symbol coverage across the four repositories ranged from 49\% (semipy-package,
+83 ground-truth symbols, 41 known) to 79\% (eico, 357 symbols, 282 known).
+The gap represents symbols the tool literally cannot answer questions about:
+functions that exist in the ground truth but appear in no \sgt{} record,
+because the commit that introduced them predates the mining or because the
+miner's tier filter excluded their file. A developer who asks ``what produced
+this function?'' about a symbol in the gap receives silence rather than a wrong
+answer, which is the correct failure mode (honest ignorance rather than
+confident error), but it means the tool's coverage is a ceiling on the
+fraction of provenance questions it can answer rather than an approximation.
+
+\paragraph{What the evaluation taught about measuring itself.}
+The evaluation journal's most consequential finding was not about the tool but
+about the measurement. On August~15, a derivability check that had passed eight
+times was re-run after a fix, and the result improved so sharply that the
+evaluator stopped trusting it. Comparing the trees revealed that the fixture
+shipped at signals version~3 while the census copies in \texttt{/tmp} had been
+rebuilt at version~2---34 leaves where the fixture had 21, every feature label
+the check sequences typed existing only in the rebuilt copy, and not one of the
+twelve recorded command sequences capable of running against the shipped
+artefact. The census, every derivability check, and the stop-gate result all
+described an artefact that existed in \texttt{/tmp} and nowhere a participant
+would encounter.
+
+The failure has a specific mechanism: the analysis tool (\texttt{sgt refresh})
+quietly rebuilds the store when it detects a version mismatch, the evaluation
+script copied the fixture before running the analysis, and the copy was what
+got rebuilt. The measurement was correct (the numbers described the copy
+faithfully), and the measured object was wrong (the copy was not what
+participants would see). The study's own participant-path guard already refused
+to start a session in this state, with a one-sentence explanation of why; no
+equivalent guard existed on the evaluation path, so the evaluation walked into
+the state the study was protected from and reported it as the study's result.
+
+Three instances of the same shape---a number computed correctly from an object
+that was not the object it claimed to be---appeared in one day of evaluation.
+The only checks that caught them were pre-declared falsification rules written
+before the measurement: ``the census must rediscover the blemishes the build
+log already confesses to.'' That rule found 1 of 4 known blemishes on its
+first run, and the failure of the check (not the failure of the tool) was what
+exposed the version mismatch. The lesson is methodological: in a system where
+the analysis tool can modify the artefact being analysed, the evaluation must
+verify the identity of the measured object after each run, from evidence the
+tool cannot have produced. A number that passes every internal consistency
+check is still wrong if the thing it describes is not the thing it claims to
+describe, and the only safeguard is a rule written before the measurement that
+asks ``is this the same artefact?'' rather than ``is this number consistent?''
+
+For a CHI audience the finding connects to Sedlmair et al.'s methodological
+reflection on evaluation in visualization research~\cite{sedlmair2012}: the
+hardest threats to validity are not the ones that make a result look bad but
+the ones that make it look good by accident, because no incentive exists to
+investigate a passing check. Every one of the evaluation journal's withdrawn
+results was a result that passed.
+
+\paragraph{What the pilots could not test.}
+Three things only the study with real people under time pressure can show, all
+of which the pilots explicitly flagged as untestable by an AI agent:
+\begin{enumerate}
+\item Whether the time cap binds differently per condition (the manipulation
+  check ``how much time pressure did you feel'' is the direct signal).
+\item Whether carry-over between isomorphic projects is large enough to
+  dominate the condition effect (order as a factor in the model).
+\item Whether a person gives up --- the AI pilot participants never did, but a
+  person who spends five minutes with no progress is fundamentally different
+  from an agent that retries.
+\end{enumerate}
+\placeholder{Report: order effect size vs. condition effect size. If order
+dominates, the design lesson is that counterbalancing controls for it
+statistically but not experientially, and a future study should use non-isomorphic
+projects despite the difficulty of equating them.}
+
+\subsection{Scope and limitations}
+
+Twelve participants can detect large effects and nothing else. A confidence
+interval that includes zero at this sample size does not mean the effect is
+absent; it means we cannot tell. We designed for this deliberately
+(Section~\ref{sec:eval-study}) and report intervals rather than $p$-values so
+that a reader can see the precision rather than a binary gate. The practical
+consequence is that a small-to-medium benefit of the kind sgt's read layer
+probably provides would appear as a wide interval tilted in the expected
+direction, not as a clean separation, and the reader should treat the
+qualitative pattern (which measures move, in which direction) as more
+informative than any individual comparison.
+
+Two hours with a transcript is not a week of forgetting. The study's tasks
+substitute ``code you have never seen'' for ``code you wrote through an agent
+and then forgot,'' and the substitution understates the difficulty of the
+condition Section~\ref{sec:scenarios} describes, because a participant who just
+read a transcript knows more than the developer who typed those words a week
+ago. Any advantage sgt shows in this study is therefore a lower bound on the
+advantage in the scenario that motivated it.
+
+The two study repositories share the same eighteen-marker vocabulary and the
+same task structure. Counterbalancing controls for which project goes first, but
+a participant who solves the removal task in one repository has seen the shape
+of the answer before they open the other. The order effect size
+(\placeholder{report}) bounds how much of what we measured is learning the task
+rather than learning the tool.
+
+The feature labels that make the sgt condition legible depend on a language model
+call. During preparation we discovered that without a credential, a rebuild
+produces nine features labelled with raw symbol names (\texttt{build\_parser main
+Section}) in precisely the features the tasks ask about. The shipped fixtures
+pre-cache labels so that participants see domain vocabulary regardless of network
+state, verified byte-identical across rebuilds with zero model calls. A view
+whose legibility depends on a network call and a credential is a view that can
+silently stop being the thing being evaluated; we state this as a limitation of
+the design rather than of the study, because a user who installs \sgt{} without
+a model key faces the same degradation and receives no warning.
+
+The limitation that matters most is the one we cannot bound. The study measures
+whether a tool helps a developer do three specific things to code they have never
+seen. It cannot measure whether the same tool changes how the developer works
+over weeks---whether the names enter their vocabulary, whether the attribution
+shifts how they prompt the agent, whether the consequence preview changes what
+they are willing to attempt. Those are the effects that would make the tool
+worth its learning cost, and a two-hour session can detect none of them. What it
+can detect is whether the tool's mechanisms reach the developer at all on first
+contact, and the pilot showed that they can: one participant adopted the
+attribution immediately and rephrased the revert as a punch list within twenty
+minutes. The study cannot tell us whether that adoption persists, deepens, or
+disappears once the session ends and the researcher leaves the room.

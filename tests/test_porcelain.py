@@ -197,7 +197,7 @@ def test_save_surfaces_a_loud_but_non_blocking_fork_banner(tmp_path, capsys):
         rc = cli.main(["save", "--no-color", "-m", "add quux"])
     out = capsys.readouterr().out
     assert rc == 0  # non-blocking: divergence-as-state never refuses a save
-    assert "⋔" in out and "open fork(s)" in out
+    assert "⋔" in out and "1 open fork" in out  # inflected, not the "fork(s)" placeholder
     assert "sgt resolve a.py::foo" in out
 
 

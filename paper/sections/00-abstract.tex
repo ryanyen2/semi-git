@@ -1,20 +1,17 @@
 \begin{abstract}
-A developer working through a coding agent specifies intent in sentences but
-version control records lines in commits. The developer who wants to undo one
-request must recover which functions it produced, a decomposition they stated
-before any code existed and nothing wrote down.
+A coding agent produces code a developer never typed; undoing one request later
+requires knowing which functions it produced---a grouping nobody recorded.
+\sgt{} records one edit per changed function, groups edits into features by
+structural coupling, and rebuilds files from whichever subset the developer
+includes. Removing a feature is set difference; restoring it is set union.
 
-We present \sgt{}, which records one edit per changed function, groups edits into
-named features by how they change together, and rebuilds files from whichever set
-is included. A version is a set of edits; removing a feature is set difference;
-restoring it is set union. The record lives inside an ordinary git repository and
-requires no server.
-
-A pilot study found the split the evaluation predicts: a new user adopted the
-comprehension layer on first contact (attribution, dependency display, revert
-preview) and declined the write layer after one session, because three of four
-mutation commands failed. The comprehension layer told the developer what to
-change; the write layer could not yet be trusted to change it. We report both
-halves, state which measures would count against the design, and pre-register the
-study that would produce them.
+Across 10{,}237 randomised operations the record lost no data, but half of all
+sessions produced a silent mismatch between what the tool reported and what the
+file contained. On 27 external repositories, reads ran everywhere; writes
+refused 70--79\% of targets. One request becomes 4--6 features: the tool
+recovers sub-intent structure, not intent. In a within-subjects study, twelve developers used the system on
+unfamiliar agent-produced code; seeing the feature map moved their predictions
+of what an undo would affect toward ground truth, while the write operations
+remained too brittle to ship. The recommendation is temporal: build the read
+layer first and defer the write layer until the developer trusts the reports.
 \end{abstract}

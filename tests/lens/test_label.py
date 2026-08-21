@@ -228,6 +228,35 @@ def test_label_super_names_a_subsystem_from_child_labels(tmp_path, monkeypatch):
     assert labeler.calls == 1
 
 
+def test_a_capitalised_joining_word_is_lowercased_on_both_llm_paths(tmp_path, monkeypatch):
+    # `Catalog And Search` was the second subsystem in the study's confplan tree. The prompts ask
+    # for lowercase joining words, but the model answers each cluster independently, so this is
+    # enforced in code as well: a name a reader can tell was typed by a machine costs the tree its
+    # credibility on the first screen. The batch path is checked too, because that is the one every
+    # multi-feature repo takes.
+    fake_out = label_mod.FeatureLabel(label="Catalog And Search", rationale="Spans lookup.")
+    monkeypatch.setattr(label_mod, "get_client", lambda repo: _FakeClient(fake_out))
+    labeler = label_mod.Labeler(tmp_path)
+
+    solo = labeler.label_super(["Talk Search", "Speaker View"], ["confplan"])
+    assert solo.label == "Catalog and Search"
+
+    batched = labeler.label_many([
+        labeler.leaf_request("f-0001", ["confplan/cli.py::cmd_search"], {}),
+        labeler.leaf_request("f-0002", ["confplan/cli.py::cmd_speakers"], {}),
+    ])
+    assert [r.label for r in batched] == ["Catalog and Search"] * 2
+
+
+def test_the_first_and_last_word_of_a_title_keep_their_capital():
+    # Chicago capitalises both ends of a title whatever the word is, and a label is a title.
+    assert label_mod._normalise_title_case("The Waitlist") == "The Waitlist"
+    assert label_mod._normalise_title_case("What to Look For") == "What to Look For"
+    assert label_mod._normalise_title_case("Rooms And Slots And Days") == "Rooms and Slots and Days"
+    # A commit subject used verbatim is not title-cased, so nothing in it should move.
+    assert label_mod._normalise_title_case("add talk search") == "add talk search"
+
+
 def testfallback_label_is_deterministic_and_derived_from_dominant_dir():
     members = ["sgt/core/op.py::Op", "sgt/core/ideal.py::Ideal"]
     first = label_mod.fallback_label(members)
@@ -575,6 +604,22 @@ def test_a_subject_that_names_a_moment_is_not_a_feature_name():
         assert label_mod.subject_label([subject], {subject: 9}) is None, subject
 
 
+def test_subject_label_truncates_a_long_subject_at_a_word_boundary():
+    # A hard 57-character slice cut the confplan fixture's longest subject mid-word, and the feature
+    # went out to participants as "...cross-track sessions and ro…" -- a fragment that reads as a
+    # typo in the name rather than as an elision, on the one feature a reach task asks about.
+    subject = "normalize slot comparison for cross-track sessions and rooms sharing a slot"
+    out = label_mod.subject_label([subject], {subject: 9})
+    assert out is not None
+    assert out.label == "normalize slot comparison for cross-track sessions and…"
+    assert len(out.label) <= 60
+    assert not out.label[:-1].endswith(" ")   # no space stranded before the ellipsis
+
+    # A first word longer than the budget has no boundary to cut at, so the hard slice stands rather
+    # than the label collapsing to a bare ellipsis.
+    long_word = "a" * 80
+    out = label_mod.subject_label([long_word], {long_word: 9})
+    assert out is not None and out.label == "a" * 57 + "…"
 def test_conventional_commit_prefixes_are_dropped_from_the_name():
     """The type/scope is metadata about the commit, not a name for the work; repeated across every
     feature it crowds out the words that distinguish them."""

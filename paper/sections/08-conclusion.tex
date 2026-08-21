@@ -10,13 +10,18 @@ did not survive. On 27 of 28 repositories we did not record ourselves, the
 primary verbs refused to run because they could not guarantee the rebuilt file
 would match what the developer left on disk. The refusal is correct, but it
 converts a tool that promises selective revert into a tool that declines to
-record the next edit. The cause is the fork rule. The fork rule withdraws
-records to protect 162 actually-forked functions. That withdrawal cascades
+record the next edit. The cause is the fork rule, which withdraws records to protect 162
+actually-forked functions. That withdrawal cascades
 eighteen-fold to cover 2{,}864 function keys, the rebuild becomes incomplete, and
 every write guard fires on the gap. The fix is straightforward in principle
 (loosen the fork rule) but involves a real tradeoff: loosening it gives up the
 safety guarantee of Section~\ref{sec:fork} in exchange for the completeness of
-Section~\ref{sec:eval-exact}.
+Section~\ref{sec:eval-exact}. Where the fork rule does not block, the layout
+seam takes over: more than three in four violations the harness found trace to
+a layout record---the whitespace between functions that the kernel encodes as a
+symbol but cannot compose as reliably as an entity record---and both of the
+evaluation's only recoverability failures came through it
+(Section~\ref{sec:layout-seam}).
 
 Section~\ref{sec:discussion-synthesis} traces each design commitment back to its
 evaluation outcome. The pattern across all four commitments is the same: the part
@@ -28,9 +33,18 @@ stages of Parasuraman's model (parsing, clustering, dependency tracking)
 delivers value independently of whether the later stages work, and a developer
 who trusts the reports can use them with git directly. Second, the failure mode
 that cost us the most was a command that reported success while doing nothing.
-A silent lie is worse than a crash because a tool that lies quietly erodes the
-basis for trusting anything else it says, and that erosion did not recover
-within a session (Section~\ref{sec:pilot-lessons}). Any tool that mediates
+A silent lie is worse than a crash because it damages a specific dimension of
+automation trust. Dixon and Wickens showed that misses (the system fails to
+signal a problem) and false alarms (the system signals a problem that does not
+exist) erode trust through independent mechanisms: misses damage
+\emph{reliance}---the willingness to trust that silence means safety---while
+false alarms damage \emph{compliance}---the willingness to act on a positive
+alert~\cite{dixon2007}. Every one of our self-reporting failures is a miss in
+this framework: the system should signal that something went wrong and instead
+confirms success, so the damage lands on reliance. A developer whose reliance
+is damaged stops trusting that a clean report means a clean state, and that
+erosion did not recover within a session
+(Section~\ref{sec:pilot-lessons}). Any tool that mediates
 between a developer and code they did not write faces this same constraint: the
 developer's inability to verify independently is the reason the tool exists, and
 a tool whose reports cannot be trusted leaves the developer worse off than
@@ -43,9 +57,80 @@ tokens measures the ground truth's grain rather than the system's accuracy
 (Section~\ref{sec:codebook-wrong}).
 
 The second finding generalises further. Durability and legibility require
-different kinds of guarantee. The append-only store ensures that every prior
-state is reachable, and it does so structurally. But the developer still has to
-know which command to type and whether its output told the truth, and the
-architecture provides no structural guarantee of that. Every one of our eight
-self-reporting failures demonstrated this gap: the data was present, and the
-tool's account of how to reach it was wrong.
+different kinds of guarantee, and the second is harder to provide than the
+first. The append-only store ensures that every prior state is reachable, and it
+does so structurally---no sequence of operations can destroy a record once
+written. But the developer still has to know which command to type and whether
+its output told the truth, and the architecture provides no structural guarantee
+of that. Every one of our eight self-reporting failures demonstrated this gap:
+the data was present, and the tool's account of how to reach it was wrong. A
+tool builder who ships an append-only store and considers persistence solved has
+solved the easier half; the harder half is that the human trusts what the tool
+says about what is stored, and trust is not a structural property but a
+calibration that each interaction either strengthens or damages.
+
+The deeper lesson is about what the tool recovers. We set out to recover intent
+from history. What we built recovers sub-intent structure: one developer request
+becomes a median of 4--6 features, reliably, across four repositories with
+different authors. The reason is that the signals available to the
+tool---co-change, structural coupling, call references---cut along the code's
+own joints, not along the developer's purposes: a community detection algorithm
+finds densely connected subgraphs, and a subgraph boundary falls wherever the
+coupling is weak, which is where the code's structure has a seam, not where
+the developer's request ended. The tool's vocabulary is the code's vocabulary
+(files, coupling, structural communities), not the developer's (requests,
+purposes, decisions). That vocabulary is useful---it is the cross-file grouping
+git cannot express, and it answers provenance questions git cannot pose---but
+calling it intent recovery would overstate the evidence. A designer building on
+this work should treat the structural signal as a backbone and ask where the
+intent signal (the developer's own words at save time, the request boundary in
+the transcript) enters, because the evaluation shows it does not enter through
+coupling alone.
+
+The recommendation that survives the entire evaluation is temporal: build the
+read layer and ship it alone. The reason is architectural as well as empirical. A read operation has one precondition---that the file can be
+parsed---and produces a display the developer checks against their own
+understanding. A write operation has a second precondition---that the
+store reproduces the committed bytes exactly---and produces a file the
+developer checks against a test suite they may not have. The first
+precondition held on every repository we pointed the tool at; the second
+held on one of twenty-eight. Attribution, dependency display, and consequence
+preview ran everywhere, including the 27 repositories that refused every write
+verb, because they never needed the reconstruction to be complete. A tool
+builder in this design space faces the same tradeoff we face and should learn
+from the order in which we built: the write layer was shipped too early, and
+the evidence for that is not a hypothesis about trust formation but a
+participant who said it explicitly and a harness that measured it at 50\% per
+session.
+
+Winograd and Flores argued that a breakdown is productive: by making visible an
+assumption that was previously invisible, it creates the conditions for
+redesigning around the absence rather than restoring the assumption to its hidden
+state~\cite{winograd1986}. The assumption that broke---that the developer holds a
+model of what changed and why---is not coming back. The velocity gains are real
+and the developers who benefit from them are not going to reconstruct each
+function by hand in order to satisfy a tool that assumed they would. The
+productive response is to externalize what the assumption provided: make the
+decomposition a record rather than a memory, and offer it to the developer as
+something to verify rather than something to reconstruct. That is what the read
+layer does. The write layer attempts the stronger claim---acting on the record
+without the developer's verification---and the evaluation shows that claim is
+premature.
+
+The temporal strategy is also a response to context. A tool entering the
+developer ecosystem in 2026 inherits a trust deficit it did not
+create~\cite{stackoverflow2025}: developers already expect AI-mediated output to
+be unreliable, and already expect that verifying it will cost more than
+producing it~\cite{mozannar2024}. The velocity gains from agent-mediated
+development are real~\cite{murphyhill2026,cui2025} and accompanied by
+complexity that accumulates downstream~\cite{he2026}---and the natural
+organisational response, deploying a second model to review what the first wrote,
+is structurally circular when no external reference breaks the
+loop~\cite{zietsman2026}, while per-reviewer load has already doubled under the
+throughput pressure these tools create~\cite{he2026review}. A tool whose purpose
+is to make that accumulation legible---to give the developer a vocabulary for
+what the agent deposited in their repository---addresses the gap between speed
+and comprehension that the broader ecosystem is now measuring at scale. That tool
+should arrive as comprehension first, not as another automation whose correctness
+must be verified. The version control system a developer needs now is one that
+shows them what they have, not one that acts on it before they know.

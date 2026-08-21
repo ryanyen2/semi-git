@@ -676,6 +676,7 @@ def _undo(repo: str, as_json: bool, *, force: bool = False, emit: bool = False) 
     from sgt.core import oplog
     from sgt.core.lens import DirtyWorkingTreeError
     from sgt.store.gitbind import GitError
+    from sgt.tui.graph import plural
 
     # Show what it will do before doing it. `undo` is what a developer reaches for when something
     # has gone wrong, and it used to apply on contact -- so the one command whose whole job is
@@ -738,7 +739,7 @@ def _undo(repo: str, as_json: bool, *, force: bool = False, emit: bool = False) 
         if result.removed:
             parts.append(f"{len(result.removed)} op(s) back to pending")
         if result.added:
-            parts.append(f"{len(result.added)} op(s) restored")
+            parts.append(f"{plural(len(result.added), 'op')} restored")
         detail = f" — {', '.join(parts)}" if parts else ""
         print(f"✓ undo {result.witness_sha[:7]}: restored the prior ideal{detail}")
         return 0
