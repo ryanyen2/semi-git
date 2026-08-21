@@ -77,3 +77,8 @@ firestore-debug.log
 
 # pdflatex run from the repo root instead of paper/ leaves this behind
 texput.log
+
+# LaTeX Workshop builds with -synctex=1; the .gz is derived and the "(busy)" file
+# is a partial write from a build that was still running
+paper/main.synctex.gz
+paper/main.synctex(busy)
