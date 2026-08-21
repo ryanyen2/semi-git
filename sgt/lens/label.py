@@ -102,8 +102,16 @@ def _leaf_prompt(
         "tool. Use the commit intents below as key evidence for WHAT this code is for, weighed "
         "together with the entity and file names (the entities are the ground truth for what the "
         "code IS; the intents say what it was FOR).\n"
-        "label: 2-4 words, Title Case, concrete. No filler words ('System', 'Feature', "
-        "'Management', 'Semantic').\n"
+        "label: 2-4 words, Title Case, with joining words like 'and', 'of', 'the' left "
+        "lowercase. Name what this code DOES, or the specific thing it acts "
+        "on. Not the area of the project it belongs to.\n"
+        "  A reader has to tell this feature apart from its siblings by the label alone, so do "
+        "not build the label out of the project's own subject matter. In a conference planner, "
+        "'Conference Planning' and 'Conference Operations' fit every feature in the repository "
+        "and separate none of them; 'Waitlist Promotion' and 'Slot Clash Checks' separate "
+        "themselves. Prefer the narrower word every time.\n"
+        "  No filler words ('System', 'Feature', 'Management', 'Semantic', 'Support', "
+        "'Handling', 'Operations').\n"
         "rationale: ONE factual sentence naming what it does. Do not start with 'These'.\n\n"
         f"Files: {', '.join(files)}\n"
         + (f"Entities: {', '.join(names)}\n" if names else "")
@@ -116,12 +124,42 @@ def _super_prompt(child_labels: list[str], files: list[str]) -> str:
     return (
         "Several feature groups in a semantic version-control tool cluster into ONE subsystem. "
         "Name the subsystem.\n"
-        "label: 2-4 words, Title Case, broader than any single child, concrete. No filler "
-        "('System', 'Feature', 'Management', 'Semantic').\n"
+        "label: 2-4 words, Title Case with joining words like 'and' left lowercase, broader "
+        "than any single child. Name what the children "
+        "have in common, not the project they are in: in a conference planner, every subsystem "
+        "is 'Conference' something, so that word does the reader no work. No filler ('System', "
+        "'Feature', 'Management', 'Semantic', 'Support', 'Handling', 'Operations').\n"
         "rationale: ONE factual sentence naming what the subsystem spans. Do not start with 'These'.\n\n"
         f"Folders: {', '.join(files)}\n"
         f"Child features: {', '.join(child_labels)}\n"
     )
+
+
+# The words a title leaves lowercase. Only the ones that fit inside a 2-4 word feature name are
+# here; a longer list would be decoration, since nothing else can reach it.
+_LOWER_IN_TITLE = frozenset({
+    "a", "an", "and", "as", "at", "by", "for", "from", "in", "into", "nor", "of",
+    "on", "or", "per", "the", "to", "via", "vs", "with",
+})
+
+
+def _normalise_title_case(label: str) -> str:
+    """`Catalog And Search` -> `Catalog and Search`.
+
+    Both prompts above ask for Title Case and say to leave joining words lowercase, but the model
+    is asked once per cluster and answers independently each time, so the instruction holds for
+    most labels and not all. `Catalog And Search` was on the first screen of the study's confplan
+    tree: a capitalised `And` is not how anyone writes a name, and a reader who is deciding
+    whether the tree is describing their code or generating text about it notices that before
+    they notice anything else. Deterministic here, so it holds on every rebuild.
+
+    Only the interior words change. The first and last word of a title are capitalised even when
+    they are joining words, so "What to Look For" keeps its "For"."""
+    words = label.split(" ")
+    for i in range(1, len(words) - 1):
+        if words[i].lower() in _LOWER_IN_TITLE:
+            words[i] = words[i].lower()
+    return " ".join(words)
 
 
 def _clean_symbol_name(member: str) -> str | None:
@@ -195,7 +233,16 @@ def subject_label(subjects: list[str], counts: dict[str, int] | None = None) -> 
     cleaned = _strip_conventional_prefix(top)
     if cleaned.lower().strip(" .") in _UNINFORMATIVE or len(cleaned) < 4:
         return None
-    label = cleaned if len(cleaned) <= 60 else cleaned[:57].rstrip() + "…"
+    # Cut at a word boundary, not mid-word. A hard slice produced
+    # "normalize slot comparison for cross-track sessions and ro…", where the "ro" fragment reads as
+    # a typo in the feature's name rather than as an elision, on a feature a reader has to recognise
+    # before they can act on it. Falls back to the hard slice for a 57-character first word.
+    if len(cleaned) <= 60:
+        label = cleaned
+    else:
+        head = cleaned[:57].rstrip()
+        cut = head.rfind(" ")
+        label = (head[:cut].rstrip() if cut > 0 else head) + "…"
     return FeatureLabel(label=label, rationale=f"Named from the commit that introduced it: {top!r}.")
 
 
@@ -361,7 +408,7 @@ class Labeler:
             self.calls += 1
             self.tokens_in += r.usage.input_tokens
             self.tokens_out += r.usage.output_tokens
-        return out
+        return out.model_copy(update={"label": _normalise_title_case(out.label)})
 
     def _request_batch(self, prompts: list[str]) -> list[FeatureLabel | None]:
         """One `responses.parse` call naming `len(prompts)` independent clusters -- each prompt
@@ -386,7 +433,8 @@ class Labeler:
         out: list[FeatureLabel | None] = [None] * len(prompts)
         for item in r.output_parsed.items:
             if 0 <= item.index < len(prompts):
-                out[item.index] = FeatureLabel(label=item.label, rationale=item.rationale)
+                out[item.index] = FeatureLabel(label=_normalise_title_case(item.label),
+                                              rationale=item.rationale)
         return out
 
     def _resolve(self, key: str, prompt: str, members: list[str]) -> FeatureLabel:

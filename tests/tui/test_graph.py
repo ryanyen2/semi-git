@@ -126,7 +126,7 @@ def test_feature_with_no_own_symbols_is_dropped_and_a_husk_only_subsystem_with_i
 def test_the_subsystem_count_does_not_change_when_a_row_is_folded():
     """The twin of the feature count's own fix, one field over. A collapsed subsystem leaves
     `headers` and becomes a meta-LANE, so counting headers made the repo lose subsystems every time
-    a row folded: the default map (which folds every leaf subsystem) printed `1 subsystem(s)` where
+    a row folded: the default map (which folds every leaf subsystem) printed `1 subsystem` where
     `--focus`, which folds nothing, printed `4` for the same repo at the same moment. Those are two
     headers a reader is explicitly told to move between, so the disagreement reads as one of the two
     views being wrong about what the codebase contains."""
@@ -138,8 +138,11 @@ def test_the_subsystem_count_does_not_change_when_a_row_is_folded():
     grid = _grid(("f1", 0), ("f2", 1))
     opened = render_graph_lines(m, grid, color=False)[0]
     folded = render_graph_lines(m, grid, color=False, collapsed=("S1", "S2"))[0]
-    assert "3 subsystem(s)" in opened and "3 subsystem(s)" in folded
-    assert "2 feature(s)" in opened and "2 feature(s)" in folded  # the count already held
+    # Two, not three: `R` is the root, which holds every feature in the repo, so it is the repo and
+    # not one of the groupings inside it. Counting it told a reader of a repo with no subsystems at
+    # all that it had one.
+    assert "2 subsystems" in opened and "2 subsystems" in folded
+    assert "2 features" in opened and "2 features" in folded  # the count already held
 
 
 def test_a_husk_is_not_counted_in_the_group_it_was_dropped_from():
@@ -313,7 +316,7 @@ def test_reverted_work_no_lane_can_draw_is_named_on_screen():
 
     for body in ("\n".join(render_graph_lines(m, hist, segs, color=False)),
                  "\n".join(render_graph_lines(m, hist, segs, focus="A", color=False))):
-        assert "4 reverted edit(s)" in body
+        assert "4 reverted edits" in body
         assert "cart.py::apply_coupon" in body
 
 
@@ -345,7 +348,7 @@ def test_cars_carry_segment_metadata_and_are_ordered_by_seg_index():
 def test_a_reverted_checkpoint_is_drawn_as_removed_not_as_live():
     """A revert takes a chapter's ops out of the ideal and leaves them in the store -- the asymmetry
     `sgt restore` needs -- so the checkpoint detail must keep the chapter and say it is gone. It used
-    to redraw it identically: same solid bar, same `3 checkpoint(s)`, no marker, so the one screen
+    to redraw it identically: same solid bar, same `3 checkpoints`, no marker, so the one screen
     that prints the `@n` handles told a user who had just reverted that nothing had happened. `░` is
     the glyph the revert preview already spends on removal, and `sgt restore` is the way back, so
     both belong on the row. A chapter with only *some* of its ops reverted says so as a count rather
@@ -361,13 +364,13 @@ def test_a_reverted_checkpoint_is_drawn_as_removed_not_as_live():
     assert [c["reverted"] for c in cars] == [False, True, False]
 
     body = "\n".join(render_graph_lines(m, hist, [live, gone, part], focus="A", color=False))
-    assert "3 checkpoint(s)" in body and "1 reverted" in body   # the count still counts them
+    assert "3 checkpoints" in body and "1 reverted" in body   # the count still counts them
     rewound = next(l for l in body.splitlines() if "rewound" in l)
     assert "░" in rewound and "█" not in rewound                # removed, in the preview's own glyph
     assert "reverted" in rewound and "sgt restore A@1" in rewound
     kept = next(l for l in body.splitlines() if "kept" in l)
     assert "█" in kept and "░" not in kept
-    assert "1 of 2 edit(s) reverted" in next(l for l in body.splitlines() if "half" in l)
+    assert "1 of 2 edits reverted" in next(l for l in body.splitlines() if "half" in l)
 
 
 def test_a_checkpoint_with_no_presence_claim_is_drawn_as_live():
@@ -437,7 +440,7 @@ def test_render_lines_carry_header_and_labels():
     m = {"roots": ["A", "B"], "nodes": [_node("A", None, []), _node("B", None, [])], "edges": []}
     lines = render_graph_lines(m, _grid(("A", 0), ("B", 40)), color=False)
     text = "\n".join(lines)
-    assert "2 feature(s)" in text
+    assert "2 features" in text
     assert "A" in text and "B" in text  # labels rendered
 
 
@@ -686,8 +689,8 @@ def test_render_verb_preview_marks_removed_checkpoints_and_the_blast():
     assert "▸" in text and "✗" in text                        # first gone car ▸, subsequent ✗
     assert "· removed" in text                                # per-checkpoint removal note
     assert "also affected" in text and "prerequisite, kept" in text    # B, foundation, unchanged
-    assert "2 other feature(s) unchanged" in text             # the dim context floor
-    assert "removes 3 edit(s)" in text and "src/a.py" in text          # summary names the files
+    assert "2 other features unchanged" in text             # the dim context floor
+    assert "removes 3 edits" in text and "src/a.py" in text          # summary names the files
 
 
 def test_render_verb_preview_before_frame_shows_checkpoints_still_present():
@@ -724,7 +727,7 @@ def test_render_verb_preview_restore_shows_restored_and_partial():
     assert "restore" in text
     assert "restored" in text                                 # seg0 (o0) fully re-added
     assert "◐" in text                                        # seg1 (o1 of o1,o2) partly re-added
-    assert "restores 2 edit(s)" in text
+    assert "restores 2 edits" in text
 
 
 def test_render_collab_preview_clean_land_shows_ops_and_the_oracle_gate():
@@ -734,7 +737,7 @@ def test_render_collab_preview_clean_land_shows_ops_and_the_oracle_gate():
           "oracle_configured": True, "pin_contradictions": [], "declared_cycles": []}
     text = "\n".join(render_collab_preview_lines(pv, color=False))
     assert "land" in text and "main" in text
-    assert "adds 3 op(s) to main" in text
+    assert "adds 3 ops to main" in text
     assert "oracle: green required" in text
     assert "advances main by 3 op" in text and "not auto-undoable" in text
 
@@ -746,7 +749,7 @@ def test_render_collab_preview_fork_blocks_and_names_the_resolve_remedy():
           "forks": [["api.py::route", "0ee9a65f11aa", "5e6eaf5822bb"]],
           "oracle_configured": True, "pin_contradictions": [], "declared_cycles": []}
     text = "\n".join(render_collab_preview_lines(pv, color=False))
-    assert "1 fork(s) block the land" in text
+    assert "1 fork block the land" in text
     assert "api.py::route" in text and "sgt resolve api.py::route" in text
     assert "oracle: not reached" in text
     assert "adds 0 op" not in text          # the noisy zero-op line is suppressed under a blocking fork
@@ -775,7 +778,7 @@ def test_render_collab_preview_clean_sync_brings_in_ops_with_no_forks():
           "theirs_recovery": "mined"}
     text = "\n".join(render_collab_preview_lines(pv, color=False))
     assert "sync" in text and "origin/main" in text
-    assert "brings in 4 op(s)" in text
+    assert "brings in 4 ops" in text
     assert "fork(s) surface" not in text
     assert "folds in 4 op · no forks · not auto-undoable" in text
 
@@ -788,9 +791,9 @@ def test_render_collab_preview_sync_fork_surfaces_without_blocking():
           "pin_contradictions": [], "declared_cycles": [], "base_recovery": "mined",
           "theirs_recovery": "mined"}
     text = "\n".join(render_collab_preview_lines(pv, color=False))
-    assert "1 fork(s) surface" in text and "nothing is lost" in text
+    assert "1 fork surface" in text and "nothing is lost" in text
     assert "api.py::route" in text and "sgt resolve api.py::route" in text
-    assert "folds in 2 op · 1 fork(s) surface to resolve · not auto-undoable" in text
+    assert "folds in 2 op · 1 fork surface to resolve · not auto-undoable" in text
 
 
 def test_render_collab_preview_sync_surfaces_degraded_recovery_loudly():
@@ -923,7 +926,7 @@ def test_rail_names_reverted_work_no_lane_can_show():
     grid = _rail_grid()
     grid["reverted_unaccounted"] = {"op_count": 4, "symbols": ["cart.py::apply_coupon"]}
     text = "\n".join(render_rail_lines(m, grid, color=False))
-    assert "4 reverted edit(s)" in text
+    assert "4 reverted edits" in text
     assert "cart.py::apply_coupon" in text
     # and silent when there is nothing to disclose (or nothing claimed)
     assert "reverted edit(s)" not in "\n".join(render_rail_lines(m, _rail_grid(), color=False))
@@ -933,7 +936,7 @@ def test_render_rail_only_features_scopes_the_vertical_tree_to_the_group():
     m = {"nodes": [{"id": "fa", "label": "Wire"}, {"id": "fb", "label": "Bus"}, {"id": "fc", "label": "RGA"}]}
     text = "\n".join(render_rail_lines(m, _rail_grid(), color=False,
                                        only_features={"fa", "fb"}, group_label="Comms"))
-    assert "focus: Comms" in text and "2 feature(s)" in text
+    assert "focus: Comms" in text and "2 features" in text
     assert "add wire" in text and "add bus" in text
     assert "add rga" not in text  # fc's save is outside the group -> filtered out
 
@@ -944,7 +947,7 @@ def test_state_banner_renders_forks_with_symbol_and_resolve_remedy():
     states = {"forks": [{"symbol": "room.py::apply", "tips": ["a1b2c3d4e5", "f6a7b8c9d0"],
                          "remedy": "sgt merge-op a1b2c3d4 f6a7b8c9"}], "rewrites": {"drafts": []}}
     text = "\n".join(_state_banner(states, color=False))
-    assert "1 open fork(s)" in text and "room.py::apply" in text
+    assert "1 open fork" in text and "room.py::apply" in text
     assert "sgt resolve room.py::apply" in text
 
 
@@ -961,14 +964,14 @@ def test_state_banner_separates_cross_version_forks_from_divergent_edits():
     assert "sgt resolve room.py::apply" in text          # the real divergence keeps its remedy
     assert "sgt resolve blame.ts::render" not in text    # the artifact must not get one
     assert "sgt advanced migrate ops-v3" in text
-    assert "1 open fork(s)" in text                      # counted honestly: one is a real fork
+    assert "1 open fork" in text                      # counted honestly: one is a real fork
 
 
 def test_state_banner_renders_merge_op_drafts_with_repair_remedy():
     states = {"forks": [], "rewrites": {"drafts": [
         {"verb": "merge-op", "target": "room.py::apply", "draft_id": "rw-abcdef123456"}]}}
     text = "\n".join(_state_banner(states, color=False))
-    assert "1 pending merge-op draft(s)" in text and "room.py::apply" in text
+    assert "1 pending merge-op draft" in text and "room.py::apply" in text
     assert "sgt advanced repair rw-abcdef123" in text  # draft_id capped at 12 chars
 
 
@@ -1046,7 +1049,7 @@ def test_render_save_list_has_no_lane_column_and_lists_saves_newest_first():
                    {"id": "fc", "label": "RGA"}]}
     lines = render_save_list_lines(m, _rail_grid(), color=False)
     text = "\n".join(lines)
-    assert "3 save(s)" in text and "newest on top" in text
+    assert "3 saves" in text and "newest on top" in text
     # the lane art the wall was made of is gone
     assert "●" not in text and "│" not in text
     # every save is listed with its commit position, sha, subject and feature chip

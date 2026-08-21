@@ -320,7 +320,7 @@ def _help() -> int:
     print(
         "sgt — semantic operation-ideal version control\n\n"
         "  the daily spine (a selection — symbol / glob / NL / feature / set — is the argument):\n"
-        '  sgt save [-m "<msg>"] [--as "<feature>"]   record your edits + show which feature(s) they landed in\n'
+        '  sgt save [-m "<msg>"] [--as "<feature>"]   record your edits + show which feature they landed in\n'
         "  sgt now [--json]            where am I, what next — in flight / needs you / recently done\n"
         "  sgt log [--json]            what you did, newest first — the one inspection surface:\n"
         "                              --map (feature lanes over time) · --tree (feature tree) ·\n"

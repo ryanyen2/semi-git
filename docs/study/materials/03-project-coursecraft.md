@@ -1,8 +1,8 @@
 # The project: coursecraft
 
-You are taking over **coursecraft**. Riley Chen built it over the last six weeks, partly by working with an AI assistant, and has now left the team.
+Nothing is timed on this page. Read it at whatever pace you want and ask anything you like before you continue. You do not have to memorise any of it. The requests tell you what needs to change, and this is here so that finding your way around is not the first thing you have to do under a clock.
 
-Nothing is timed on this page. Read it at whatever pace you want and ask anything you like before you continue. You do not have to memorise any of it — the requests tell you what needs to change. This is here so that finding your way around is not the first thing you have to do under a clock.
+You are taking over **coursecraft**. Riley Chen built it over the last six weeks, partly by working with an AI assistant, and has now left the team.
 
 ## What it is for
 
@@ -12,7 +12,7 @@ A university department runs course registration by hand every term: a spreadshe
 
 Someone in the office types commands at a terminal. There is no web page and no login. A normal term looks like this:
 
-- At the start of term they add the **courses** the department is running, and for each course the **sections** it is taught in — a section is one timetabled group, with a teacher, a room, a weekly time slot, and a cap on how many people fit.
+- At the start of term they add the **courses** the department is running, and for each course the **sections** it is taught in. A section is one timetabled group, with a teacher, a room, a weekly time slot, and a cap on how many people fit.
 - Students get added to the system, then **enrolled** into sections.
 - When a student wants out, they are **dropped** from a section, which frees the seat.
 

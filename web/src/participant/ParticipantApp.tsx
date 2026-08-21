@@ -109,7 +109,7 @@ export function ParticipantApp() {
                 indistinguishable from a real one -- same flow, same bundle --
                 and would be found only in the analysis, afterwards. */}
             {isPilot(participant) && (
-              <span className="badge warn" title="Rehearsal session — jump to any step from the rail">
+              <span className="badge warn" title="Rehearsal session: jump to any step from the rail">
                 rehearsal
               </span>
             )}

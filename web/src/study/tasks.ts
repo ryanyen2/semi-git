@@ -287,7 +287,7 @@ const BLIND_THEN_CHECKED: Record<Project, string> = {
   coursecraft: `Below is one piece of work from this project's history.
 
 Under it are twelve things people do with coursecraft. Tick every one that runs
-through the code this piece of work added — the ones you would have to check if
+through the code this piece of work added, the ones you would have to check if
 somebody took the work out.
 
 You answer twice. First from what you can already see, with **one minute** on the
@@ -296,7 +296,7 @@ to change anything here, and nothing is graded on speed.`,
   confplan: `Below is one piece of work from this project's history.
 
 Under it are twelve things people do with confplan. Tick every one that runs
-through the code this piece of work added — the ones you would have to check if
+through the code this piece of work added, the ones you would have to check if
 somebody took the work out.
 
 You answer twice. First from what you can already see, with **one minute** on the
@@ -337,7 +337,7 @@ Go and find out what actually happened, then answer the three questions below.`,
       coursecraft: `A ticket like this is really three questions. Someone reports that
 something looks different. You want to know **which piece of work** changed it,
 **when** that work landed, and **what else** the same piece of work touched on
-its way past — because the thing that broke is often not the thing the change
+its way past, because the thing that broke is often not the thing the change
 was for.
 
 You do not have to answer in that order, and there is no expected route. Read
@@ -345,7 +345,7 @@ the code, read the history, ask your assistant, or all three.`,
       confplan: `A ticket like this is really three questions. Someone reports that
 something looks different. You want to know **which piece of work** changed it,
 **when** that work landed, and **what else** the same piece of work touched on
-its way past — because the thing that broke is often not the thing the change
+its way past, because the thing that broke is often not the thing the change
 was for.
 
 You do not have to answer in that order, and there is no expected route. Read
@@ -396,16 +396,16 @@ the code, read the history, ask your assistant, or all three.`,
         options: {
           coursecraft: [
             'No, just the search command and its tests.',
-            'Yes — a change to how day names are read when a slot is parsed.',
-            'Yes — a change to how capacity limits are enforced.',
-            'Yes — a change to the export format.',
+            'Yes, a change to how day names are read when a slot is parsed.',
+            'Yes, a change to how capacity limits are enforced.',
+            'Yes, a change to the export format.',
             'I could not tell.',
           ],
           confplan: [
             'No, just the search command and its tests.',
-            'Yes — a change to how day names are read when a slot is parsed.',
-            'Yes — a change to how capacity limits are enforced.',
-            'Yes — a change to the export format.',
+            'Yes, a change to how day names are read when a slot is parsed.',
+            'Yes, a change to how capacity limits are enforced.',
+            'Yes, a change to the export format.',
             'I could not tell.',
           ],
         },
@@ -431,9 +431,9 @@ the code, read the history, ask your assistant, or all three.`,
     reach: {
       work: {
         coursecraft:
-          'The timetable export — the work that added the command writing a timetable or the catalog out as Markdown or CSV.',
+          'The timetable export, the work that added the command writing a timetable or the catalog out as Markdown or CSV.',
         confplan:
-          'The agenda export — the work that added the command writing an agenda or the program out as Markdown or CSV.',
+          'The agenda export, the work that added the command writing an agenda or the program out as Markdown or CSV.',
       },
       about: {
         coursecraft:
@@ -562,6 +562,20 @@ export function requestById(id: RequestId): RequestSpec | undefined {
   return REQUESTS.find((r) => r.id === id)
 }
 
+/**
+ * What the participant calls one request: "Request 2", "Prediction 1".
+ *
+ * Requests 2 and 3 share a card, and the card is headed "Requests 2 and 3" while
+ * each request under it was headed by its title alone. Request 3's own first line
+ * is "One correction to the last request", which leaves a participant working out
+ * from the prose which of the two headings they are looking at.
+ */
+export function requestHeading(r: RequestSpec): string {
+  return `${r.reach ? 'Prediction' : 'Request'} ${r.id.slice(1)}`
+}
+
+const uncapitalise = (t: string) => t.charAt(0).toLowerCase() + t.slice(1)
+
 /** Requests grouped into cards. Requests on one card share a single timer. */
 export function taskCards(project: Project): TaskCard[] {
   const byCard = new Map<string, RequestSpec[]>()
@@ -588,10 +602,15 @@ export function taskCards(project: Project): TaskCard[] {
         numbers.length === 1
           ? `${noun} ${numbers[0]}`
           : `${noun}s ${numbers.slice(0, -1).join(', ')} and ${numbers[numbers.length - 1]}`,
+      // Every title is written to open a heading, so joining them mid-sentence
+      // capitalised the second one: "Take the waitlist out, then Unregistering
+      // still needs to work".
       title:
         requests.length === 1
           ? requests[0].title[project]
-          : requests.map((r) => r.title[project]).join(', then '),
+          : requests
+              .map((r, i) => (i ? uncapitalise(r.title[project]) : r.title[project]))
+              .join(', then '),
       capMin: requests[0].capMin,
       requests,
     }
@@ -603,10 +622,12 @@ export function taskCards(project: Project): TaskCard[] {
  * elapsed time measured against.
  *
  * 5 for the provenance question, 4 for each reach trial, 15 shared by the removal
- * and its correction. The eight minutes the reach trials add came out of the setup
- * step, not out of the removal: pilots hit the 15-minute cap on the removal in both
- * conditions, so taking time off it would have measured the cap rather than the
- * condition.
+ * and its correction. The eight minutes the reach trials add are added to the
+ * session rather than taken off anything: setup is 10 minutes in the first half
+ * and 5 in the second, so neither half's setup can give up 8, and pilots hit the
+ * 15-minute cap on the removal in both conditions, so taking time off that would
+ * have measured the cap rather than the condition. The session is 129 minutes of
+ * work and the welcome page asks for two and a half hours.
  *
  * Summed rather than written down, because it was written down before and a
  * request's cap could change without it.
@@ -617,3 +638,11 @@ export const BLOCK_CAP_MIN = REQUESTS.reduce((sum, r) => sum + (r.capMin ?? 0), 
 export const REACH_TRIALS = REQUESTS.filter(
   (r): r is RequestSpec & { reach: ReachTrial } => r.reach !== undefined,
 )
+
+/**
+ * Requests that are not reach trials, i.e. the ones the participant is told to
+ * expect as "requests". Counted rather than written down: the task preamble used
+ * to say "three requests, about twenty minutes in total" and stayed that way
+ * after the two reach trials and their eight minutes were added.
+ */
+export const REQUEST_COUNT = REQUESTS.length - REACH_TRIALS.length

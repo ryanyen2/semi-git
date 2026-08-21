@@ -23,7 +23,7 @@ Run `study-practice`. It puts you in a throwaway copy of a small shopping cart p
 
 Those names are what you hand back to the commands below.
 
-Every command on this sheet runs in the practice copy, and the four names above only exist there. If `sgt log --tree` shows anything else, you are in the real project: run `study-practice` and try again — nothing on this sheet applies to the real project's history.
+Every command on this sheet runs in the practice copy, and the four names above only exist there. If `sgt log --tree` shows anything else, you are in the real project: run `study-practice` and try again. Nothing on this sheet applies to the real project's history.
 
 ## 1. The editor first
 
@@ -52,7 +52,7 @@ sgt log --map     one row per feature, across time
 sgt log --tree    just the four features and their handles
 ```
 
-In `--map`, the bars are how busy a feature was at that moment, and the `@0`, `@1`, `@2` chips underneath are its **checkpoints** — the chapters within one feature.
+In `--map`, the bars are how busy a feature was at that moment, and the `@0`, `@1`, `@2` chips underneath are its **checkpoints**, the chapters within one feature.
 
 ## 3. Ask what one thing is
 
@@ -84,7 +84,7 @@ It ranks features, saves and functions against your words and hands you back the
 
 ## 5. Record a change
 
-Edit anything — a function, or just the README — then:
+Edit anything, a function or just the README, then:
 
 ```
 sgt save -m "what you changed, in your own words"
@@ -100,7 +100,7 @@ Do this whole sequence. It is the most useful thing in these ten minutes.
 sgt revert "Receipts"
 ```
 
-Nothing has happened yet. That was a preview, and three things in it are worth reading: which chapters would go, that it removes 14 edits across 2 files, and the line saying **3 other feature(s) unchanged**. Now do it:
+Nothing has happened yet. That was a preview, and three things in it are worth reading: which chapters would go, that it removes 14 edits across 2 files, and the line saying **3 other features unchanged**. Now do it:
 
 ```
 sgt revert "Receipts" --yes

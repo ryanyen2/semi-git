@@ -17,6 +17,7 @@ import {
   BEHAVIOURS,
   BLOCK_CAP_MIN,
   SCENARIO,
+  requestHeading,
   taskCards,
   type ChoiceQuestion,
   type ReachTrial,
@@ -323,7 +324,13 @@ function TaskCardView({
               <div className="muted tiny">{r.title[project]}</div>
               {r.choices.map((q) => {
                 const pick = d.choices?.[q.id]
-                return <div key={q.id}>{pick == null ? '—' : q.options[project][pick]}</div>
+                // A dash here left the participant's own recap of their answers reading as a
+                // table with a hole in it. The word says which line they left blank.
+                return (
+                  <div key={q.id} className={pick == null ? 'muted' : undefined}>
+                    {pick == null ? 'Not answered' : q.options[project][pick]}
+                  </div>
+                )
               })}
             </div>
           )
@@ -362,7 +369,11 @@ function TaskCardView({
       <div style={{ marginTop: '1rem' }}>
         {card.requests.map((r, ri) => (
           <div key={r.id} style={{ marginTop: ri ? '1.5rem' : 0 }}>
-            {card.requests.length > 1 && <h3>{r.title[project]}</h3>}
+            {card.requests.length > 1 && (
+              <h3>
+                {requestHeading(r)}: {r.title[project]}
+              </h3>
+            )}
             <div className="no-copy" onCopy={blockProseCopy}>
               <Markdown>{r.body[project]}</Markdown>
               {r.tip && (
@@ -603,7 +614,7 @@ function ConfidenceSlider({
         <span>Certain</span>
       </div>
       {value == null && (
-        <div className="tiny faint">Not answered yet — click anywhere on the line.</div>
+        <div className="tiny faint">Not answered yet. Click anywhere on the line.</div>
       )}
     </div>
   )
@@ -792,7 +803,7 @@ function ReachAnswers({
           yet. The clock starts when you press the button, runs for{' '}
           <strong>{trial.blindSec} seconds</strong>, and submits whatever is ticked when it ends.
           Then you get {Math.round(trial.checkedSec / 60)} minutes to check properly and change
-          your mind. Getting the first one wrong is expected — the difference between the two is
+          your mind. Getting the first one wrong is expected. The difference between the two is
           what we are measuring.
         </Callout>
         {grid(false)}
@@ -818,7 +829,7 @@ function ReachAnswers({
       <div className="stack tight" style={{ marginTop: '1rem' }}>
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
           <div className="field-label" style={{ margin: 0 }}>
-            First answer — from what you can see
+            First answer, from what you can see
           </div>
           <Countdown remaining={remaining} capMs={capMs} />
         </div>
@@ -842,7 +853,7 @@ function ReachAnswers({
   if (phase === 'rateBlind') {
     return (
       <div className="stack tight" style={{ marginTop: '1rem' }}>
-        <div className="field-label">Your first answer is in — {picks.length} ticked</div>
+        <div className="field-label">Your first answer is in, {picks.length} ticked</div>
         {grid(false)}
         <ConfidenceSlider
           label="How sure are you of that first answer?"
@@ -885,7 +896,7 @@ function ReachAnswers({
         </div>
         <Callout kind="soft" title="What you may use">
           Anything that does not change the project: read the history, read the code, run the app,
-          ask the assistant. Changing nothing is fine — so is changing all twelve.
+          ask the assistant. Changing nothing is fine, and so is changing all twelve.
         </Callout>
         {grid(true)}
         <div className="row" style={{ justifyContent: 'space-between' }}>
@@ -900,7 +911,7 @@ function ReachAnswers({
 
   return (
     <div className="stack tight" style={{ marginTop: '1rem' }}>
-      <div className="field-label">Final answer — {picks.length} ticked</div>
+      <div className="field-label">Final answer, {picks.length} ticked</div>
       {grid(false)}
       <ConfidenceSlider
         label="How sure are you now?"

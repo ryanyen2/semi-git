@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:emulator": "java -jar $HOME/.cache/firebase/emulators/cloud-firestore-emulator-v1.19.8.jar --host=127.0.0.1 --port=8080"
+    "test:emulator": "firebase emulators:start --only firestore,auth --project sem-git",
+    "gen:materials": "UPDATE_MATERIALS=1 vitest run tests/schedule.test.ts"
   },
   "dependencies": {
     "d3-scale": "^4.0.2",

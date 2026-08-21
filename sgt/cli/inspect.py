@@ -491,6 +491,7 @@ def _state(repo: str, as_json: bool = False, full: bool = False) -> int:
     list)."""
     from sgt.api import state_view
     from sgt.core.lens import get
+    from sgt.tui.graph import plural
 
     get(repo)  # mine-on-contact so the ideal reflects current reality
     view = state_view(repo, full=full)
@@ -499,8 +500,8 @@ def _state(repo: str, as_json: bool = False, full: bool = False) -> int:
     pct = view["coverage_fraction"] * 100
     frontier_n = len(view["frontier"]) if full else view["frontier_count"]
     entity_n = len(view["entity_paths"]) if full else view["entity_path_count"]
-    print(f"{frontier_n} symbol(s) at the frontier; "
-          f"{len(view['covered_paths'])} path(s) covered, "
+    print(f"{plural(frontier_n, 'symbol')} at the frontier; "
+          f"{plural(len(view['covered_paths']), 'path')} covered, "
           f"{entity_n} at entity granularity ({pct:.0f}%)")
     derived = set(view["derived_paths"])
     entity_paths = set(view["entity_paths"]) if full else set()
@@ -545,7 +546,7 @@ def _print_map_tree(view: dict) -> None:
     child), not a real feature -- same "drop what has nothing to show" filter `graph_layout` applies
     to lanes with no ops (`sgt/tui/graph.py`) -- so it and any subsystem left with no other visible
     descendant are skipped here. Display-only: the underlying tree/clustering is untouched."""
-    from sgt.tui.graph import _min_unique_prefixes
+    from sgt.tui.graph import _min_unique_prefixes, plural
 
     by_id = {n["id"]: n for n in view["nodes"]}
     leaves = [n["id"] for n in view["nodes"] if not n["children"]]
@@ -575,7 +576,7 @@ def _print_map_tree(view: dict) -> None:
         if n["children"]:
             print(f"{'  ' * depth}{n['label']}")
         else:
-            print(f"{'  ' * depth}{n['label']} ({handle(nid)}) · {len(live(n))} symbol(s)")
+            print(f"{'  ' * depth}{n['label']} ({handle(nid)}) · {plural(len(live(n)), 'symbol')}")
         for child in n["children"]:
             if is_visible(child):
                 visit(child, depth + 1)
@@ -584,7 +585,7 @@ def _print_map_tree(view: dict) -> None:
         if is_visible(root):
             visit(root, 0)
     shown = sum(1 for n in view["nodes"] if not n["children"] and live(n))
-    print(f"{shown} feature(s)")
+    print(plural(shown, "feature"))
 
 
 def _map(repo: str, as_json: bool = False, rebuild: bool = False) -> int:
@@ -707,7 +708,7 @@ def _status(repo: str, as_json: bool = False, full: bool = False, *, color: bool
     `_state_banner` (⋔ + per-symbol remedy), not a muted `⚠` count -- divergence to resolve."""
     from sgt.api import status_view
     from sgt.core.lens import get
-    from sgt.tui.graph import _state_banner
+    from sgt.tui.graph import _state_banner, plural
 
     get(repo)
     view = status_view(repo)
@@ -720,7 +721,8 @@ def _status(repo: str, as_json: bool = False, full: bool = False, *, color: bool
             return ", ".join(paths)
         return ", ".join(paths[:head]) + f"  (+{len(paths) - head} more — --full lists them)"
 
-    print(f"{view['files']} file(s), {view['symbols']} symbol(s), {view['features']} feature(s), "
+    print(f"{plural(view['files'], 'file')}, {plural(view['symbols'], 'symbol')}, "
+          f"{plural(view['features'], 'feature')}, "
           f"{view['coverage_fraction'] * 100:.0f}% entity coverage")
     print(f"  oracle: {view['oracle']['status']}")
     for line in _state_banner({"forks": view["forks"]["records"]}, color=color):
@@ -853,13 +855,15 @@ def _compose(repo: str, as_json: bool = False, full: bool = False) -> int:
     fields no child's `full` flag touches, so it needs no branching."""
     from sgt.api import compose_view
     from sgt.core.lens import get
+    from sgt.tui.graph import plural
 
     get(repo)  # mine-on-contact so the bundle reflects current reality (R9)
     view = compose_view(repo, full=full)
     if as_json:
         return _emit_json(view)
     status, oracle = view["status"], view["oracle_verdict"]
-    print(f"{status['files']} file(s), {status['symbols']} symbol(s), {status['features']} feature(s)")
+    print(f"{plural(status['files'], 'file')}, {plural(status['symbols'], 'symbol')}, "
+          f"{plural(status['features'], 'feature')}")
     print(f"  oracle: {status['oracle']['status']}")
     if view["forks"]["open"]:
         print(f"  ⚠ {view['forks']['open']} open fork(s)")

@@ -362,14 +362,15 @@ def _changed_nothing(preview) -> bool:
 
 def _applied_magnitude(preview) -> str:
     """What the applied edit actually changed. A revert realized as a forward subtraction removes no
-    whole op (`sgt.core.subtract` splices instead), so the op counts read "0 edit(s) removed, 5
+    whole op (`sgt.core.subtract` splices instead), so the op counts read "0 edits removed, 5
     added" for a revert that rewrote a function and dropped a test -- the number said no-op while
     the files moved. `restore`'s "N added" is the real magnitude of a restore, so it is untouched."""
+    from sgt.tui.graph import plural
     removed, added = len(preview.removed), len(preview.added)
     if preview.verb == "revert" and not removed:
         syms = [s for s in preview.affected_symbols if "::__" not in s]
         return f"{len(syms)} symbol(s) changed, no whole edit removed"
-    return f"{removed} edit(s) removed, {added} added"
+    return f"{plural(removed, 'edit')} removed, {added} added"
 
 
 def _subtraction_fields(preview) -> dict:
@@ -1004,6 +1005,7 @@ def _revert_keep_dependents(
 
 
 def _print_verb_view(view: dict) -> int:
+    from sgt.tui.graph import plural
     icon = "✓" if view["ok"] else "✗"
     print(f"{icon} [{view['verb']}] {view['target']}" + (f" — {view['message']}" if view["message"] else ""))
     if not view["ok"]:
@@ -1013,7 +1015,7 @@ def _print_verb_view(view: dict) -> int:
     syms = [s for s in view.get("affected_symbols", []) if "::__" not in s]
     sym_note = (": " + ", ".join(syms[:6]) + (f" +{len(syms) - 6} more" if len(syms) > 6 else "")) if syms else ""
     if view["removed"]:
-        print(f"    removed {len(view['removed'])} edit(s){sym_note}")
+        print(f"    removed {plural(len(view['removed']), 'edit')}{sym_note}")
     if view["added"]:
         print(f"    added {len(view['added'])} edit(s){sym_note}")
     # The dependent frontier: what reverting *lands on*. blast = a direct dependent that must be
@@ -1030,7 +1032,7 @@ def _print_verb_view(view: dict) -> int:
         if buckets.get("carry"):
             parts.append(f"{buckets['carry']} auto-repoint (carry)")
         if buckets.get("foundation"):
-            parts.append(f"{buckets['foundation']} prerequisite(s) locked (foundation)")
+            parts.append(f"{plural(buckets['foundation'], 'prerequisite')} locked (foundation)")
         if parts:
             print("    dependents: " + ", ".join(parts))
     affected = view.get("affected") or []
@@ -1048,11 +1050,12 @@ def _print_verb_diff(files: dict, max_lines: int = 60) -> None:
     """Show the actual resulting change (the state you land in), computed by the backend as a
     before/after fold per changed path. A capped unified diff -- the honest answer to 'what does
     reverting this do to my code', not just an op-count."""
+    from sgt.tui.graph import plural
     if not files:
         return
     import difflib
 
-    print(f"    ── resulting change ({len(files)} file(s)) ──")
+    print(f"    ── resulting change ({plural(len(files), 'file')}) ──")
     shown = 0
     for path in sorted(files):
         pair = files[path]

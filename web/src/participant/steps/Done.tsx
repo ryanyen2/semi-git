@@ -20,7 +20,7 @@ export function DoneStep() {
       <div>
         <h1>Thank you</h1>
         <p className="lede">
-          You are finished. Your participant code is <code>{participant.label}</code> — quote it if
+          You are finished. Your participant code is <code>{participant.label}</code>. Quote it if
           you ever want your data removed.
         </p>
       </div>
