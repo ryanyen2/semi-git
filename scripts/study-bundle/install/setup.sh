@@ -242,10 +242,31 @@ PYEOF
 )"
     if [ -n "$exts" ]; then
         note "Installing the Python tooling. A couple of minutes; it is about 200 MB."
+        # One invocation for all four, not four invocations. Each one starts a
+        # whole editor process before it downloads anything, and the four of
+        # them are the only part of this step we control -- the 200 MB is
+        # required, since both projects are Python and both halves need the
+        # same tooling.
+        #
+        # A batched call reports failure without saying which extension failed,
+        # so the per-extension loop stays as the fallback. The participant gets
+        # the fast path when it works and a name they can read out when it
+        # does not.
+        batched=""
         for ext in $exts; do
-            install_ext "$ext" || note "Could not install $ext. Tell your facilitator."
+            batched="$batched --install-extension $ext"
         done
-        note "Done."
+        # shellcheck disable=SC2086
+        if "$EDITOR_CLI" --user-data-dir "$profile" --extensions-dir "$profile/extensions" \
+            $batched --force >/dev/null 2>&1; then
+            note "Done."
+        else
+            note "Retrying one at a time."
+            for ext in $exts; do
+                install_ext "$ext" || note "Could not install $ext. Tell your facilitator."
+            done
+            note "Done."
+        fi
     fi
 fi
 
