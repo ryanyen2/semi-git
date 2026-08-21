@@ -4,7 +4,7 @@ Date: 2026-08-17
 Status: The operational protocol. This is what the study website implements.
 
 Related documents:
-- `docs/design/2026-08-09-chi-user-study-design.md` — the design argument
+- `docs/design/2026-08-21-controlled-study-redesign.md` — the design argument
 - `docs/study/testbed-spec.md` — how the study repositories were built
 - `docs/study/participant-materials.md` — facilitator script and answer keys
 
@@ -23,15 +23,15 @@ describing what they want to an AI coding assistant. The unit of recording
 (line-level diffs) and the unit of thinking (intent-level descriptions) have
 come apart. sgt records history at the level of intents.
 
-The paper's claim is not about capability. Both git and sgt can handle all three
-requests, and the paper says so in a side-by-side parity table. The claim is
+The paper's claim is not about capability. Both git and sgt can handle every
+request in the session, and the paper says so in a side-by-side parity table. The claim is
 about **what a particular representation costs the person reading it**. There are
 three sub-claims, each with its own evidence, each designed to be falsifiable:
 
 | Claim | How it would be falsified |
 |---|---|
 | C1. Intent-aligned history makes provenance questions cheaper and more reliably answered. | Accuracy on request 1's three closed questions is equal or worse under sgt, with no gain in confidence calibration. |
-| C2. Intent-aligned history makes destructive edits safer. | Collateral damage on requests 2 and 3 is equal or worse under sgt. |
+| C2. Intent-aligned history makes destructive edits safer. | Collateral damage on requests 2 and 3 is equal or worse under sgt, **or** `gain` on the prediction trials is at or below zero — a participant who cannot predict what an operation reaches before running it is not being made safer by the representation. |
 | C3. Intent-aligned history leaves the developer with a better working theory of the project. | The two "what you came away with" items do not differ, and interviews show no difference in what people could reconstruct. |
 
 C3 is the weakest of the three and is stated that way in the paper. It used to
@@ -56,11 +56,12 @@ a p-value.
 | Research question (RQ) | What answers it | Instrument |
 |---|---|---|
 | RQ1: Comprehension | Accuracy, time, and confidence on request 1 | Three closed questions scored against the key, plus a confidence rating |
+| RQ1b: Foresight | Whether seeing the representation moves the expectation of an operation's reach toward the truth | Two prediction trials, answered blind then after checking, scored as set F1 against a measured key |
 | RQ2: Operation | Outcome and collateral damage on requests 2 and 3 | Output of `score_study_repo.py`, uploaded |
 | RQ3: Theory building | What the participant says they came away with, and the interview | HLAC block 3 (2 items), interview |
 | RQ4: Agent collaboration | Telemetry on prompts, verification, and wrong turns | Claude Code hooks plus command-recording wrappers |
 
-### The three requests, explained
+### The requests and the prediction trials, explained
 
 Each request is modeled on a real kind of task from the Codoban et al. taxonomy
 of developer motivations for examining software history. Wording is fixed in
@@ -69,11 +70,19 @@ it names a git or an sgt verb: the request states a goal in product terms and
 the participant chooses the mechanism, because naming the verb would tell them
 which tool we expect them to reach for.
 
-| Request | Cap | What it tests | Codoban motivation | Which claims it serves |
+| Card | Cap | What it tests | Codoban motivation | Which claims it serves |
 |---|---|---|---|---|
 | R1: What changed course search? | 5 min | Provenance in a tangled commit (episode 8) | Rationale recovery | RQ1, C1 |
+| Prediction 1: the timetable and CSV export | 4 min | Reach of work that **looks broad** and is not (episode 15) | Change impact | RQ1b, C2 |
+| Prediction 2: the slot-comparison fix | 4 min | Reach of work that **looks narrow** and is not (episode 17) | Change impact | RQ1b, C2 |
 | R2: Take the waitlist out | 15 min | Entangled removal (episodes 11, 12, 14, 21) | Change impact | RQ2, C2 |
 | R3: Drops still need to work | shares R2's clock | Correction under time pressure (episode 14) | Change impact | RQ2, C2 |
+
+28 minutes of task work per half, which is the sum of the caps above and is
+computed rather than restated: `BLOCK_CAP_MIN` in `web/src/study/tasks.ts` adds up
+the per-request caps, so the number the participant is shown cannot drift from the
+number the timers enforce. The extra eight minutes over the previous 20 come out of
+the setup step, not out of R2.
 
 R2 and R3 sit on one card and share one timer, because R3 is a correction to
 work R2 has just done and timing it separately would measure how quickly the
@@ -86,17 +95,52 @@ and a history-surgery request that split episode 8's tangle. Pilots ran out of
 time on all three, in both conditions. A request that nobody finishes in either
 condition produces a floor rather than a measurement — it cannot separate the
 conditions, and it spends budget that the requests which can separate them
-needed. What is left is one question about the past and one change to the
-present with a correction on top of it, which is the smallest set that still
-exercises C1 and C2. Finding the thing to change is most of the work in R2, so
+needed. What is left is one question about the past, two predictions about what past work
+reaches, and one change to the present with a correction on top of it, which is the
+smallest set that still exercises C1 and C2. The two predictions cost four minutes
+each and are the one thing added rather than removed: they are cheap because nothing
+in them is executed, so they need no reset and cannot run over into the next card. Finding the thing to change is most of the work in R2, so
 search is measured twice and paid for once.
 
 **What the cut costs, recorded here because the paper has to be able to say
 it.** The history-surgery request was the cleanest single demonstration of the
 representational difference, and an earlier version of this document
 pre-committed to it as the place sgt should look best. The study can no longer
-show it. Episode 17's regression is still in both repositories; no request
-points at it now, so nothing in the session repairs it.
+show it. Episode 17's regression is still in both repositories, and nothing in the
+session repairs it — but Prediction 2 now points at it, so the session at least
+asks about the piece of work that carries it.
+
+### Why the two prediction trials exist
+
+The argument is in `docs/design/2026-08-21-controlled-study-redesign.md` §4; what
+matters operationally is that they are the only measure in the study of whether the
+representation moves an expectation **before** an operation, and that they cost
+nothing to reset because nothing in them is executed or modified.
+
+Each trial names one piece of work in product terms, shows the same fixed list of
+twelve things people do with the app, and asks which of those run through the code
+that work added — the set you would have to re-check if it were taken out. It is
+answered twice: once from the representation alone with a hard 60-second limit,
+announced before the clock starts, and once after checking properly with three
+minutes. `blind`, `checked`, and `checked − blind` are all set F1 against a key
+that is measured rather than written — `scripts/study/measure_reach_key.py` builds a
+call graph rooted at each CLI command handler and cross-checks it against both test
+suites, and refuses to write a key if the two fixtures disagree.
+
+The pair is reported as a pair. One target's answer is a single behaviour and the
+other's is four, so no strategy of ticking more boxes raises both, and F1 rather
+than agreement over the twelve boxes means an empty answer scores zero instead of
+eleven out of twelve.
+
+The key carries its own version, `reachKeyVersion` in `docs/study/answer-key.json`,
+currently `reach-key-v1`. It is versioned separately from the file because a key
+regenerated against a rebuilt testbed can change while every question stays the
+same, and two sessions scored against different keys are not comparable. The upload
+refuses a key that has no reach answer for a trial, names a behaviour the trial does
+not offer, or names all twelve — the three shapes that would otherwise score every
+participant identically and look like a hard trial rather than a broken key
+(`web/src/study/answerKey.ts`).
+
 
 ### Request 1's three questions
 
@@ -225,19 +269,23 @@ The step list is `STEPS` in `web/src/study/flow.ts`; the estimates below are its
 | 4 | Setup for first half | 10 min | Live green checks from the machine's heartbeat |
 | 5 | Practice for first half | 10 min | `tutorialCompletedAt` |
 | 6 | The project, first half | 5 min | Nothing. No clock runs on this page |
-| 7 | Task block 1 (requests R1–R3) | 20 min | Per-request timings, closed answers, and confidence |
+| 7 | Task block 1 (five cards: R1, two prediction trials, R2–R3) | 28 min | Per-card timings, closed answers, reach picks at both stages, and confidence |
 | 8 | Post-block 1: NASA-TLX, UMUX-Lite, HLAC | 6 min | Three response documents |
 | 9 | Setup for second half | 5 min | Second heartbeat |
 | 10 | Practice for second half | 10 min | — |
 | 11 | The project, second half | 5 min | — |
-| 12 | Task block 2 | 20 min | — |
+| 12 | Task block 2 | 28 min | — |
 | 13 | Post-block 2 (same three questionnaires) | 6 min | — |
 | 14 | Comparing the two setups | 5 min | `preference` |
 | 15 | Data handover and debrief | 3 min | Final sync confirmation |
 
-Those estimates add up to 113 minutes. The welcome page gives the participant a
-rounder version of the same table that comes to 100, and tells them to plan for
-about two hours including breaks.
+Those estimates add up to 129 minutes, and the task-block rows are not typed
+out: `estimateMin` for those two steps is `BLOCK_CAP_MIN`, so the schedule the
+participant reads is the sum of the caps the timers enforce. The welcome page shows
+the same table and the same total, and asks them to set aside two and a half hours.
+`web/tests/schedule.test.ts` keeps the work inside that figure with a quarter of an
+hour to spare; if a future card pushes past it, the sentence on the welcome page is
+what changes.
 
 Two things about that shape have not changed. The usability and HLAC (History
 Legibility and Agent Collaboration) batteries sit immediately after each half,
@@ -246,11 +294,22 @@ after they have spent the second half in "Setup B" measures memory, not
 experience. And the 10-item SUS (System Usability Scale) stays replaced by the
 2-item UMUX-Lite (Usability Metric for User Experience, Lite version).
 
-The length has. Requests went from 45 minutes a half to 20 (§2), the per-half
-questionnaire block from 12 minutes to 6 (§5.6), and two five-minute pages with
-no clock on them were added. This document used to put the session at about 125
-minutes; on the estimates above it is 113, and the welcome page's own breakdown
-comes to 100.
+The length has, twice, and the second move went the other way. Requests went from
+45 minutes a half to 20 (§2), the per-half questionnaire block from 12 minutes to 6
+(§5.6), and two five-minute pages with no clock on them were added, which took the
+session from about 125 minutes to 113. The two prediction trials then added eight
+minutes a half and put it at 129.
+
+That is the one place this design costs time rather than saving it, and it is worth
+being plain about where the eight minutes are and are not. They are not taken from
+Change: pilots hit that cap in both arms, and three requests were already cut for
+being unfinishable (§9), so a shorter Change would measure the cap harder rather
+than measure the tool. They are also not, as an earlier draft of the redesign claimed,
+absorbed by the setup step — setup is ten minutes in the first half and five in the
+second, and neither can give up eight. The session is longer, the welcome page says
+so, and the install prune on the engineering list is the only place the time can come
+back. Both trial caps are worst cases in a way Change's is not: the checked stage is
+advisory, so a participant who has seen enough after ninety seconds moves on.
 
 ### The project, before any clock exists
 
@@ -304,10 +363,23 @@ all, which turns "does this representation help" into "did you find the panel".
 
 ### Timers
 
-Each request card has its own time cap and its own clock. R1 has a card to
-itself, capped at 5 minutes; R2 and R3 share a card and a single 15-minute
-clock. That is 20 minutes a half (`BLOCK_CAP_MIN` in `tasks.ts`), and the
-participant also sees elapsed time against that figure for the half as a whole.
+Each card has its own time cap and its own clock. R1 has a card to itself, capped
+at 5 minutes; R2 and R3 share a card and a single 15-minute clock. That is 28
+minutes a half (`BLOCK_CAP_MIN` in `tasks.ts`), and the participant also sees
+elapsed time against that figure for the half as a whole.
+
+A prediction card is the exception, and runs two clocks of its own instead of the
+card's: 60 seconds for the blind answer and 180 for the checked one, summing to the
+4-minute cap. Only one of them is ever on screen, because two countdowns on one card
+disagreeing about how long is left is the same defect as two totals on the welcome
+page. The blind minute is the only hard cap in the study that submits on expiry
+rather than merely closing: it is what makes `blind` mean "from the representation
+alone", so the card offers no pause and the participant is told before the clock
+starts that whatever is ticked when it ends is their answer. The checked three
+minutes are advisory — cutting somebody off two clicks short would record a wrong
+answer they did not hold — and the checked stage opens with the blind picks already
+ticked, so it is a revision rather than a fresh answer. That anchoring makes `gain`
+harder to earn, which is the direction to be wrong in.
 
 The clock starts when the participant opens the card and stops when they mark it
 done or the time cap expires. The timer is visible to them. A visible countdown
@@ -868,10 +940,22 @@ Computed per request, per condition:
   event
 - **Collateral damage**: tests failing outside the target feature, reported by
   the scoring script
-- **Calibration**, on request 1 only: stated confidence minus proportion of the
-  three closed questions answered correctly, both on 0–1. Positive is
-  overconfidence. Null unless both the confidence rating and the scored answers
-  are present, because a missing confidence is not a confident zero.
+- **Calibration**, on request 1 and both prediction trials: stated confidence
+  minus proportion correct, both on 0–1. Positive is overconfidence. Null unless
+  both the confidence rating and the scored answers are present, because a
+  missing confidence is not a confident zero. On a prediction trial it is
+  computed at both stages, and the pair is the failure this study is most afraid
+  of finding in its own tool: `blindConfidence` high over a low `blind` score is
+  a participant believing a label that was wrong.
+- **Reach prediction**, per prediction trial: `blind`, `checked`, and
+  `gain = checked − blind`, each the F1 between the set of behaviours ticked and
+  the set the key names. F1 rather than agreement over the twelve boxes, because
+  an empty answer agrees with eleven of twelve on a key of size one and would
+  score 0.92 for knowing nothing; under F1 it scores zero. Also recorded per
+  stage: how many boxes were ticked, the confidence, and the active
+  milliseconds, so a blind answer given in four seconds is distinguishable from
+  one that used the minute. Computed by `reachMetricsFor` in
+  `web/src/analysis/pipeline.ts`.
 - **Action n-grams**: bigram (two-step) and trigram (three-step) sequences over
   the category alphabet
 
@@ -905,14 +989,22 @@ reported as if it were the main finding.
 
 | Tier | Measures |
 |---|---|
-| Primary | R1's three closed questions (0–3 correct), the R2+R3 rubric, and collateral damage from `score_study_repo.py` |
+| Primary | R1's three closed questions (0–3 correct), the two prediction trials' `blind` and `gain`, the R2+R3 rubric, and collateral damage from `score_study_repo.py` |
 | Secondary | Self-report: NASA-TLX, UMUX-Lite, the HLAC battery, the end-of-session preference block |
 | Descriptive | Telemetry: surfaces used, action sequences, prompt specificity, calibration, wrong turns, time to first history operation |
 
 There used to be a tier between these two: the quiz and the summary task, which
 asked what the person could reconstruct with the project closed. It is gone
-(§5.6), and with it the only performance measure of what a participant took away
-rather than what they said they took away.
+(§5.6). The prediction trials are not a replacement for it — they ask what someone
+can say about the project with it open, not closed — but they do restore a
+performance measure of understanding rather than a report of it, which is what that
+tier existed to provide.
+
+`gain` is primary and is the measure this design was added for, so the direction
+that would falsify the claim is pre-committed here: `gain` at or below zero under
+sgt, or `blind` accuracy low while `blindConfidence` is high, which is the failure
+of a confidently wrong inferred label. Neither is reported as a surprise if it
+happens.
 
 Self-report is not primary and is treated as such throughout. It is the tier
 most exposed to demand characteristics — the participant knows one setup is
@@ -1069,11 +1161,23 @@ own intuition.
 
 ### Figure 2. What people actually managed to do
 
-A paired within-subject estimation plot with three panels across the top: R1
-provenance (how many of the three closed questions were right), R2+R3 removal
-(rubric points), and collateral damage. For each: every participant's two scores
-are joined by a line, with condition on the x-axis, and beneath it the paired
-mean difference with its bootstrap CI on a floating axis (Gardner-Altman style).
+A paired within-subject estimation plot with five panels: R1 provenance (how many
+of the three closed questions were right), blind prediction accuracy, the gain from
+checking, R2+R3 removal (rubric points), and collateral damage. For each: every
+participant's two scores are joined by a line, with condition on the x-axis, and
+beneath it the paired mean difference with its bootstrap CI on a floating axis
+(Gardner-Altman style).
+
+The two prediction panels average the pair of trials rather than showing them
+separately, because the pair is the control: one target's answer set has one
+behaviour in it and the other's has four, so no habit of ticking more boxes raises
+both. `gain` is `checked − blind`, and it is the panel the redesign was for — the
+only place the study asks whether the representation moved an expectation rather
+than whether it was available to be read.
+
+The panel list lives in `web/src/analysis/figures.ts` and both the dashboard and
+the paper export read it. They used to hold a list each, and the test that renders
+the publishable figure was rendering panels the app did not ship.
 
 Showing twelve individual slopes is the honest way to plot n=12. A bar chart of
 two group means hides whether one person moved a lot or twelve people moved a
@@ -1081,8 +1185,9 @@ little, and at this sample size that distinction is the whole question. Collater
 damage is on its own panel with an inverted axis so that "up is better" holds
 consistently across the figure.
 
-The figure lost a panel when request 4 was cut. Three panels is the whole
-outcome measure now, which is worth seeing plainly rather than padding.
+The figure lost a panel when request 4 was cut and has gained two back from the
+prediction trials. Five panels wrap as three and two, with the short row centred, so
+a row that ends early reads as a wrap rather than as a panel that failed to draw.
 
 ### Figure 3. How the work was done
 
@@ -1129,18 +1234,27 @@ rasterized layers.
   not a remedy.
 - Agent variance is part of the condition, not controlled away. The model
   version is pinned, and every transcript is kept.
-- Two small synthesized codebases and 20-minute halves. Real theory building
+- Two small synthesized codebases and 28-minute halves. Real theory building
   happens over weeks. The lab study answers the question of first contact only,
   which is why the design document recommends a field deployment as the
   companion study.
-- Three requests, two of which share a clock. The study asks one provenance
-  question and one removal with a correction on it, so a claim about "history
-  work" generally rests on two archetypes out of the six Codoban et al. name.
+- Three requests, two of which share a clock, plus two prediction trials. The
+  study asks one provenance question, two questions about what a past piece of work
+  reaches, and one removal with a correction on it, so a claim about "history work"
+  generally rests on two archetypes out of the six Codoban et al. name. The
+  prediction trials sit inside change impact rather than adding a third archetype:
+  they ask about the judgement a removal depends on without asking for the removal.
   The three cut requests were cut because pilots could not finish them, which is
   itself a finding about how much of this work fits in an hour, and it is
   reported rather than left as an unexplained change of design. Whether the
   remaining caps bound harder in one condition than the other is no longer left
   to argument: it is asked directly after each half (§5.5, M2).
+- The prediction trials supply the twelve behaviours. That is what makes them
+  scoreable and comparable across participants, and it is also a ceiling on what
+  they show: recognising which of a given list a piece of work reaches is easier
+  than asking, unprompted, what else might break. A participant who would never
+  have thought of the timetable at all still ticks it when it is on the page. The
+  measure is of a supplied set, and `gain` is a difference within that set.
 - C3 is now measured by two self-report items and an interview (§5.6). The study
   can show what people believe they came away with, and cannot show what they
   actually retained.

@@ -1,5 +1,5 @@
 import { forwardRef, useMemo } from 'react'
-import { scaleLinear } from 'd3'
+import { scaleLinear } from 'd3-scale'
 import { pairedBootstrapDistribution, pairedEstimate, quantile, type Pair } from '../lib/stats'
 import type { Condition } from '../lib/types'
 import { CONDITION_COLOR, CONDITION_LABEL, FONT, INK, MUTED, RULE, TYPE } from './theme'
@@ -39,7 +39,10 @@ export const PairedEstimation = forwardRef<SVGSVGElement, Props>(function Paired
   { panels, width = 980, panelHeight = 330, order = ['git', 'sgt'] },
   ref,
 ) {
-  const cols = Math.min(panels.length, 4)
+  // Four to a row at most, and never a row holding one panel on its own: five
+  // outcomes as 4+1 puts a quarter-width panel under three-quarters of white space,
+  // which reads as a figure that lost something rather than one that wrapped.
+  const cols = panels.length <= 4 ? panels.length : panels.length % 4 === 1 ? 3 : 4
   const panelW = width / cols
   const rows = Math.ceil(panels.length / cols)
   const height = rows * panelHeight + 26
@@ -54,14 +57,22 @@ export const PairedEstimation = forwardRef<SVGSVGElement, Props>(function Paired
       fontFamily={FONT}
       style={{ background: '#fff' }}
     >
-      {panels.map((panel, i) => (
+      {panels.map((panel, i) => {
+        // A short final row is centred rather than left-aligned, so the figure ends
+        // in white space on both sides instead of one wide gap that reads as a panel
+        // that failed to draw.
+        const row = Math.floor(i / cols)
+        const inRow = Math.min(cols, panels.length - row * cols)
+        const indent = ((cols - inRow) * panelW) / 2
+        return (
         <g
           key={panel.id}
-          transform={`translate(${(i % cols) * panelW},${Math.floor(i / cols) * panelHeight})`}
+          transform={`translate(${indent + (i % cols) * panelW},${row * panelHeight})`}
         >
           <Panel panel={panel} width={panelW} height={panelHeight} order={order} />
         </g>
-      ))}
+        )
+      })}
       <text x={8} y={height - 10} fontSize={TYPE.caption} fill={MUTED}>
         Each line is one participant. Lower panel: paired mean difference ({CONDITION_LABEL[order[1]]}{' '}
         − {CONDITION_LABEL[order[0]]}) with its bootstrap distribution and 95% studentized interval.

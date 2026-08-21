@@ -23,6 +23,8 @@ Run `study-practice`. It puts you in a throwaway copy of a small shopping cart p
 
 Those names are what you hand back to the commands below.
 
+Every command on this sheet runs in the practice copy, and the four names above only exist there. If `sgt log --tree` shows anything else, you are in the real project: run `study-practice` and try again — nothing on this sheet applies to the real project's history.
+
 ## 1. The editor first
 
 ```

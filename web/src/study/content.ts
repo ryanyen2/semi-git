@@ -7,15 +7,29 @@
 // and the timings match docs/study/protocol.md §4.
 
 import type { Condition, Project } from '../lib/types'
+import { BLOCK_CAP_MIN } from './tasks'
+import { TOTAL_ESTIMATE_MIN } from './flow'
+
+// The numbers in the schedule below are read from the step list and the card
+// caps rather than written out. The old copy said 110 minutes while the steps
+// added up to 113, which is the harmless-looking version of a promise the
+// session cannot keep.
+//
+// The figure at the top is deliberately rounder and more generous than the sum:
+// it is what someone blocks out in a calendar, and it has to hold with breaks,
+// a slow install, and a facilitator explaining something twice. A test keeps it
+// above the computed total, so adding a card cannot quietly overrun the promise
+// the participant agreed to.
+export const PLAN_FOR = 'two and a half hours'
 
 export const WELCOME_MD = `
-Thanks for taking part. Plan for about two hours, including breaks.
+Thanks for taking part. Plan for ${PLAN_FOR}, including breaks.
 
 ## What you'll do
 
 - Work on a small program you have never seen. Someone built it over six weeks and then left.
 - Read a short description of what it does, with no clock running.
-- Handle three requests that have come in about it.
+- Handle three requests that have come in about it, and answer two short questions about what a past piece of work touched.
 - Do that twice, with two different setups for looking at the project's history, on two different projects.
 
 We are comparing the two setups. We are not testing you. If something confuses you, that is the most useful thing you can tell us.
@@ -41,18 +55,18 @@ We record the screen and audio. You can ask us to stop at any time.
 | 10 | Setting up your machine |
 | 10 | A practice project |
 | 5 | Reading about the project you are taking over |
-| 20 | Three requests |
+| ${BLOCK_CAP_MIN} | Five cards: three requests, and two questions about what a past piece of work touched |
 | 6 | Three short questionnaires |
 | 15 | Setting up the second project, and practice again |
 | 5 | Reading about the second project |
-| 20 | Three requests |
+| ${BLOCK_CAP_MIN} | The same five cards, on the second project |
 | 6 | Questionnaires again |
 | 5 | Comparing the two |
 | 3 | Handing your data over |
 
-That is about 110 minutes of work. Two hours with breaks.
+That is about ${TOTAL_ESTIMATE_MIN} minutes of work. The rest is breaks.
 
-Each request has its own time limit, and you can see it counting down. The clock
+Every card has its own time limit, and you can see it counting down. The clock
 only starts once you have read about the project, so there is no rush before
 that.
 
@@ -187,6 +201,8 @@ Run \`study-practice\`. It puts you in a throwaway copy of a small shopping cart
 
 It has four pieces: \`cart.py\` (adding and removing things, and the total), \`discount.py\` (a percentage off, or a coupon code), \`receipt.py\` (printing a receipt), and \`shipping.py\` (what postage costs). Sixteen commits, and \`python -m pytest -q\` passes.
 
+Every command on this sheet runs in the practice copy, and those four files only exist there. If \`ls\` shows anything else, you are in the real project: run \`study-practice\` and try again.
+
 ## 1. The editor first
 
 \`\`\`
@@ -286,6 +302,8 @@ Run \`study-practice\`. It puts you in a throwaway copy of a small shopping cart
 | **Shipping** | what it costs to post an order |
 
 Those names are what you hand back to the commands below.
+
+Every command on this sheet runs in the practice copy, and the four names above only exist there. If \`sgt log --tree\` shows anything else, you are in the real project: run \`study-practice\` and try again — nothing on this sheet applies to the real project's history.
 
 ## 1. The editor first
 

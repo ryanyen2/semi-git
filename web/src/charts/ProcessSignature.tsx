@@ -1,5 +1,5 @@
 import { forwardRef, useMemo } from 'react'
-import { scaleLinear } from 'd3'
+import { scaleLinear } from 'd3-scale'
 import type { Condition } from '../lib/types'
 import { CATEGORY_LABEL, CATEGORY_ORDER, type Category } from '../study/taxonomy'
 import type { NgramComparison, Strip, TimeBin } from '../analysis/ngram'

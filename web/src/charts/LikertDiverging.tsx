@@ -1,5 +1,5 @@
 import { forwardRef, useMemo } from 'react'
-import { scaleLinear } from 'd3'
+import { scaleLinear } from 'd3-scale'
 import { pairedEstimate, type Pair } from '../lib/stats'
 import type { Condition } from '../lib/types'
 import { CONDITION_LABEL, FONT, INK, MUTED, RULE, SOFT, TYPE, likertColors, onColor } from './theme'
