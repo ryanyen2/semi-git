@@ -195,7 +195,7 @@ def assign_at_save(repo, ideal, ops) -> dict | None:
     from dataclasses import replace
     from pathlib import Path
 
-    from sgt.core.op import _symbol_kind
+    from sgt.core.op import _symbol_kind, is_bottom
     from sgt.lens import authored, verbs
     from sgt.lens.pins import load_pins
     from sgt.store.gitbind import GitBinding
@@ -208,9 +208,18 @@ def assign_at_save(repo, ideal, ops) -> dict | None:
     nodes = previous["nodes"]
     member_leaf = tree.leaf_member_index(nodes)
     frontier = ideal.frontier(ops)  # symbol -> id of its maximal in-ideal op
+    # "In the ideal" is not the same as "alive": a deleted symbol's maximal in-ideal op is the
+    # removal itself, so a tombstone sits at the frontier exactly like a live symbol and, owning no
+    # leaf, read as genuinely new. The cascade then minted it a lane -- and since an authored lane
+    # is protected from rebuild, every save made after any deletion left behind a permanent,
+    # empty-labelled root feature holding one dead symbol. `tree.build`'s clusterer has always
+    # filtered these the same way (`sgt/lens/cluster.py`), so this was the two layers disagreeing
+    # about one symbol rather than a judgement call.
+    by_id = {op.id: op for op in ops}
     new_symbols = {
         s for s in frontier
         if _symbol_kind(s) in ("entity", "nested", "whole_file") and s not in member_leaf
+        and not is_bottom(by_id[frontier[s]].footprint[s][1])
     }
     if not new_symbols:
         return {"assigned": {}, "new_lanes": []}  # the common modify-only save -- no cost paid

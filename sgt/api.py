@@ -2776,6 +2776,23 @@ def show_view(repo, target: str, *, symbol_limit: int = 12, save_limit: int = 5,
 
     found = select_resolve.identify(repo, target)
     if found is None:
+        # A fourth such situation, and the only one where the token named something real: the
+        # feature part of a `<feature>@<n>` resolved and the chapter index did not. "not a known
+        # feature, checkpoint, op, or symbol" denies the feature the user can see in the tree.
+        from sgt.intent.segment import checkpoint_miss
+
+        miss = checkpoint_miss(repo, target)
+        if miss is not None:
+            feat_part, label, seg_labels = miss
+            n = len(seg_labels)
+            return {
+                "ok": False, "target": target, "kind": None,
+                "message": (f"{label!r} has {n} checkpoint{'' if n == 1 else 's'}, "
+                            f"so {target!r} names none of them"),
+                "next": [{"cmd": f"sgt show {feat_part}@{i}", "why": lbl}
+                         for i, lbl in enumerate(seg_labels[:8])]
+                        or [{"cmd": f"sgt show {feat_part}", "why": "the feature as a whole"}],
+            }
         # A commit-shaped token that got *here* has already been through the save rung, so the one
         # thing left to say is why that rung didn't claim it -- three different situations that all
         # produce the same refusal, and the user can only act on the difference. The flat "not a

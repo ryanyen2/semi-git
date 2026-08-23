@@ -449,3 +449,28 @@ def test_granularity_metric_single_op_car_fraction(tmp_path):
     # a car with exactly one op is the least informative shape a chunk can take; if a weight
     # change ever pushes most cars down to single-op slivers, this is the number that catches it.
     assert fraction <= 0.6, f"granularity regressed: single-op-car fraction = {fraction} ({len(all_segs)} cars)"
+
+
+def test_checkpoint_miss_explains_an_out_of_range_index(tmp_path):
+    """`resolve_checkpoint` collapses "not a checkpoint spec at all" and "this feature's index N
+    does not exist" into the same `None`, so its callers cannot tell a typo'd handle from a real
+    feature addressed one chapter past its end. `checkpoint_miss` recovers the difference: the
+    feature part resolved, so the answer is the range that does exist."""
+    _feature_with_two_segments(tmp_path)
+    miss = segment.checkpoint_miss(tmp_path, "F-A@9")
+    assert miss is not None
+    feat_part, label, seg_labels = miss
+    assert feat_part == "F-A"
+    assert label == "My Feature"
+    assert len(seg_labels) == 2  # the two chapters that do exist
+
+
+def test_checkpoint_miss_is_none_when_there_is_nothing_to_explain(tmp_path):
+    """It reports only the case its caller can act on. A spec that resolves has no miss, and a
+    spec whose *feature* part is unknown is the existing `no feature matches` refusal's business --
+    answering it here would name a range belonging to no feature the user asked about."""
+    _feature_with_two_segments(tmp_path)
+    assert segment.checkpoint_miss(tmp_path, "F-A@1") is None      # resolves
+    assert segment.checkpoint_miss(tmp_path, "my feature@0") is None  # resolves by label
+    assert segment.checkpoint_miss(tmp_path, "nope@0") is None     # unknown feature
+    assert segment.checkpoint_miss(tmp_path, "F-A") is None        # not checkpoint-shaped

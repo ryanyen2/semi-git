@@ -664,6 +664,7 @@ def _map_staleness(repo: str) -> str | None:
     from sgt.core.lens import current_ideal
     from sgt.lens.tree import load as load_tree
     from sgt.store.gitbind import GitBinding
+    from sgt.tui.graph import plural
 
     parts: list[str] = []
     try:
@@ -671,7 +672,7 @@ def _map_staleness(repo: str) -> str | None:
         known = set((tree or {}).get("op_leaf") or {})
         unmapped = len(current_ideal(repo).op_ids - known)
         if unmapped:
-            parts.append(f"{unmapped} saved edit(s)")
+            parts.append(plural(unmapped, "saved edit"))
     except Exception:  # noqa: BLE001 -- an advisory line must never break a read
         pass
     try:

@@ -33,6 +33,13 @@ import sys
 from pathlib import Path
 
 
+def _plural(n, noun):
+    """`3 symbols`, `1 symbol`. Not `1 symbol(s)` -- the same rule `sgt.tui.graph.plural` applies to
+    every count sgt prints. Duplicated rather than imported because this script runs against the
+    *built* copy's interpreter and must not depend on importing sgt."""
+    return "%d %s" % (n, noun) if n == 1 else "%d %ss" % (n, noun)
+
+
 def main(argv: list[str]) -> int:
     if len(argv) != 2:
         print("usage: check_graph_integrity.py <repo>", file=sys.stderr)
@@ -129,20 +136,23 @@ def main(argv: list[str]) -> int:
     # a number to accept.
     ok = not husks and not vanished
 
-    print("  %d symbol(s) touched, %d alive, %d tombstoned, %d placed in %d leaf feature(s)"
-          % (len(touched), len(alive), len(tombstoned), len(placed & alive), len(leaves)))
+    print("  %s touched, %d alive, %d tombstoned, %d placed in %s"
+          % (_plural(len(touched), "symbol"), len(alive), len(tombstoned),
+             len(placed & alive), _plural(len(leaves), "leaf feature")))
     if vanished:
-        print("  %d symbol(s) an op touched are in no frontier and were never deleted:"
-              % len(vanished), file=sys.stderr)
+        print("  %s an op touched are in no frontier and were never deleted:"
+              % _plural(len(vanished), "symbol"), file=sys.stderr)
         for s in vanished:
             print("    %s" % s, file=sys.stderr)
     if husks:
-        print("  %d feature(s) made only of bookkeeping sentinels:" % len(husks), file=sys.stderr)
+        print("  %s made only of bookkeeping sentinels:"
+              % _plural(len(husks), "feature"), file=sys.stderr)
         for h in husks:
             print("    %s" % h, file=sys.stderr)
     if missing:
-        print("  NOTE: %d alive symbol(s) are in the tree but in no leaf feature, so no"
-              " feature-scoped verb reaches them (not a blocker):" % len(missing), file=sys.stderr)
+        print("  NOTE: %s in the tree are in no leaf feature, so no"
+              " feature-scoped verb reaches them (not a blocker):"
+              % _plural(len(missing), "alive symbol"), file=sys.stderr)
         for s in missing:
             print("    %s" % s, file=sys.stderr)
     if not ok:

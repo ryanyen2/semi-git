@@ -463,6 +463,18 @@ def _kernel_edit_verb(
         from sgt.intent.segment import resolve_checkpoint
 
         resolved = resolve_checkpoint(repo, target)
+        if resolved is None:
+            # The feature part resolved and only the selector missed -- an index past the last
+            # chapter, or an unknown/ambiguous slug. `resolve_checkpoint` cannot say so in its
+            # return type, so this used to fall through every remaining rung to the NL one and
+            # answer `set OPENAI_API_KEY`: F94's defect again, on the handle the practice sheet
+            # types verbatim. `checkpoint_miss` returns None for every spec this cannot improve
+            # on, so an unknown *feature* still reaches `_no_feature_match` below.
+            from sgt.intent.segment import checkpoint_miss
+
+            miss = checkpoint_miss(repo, target)
+            if miss is not None:
+                return _no_checkpoint_match(cmd, target, miss, as_json)
         if resolved is not None:
             op_ids, label = resolved
             preview = (verbs.plan_revert_op_set(repo, target, op_ids,
@@ -594,6 +606,31 @@ def _save_named_by(repo: str, target: str) -> tuple[str, str, list[tuple[str, st
         for fid in fids
     )
     return full[:7], subject.strip(), feats
+
+
+def _no_checkpoint_match(
+    cmd: str, target: str, miss: tuple[str, str, list[str]], as_json: bool,
+) -> int:
+    """A `<feature>@<n>`/`<feature>:<slug>` whose feature resolved and whose selector did not.
+    Deterministic and instant, like `_no_feature_match`: name the feature, say how many checkpoints
+    it actually has, and list them as commands that run. Always exit 2."""
+    feat_part, label, seg_labels = miss
+    n = len(seg_labels)
+    message = (f"{label!r} has {n} checkpoint{'' if n == 1 else 's'}, "
+               f"so {target!r} names none of them")
+    refs = [(f"{feat_part}@{i}", lbl) for i, lbl in enumerate(seg_labels)]
+    if as_json:
+        import json
+
+        print(json.dumps({"ok": False, "verb": cmd, "target": target, "message": message,
+                          "candidates": [{"ref": r, "label": lbl} for r, lbl in refs]}, indent=2))
+        return 2
+    print(f"? [{cmd}] {message}; did you mean:")
+    for ref, lbl in refs[:8]:
+        print(f"  sgt {cmd} {ref}   {lbl}")
+    if len(refs) > 8:
+        print(f"  ... and {len(refs) - 8} more — run `sgt log --focus {feat_part}` for all of them.")
+    return 2
 
 
 def _no_feature_match(repo: str, cmd: str, target: str, as_json: bool) -> int:

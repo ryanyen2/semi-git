@@ -349,6 +349,32 @@ def resolve_checkpoint(repo: str | Path, spec: str) -> tuple[frozenset[str], str
     segment's deterministic op-set -- exactly what `sgt revert` removes -- so a checkpoint revert
     runs the identical `plan_revert_op_set` path every other revert uses (the KTD6 safety
     invariant: the boundary/label may be LLM-chosen, the op membership never is)."""
+    parts = _checkpoint_parts(repo, spec)
+    if parts is None:
+        return None
+    _, by_index, want, label, segs = parts
+
+    if by_index:
+        idx = int(want)
+        if not (0 <= idx < len(segs)):
+            return None
+        return segs[idx].op_ids, f"{label}@{idx}: {segs[idx].label}"
+
+    hits = [(i, s) for i, s in enumerate(segs) if checkpoint_slug(s.label) == want]
+    if len(hits) != 1:  # 0 = unknown slug, >1 = ambiguous -- `@n` disambiguates either way
+        return None
+    idx, seg = hits[0]
+    return seg.op_ids, f"{label}@{idx}: {seg.label}"
+
+
+def _checkpoint_parts(
+    repo: str | Path, spec: str,
+) -> tuple[str, bool, str, str, list[Segment]] | None:
+    """Split a checkpoint spec and resolve its *feature* part: `(feat_part, by_index, want,
+    feature_label, segments)`, or `None` when the spec isn't checkpoint-shaped or names no unique
+    feature. Stops one step short of applying the selector, which is the step `resolve_checkpoint`
+    and `checkpoint_miss` answer differently -- sharing everything before it is what keeps the two
+    from disagreeing about which specs are even in scope."""
     # Split into the feature part and a selector, either @<index> or :<slug>. Feature ids are
     # `f-XXXXXXXX` (no `@`/`:`), so a right-partition cleanly isolates the selector; `@` wins when
     # both appear (an explicit index is unambiguous).
@@ -382,18 +408,30 @@ def resolve_checkpoint(repo: str | Path, spec: str) -> tuple[frozenset[str], str
     persisted = state.load_json(repo, "intent_segments", default={})
     segs = overlay_persisted(runs, persisted.get(feature_id))
     label = nodes.get(feature_id, {}).get("label", feature_id)
+    return feat_part, by_index, want, label, segs
 
-    if by_index:
-        idx = int(want)
-        if not (0 <= idx < len(segs)):
-            return None
-        return segs[idx].op_ids, f"{label}@{idx}: {segs[idx].label}"
 
-    hits = [(i, s) for i, s in enumerate(segs) if checkpoint_slug(s.label) == want]
-    if len(hits) != 1:  # 0 = unknown slug, >1 = ambiguous -- `@n` disambiguates either way
+def checkpoint_miss(repo: str | Path, spec: str) -> tuple[str, str, list[str]] | None:
+    """Why a checkpoint spec whose *feature* part resolved did not: `(feat_part, feature_label,
+    [chapter labels, in index order])`. `None` when there is nothing a caller could say -- the spec
+    resolves, isn't checkpoint-shaped, or names no feature (that last one is the existing
+    `no feature matches` refusal's business, and answering it here would quote a range belonging to
+    a feature the user never asked about).
+
+    `resolve_checkpoint` returns a bare `None` for all of those alike, so every caller had to treat
+    a real feature addressed one chapter past its end as an unrecognised token -- and `revert`'s
+    ladder then fell through to the NL rung and blamed a missing `OPENAI_API_KEY`. No key conjures a
+    chapter that does not exist; the range that does is the answer the user can act on."""
+    parts = _checkpoint_parts(repo, spec)
+    if parts is None:
         return None
-    idx, seg = hits[0]
-    return seg.op_ids, f"{label}@{idx}: {seg.label}"
+    feat_part, by_index, want, label, segs = parts
+    if by_index:
+        if 0 <= int(want) < len(segs):
+            return None
+    elif sum(1 for s in segs if checkpoint_slug(s.label) == want) == 1:
+        return None
+    return feat_part, label, [s.label for s in segs]
 
 
 def resolve_feature_spec(spec: str, nodes: dict) -> str | None:
