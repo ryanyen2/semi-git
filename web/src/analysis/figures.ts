@@ -52,16 +52,17 @@ export function figure2Panels(dataset: Dataset): PairedPanel[] {
     conditionValue(p, c, (m) => m.score, 'sum', rs)
 
   return [
-    // R1's three questions are closed, so they are scored from the answer key
-    // rather than by a person: it has a count out of three and no rubric.
+    // The locate step is scored from the answer key rather than by a person, so
+    // it has no rubric. One work to find, so the bar is a proportion of
+    // participants who found it rather than a count out of several.
     build(
-      'r1',
-      'R1 provenance',
-      'find when, why, and what it belonged to',
-      (p, c) => conditionValue(p, c, (m) => m.choiceScore, 'sum', ['r1']),
+      'd2',
+      'D2 locate',
+      'name the work behind the defect',
+      (p, c) => conditionValue(p, c, (m) => (m.locateCorrect ? 1 : 0), 'sum', ['d2']),
       true,
-      [0, 3],
-      'questions right',
+      [0, 1],
+      'found it',
     ),
     // The two prediction trials, averaged over the pair rather than plotted
     // separately: they were built to point in opposite directions, so one of them
@@ -85,10 +86,10 @@ export function figure2Panels(dataset: Dataset): PairedPanel[] {
       'F1 gained',
     ),
     build(
-      'r23',
+      'w23',
       'R2+R3 removal',
       'take the waitlist out, keep drops',
-      scoreOf(['r2', 'r3']),
+      scoreOf(['w2', 'w3']),
       true,
       [0, 4],
       'rubric points',

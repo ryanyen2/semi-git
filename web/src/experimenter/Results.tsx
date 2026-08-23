@@ -178,7 +178,7 @@ function Headline({ dataset }: { dataset: Dataset }) {
 
     return [
       measure('Task score, r2 and r3', (p, c) =>
-        conditionValue(p, c, (m) => m.score, 'sum', ['r2', 'r3']),
+        conditionValue(p, c, (m) => m.score, 'sum', ['w2', 'w3']),
       ),
       measure(
         'Collateral damage',
@@ -187,7 +187,7 @@ function Headline({ dataset }: { dataset: Dataset }) {
         false,
       ),
       measure('Request 1, of 3', (p, c) =>
-        conditionValue(p, c, (m) => m.choiceScore, 'sum', ['r1']),
+        conditionValue(p, c, (m) => (m.locateCorrect ? 1 : 0), 'sum', ['d2']),
       ),
       // Signed, not absolute: the interesting failure is being sure of a wrong
       // answer, and an absolute error would score that the same as hedging a
@@ -196,7 +196,7 @@ function Headline({ dataset }: { dataset: Dataset }) {
       // read rather than taken from the badge.
       measure(
         'Overconfidence on request 1',
-        (p, c) => conditionValue(p, c, (m) => m.calibration, 'mean', ['r1']),
+        (p, c) => conditionValue(p, c, (m) => m.calibration, 'mean', ['d3']),
         '',
         false,
       ),
@@ -468,9 +468,9 @@ function Exports({ dataset }: { dataset: Dataset }) {
                     order: p.firstCondition === c ? 'first' : 'second',
                     project: h?.project ?? '',
                     gitExpertise: p.gitExpertise ?? '',
-                    score: conditionValue(p, c, (m) => m.score, 'sum', ['r2', 'r3']),
-                    r1Correct: conditionValue(p, c, (m) => m.choiceScore, 'sum', ['r1']),
-                    r1Calibration: conditionValue(p, c, (m) => m.calibration, 'mean', ['r1']),
+                    score: conditionValue(p, c, (m) => m.score, 'sum', ['w2', 'w3']),
+                    d2Correct: conditionValue(p, c, (m) => (m.locateCorrect ? 1 : 0), 'sum', ['d2']),
+                    d3Calibration: conditionValue(p, c, (m) => m.calibration, 'mean', ['d3']),
                     collateralDamage: conditionValue(p, c, (m) => m.collateralDamage, 'sum'),
                     activeMs: conditionValue(p, c, (m) => m.activeMs, 'sum'),
                     prompts: conditionValue(p, c, (m) => m.prompts, 'sum'),
@@ -518,8 +518,8 @@ function Exports({ dataset }: { dataset: Dataset }) {
                   confidence: m.confidence ?? '',
                   score: m.score ?? '',
                   outOf: m.outOf ?? '',
-                  choiceScore: m.choiceScore ?? '',
-                  choiceOutOf: m.choiceOutOf ?? '',
+                  locateCorrect: m.locateCorrect == null ? '' : m.locateCorrect ? 1 : 0,
+                  locateAnswer: m.locateAnswer ?? '',
                   calibration: m.calibration ?? '',
                   collateralDamage: m.collateralDamage ?? '',
                   prompts: m.prompts,

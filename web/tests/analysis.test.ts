@@ -184,87 +184,61 @@ describe('per-request measures', () => {
     expect(a.requests[0].counts.orient).toBe(1)
   })
 
-  it('scores the closed questions against the key, and says how sure they were', () => {
-    // Two of three right at 70% confidence: they were slightly overconfident.
-    // The arithmetic is trivial and the comparison is the whole measure, so the
-    // thing worth pinning is that an index is compared to an index -- a stray
-    // string on either side would score every answer wrong and look like data.
-    const a = analyzeParticipant(
-      {
-        participant: participantDoc(),
-        responses: [],
-        requests: [requestDoc({ choices: { q1: 0, q2: 1, q3: 3 } })],
-        events: [],
-        scoring: [],
-      },
-      { choices: { r1: { coursecraft: { q1: 0, q2: 1, q3: 1 } } }, reach: {} },
-    )
-    expect(a.requests[0].choiceScore).toBe(2)
-    expect(a.requests[0].choiceOutOf).toBe(3)
-    expect(a.requests[0].calibration).toBeCloseTo(0.7 - 2 / 3)
-  })
-
-  it('keeps the manipulation checks out of HLAC and coerces the select to a number', () => {
-    // Both rode along on the HLAC block because that is where they fit in the
-    // flow, and both were being lost: `timePressure` is a select, so its five
-    // labelled options arrive as strings and a `typeof v === 'number'` filter
-    // dropped it entirely, and `realistic` is five-point, so averaging it into a
-    // block of seven-point items understates it.
-    const a = analyzeParticipant({
-      participant: participantDoc(),
-      responses: [
+  it('matches the locate answer against every string the key accepts', () => {
+    // The two arms name the same work differently, so the key holds a list and
+    // the match is lenient: a sha typed as `f-25e91a9` has to find the forty
+    // character one. The arithmetic is trivial and the comparison is the whole
+    // measure, so the thing worth pinning is that both vocabularies land.
+    const key = { locate: { d2: { coursecraft: ['25e91a9a1d22', 'ranges_clash'] } }, reach: {} }
+    const score = (typed: string) =>
+      analyzeParticipant(
         {
-          id: 'hlac-h1',
-          instrument: 'hlac',
-          version: 'hlac-v3',
-          half: 1,
-          condition: 'git',
-          submittedAt: T0,
-          values: { q1: 6, realistic: 4, timePressure: '2' },
-        } as never,
-      ],
-      requests: [],
-      events: [],
-      scoring: [],
-    })
+          participant: participantDoc(),
+          responses: [],
+          requests: [requestDoc({ requestId: 'd2', locate: typed })],
+          events: [],
+          scoring: [],
+        },
+        key,
+      ).requests[0].locateCorrect
 
-    const h = a.halves.find((x) => x.half === 1)!
-    expect(h.hlac).toEqual({ q1: 6 })
-    expect(h.checks).toEqual({ realistic: 4, timePressure: 2 })
+    expect(score('25e91a9')).toBe(true)
+    expect(score('f-25e91a9')).toBe(true)
+    expect(score('the ranges_clash change')).toBe(true)
+    expect(score('d1a2bc5')).toBe(false)
   })
 
-  it('leaves them unscored when the participant answered nothing, rather than scoring zero', () => {
-    // `choices` is seeded as `{}` the moment a request is opened, and `{}` is
-    // truthy — so a participant who ran out of time having picked nothing used
-    // to score 0 of 3, which reads identically to three wrong answers and drags
-    // the condition mean down. With a confidence rating attached it was worse:
-    // nothing answered plus a moved slider recorded as maximum overconfidence.
-    const a = analyzeParticipant(
-      {
-        participant: participantDoc(),
-        responses: [],
-        requests: [requestDoc({ choices: {}, confidence: 70 })],
-        events: [],
-        scoring: [],
-      },
-      { choices: { r1: { coursecraft: { q1: 0, q2: 1, q3: 1 } } }, reach: {} },
-    )
-    expect(a.requests[0].choiceScore).toBeNull()
-    expect(a.requests[0].choiceOutOf).toBeNull()
-    expect(a.requests[0].calibration).toBeNull()
+  it('leaves it unscored when the participant answered nothing, rather than wrong', () => {
+    // An empty box is somebody who ran out of clock, which reads identically to
+    // a wrong answer once it is scored zero and drags the condition mean down
+    // with it. Whitespace counts as empty: a participant who tabbed through the
+    // field is not somebody who named the wrong work.
+    for (const typed of ['', '   ']) {
+      const a = analyzeParticipant(
+        {
+          participant: participantDoc(),
+          responses: [],
+          requests: [requestDoc({ requestId: 'd2', locate: typed })],
+          events: [],
+          scoring: [],
+        },
+        { locate: { d2: { coursecraft: ['25e91a9'] } }, reach: {} },
+      )
+      expect(a.requests[0].locateCorrect).toBeNull()
+    }
   })
 
-  it('leaves them unscored when no key has been loaded, rather than scoring zero', () => {
+  it('leaves it unscored when no key has been loaded, rather than scoring zero', () => {
     // The failure this prevents: an experimenter computes before loading the
     // answer key, and reads a column of zeroes as everybody getting it wrong.
     const a = analyzeParticipant({
       participant: participantDoc(),
       responses: [],
-      requests: [requestDoc({ choices: { q1: 0, q2: 1, q3: 1 } })],
+      requests: [requestDoc({ requestId: 'd2', locate: '25e91a9' })],
       events: [],
       scoring: [],
     })
-    expect(a.requests[0].choiceScore).toBeNull()
+    expect(a.requests[0].locateCorrect).toBeNull()
     expect(a.requests[0].calibration).toBeNull()
   })
 
@@ -492,7 +466,7 @@ describe('the whole pipeline on a full cohort', () => {
 
   it('rolls per-request measures up to a per-condition value', () => {
     const p = dataset.participants[0]
-    const total = conditionValue(p, 'git', (m) => m.score, 'sum', ['r1', 'r2', 'r3'])
+    const total = conditionValue(p, 'git', (m) => m.score, 'sum', ['d3', 'w2', 'w3'])
     expect(Number.isFinite(total)).toBe(true)
     expect(total).toBeGreaterThanOrEqual(0)
   })

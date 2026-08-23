@@ -13,7 +13,7 @@ import type { Dataset, HalfSummary, ParticipantAnalysis, RequestMetrics } from '
 import { blocksForGroup, groupForOrdinal } from '../study/flow'
 import { HLAC } from '../study/instruments'
 
-const REQUEST_IDS = ['r1', 'f1', 'f2', 'r2', 'r3'] as const
+const REQUEST_IDS = ['d1', 'd2', 'd3', 'w1', 'w2', 'w3'] as const
 
 /** Rough transition weights, different enough between conditions to be visible. */
 const CHAINS: Record<Condition, Partial<Record<Category, Partial<Record<Category, number>>>>> = {
@@ -99,7 +99,9 @@ export function demoDataset(seed = 4242): Dataset {
         const seq = walk(rand, block.condition, n)
         const c = counts(seq)
         const activeMs = clamp(
-          (rid === 'r2' ? 13 : rid === 'r3' ? 5 : 4) * 60_000 + gauss() * 90_000 - lift * 40_000,
+          (rid === 'w2' ? 6 : rid === 'd3' ? 6 : rid === 'd2' ? 5 : 3) * 60_000 +
+            gauss() * 90_000 -
+            lift * 40_000,
           60_000,
           20 * 60_000,
         )
@@ -121,26 +123,25 @@ export function demoDataset(seed = 4242): Dataset {
           })
         })
 
-        const base = rid === 'r1' ? 1.1 : 1.0
+        const base = rid === 'd2' ? 1.1 : 1.0
         const score = clamp(Math.round(base + ability + lift + gauss() * 0.55), 0, 2)
         const damage = Math.max(
           0,
           Math.round((sgt ? 0.6 : 1.9) - ability * 0.4 + gauss() * (sgt ? 0.7 : 1.4)),
         )
-        // r1 is the one request with closed questions, so it carries a count
-        // out of three and no facilitator score. Same latent ability behind
-        // both, so a person who does well on one tends to do well on the other.
-        const closed = rid === 'r1'
-        const choiceScore = closed ? clamp(Math.round(score * 1.4 + gauss() * 0.5), 0, 3) : null
+        // d2 is the locate step: scored from the key rather than by a person, so
+        // it carries a found/missed and no facilitator score. Same latent
+        // ability behind both, so a person who does well on one tends to do well
+        // on the other.
+        const closed = rid === 'd2'
+        const locateCorrect = closed ? score + (sgt ? 0.6 : 0) + gauss() * 0.5 > 1.2 : null
         const confidence = clamp(Math.round(55 + score * 12 + gauss() * 14), 0, 100)
 
-        // The prediction trials. Both arms can reach the truth by checking, so the
-        // two conditions separate mostly on the blind stage and therefore on `gain`
-        // -- which is the shape the figures have to be able to draw, including the
-        // case where it is absent. f1's key holds one behaviour and f2's holds four,
-        // so a wrong tick costs more on f1: that asymmetry is the response-bias
-        // control and it should be visible in demo data too.
-        const trial = rid === 'f1' || rid === 'f2'
+        // The prediction, on the step that reverts. Both arms find out the truth
+        // by running the operation, so the two conditions separate mostly on the
+        // blind stage and therefore on `gain` -- which is the shape the figures
+        // have to be able to draw, including the case where it is absent.
+        const trial = rid === 'd3'
         const blindF1 = trial
           ? clamp(0.24 + (sgt ? 0.2 : 0) + ability * 0.12 + gauss() * 0.14, 0, 1)
           : 0
@@ -154,8 +155,8 @@ export function demoDataset(seed = 4242): Dataset {
               checkedConfidence: clamp(Math.round(64 + checkedF1 * 30 + gauss() * 10), 0, 100),
               blindActiveMs: clamp(38_000 + gauss() * 12_000, 8_000, 60_000),
               blindPicked: Math.round(clamp(3 + gauss() * 2, 0, 12)),
-              checkedPicked: Math.round(clamp((rid === 'f1' ? 2 : 4) + gauss() * 1.5, 0, 12)),
-              outOf: rid === 'f1' ? 1 : 4,
+              checkedPicked: Math.round(clamp(4 + gauss() * 1.5, 0, 12)),
+              outOf: 4,
             }
           : null
 
@@ -196,10 +197,10 @@ export function demoDataset(seed = 4242): Dataset {
           wrongTurns: Math.max(0, Math.round((sgt ? 0.4 : 1.2) + gauss() * 0.8)),
           score: closed ? null : score,
           outOf: closed ? null : 2,
-          collateralDamage: rid === 'r2' || rid === 'r3' ? damage : null,
-          choiceScore,
-          choiceOutOf: closed ? 3 : null,
-          calibration: choiceScore == null ? null : confidence / 100 - choiceScore / 3,
+          collateralDamage: rid === 'w2' || rid === 'w3' ? damage : null,
+          locateCorrect,
+          locateAnswer: locateCorrect == null ? null : locateCorrect ? 'e7f2a19' : 'd1a2bc5',
+          calibration: trial ? confidence / 100 - blindF1 : null,
         })
       }
 

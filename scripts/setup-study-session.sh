@@ -15,6 +15,7 @@ set -euo pipefail
 SGT_SOURCE="${SGT_SOURCE:-$HOME/repos/semi-git}"
 STUDY_REPOS="${STUDY_REPOS:-$HOME/repos/sgt-study}"
 MATERIALS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../docs/study" && pwd)/materials"
+TASK_SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")/study/task-scripts" && pwd)"
 
 if [ $# -ne 3 ]; then
     echo "usage: $0 <participant> <git|sgt> <coursecraft|confplan>" >&2
@@ -137,6 +138,25 @@ fi
 cp "$MATERIALS/00-welcome.md" "$workspace/"
 cp "$MATERIALS/02-tutorial-$condition.md" "$workspace/tutorial.md"
 cp "$MATERIALS/03-tasks-$project.md" "$workspace/tasks.md"
+# The project brief belongs here for the same reason `tasks.md` does. It is read
+# once on the website with no clock running, and then wanted again mid-request --
+# "what was it allowed to refuse to do?" -- at which point the only copy was
+# behind the card the participant is being timed on.
+cp "$MATERIALS/03-project-$project.md" "$workspace/project.md"
+
+# The three prescribed steps the task cards name. They live beside the project
+# rather than in the bundle's bin, because every one of them starts with
+# `cd "$(dirname "$0")"` and reads the project's own `pytest.ini` -- and because
+# a participant who wants to know what `./show-the-problem.sh` does can open it
+# where they are already standing.
+#
+# Both arms get identical copies. That is the point of prescribing the step: the
+# two conditions are compared on what they could do about the defect, not on
+# whether they typed the same eight commands to see it.
+for s in show-the-problem check show-the-waitlist; do
+    cp "$TASK_SCRIPTS/$s.sh" "$workspace/work/$s.sh"
+    chmod +x "$workspace/work/$s.sh"
+done
 
 # The practice copy the tutorial sheet is written against. The remote bundle has
 # always built one; this path never did, so the sheet's first instruction

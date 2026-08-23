@@ -9,8 +9,7 @@
 import type { Condition, Project } from '../lib/types'
 import {
   BLOCK_CAP_MIN,
-  REACH_TRIALS,
-  REQUEST_COUNT,
+  CARD_COUNT,
   SCENARIO,
   requestHeading,
   taskCards,
@@ -62,11 +61,11 @@ We record the screen and audio. You can ask us to stop at any time.
 | 10 | Setting up your machine |
 | 10 | A practice project |
 | 5 | Reading about the project you are taking over |
-| ${BLOCK_CAP_MIN} | Five cards: three requests, and two questions about what a past piece of work touched |
+| ${BLOCK_CAP_MIN} | ${CARD_COUNT} cards: see a defect, find what caused it, take it out, then remove a feature |
 | 6 | Three short questionnaires |
 | 15 | Setting up the second project, and practice again |
 | 5 | Reading about the second project |
-| ${BLOCK_CAP_MIN} | The same five cards, on the second project |
+| ${BLOCK_CAP_MIN} | The same ${CARD_COUNT} cards, on the second project |
 | 6 | Questionnaires again |
 | 5 | Comparing the two |
 | 3 | Handing your data over |
@@ -443,10 +442,10 @@ Eleven again. \`sgt undo\` reverses the last thing sgt did; \`sgt restore "<name
 You can also take out one chapter rather than a whole feature:
 
 \`\`\`
-sgt revert "Shipping"@2
+sgt revert "The Cart"@2
 \`\`\`
 
-Preview first is the rule everywhere, including in the editor.
+The chapters it is keeping say **kept**; only the one you named comes out. Preview first is the rule everywhere, including in the editor.
 
 ## 7. Your assistant
 
@@ -497,7 +496,7 @@ export function sheetTutorialMd(condition: Condition): string {
 
 /** Spells the small counts the prose below quotes. `3 requests` in a sentence reads
  * like a field in a form. Only the numbers this file can produce are covered. */
-const spell = (n: number) =>
+export const spell = (n: number) =>
   ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'][n] ?? String(n)
 
 /**
@@ -512,7 +511,7 @@ export const TASK_PREAMBLE = (app: string, maintainer: string, blurb: string) =>
   `
 You are the new maintainer of **${app}**, the program you just read about, ${blurb}. ${maintainer} built it over the last six weeks, partly by working with an AI assistant, and has now left the team.
 
-You have the code, its full history, and your assistant. There are ${spell(REQUEST_COUNT)} requests to work through in order and ${spell(REACH_TRIALS.length)} short questions about what a past piece of work touched, ${BLOCK_CAP_MIN} minutes of work in total. Every card has its own clock, and running out of time on one is a normal result.
+You have the code, its full history, and your assistant. There are ${spell(CARD_COUNT)} cards to work through in order, ${BLOCK_CAP_MIN} minutes of work in total. Some steps tell you exactly what to run; the ones that matter leave it entirely to you, and those are marked. Every card has its own clock, and running out of time on one is a normal result rather than a failure.
 
 Tell us what you are thinking as you go.
 `.trim()
@@ -527,10 +526,12 @@ Tell us what you are thinking as you go.
  * stale on the preamble, promising three requests and twenty minutes against a
  * block of five cards and 28 minutes.
  *
- * The reach trials are left out on purpose. They are a grid of twelve checkboxes
- * answered twice against two separate clocks, which a sheet cannot represent
- * without inviting someone to fill it in on paper, so the preamble says where they
- * are instead.
+ * The step carrying the reach prediction IS printed -- it is the step that
+ * reverses the work, and leaving it off took the middle out of the sheet, so the
+ * paper went from "find what caused it" straight to the waitlist. What is left
+ * off is the grid of twelve checkboxes inside it: answered twice against two
+ * clocks, it cannot be represented on paper without inviting someone to fill it
+ * in there, so the sheet names it and points at the screen.
  */
 export function sheetTasksMd(project: Project): string {
   const { app, maintainer, blurb } = SCENARIO[project]
@@ -539,12 +540,11 @@ export function sheetTasksMd(project: Project): string {
     '',
     TASK_PREAMBLE(app, maintainer, blurb),
     '',
-    `The ${spell(REACH_TRIALS.length)} short questions are answered on screen, not on this sheet.`,
+    'Where a step asks you to tick things, the list is on screen and not on this sheet.',
   ]
 
   for (const card of taskCards(project)) {
-    const printed = card.requests.filter((r) => !r.reach)
-    if (!printed.length) continue
+    const printed = card.requests
 
     out.push('', `## ${card.heading}: ${card.title}`, '')
     out.push(
@@ -559,25 +559,29 @@ export function sheetTasksMd(project: Project): string {
       // "One correction to the last request".
       if (printed.length > 1) out.push('', `### ${requestHeading(r)}: ${r.title[project]}`)
       out.push('', r.body[project])
-      // The tip is a callout on screen. A blockquote is the printed equivalent:
-      // set apart from the request, and clearly not part of it.
-      if (r.tip) out.push('', quote(r.tip[project]))
-      for (const q of r.choices) {
-        out.push('', `**${q.prompt}**`, '')
-        out.push(...q.options[project].map((o) => `- ${o}`))
+      // A prescribed step prints the command AND what it runs. The point of
+      // prescribing it is that both arms see identical output; the point of
+      // printing what it does is that neither arm has to take that on trust.
+      if (r.reach) {
+        out.push('', `**Before you change anything:** ${r.reach.work[project]}`)
+        out.push(
+          '',
+          `On screen there is a list of twelve things people do with ${SCENARIO[project].app}. ` +
+            `Tick the ones you think this will affect. ${r.reach.blindSec} seconds, then it ` +
+            'submits itself. You answer once more afterwards, knowing what happened.',
+        )
       }
-      if (r.wantsConfidence) out.push('', 'Then say how sure you are, anywhere from guessing to certain.')
+      if (r.run) {
+        out.push('', '```', r.run.script[project], '```')
+        out.push('', 'It:', '')
+        out.push(...r.run.does[project].map((d) => `- ${d}`))
+      }
+      if (r.identify) out.push('', `**${r.identify[project]}:** ______________________`)
+      if (r.note) out.push('', `**${r.note[project]}**`)
     }
   }
   return out.join('\n') + '\n'
 }
-
-/** Indents a block as a markdown quote, preserving its own blank lines. */
-const quote = (text: string) =>
-  text
-    .split('\n')
-    .map((line) => (line ? `> ${line}` : '>'))
-    .join('\n')
 
 export const HANDOVER_MD = `
 Almost done. Two things and you can close everything.
@@ -612,7 +616,7 @@ That is everything. Thank you.
 
 Version control records history as lines in files. When you work with an AI assistant you describe what you want in sentences, and then the record of what you did comes back to you as diffs. We built a tool that records history as the pieces of work someone meant to do, and we wanted to know whether that helps a person who arrives afterwards.
 
-One of the two setups you used was that tool. The other was ordinary git. We deliberately did not say which was which, and we asked the same ${spell(REQUEST_COUNT)} requests and ${spell(REACH_TRIALS.length)} questions of both, because we are measuring the difference between the two representations and not the difference between you and anyone else.
+One of the two setups you used was that tool. The other was ordinary git. We deliberately did not say which was which, and we asked the same ${spell(CARD_COUNT)} cards of both, because we are measuring the difference between the two representations and not the difference between you and anyone else.
 
 ## What happens to your data
 

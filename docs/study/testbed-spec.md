@@ -68,20 +68,21 @@ assistant. This exercises both save paths.
 The episode script must produce certain structural patterns because the study
 tasks depend on them:
 
-- **One tangled save** mixing an unrelated fix into a feature (episode 8) — the
-  provenance target for request 1.
+- **One tangled save** mixing an unrelated fix into a feature (episode 8). No
+  longer a task target, but still in the history as a realistic example of
+  tangled work that participants may encounter during the removal cards.
 - **One feature with a dependency chain** built on top of it (episode 11:
-  waitlist, with episodes 12, 14, 15-partial, and 21 depending on it) — the
-  removal target for request 2.
+  waitlist, with episodes 12, 14, 15-partial, and 21 depending on it), the
+  removal target for cards W1–W3.
 - **One clean fix** (episode 13) and **one co-saved feature** (episode 15)
   interleaved with the chain — these must survive the removal.
 - **One abandoned experiment** removed with a real revert (episode 16) — so the
   history itself contains a revert.
-- **One refactor that silently changes behavior** (episode 17). This was the
-  regression target for request 4, which no longer exists. It is still built,
-  because removing it would mean rebuilding both repositories and because a
-  history with no silent behavior change in it is not a realistic history. See
-  §3 for what its presence now implies.
+- **One refactor that silently changes behavior** (episode 17), the
+  locate-and-reverse target for cards D1–D3. The participant runs a prescribed
+  script that shows back-to-back enrollment being rejected while the test suite
+  passes, then locates the responsible work and reverses it. See §3 for the
+  full card breakdown.
 
 ### Full episode list
 
@@ -118,39 +119,50 @@ absent, and every other tag must still pass.
 
 ## 3. Study tasks and what commands they exercise
 
-There are three scored tasks per block, and the block is 20 minutes. The
-participant-facing wording is in `web/src/study/tasks.ts`, which is what the
-website renders and what the printed sheets in `materials/` copy; the
-descriptions below are internal shorthand. No task names a specific git or sgt
-command.
+Four cards per block, 24 minutes. The participant-facing wording is in
+`web/src/study/tasks.ts`, which is what the website renders and what the printed
+sheets in `materials/` copy. The descriptions below are internal shorthand. No
+card names a specific git or sgt command.
 
-| Task | Time cap | What it targets | How the git condition approaches it | How the sgt condition approaches it |
+| Card | Time cap | What it targets | How the git condition approaches it | How the sgt condition approaches it |
 |---|---|---|---|---|
-| S1: Provenance | 5 min | Episode 8's tangle: "search behavior changed around when date entry got lenient; what work changed search and what else came along?" Answered as three closed questions plus a confidence rating | `git log`, `git blame`, diff reading | `sgt show` (accepts the save ID that `sgt log` prints), `sgt log`, `sgt why` |
-| S2: Entangled removal | 15 min | Remove the waitlist (episode 11) and everything built on it; keep the episode 13 fix, the episode 15 export, and everything else passing | Revert or rebase across interleaved commits | `sgt show f-waitlist` (shows impact count), then `sgt revert` |
-| S3: Selective restore | (within S2 cap) | Bring back the drop command without promotion or notifications | Cherry-pick archaeology | `sgt restore <selection>` |
+| D1: Observe the defect | 3 min | Episode 17's regression. Participant runs `./show-the-problem.sh`, sees back-to-back enrollment rejected while tests pass. Writes what they see. | Same script, same output. Observation only. | Same script, same output. Observation only. |
+| D2: Locate the work | 5 min | "What piece of work caused this?" Free text, scored against an accepted-strings list. | `git log`, `git blame`, diff reading | `sgt log`, `sgt show`, `sgt why` |
+| D3: Reverse it | 6 min | Remove E17's change, predict what else it touches (reach prediction). Run `./check.sh` to verify. | `git revert`, manual edits | `sgt revert` of the feature |
+| W1/W2/W3: Remove the waitlist | 10 min | Remove episodes 11, 12, 14, 21 (the waitlist chain). Keep the episode 13 fix and the episode 15 export. Then restore the drop command without promotion. | Revert or rebase across interleaved commits | `sgt show f-waitlist`, `sgt revert`, `sgt restore` |
 
-**Coverage check against the study goals:** comprehension (S1) carries RQ1;
-reverting (S2, plus episode 16 inside the history) and restoring (S3) carry RQ2.
+D1 is prescribed: everyone sees the same output, byte for byte, so the study
+controls what is observed while leaving how they explain it open. The test suite
+is run at the end of that script, and it passes. That is not a mistake. The test
+that guards back-to-back behavior calls the comparison helper the agent left
+behind rather than the one the program now uses, so the suite is green over a
+broken program.
 
-### The three tasks that were cut
+**Coverage:** locate (D2) and reverse (D3) carry RQ1 and RQ2. Removal
+(W1–W3) carries RQ2. The reach prediction on D3 carries RQ1b.
 
-Until 2026-08-17 there were six, at 45 minutes a block: a regression repair
-against episode 17, a plan-and-fork task building "swap section" two ways, and a
-stretch task splitting episode 8's tangle with `sgt feature regroup split`.
-Pilots ran out of time on all three in both conditions, so they measured nothing
-that could separate the conditions while spending the budget of the tasks that
-could. `protocol.md` §2 has the full reasoning.
+### Tasks that were cut or redesigned
 
-This matters to the testbed as well as to the schedule. **The episode 17
-regression is now never repaired during a session.** It stays in both
-repositories, back-to-back enrollment stays broken in the running application to
-the end of the history, and nothing in the flow points a participant at it. The
-structural landmark in §2 is still built, still real, and no longer targeted.
+Until 2026-08-17 there were six tasks at 45 minutes a block: a provenance
+question about episode 8's tangle (three closed questions), a regression-repair
+request against episode 17, a plan-and-fork task building "swap section" two
+ways, and a stretch task splitting episode 8's tangle with `sgt feature regroup
+split`. Pilots ran out of time on the last three in both conditions, so they
+measured nothing that could separate the conditions while spending the budget of
+the tasks that could. `protocol.md` §2 has the full reasoning.
 
-The plan-and-fork task was also the only one that exercised sessions, `sgt
-land`, and conflict resolution between competing versions. Nothing in the study
-touches those paths now.
+On 2026-08-22 the provenance question was replaced by the locate-and-reverse
+sequence (D1–D3). The original regression-repair request asked participants to
+find and fix the E17 bug themselves. The new design prescribes the observation
+(via `show-the-problem.sh`) and asks participants to locate the responsible
+*work* rather than the responsible *code*, then reverse it at the feature level.
+This makes the task about whether the representation helps someone identify and
+undo an agent's action, not about whether they can read enough Python to find a
+`<` that should be `<=`.
+
+The plan-and-fork task was the only one that used sessions, `sgt land`, and
+conflict resolution between competing versions. Nothing in the study touches
+those paths now.
 
 ## 4. Construction rules
 
@@ -160,7 +172,7 @@ touches those paths now.
   repository. Human episodes are plain edits plus `sgt save -m` with a terse
   message.
 - **Save messages are written before building** (in the answer key), in each
-  author's voice. They become the recorded intents, and request 1's
+  author's voice. They become the recorded intents, and the locate card's
   answerability depends on them.
 - **The two repositories are built independently** from the shared episode
   shapes, not text-transformed from each other, so the code differs naturally
@@ -182,16 +194,17 @@ touches those paths now.
 Capture these details at build time for the answer keys:
 
 - **Episode 8:** the exact save ID, its label, both concerns inside it, and its
-  authoring date. Task S1 is now three closed questions, so what the key needs
-  is which option each one resolves to, not a model answer: whether the two
-  reported symptoms were one piece of work, which week it landed in, and what
-  else came with it.
-- **Episode 11 chain:** the feature ID of F, the full set of dependents as
-  `sgt show` reports it, and the expected impact numbers that participants should
-  discover in task S2.
-- **Episode 17:** the episode ID, the symbol whose semantics changed, and the
-  one-line cause. No task targets it now, but it is the answer to "why does the
-  application reject back-to-back enrollment when the tests say it should not",
-  which a participant can still walk into during S2.
+  authoring date. Episode 8's tangle is no longer a task target. It is still in
+  the history as a realistic example of tangled work, and participants may
+  encounter it during the waitlist removal.
+- **Episode 17 (D1–D3 target):** the commit sha in both projects, the function
+  name (`ranges_clash`), the feature name under sgt, and the full set of
+  accepted locate strings for the answer key (sha, sha prefix, function name,
+  commit message, feature label, episode id). Also: the reach key, which
+  behaviors the reversal touches (cancel, promote, register, rooms), generated
+  by `scripts/study/measure_reach_key.py` rather than written by hand.
+- **Episode 11 chain (W1–W3 target):** the feature ID of F, the full set of
+  dependents as `sgt show` reports it, and the expected impact numbers that
+  participants should discover in card W1.
 - **Tag-to-test map:** the mapping from feature tags to test files, and the
-  expected pass/fail sets after tasks S2 and S3.
+  expected pass/fail sets after cards W2 and W3.

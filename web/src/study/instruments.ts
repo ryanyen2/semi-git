@@ -427,10 +427,10 @@ const section = (id: string, label: string): Item => ({
 
 export const HLAC: Instrument = {
   id: 'hlac',
-  version: 'hlac-v3',
+  version: 'hlac-v4',
   title: 'Working with this project history',
   perHalf: true,
-  estimateMin: 3,
+  estimateMin: 2,
   // Likert-TYPE items grouped into ad-hoc composites, not a validated scale.
   // Reported item by item, with the block mean as a summary rather than as a
   // construct score, and with no internal-consistency coefficient: at three to
@@ -489,19 +489,12 @@ export const HLAC: Instrument = {
       true,
     ),
 
-    section('secPicture', 'What you came away with'),
-    hlacItem(
-      'q7',
-      'Clear picture of the project',
-      'I ended up with a clear picture of how this project got to where it is.',
-      'C3',
-    ),
-    hlacItem(
-      'q13',
-      'Would get back up to speed',
-      'If I came back to this project in a month, what is recorded would get me back up to speed.',
-      'C3',
-    ),
+    // "What you came away with" (q7, q13) is gone with C3. The study is about
+    // whether a representation lets you reverse work, not about whether it
+    // leaves you understanding a codebase, and two self-report items were never
+    // going to show the second thing anyway -- they can show that people believe
+    // they came away with a working theory and not that they did. The interview
+    // still asks. Ids are not reused.
 
     section('secAgent', 'Working with the assistant'),
     hlacItem(

@@ -2,82 +2,127 @@
 
 You are the new maintainer of **confplan**, the program you just read about, a small command line tool that a conference committee uses to plan a two-day program. Sam Park built it over the last six weeks, partly by working with an AI assistant, and has now left the team.
 
-You have the code, its full history, and your assistant. There are three requests to work through in order and two short questions about what a past piece of work touched, 28 minutes of work in total. Every card has its own clock, and running out of time on one is a normal result.
+You have the code, its full history, and your assistant. There are four cards to work through in order, 24 minutes of work in total. Some steps tell you exactly what to run; the ones that matter leave it entirely to you, and those are marked. Every card has its own clock, and running out of time on one is a normal result rather than a failure.
 
 Tell us what you are thinking as you go.
 
-The two short questions are answered on screen, not on this sheet.
+Where a step asks you to tick things, the list is on screen and not on this sheet.
 
-## Request 1: What changed talk search?
+## Step 1: Two sessions back to back
+
+You have 3 minutes.
+
+A support ticket came in this morning:
+
+> An attendee is trying to register for two sessions of T1 — one Saturday
+> 09:00–10:30, the other Saturday 10:30–12:00. The system says they clash. They
+> don't overlap. The room audit is doing the same thing to two bookings that run
+> back to back in one room.
+
+Run the script below. It works on a scratch copy of the data, so nothing you do
+here touches the project.
+
+Then say in your own words what is wrong and what the program should do instead.
+There is no expected wording and this is not scored.
+
+```
+./show-the-problem.sh
+```
+
+It:
+
+- makes a scratch store with one talk and two sessions, Sat 09:00–10:30 and Sat 10:30–12:00, in the same room
+- registers one attendee for the first session, then tries the second
+- runs the room audit over the two bookings
+- runs the project’s own tests for clashes and rooms
+
+**What is wrong, and what should the program do instead? A sentence or two is plenty.**
+
+## Step 2: Where did that come from?
 
 You have 5 minutes.
 
-A committee support ticket says this:
+Something in this project's past made the program behave that way. Find out which
+piece of work it was.
 
-> Talk search lists session times in a format I don't recognise, like
-> `[Mon 09:00-10:30, Tue 13:00-14:30]`. Around the same time the app started
-> accepting lowercase day names, like `mon 09:00-10:30`.
+**How you do that is entirely up to you.** This is the part we are watching, so
+there is no script and no suggested route.
 
-Go and find out what actually happened, then answer the three questions below.
+When you have it, put its identifier in the box: a commit hash, a feature name,
+an id — whatever your setup calls the thing you found. If you are not certain,
+write down what you have and say you are not certain. That is a real answer and
+it is better than a guess.
 
-> A ticket like this is really three questions. Someone reports that
-> something looks different. You want to know **which piece of work** changed it,
-> **when** that work landed, and **what else** the same piece of work touched on
-> its way past, because the thing that broke is often not the thing the change
-> was for.
->
-> You do not have to answer in that order, and there is no expected route. Read
-> the code, read the history, ask your assistant, or all three.
+**The piece of work that caused it:** ______________________
 
-**Were the two things in the ticket one piece of work, or two?**
+## Step 3: Take it back out
 
-- One piece of work. Both arrived together.
-- Two, days apart.
-- Two, on the same day.
-- I could not tell.
+You have 6 minutes.
 
-**When did it land?**
+Take that piece of work out, so back-to-back sessions behave the way you said they
+should. Everything else in the program has to keep working.
 
-- The week of 29 June
-- The week of 6 July
-- The week of 20 July
-- The week of 3 August
-- I could not tell.
+**Before you run anything that changes the project**, tick what you think it will
+affect. One minute, then it submits itself.
 
-**Did anything else come along with it that the change was not advertised as doing?**
+You are not being graded on this and you will not be shown an answer. You are
+about to find out for yourself.
 
-- No, just the search command and its tests.
-- Yes, a change to how day names are read when a slot is parsed.
-- Yes, a change to how capacity limits are enforced.
-- Yes, a change to the export format.
-- I could not tell.
+Then do it, and run `./check.sh` to see where you ended up.
 
-Then say how sure you are, anywhere from guessing to certain.
+**Before you change anything:** The piece of work you found in step 2 — the one that changed how two time ranges are compared.
 
-## Requests 2 and 3: Take the waitlist out, then unregistering still needs to work
+On screen there is a list of twelve things people do with confplan. Tick the ones you think this will affect. 60 seconds, then it submits itself. You answer once more afterwards, knowing what happened.
 
-You have 15 minutes for requests 2 and 3 together.
+```
+./check.sh
+```
 
-### Request 2: Take the waitlist out
+It:
 
-The committee has decided that waitlists are the registration desk's job now. For
-the next release the waitlist has to be gone. That means attendees can no longer
-join a waitlist, nobody is promoted off it when a seat frees up, and the seat
-notices stop.
+- repeats step 1’s two back-to-back cases and prints what the program says now
+- runs the whole test suite and prints which feature areas pass
+- starts the command line tool, because a suite can pass in a program that will not start
 
-Everything else has to keep working exactly as it does today. That includes
-registering, capacity limits, clash checks, talk search, exports, statistics,
-and the room audit. Adjacent sessions are legal and must stay legal.
+## Step 4a to 4c: See what the queue does today, then take the queue out, then cancelling still needs to work
 
-The test suite is your safety net. When you think you are done, `pytest -q`
-should pass, except for the waitlist's own tests, which may be gone.
+You have 10 minutes for step 4a to 4c together.
 
-> Most of this request is finding the right thing, not removing it.
-> The waitlist was not built in one go and other work landed on top of it, so the
-> first job is working out how far it reaches.
+### Step 4a: See what the queue does today
 
-### Request 3: Unregistering still needs to work
+The next request is about the queue for full sessions. Before it, see what the
+queue actually does, so "gone" means something specific rather than something you
+have to guess at.
 
-One correction to the last request. Attendees must still be able to unregister
-from a session themselves. Bring the unregister command back, without any
-waitlist promotion happening when a seat frees up.
+The three parts of this card share one clock. Read all three before you start.
+
+```
+./show-the-waitlist.sh
+```
+
+It:
+
+- fills a one-seat session and puts two attendees in the queue behind it
+- shows the queue in order
+- cancels the registered attendee, so a seat frees up
+- shows the freed seat being filled from the queue, and the notice that goes out
+
+### Step 4b: Take the queue out
+
+The committee has decided that queues are the registration desk's job now. For
+the next release the queue has to be gone: joining a queue, the queue itself, the
+automatic filling of a freed seat, and the notices that go with it.
+
+Everything else in the program has to keep working.
+
+If you run out of clock, stop where you are. **Not finishing is a normal
+outcome here and it is recorded as one.** It is not a mark against you, and we
+would rather see where you got to than have you rush the last step.
+
+### Step 4c: Cancelling still needs to work
+
+One correction to the last request. Attendees must still be able to cancel a
+registration themselves. Bring cancelling back, with no automatic filling of the
+freed seat when it happens.
+
+When you are done, run `./check.sh` once more.

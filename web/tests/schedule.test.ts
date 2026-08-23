@@ -8,9 +8,9 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { basename } from 'node:path'
-import { BLOCK_CAP_MIN, REACH_TRIALS, REQUEST_COUNT, taskCards } from '../src/study/tasks'
+import { BLOCK_CAP_MIN, CARD_COUNT, taskCards } from '../src/study/tasks'
 import { STEPS, TOTAL_ESTIMATE_MIN, stepById } from '../src/study/flow'
-import { DEBRIEF_MD, PLAN_FOR, TASK_PREAMBLE, WELCOME_MD } from '../src/study/content'
+import { DEBRIEF_MD, PLAN_FOR, TASK_PREAMBLE, WELCOME_MD, spell } from '../src/study/content'
 import { SHEETS } from '../scripts/gen-materials'
 
 describe('the session schedule', () => {
@@ -40,15 +40,15 @@ describe('the session schedule', () => {
   // The three places the participant is told how much work there is: the welcome
   // page, the preamble before the first card, and the debrief afterwards. All
   // three used to be typed out, and the preamble was still promising "three
-  // requests, about twenty minutes" after the two reach trials added eight.
+  // requests, about twenty minutes" two redesigns after that stopped being true.
+  // Spelled words rather than digits, because that is what the prose uses and a
+  // digit would pass this while reading wrong on the page.
   it('quotes the same card count and total everywhere it says one', () => {
     const preamble = TASK_PREAMBLE('confplan', 'Sam Park', 'a small tool')
     expect(preamble).toContain(`${BLOCK_CAP_MIN} minutes of work in total`)
-    expect(preamble).toContain('three requests to work through in order and two short questions')
-    expect(DEBRIEF_MD).toContain('the same three requests and two questions')
-    expect(REQUEST_COUNT + REACH_TRIALS.length).toBe(
-      taskCards('confplan').reduce((n, c) => n + c.requests.length, 0),
-    )
+    expect(preamble).toContain(`${spell(CARD_COUNT)} cards to work through in order`)
+    expect(DEBRIEF_MD).toContain(`the same ${spell(CARD_COUNT)} cards`)
+    expect(CARD_COUNT).toBe(taskCards('confplan').length)
   })
 
   it('estimates every step that takes time', () => {

@@ -94,29 +94,39 @@ export interface RequestMetrics {
   score: number | null
   outOf: number | null
   collateralDamage: number | null
-  /** The two-stage prediction, where the request is a reach trial (f1, f2). */
+  /** The two-stage prediction, on the step that reverts. */
   reach: ReachMetrics | null
-  /** Closed questions answered correctly, where the request asks any (r1). */
-  choiceScore: number | null
-  choiceOutOf: number | null
+  /**
+   * Whether the locate step named the right piece of work, where the request has
+   * one. PROVISIONAL: a normalised containment test against the strings the key
+   * accepts, so the dashboard has something live. The authority is the
+   * experimenter reading the answer, which is why `locateAnswer` is carried
+   * beside it rather than thrown away once matched.
+   */
+  locateCorrect: boolean | null
+  locateAnswer: string | null
   /**
    * Stated confidence minus proportion correct, both on 0-1. Positive is
-   * overconfidence: surer than they were right. Null unless both halves are
-   * there, because a missing confidence is not a confident zero.
+   * overconfidence: surer than they were right. Taken from the blind stage of
+   * the reach prediction, which is the one place in the block where somebody
+   * commits to an answer and rates it before finding out. Null unless both
+   * halves are there, because a missing confidence is not a confident zero.
    */
   calibration: number | null
 }
 
 /**
- * Which option is the right one for a request's closed questions:
- * request id -> project -> question id -> index into the option list in
- * study/tasks.ts.
+ * Every string that names the work a locate step is looking for:
+ * request id -> project -> accepted strings.
  *
- * The indexes live in docs/study/answer-key.json rather than beside the
- * questions, because tasks.ts is compiled into the bundle the participant
- * downloads and anything in it is readable from devtools.
+ * A list rather than one string because the two arms name work in different
+ * vocabularies -- a sha under git, a feature label or id under sgt -- and a
+ * single correct answer would mark one arm wrong for being right in its own
+ * terms. It lives in docs/study/answer-key.json rather than beside the task,
+ * because tasks.ts is compiled into the bundle the participant downloads and
+ * anything in it is readable from devtools.
  */
-export type ChoiceKey = Record<string, Partial<Record<Project, Record<string, number>>>>
+export type LocateKey = Record<string, Partial<Record<Project, string[]>>>
 
 /**
  * Read the closed-question key out of the answer-key document.
@@ -134,7 +144,7 @@ export type ChoiceKey = Record<string, Partial<Record<Project, Record<string, nu
 export type ReachKey = Record<string, string[]>
 
 export interface AnswerKeys {
-  choices: ChoiceKey
+  locate: LocateKey
   reach: ReachKey
 }
 
@@ -146,12 +156,50 @@ export interface AnswerKeys {
  * exactly like a study that did not run them.
  */
 export function keysFrom(truth: GroundTruth | null): AnswerKeys {
-  const keys: AnswerKeys = { choices: {}, reach: {} }
+  const keys: AnswerKeys = { locate: {}, reach: {} }
   for (const [requestId, entry] of Object.entries(truth?.requestKeys ?? {})) {
-    if (entry.choices) keys.choices[requestId] = entry.choices
+    if (entry.locate) keys.locate[requestId] = entry.locate
     if (entry.reach) keys.reach[requestId] = entry.reach
   }
   return keys
+}
+
+/**
+ * Whether a typed answer names the work the key is looking for.
+ *
+ * Deliberately lenient, because it is provisional and a person checks it after:
+ * case and surrounding punctuation are ignored, and a sha is matched by prefix
+ * from seven characters, which is what `git log --oneline` prints and what a
+ * participant copies. `f-8068d4e` typed for `8068d4e...` therefore matches, and
+ * so does the full forty. Under seven characters nothing matches, because a
+ * three-character prefix would match half the repository.
+ */
+export function locateMatches(typed: string, accepted: string): boolean {
+  const squash = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, '')
+  const a = squash(typed)
+  const b = squash(accepted)
+  if (!a || !b) return false
+  if (a.includes(b) || b.includes(a)) return true
+  if (/^[0-9a-f]{7,}$/.test(b)) {
+    // Hex runs are pulled from the text WITH its punctuation intact, not from
+    // the squashed copy. sgt prefixes a feature id with `f-`, and squashing
+    // first glued that `f` onto the front of the sha, so `f-25e91a9` -- what the
+    // sgt arm actually copies -- failed to match `25e91a9a1d22...` while the
+    // bare sha matched fine. The punctuation is the token boundary.
+    const shas = typed.toLowerCase().match(/[0-9a-f]{7,}/g) ?? []
+    return shas.some((sha) => b.startsWith(sha) || sha.startsWith(b))
+  }
+  return false
+}
+
+/**
+ * Overconfidence on the one answer in the block that is committed and rated
+ * before the participant finds out: the blind stage of the reach prediction.
+ * Positive means surer than they were right.
+ */
+function calibrationOf(reach: ReachMetrics | null): number | null {
+  if (!reach || reach.blindConfidence == null) return null
+  return reach.blindConfidence / 100 - reach.blind
 }
 
 /**
@@ -488,21 +536,15 @@ function metricsFor(
   const mutations = counts.agent_edit + counts.manual_edit + counts.history_op
   const firstOp = mine.find((e) => e.category === 'history_op')
 
-  // The closed questions are scored here rather than by a person, so r1 has no
-  // rubric. Both halves have to be present: a request answered before the key
-  // was loaded is unscored, which is a different thing from all three wrong.
-  //
-  // `choices` is SEEDED as `{}` when a request is opened, and `{}` is truthy, so
-  // a participant who ran out of time having picked nothing scored 0 of 3 --
-  // indistinguishable from three wrong answers, and pulling the condition mean
-  // toward zero. Worse with a confidence rating attached: nothing answered plus
-  // a moved slider recorded as maximum overconfidence.
-  const wanted = keys.choices[req.requestId]?.[req.project] ?? null
-  const answered = req.choices && Object.keys(req.choices).length > 0 ? req.choices : null
-  const questions = wanted ? Object.keys(wanted) : []
-  const choiceOutOf = wanted && answered ? questions.length : null
-  const choiceScore =
-    wanted && answered ? questions.filter((q) => answered[q] === wanted[q]).length : null
+  // The locate step, scored provisionally. Both halves have to be present: an
+  // answer given before the key was loaded is unscored, which is a different
+  // thing from a wrong answer, and an empty box is unanswered rather than wrong
+  // -- a participant who ran out of clock having typed nothing is not somebody
+  // who named the wrong work.
+  const accepted = keys.locate[req.requestId]?.[req.project] ?? null
+  const locateAnswer = (req.locate ?? '').trim() || null
+  const locateCorrect =
+    accepted && locateAnswer ? accepted.some((a) => locateMatches(locateAnswer, a)) : null
 
   let wrongTurns = 0
   for (let i = 0; i < mine.length; i++) {
@@ -516,8 +558,10 @@ function metricsFor(
     }
   }
 
+  const reach = reachMetricsFor(req, keys.reach)
+
   return {
-    reach: reachMetricsFor(req, keys.reach),
+    reach,
     requestId: req.requestId,
     half: req.half,
     condition: req.condition,
@@ -544,12 +588,9 @@ function metricsFor(
     score: scoring?.score ?? null,
     outOf: scoring?.outOf ?? null,
     collateralDamage: scoring?.collateralDamage ?? null,
-    choiceScore,
-    choiceOutOf,
-    calibration:
-      choiceScore != null && choiceOutOf && req.confidence != null
-        ? req.confidence / 100 - choiceScore / choiceOutOf
-        : null,
+    locateCorrect,
+    locateAnswer,
+    calibration: calibrationOf(reach),
   }
 }
 
@@ -603,7 +644,7 @@ function halfSummary(
 
 export function analyzeParticipant(
   raw: RawParticipantData,
-  keys: AnswerKeys = { choices: {}, reach: {} },
+  keys: AnswerKeys = { locate: {}, reach: {} },
 ): ParticipantAnalysis {
   const { participant, responses, requests, events, scoring } = raw
   const windows = windowsFor(requests)
@@ -645,7 +686,7 @@ export function analyzeParticipant(
 
 export function buildDataset(
   raws: RawParticipantData[],
-  keys: AnswerKeys = { choices: {}, reach: {} },
+  keys: AnswerKeys = { locate: {}, reach: {} },
 ): Dataset {
   let unassigned = 0
   const participants = raws.map((r) => {
