@@ -153,6 +153,14 @@ cp "$MATERIALS/03-project-$project.md" "$workspace/project.md"
 # Both arms get identical copies. That is the point of prescribing the step: the
 # two conditions are compared on what they could do about the defect, not on
 # whether they typed the same eight commands to see it.
+#
+# Excluded from git, because they are instruments and `work/` is a repository
+# sgt mines: the dirty pass reads the working tree, so three untracked shell
+# files become three symbols carrying an op and belonging to no frontier, which
+# is a degenerate graph. In the git arm nothing breaks, but `git status` opens
+# on three files the participant did not write.
+printf '/show-the-problem.sh\n/check.sh\n/show-the-waitlist.sh\n' \
+    >> "$workspace/work/.git/info/exclude"
 for s in show-the-problem check show-the-waitlist; do
     cp "$TASK_SCRIPTS/$s.sh" "$workspace/work/$s.sh"
     chmod +x "$workspace/work/$s.sh"
