@@ -23,7 +23,7 @@ import type {
 import { REQUESTS, requestById } from '../study/tasks'
 import { HLAC, instrumentById } from '../study/instruments'
 import { gitExpertise, tlxScore, umuxLiteScore } from '../lib/stats'
-import { analyzeParticipant, keysFrom } from '../analysis/pipeline'
+import { analyzeParticipant, keysFrom, locateMatches } from '../analysis/pipeline'
 import { Callout, Empty, Tabs, fmtAgo, fmtDuration } from '../ui/bits'
 import { CATEGORY_COLOR } from '../charts/theme'
 import { CATEGORY_LABEL } from '../study/taxonomy'
@@ -499,15 +499,14 @@ function RequestCard({
   const score = rubric.reduce((n, x) => n + (checks[x.id] ? x.points : 0), 0)
   const key = truth?.requestKeys?.[req.requestId]?.[req.project]
 
-  // Closed questions are scored by the analysis against the answer key, not
-  // here: there is no judgement left to make, and a checkbox next to a lookup
-  // is an invitation to disagree with it. Shown so the facilitator can see what
-  // was answered without opening Firestore.
-  const wanted = keysFrom(truth).choices[req.requestId]?.[req.project] ?? null
-  const rightCount =
-    wanted && spec
-      ? spec.choices.filter((q) => req.choices?.[q.id] === wanted[q.id]).length
-      : null
+  // The locate answer is matched provisionally by the analysis and shown here in
+  // full, because the match is lenient on purpose and the experimenter is the
+  // authority. A tick next to a lookup would invite agreeing with the lookup;
+  // the answer next to the key invites reading both.
+  const accepted = keysFrom(truth).locate[req.requestId]?.[req.project] ?? null
+  const typed = (req.locate ?? '').trim()
+  const provisional =
+    accepted && typed ? accepted.some((a) => locateMatches(typed, a)) : null
 
   async function save() {
     await setDoc(doc(db, 'participants', pid, 'scoring', req.id), {
@@ -577,12 +576,15 @@ function RequestCard({
             <div className="tiny muted">rubric</div>
           </div>
         )}
-        {rightCount != null && (
+        {provisional != null && (
           <div className="center">
-            <div className="timer" style={{ fontSize: '1.4rem' }}>
-              {rightCount}/{spec.choices.length}
+            <div
+              className="timer"
+              style={{ fontSize: '1.4rem', color: provisional ? 'var(--good)' : 'var(--bad)' }}
+            >
+              {provisional ? 'found' : 'missed'}
             </div>
-            <div className="tiny muted">questions</div>
+            <div className="tiny muted">provisional</div>
           </div>
         )}
       </div>
@@ -620,34 +622,26 @@ function RequestCard({
         </Callout>
       )}
 
-      {spec.choices.length > 0 && (
+      {spec.identify && (
         <div className="card soft" style={{ marginTop: '1rem' }}>
-          <div className="tiny muted">What they answered</div>
-          {spec.choices.map((q) => {
-            const picked = req.choices?.[q.id]
-            const right = wanted?.[q.id]
-            const options = q.options[req.project]
-            return (
-              <div key={q.id} style={{ marginTop: '0.6rem' }}>
-                <div className="small muted">{q.prompt}</div>
-                <div>
-                  {picked == null ? (
-                    <span className="faint">no answer</span>
-                  ) : (
-                    (options[picked] ?? `option ${picked}`)
-                  )}
-                </div>
-                {right != null && (
-                  <div
-                    className="tiny"
-                    style={{ color: picked === right ? 'var(--good)' : 'var(--bad)' }}
-                  >
-                    {picked === right ? 'correct' : `key: ${options[right] ?? right}`}
-                  </div>
-                )}
-              </div>
-            )
-          })}
+          <div className="tiny muted">The work they named</div>
+          <div className="mono small" style={{ marginTop: '0.4rem' }}>
+            {typed || <span className="faint">no answer</span>}
+          </div>
+          {accepted && (
+            <div className="tiny muted" style={{ marginTop: '0.4rem' }}>
+              key accepts: {accepted.join(', ')}
+            </div>
+          )}
+        </div>
+      )}
+
+      {spec.note && req.notes?.trim() && (
+        <div className="card soft" style={{ marginTop: '1rem' }}>
+          <div className="tiny muted">What they wrote — recorded, not scored</div>
+          <div className="small" style={{ marginTop: '0.4rem', whiteSpace: 'pre-wrap' }}>
+            {req.notes}
+          </div>
         </div>
       )}
 

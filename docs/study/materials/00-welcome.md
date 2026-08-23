@@ -32,16 +32,16 @@ We record the screen and audio. You can ask us to stop at any time.
 | 10 | Setting up your machine |
 | 10 | A practice project |
 | 5 | Reading about the project you are taking over |
-| 28 | Five cards: three requests, and two questions about what a past piece of work touched |
+| 24 | 4 cards: see a defect, find what caused it, take it out, then remove a feature |
 | 6 | Three short questionnaires |
 | 15 | Setting up the second project, and practice again |
 | 5 | Reading about the second project |
-| 28 | The same five cards, on the second project |
+| 24 | The same 4 cards, on the second project |
 | 6 | Questionnaires again |
 | 5 | Comparing the two |
 | 3 | Handing your data over |
 
-That is about 129 minutes of work. The rest is breaks.
+That is about 90 minutes of work. The rest is breaks.
 
 Every card has its own time limit, and you can see it counting down. The clock
 only starts once you have read about the project, so there is no rush before

@@ -19,7 +19,7 @@ import {
   SCENARIO,
   requestHeading,
   taskCards,
-  type ChoiceQuestion,
+  type PrescribedRun as PrescribedRunSpec,
   type ReachTrial,
 } from '../../study/tasks'
 import { TASK_PREAMBLE } from '../../study/content'
@@ -318,20 +318,14 @@ function TaskCardView({
               </div>
             )
           }
-          if (!r.choices.length || !d?.choices) return null
+          const written = r.identify ? d?.locate : r.note ? d?.notes : undefined
+          if (!r.identify && !r.note) return null
           return (
             <div key={r.id} className="small" style={{ marginTop: '0.75rem' }}>
               <div className="muted tiny">{r.title[project]}</div>
-              {r.choices.map((q) => {
-                const pick = d.choices?.[q.id]
-                // A dash here left the participant's own recap of their answers reading as a
-                // table with a hole in it. The word says which line they left blank.
-                return (
-                  <div key={q.id} className={pick == null ? 'muted' : undefined}>
-                    {pick == null ? 'Not answered' : q.options[project][pick]}
-                  </div>
-                )
-              })}
+              {/* A dash here left the participant's own recap reading as a table with a
+                  hole in it. The word says which line they left blank. */}
+              <div className={written ? undefined : 'muted'}>{written || 'Not answered'}</div>
             </div>
           )
         })}
@@ -376,14 +370,8 @@ function TaskCardView({
             )}
             <div className="no-copy" onCopy={blockProseCopy}>
               <Markdown>{r.body[project]}</Markdown>
-              {r.tip && (
-                <div style={{ marginTop: '0.75rem' }}>
-                  <Callout kind="soft" title="What this is asking">
-                    <Markdown>{r.tip[project]}</Markdown>
-                  </Callout>
-                </div>
-              )}
             </div>
+            {r.run && <PrescribedRun run={r.run} project={project} />}
             {r.reach && (
               <ReachAnswers
                 pid={pid}
@@ -392,18 +380,27 @@ function TaskCardView({
                 doc={docFor(r.id)}
                 trial={r.reach}
                 project={project}
-                onFinish={() => finishCard('done')}
               />
             )}
-            {r.choices.length > 0 && (
-              <ChoiceAnswers
+            {r.identify && (
+              <TextAnswer
                 pid={pid}
                 half={half}
                 request={r.id}
                 doc={docFor(r.id)}
-                questions={r.choices}
-                project={project}
-                wantsConfidence={r.wantsConfidence}
+                field="locate"
+                label={r.identify[project]}
+                placeholder="a commit hash, a feature name, an id — or what you have and how sure you are"
+              />
+            )}
+            {r.note && (
+              <TextAnswer
+                pid={pid}
+                half={half}
+                request={r.id}
+                doc={docFor(r.id)}
+                field="notes"
+                label={r.note[project]}
               />
             )}
           </div>
@@ -414,13 +411,9 @@ function TaskCardView({
 
       <div className="row" style={{ justifyContent: 'space-between' }}>
         <div className="row tight">
-          {/* A reach card's own buttons submit it: "Mark done" beside them would be a
-              second way to end the trial that skips writing the stage. */}
-          {!reach && (
-            <button className="btn primary" onClick={() => finishCard('done')}>
-              Mark done
-            </button>
-          )}
+          <button className="btn primary" onClick={() => finishCard('done')}>
+            Mark done
+          </button>
           <button className="btn" onClick={() => finishCard('partial')}>
             Stop here
           </button>
@@ -430,11 +423,11 @@ function TaskCardView({
             </button>
           )}
         </div>
-        {/* No pause on a reach card. The blind minute is the control that makes
-            `blind` mean "at a glance", and a pause button beside it is a way to
-            take ten minutes over it instead. Four minutes is short enough to sit
-            through; anything that goes wrong is "Stop here". */}
-        {!reach && (
+        {/* The blind minute inside the card runs its own clock and cannot be
+            paused -- it is the control that makes `blind` mean "at a glance", and
+            a pause button beside it would be a way to take ten minutes over it.
+            The card's clock, which covers the actual work, can be. */}
+        {(
           <div className="row tight">
             {pauseOpen ? (
               <>
@@ -461,121 +454,124 @@ function TaskCardView({
   )
 }
 
-/** Same picks, whatever order the two objects happen to list their keys in. */
-function samePicks(a: Record<string, number> | undefined, b: Record<string, number> | undefined) {
-  const x = a ?? {}
-  const y = b ?? {}
-  const keys = Object.keys(x)
-  return keys.length === Object.keys(y).length && keys.every((k) => x[k] === y[k])
-}
-
-function ChoiceAnswers({
+/**
+ * One free-text box, debounced to one field of the request document.
+ *
+ * Two steps use it and they want different things written down, so the field is
+ * a parameter: a locate step writes `locate` (compared against the key after the
+ * session) and an observation step writes `notes` (never scored). Everything
+ * else is identical, and the hazard they share is the reason this is one
+ * component rather than two -- what somebody typed while reading code cannot be
+ * reconstructed by asking them again.
+ */
+function TextAnswer({
   pid,
   half,
   request,
   doc,
-  questions,
-  project,
-  wantsConfidence,
+  field,
+  label,
+  placeholder,
 }: {
   pid: string
   half: 1 | 2
   request: RequestId
   doc: RequestDoc | undefined
-  questions: ChoiceQuestion[]
-  project: Project
-  wantsConfidence: boolean
+  field: 'locate' | 'notes'
+  label: string
+  placeholder?: string
 }) {
-  // A crash-safe mirror, keyed to this request. The questionnaires have had one
-  // since the start; these answers did not, and they are the worse thing to
-  // lose: an answer picked while reading code cannot be reconstructed by asking
-  // the participant again, and a rating they no longer hold cannot be re-felt.
-  const key = draftKey(pid, 'choices', `${request}-h${half}`)
-  const [picks, setPicks] = useState<Record<string, number>>(doc?.choices ?? {})
-  const [confidence, setConfidence] = useState<number | null>(doc?.confidence ?? null)
+  // A crash-safe mirror, keyed to this request and field. The questionnaires
+  // have had one since the start; these answers did not.
+  const key = draftKey(pid, field, `${request}-h${half}`)
+  const stored = (doc?.[field] ?? '') as string
+  const [text, setText] = useState<string>(stored)
   const [dirty, setDirty] = useState(false)
 
   // Recover a draft the server never received -- the browser died between a
-  // click and the debounce. Only when it is strictly newer than what came
+  // keystroke and the debounce. Only when it is strictly newer than what came
   // back, so a stale draft from a previous attempt cannot resurrect itself over
   // a real submitted answer.
   useEffect(() => {
-    const local = readDraft<{ picks: Record<string, number>; confidence: number | null }>(key)
+    const local = readDraft<{ text: string }>(key)
     if (!local) return
-    const remoteAt = doc?.submittedAt ?? 0
-    if (local.at <= remoteAt || !Object.keys(local.value.picks ?? {}).length) return
-    if (samePicks(local.value.picks, doc?.choices)) return
-    setPicks(local.value.picks)
-    setConfidence(local.value.confidence)
+    if (local.at <= (doc?.submittedAt ?? 0) || !local.value.text) return
+    if (local.value.text === stored) return
+    setText(local.value.text)
     setDirty(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key])
 
-  // Adopt the stored value only while the answers are untouched, so a slow
-  // snapshot cannot overwrite a pick the participant has just made.
+  // Adopt the stored value only while the box is untouched, so a slow snapshot
+  // cannot overwrite what the participant is in the middle of typing.
   useEffect(() => {
-    if (!dirty && doc?.choices && !samePicks(doc.choices, picks)) setPicks(doc.choices)
-    if (!dirty && doc?.confidence != null && doc.confidence !== confidence) setConfidence(doc.confidence)
+    if (!dirty && stored && stored !== text) setText(stored)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doc?.choices, doc?.confidence])
+  }, [stored])
 
   useEffect(() => {
     if (!dirty) return
-    writeDraft(key, { picks, confidence })
+    writeDraft(key, { text })
     const t = window.setTimeout(() => {
-      void patchRequest(pid, request, half, { choices: picks, confidence })
+      void patchRequest(pid, request, half, { [field]: text })
     }, 600)
     return () => window.clearTimeout(t)
-  }, [picks, confidence, dirty, pid, request, half, key])
+  }, [text, dirty, pid, request, half, key, field])
 
   useFlushOnHide(() => {
-    if (dirty) void patchRequest(pid, request, half, { choices: picks, confidence })
+    if (dirty) void patchRequest(pid, request, half, { [field]: text })
   })
 
   return (
     <div className="stack tight" style={{ marginTop: '0.75rem' }}>
-      {questions.map((q, qi) => (
-        <div key={q.id} style={{ marginTop: qi ? '0.75rem' : 0 }}>
-          <div className="field-label">{q.prompt}</div>
-          <div className="stack tight" role="radiogroup" aria-label={q.prompt}>
-            {q.options[project].map((option, oi) => {
-              const on = picks[q.id] === oi
-              return (
-                <label key={oi} className={`check${on ? ' on' : ''}`}>
-                  <input
-                    type="radio"
-                    name={`${request}-h${half}-${q.id}`}
-                    checked={on}
-                    onChange={() => {
-                      setPicks({ ...picks, [q.id]: oi })
-                      setDirty(true)
-                    }}
-                  />
-                  <span>{option}</span>
-                </label>
-              )
-            })}
-          </div>
-        </div>
-      ))}
-      {wantsConfidence && (
-        <ConfidenceSlider
-          value={confidence}
-          onChange={(v) => {
-            setConfidence(v)
-            setDirty(true)
-          }}
-        />
-      )}
+      <label className="field-label" htmlFor={`${request}-h${half}-${field}`}>
+        {label}
+      </label>
+      <textarea
+        id={`${request}-h${half}-${field}`}
+        rows={field === 'locate' ? 2 : 4}
+        value={text}
+        placeholder={placeholder}
+        onChange={(e) => {
+          setText(e.target.value)
+          setDirty(true)
+        }}
+      />
     </div>
   )
 }
 
 /**
- * Shared because both places that ask it have the same hazard: touching the thumb
- * where it already sits fires no change event, so a participant who means exactly
- * 50 leaves no answer at all. Confidence is half of the calibration measure, and
- * losing it quietly is worse than losing it loudly, so `onPointerDown` commits the
+ * A prescribed step: the command, and what running it does.
+ *
+ * The command is prescribed so both arms see byte-identical output and nobody's
+ * result turns on their typing. What it does is printed underneath so that
+ * prescribing it does not make it a black box -- a participant who wants to know
+ * what they just ran can read it without leaving the card.
+ */
+function PrescribedRun({ run, project }: { run: PrescribedRunSpec; project: Project }) {
+  return (
+    <div style={{ marginTop: '0.75rem' }}>
+      <pre className="cmd">
+        <code>{run.script[project]}</code>
+      </pre>
+      <div className="small muted" style={{ marginTop: '0.4rem' }}>
+        It:
+        <ul style={{ margin: '0.25rem 0 0' }}>
+          {run.does[project].map((d, i) => (
+            <li key={i}>{d}</li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Its own component because of one hazard: touching the thumb where it already
+ * sits fires no change event, so a participant who means exactly 50 leaves no
+ * answer at all. Confidence is half of the calibration measure, and losing it
+ * quietly is worse than losing it loudly, so `onPointerDown` commits the
  * midpoint and an unanswered slider says so in words.
  */
 function ConfidenceSlider({
@@ -621,7 +617,7 @@ function ConfidenceSlider({
 }
 
 /** The five states a reach trial passes through, in order. */
-type ReachPhase = 'intro' | 'blind' | 'rateBlind' | 'checked' | 'rateChecked'
+type ReachPhase = 'intro' | 'blind' | 'rateBlind' | 'work' | 'checked' | 'rateChecked'
 
 /**
  * The two-stage reach trial: tick the behaviours this piece of work reaches, once
@@ -652,7 +648,6 @@ function ReachAnswers({
   doc,
   trial,
   project,
-  onFinish,
 }: {
   pid: string
   half: 1 | 2
@@ -660,7 +655,6 @@ function ReachAnswers({
   doc: RequestDoc | undefined
   trial: ReachTrial
   project: Project
-  onFinish: () => void
 }) {
   // The draft carries what the server does not yet have: the picks in progress and
   // the blind stage's deadline. A reload inside the minute would otherwise have no
@@ -674,7 +668,7 @@ function ReachAnswers({
   // has a hole in it. An unrated blind stage therefore resumes at its rating.
   const [phase, setPhase] = useState<ReachPhase>(() => {
     if (doc?.stages?.checked) return 'rateChecked'
-    if (doc?.stages?.blind) return doc.stages.blind.confidence == null ? 'rateBlind' : 'checked'
+    if (doc?.stages?.blind) return doc.stages.blind.confidence == null ? 'rateBlind' : 'work'
     return readDraft<Draft>(key)?.value.phase ?? 'intro'
   })
   // Draft first: it is written on every change, so it is never older than the
@@ -799,12 +793,11 @@ function ReachAnswers({
     return (
       <div className="stack tight" style={{ marginTop: '1rem' }}>
         <Callout kind="accent" title={`First answer: ${trial.blindSec} seconds on the clock`}>
-          Tick what you can already tell from what is in front of you. Do not open the project
-          yet. The clock starts when you press the button, runs for{' '}
-          <strong>{trial.blindSec} seconds</strong>, and submits whatever is ticked when it ends.
-          Then you get {Math.round(trial.checkedSec / 60)} minutes to check properly and change
-          your mind. Getting the first one wrong is expected. The difference between the two is
-          what we are measuring.
+          Tick what you think the change you are about to make will affect. The clock starts when
+          you press the button, runs for <strong>{trial.blindSec} seconds</strong>, and submits
+          whatever is ticked when it ends. Then you go and do it, and afterwards you answer once
+          more knowing what actually happened. Getting the first one wrong is expected and is not
+          held against you — the difference between the two answers is the whole measurement.
         </Callout>
         {grid(false)}
         <div>
@@ -865,21 +858,49 @@ function ReachAnswers({
             className="btn primary"
             disabled={confidence == null}
             onClick={() => {
-              const t = Date.now()
               if (blindStage) void write('blind', { ...blindStage, confidence })
               setConfidence(null)
-              setEndsAt(t + trial.checkedSec * 1000)
-              setNow(t)
-              setPhase('checked')
+              setEndsAt(null)
+              setPhase('work')
             }}
           >
-            Now go and check
+            Saved — now go and do it
           </button>
           {confidence == null && (
             <span className="small muted" style={{ marginLeft: '0.75rem' }}>
               Rate it first.
             </span>
           )}
+        </div>
+      </div>
+    )
+  }
+
+  // The gap the second answer is grounded in. The old design's second answer was
+  // another read of the same screen, three minutes later; this one is answered
+  // after the operation has run, so `checked - blind` is what doing it taught
+  // them rather than what looking twice did. The clock does not run here: the
+  // work has the card's own clock and a second one beside it would be two
+  // deadlines for one activity.
+  if (phase === 'work') {
+    return (
+      <div className="stack tight" style={{ marginTop: '1rem' }}>
+        <Callout kind="accent" title="Your first answer is saved">
+          Now do the rest of this step. When you have run it and checked where you ended up, come
+          back here and answer once more.
+        </Callout>
+        <div>
+          <button
+            className="btn primary"
+            onClick={() => {
+              const t = Date.now()
+              setEndsAt(t + trial.checkedSec * 1000)
+              setNow(t)
+              setPhase('checked')
+            }}
+          >
+            I have done it — answer again
+          </button>
         </div>
       </div>
     )
@@ -923,13 +944,10 @@ function ReachAnswers({
           className="btn primary"
           disabled={confidence == null}
           onClick={() => {
-            void (async () => {
-              await write('checked', buildStage('checked', Date.now(), endsAt, confidence))
-              onFinish()
-            })()
+            void write('checked', buildStage('checked', Date.now(), endsAt, confidence))
           }}
         >
-          Submit and finish this one
+          Save this answer
         </button>
         {confidence == null && (
           <span className="small muted" style={{ marginLeft: '0.75rem' }}>

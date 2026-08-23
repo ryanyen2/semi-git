@@ -119,10 +119,10 @@ Eleven again. `sgt undo` reverses the last thing sgt did; `sgt restore "<name>"`
 You can also take out one chapter rather than a whole feature:
 
 ```
-sgt revert "Shipping"@2
+sgt revert "The Cart"@2
 ```
 
-Preview first is the rule everywhere, including in the editor.
+The chapters it is keeping say **kept**; only the one you named comes out. Preview first is the rule everywhere, including in the editor.
 
 ## 7. Your assistant
 

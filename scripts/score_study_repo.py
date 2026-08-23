@@ -53,6 +53,33 @@ def run_marker(repo: Path, python: Path, marker: str) -> dict:
     }
 
 
+# What "two bookings that meet exactly" is called in each project. The two are
+# isomorphic (docs/study/testbed-spec.md 1), so this is a vocabulary map and not
+# two different checks.
+_PROBE_SHAPES = {
+    "coursecraft": {
+        "setup": [("course", "add", "CS101", "Intro"),
+                  ("section", "add", "CS101", "ada", "--slot", "Mon 09:00-10:30",
+                   "--room", "R1", "--capacity", "5"),
+                  ("section", "add", "CS101", "bob", "--slot", "Mon 10:30-12:00",
+                   "--room", "R1", "--capacity", "5"),
+                  ("student", "add", "Ada", "ada@example.org")],
+        "join_a": ("enroll", "1", "1"),
+        "join_b": ("enroll", "1", "2"),
+    },
+    "confplan": {
+        "setup": [("talk", "add", "T1", "Opening"),
+                  ("session", "add", "T1", "ada", "--slot", "Sat 09:00-10:30",
+                   "--room", "R1", "--capacity", "5"),
+                  ("session", "add", "T1", "bob", "--slot", "Sat 10:30-12:00",
+                   "--room", "R1", "--capacity", "5"),
+                  ("attendee", "add", "Ada", "ada@example.org")],
+        "join_a": ("register", "1", "1"),
+        "join_b": ("register", "1", "2"),
+    },
+}
+
+
 def program_starts(repo: Path, python: Path, package: str) -> tuple[bool, str]:
     """Build the command line parser and list its subcommands. This is the check
     the test suite does not do."""
@@ -68,6 +95,58 @@ def program_starts(repo: Path, python: Path, package: str) -> tuple[bool, str]:
     return True, proc.stdout.strip()
 
 
+def back_to_back_allowed(repo: Path, python: Path, package: str) -> tuple[bool, str]:
+    """Whether two bookings that meet exactly are still treated as a clash.
+
+    The behavioural check the marker scores cannot make. Episode 17's regression
+    is invisible to the suite -- `test_back_to_back_is_fine` calls
+    `slots.overlaps`, and the program calls `slots.ranges_clash` -- so a
+    participant who reverses it and a participant who does not both finish with
+    the same green markers. This drives the program instead, the way the
+    participant's own `check.sh` does.
+
+    Returns (allowed, detail). `allowed` True means the defect is gone.
+    """
+    code = (
+        "import json, tempfile, os\n"
+        f"from {package} import cli\n"
+        # A path that does not exist yet. `mkstemp` leaves an EMPTY file behind,
+        # and the storage layer json.loads whatever is at the path, so the probe
+        # died on the empty string before it had run a single command.
+        "path = os.path.join(tempfile.mkdtemp(), 'store.json')\n"
+        "def run(*a):\n"
+        "    try:\n"
+        "        return cli.main(['--data', path, *a])\n"
+        "    except SystemExit as e:\n"
+        "        return e.code\n"
+        "cmds = " + repr(_PROBE_SHAPES[package]) + "\n"
+        "run('init')\n"
+        "for c in cmds['setup']:\n"
+        "    run(*c)\n"
+        "first = run(*cmds['join_a'])\n"
+        "second = run(*cmds['join_b'])\n"
+        "audit = run('room', 'audit')\n"
+        "os.path.exists(path) and os.unlink(path)\n"
+        "print(json.dumps({'first': first, 'second': second, 'audit': audit}))\n"
+    )
+    # The probe writes to stdout, and so does the app. Only the last line is ours.
+    proc = subprocess.run([str(python), "-c", code], cwd=repo, capture_output=True, text=True)
+    if proc.returncode != 0:
+        last = proc.stderr.strip().splitlines()
+        return False, last[-1] if last else "the probe would not run"
+    lines = [ln for ln in proc.stdout.strip().splitlines() if ln.startswith("{")]
+    if not lines:
+        return False, "the probe printed nothing"
+    got = json.loads(lines[-1])
+    # A non-zero exit from the second join is the regression: the two bookings
+    # meet exactly and the program refuses the pair.
+    if got["second"] not in (0, None):
+        return False, "the second booking is still refused as a clash"
+    if got["audit"] not in (0, None):
+        return False, "the room audit still reports a clash"
+    return True, "two bookings that meet exactly are both accepted"
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("repo", type=Path)
@@ -77,6 +156,9 @@ def main() -> int:
                     help="comma separated markers whose tests may fail or be gone")
     ap.add_argument("--expect-gone", default="",
                     help="comma separated command names that must no longer be offered")
+    ap.add_argument("--expect-behaviour", default="", choices=["", "back-to-back-allowed"],
+                    help="a behavioural check the markers cannot make. "
+                         "back-to-back-allowed: episode 17 has been reversed")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
@@ -108,6 +190,13 @@ def main() -> int:
     results = [run_marker(repo, python, m) for m in every_marker]
     started, detail = program_starts(repo, python, package)
 
+    # `None` where no behavioural check was asked for, so "not checked" stays a
+    # different thing from "checked and wrong" in both the JSON and the verdict.
+    behaviour_ok: bool | None = None
+    behaviour_detail = ""
+    if args.expect_behaviour == "back-to-back-allowed":
+        behaviour_ok, behaviour_detail = back_to_back_allowed(repo, python, package)
+
     def had_tests(marker: str) -> bool:
         return baseline[marker]["collected"] > 0
 
@@ -132,6 +221,8 @@ def main() -> int:
             "still_present": [r["marker"] for r in still_there],
             "program_starts": started, "subcommands": offered,
             "commands_not_removed": not_gone,
+            "behaviour": args.expect_behaviour or None,
+            "behaviour_ok": behaviour_ok, "behaviour_detail": behaviour_detail,
         }, indent=2))
     else:
         print(f"{'feature':<14} {'tests':>6} {'pass':>6} {'fail':>6}   verdict")
@@ -153,6 +244,9 @@ def main() -> int:
             print(f"THE PROGRAM DOES NOT START: {detail}")
         if not_gone:
             print(f"commands that should be gone but are still offered: {', '.join(not_gone)}")
+        if behaviour_ok is not None:
+            print(f"{'behaviour fixed' if behaviour_ok else 'BEHAVIOUR NOT FIXED'}: "
+                  f"{behaviour_detail}")
 
         print()
         print(f"collateral damage: {len(collateral)} feature(s) "
@@ -164,7 +258,8 @@ def main() -> int:
         if any(r["import_error"] for r in results):
             print("the test suite could not be imported, so these counts understate the damage")
 
-    ok = not collateral and not missing and not still_there and started and not not_gone
+    ok = (not collateral and not missing and not still_there and started and not not_gone
+          and behaviour_ok is not False)
     print(f"\n{'PASS' if ok else 'FAIL'}")
     return 0 if ok else 1
 

@@ -82,7 +82,7 @@ export interface Step {
 
 export const STEPS: Step[] = [
   { id: 'welcome', phase: 'Getting started', title: 'Welcome', kind: 'welcome', half: null },
-  { id: 'consent', phase: 'Getting started', title: 'Consent', kind: 'consent', half: null, estimateMin: 3 },
+  { id: 'consent', phase: 'Getting started', title: 'Consent', kind: 'consent', half: null, estimateMin: 2 },
   {
     id: 'background',
     phase: 'Getting started',
@@ -90,12 +90,12 @@ export const STEPS: Step[] = [
     kind: 'form',
     half: null,
     instrumentId: 'background',
-    estimateMin: 5,
+    estimateMin: 3,
   },
 
-  { id: 'setup-1', phase: 'First half', title: 'Set up your machine', kind: 'setup', half: 1, estimateMin: 10 },
-  { id: 'tutorial-1', phase: 'First half', title: 'Practice', kind: 'tutorial', half: 1, estimateMin: 10 },
-  { id: 'brief-1', phase: 'First half', title: 'The project', kind: 'brief', half: 1, estimateMin: 5 },
+  { id: 'setup-1', phase: 'First half', title: 'Set up your machine', kind: 'setup', half: 1, estimateMin: 4 },
+  { id: 'tutorial-1', phase: 'First half', title: 'Practice', kind: 'tutorial', half: 1, estimateMin: 6 },
+  { id: 'brief-1', phase: 'First half', title: 'The project', kind: 'brief', half: 1, estimateMin: 2 },
   // The estimate for a task block IS the sum of its cards' caps, read from the
   // cards themselves. Written out as a number it drifts the moment a card is
   // added, and the drift is invisible: the participant plans their afternoon
@@ -110,11 +110,11 @@ export const STEPS: Step[] = [
   },
   { id: 'tlx-1', phase: 'First half', title: 'How that felt', kind: 'form', half: 1, instrumentId: 'tlx', estimateMin: 2 },
   { id: 'umux-1', phase: 'First half', title: 'This setup', kind: 'form', half: 1, instrumentId: 'umux', estimateMin: 1 },
-  { id: 'hlac-1', phase: 'First half', title: 'The history', kind: 'form', half: 1, instrumentId: 'hlac', estimateMin: 3 },
+  { id: 'hlac-1', phase: 'First half', title: 'The history', kind: 'form', half: 1, instrumentId: 'hlac', estimateMin: 2 },
 
-  { id: 'setup-2', phase: 'Second half', title: 'Set up the second project', kind: 'setup', half: 2, estimateMin: 5 },
-  { id: 'tutorial-2', phase: 'Second half', title: 'Practice', kind: 'tutorial', half: 2, estimateMin: 10 },
-  { id: 'brief-2', phase: 'Second half', title: 'The project', kind: 'brief', half: 2, estimateMin: 5 },
+  { id: 'setup-2', phase: 'Second half', title: 'Set up the second project', kind: 'setup', half: 2, estimateMin: 3 },
+  { id: 'tutorial-2', phase: 'Second half', title: 'Practice', kind: 'tutorial', half: 2, estimateMin: 5 },
+  { id: 'brief-2', phase: 'Second half', title: 'The project', kind: 'brief', half: 2, estimateMin: 2 },
   // The estimate for a task block IS the sum of its cards' caps, read from the
   // cards themselves. Written out as a number it drifts the moment a card is
   // added, and the drift is invisible: the participant plans their afternoon
@@ -129,7 +129,7 @@ export const STEPS: Step[] = [
   },
   { id: 'tlx-2', phase: 'Second half', title: 'How that felt', kind: 'form', half: 2, instrumentId: 'tlx', estimateMin: 2 },
   { id: 'umux-2', phase: 'Second half', title: 'This setup', kind: 'form', half: 2, instrumentId: 'umux', estimateMin: 1 },
-  { id: 'hlac-2', phase: 'Second half', title: 'The history', kind: 'form', half: 2, instrumentId: 'hlac', estimateMin: 3 },
+  { id: 'hlac-2', phase: 'Second half', title: 'The history', kind: 'form', half: 2, instrumentId: 'hlac', estimateMin: 2 },
 
   {
     id: 'preference',
@@ -138,9 +138,9 @@ export const STEPS: Step[] = [
     kind: 'preference',
     half: null,
     instrumentId: 'preference',
-    estimateMin: 5,
+    estimateMin: 3,
   },
-  { id: 'handover', phase: 'Finishing', title: 'Hand over your data', kind: 'handover', half: null, estimateMin: 3 },
+  { id: 'handover', phase: 'Finishing', title: 'Hand over your data', kind: 'handover', half: null, estimateMin: 2 },
   { id: 'done', phase: 'Finishing', title: 'Done', kind: 'done', half: null },
 ]
 

@@ -117,7 +117,13 @@ TARGETS: dict[str, dict[str, dict[str, list[str]]]] = {
     },
 }
 
-TRIALS = ["agenda_export", "slot_normalization"]
+# `slot_normalization` alone. `agenda_export` was the other trial until the task
+# block became locate-and-reverse; the prediction now rides on the step that
+# reverts, and there is exactly one of those. The target is still measured and
+# still printed, because the facilitator sheet quotes its reach and because a
+# second measured target is the only cross-check that this script's call graph
+# agrees with anything.
+TRIALS = ["slot_normalization"]
 
 STUB = ('\n\n# --- reach cross-check: this piece of work removed ---\n'
         'def {name}(*a, **k):\n'
@@ -326,7 +332,7 @@ def main() -> int:
     key_path = Path(__file__).resolve().parents[2] / "docs/study/answer-key.json"
     if key_path.exists() and "--print" not in sys.argv:
         doc = json.loads(key_path.read_text())
-        for trial, request in zip(TRIALS, ("f1", "f2")):
+        for trial, request in zip(TRIALS, ("d3",)):
             entry = doc["requestKeys"].setdefault(request, {})
             entry["reach"] = out["targets"][trial]
             entry["_reachNote"] = (

@@ -13,24 +13,21 @@ answer keys.
 Developers now describe their changes to an AI coding assistant in plain
 sentences, but version control still records those changes as lines in files. We
 built a tool called `sgt` (short for "semi-git") that records history as the
-pieces of work a person meant to do — at the level of functions and classes,
-not lines and diffs. The question is whether that actually helps.
+pieces of work a person meant to do, at the level of functions and classes,
+not lines and diffs. The question is whether that actually helps when someone
+has to reverse what an agent did.
 
-We want to find out four things:
+We want to find out three things:
 
-1. **Comprehension.** Do people answer questions about a project's history more
-   accurately when they have sgt?
-2. **History manipulation.** Do people handle history changes better — for
-   example, removing one feature cleanly without breaking later work that
+1. **Locate.** Can people find which piece of work caused a visible defect?
+2. **Reverse.** Can people undo that work safely, predicting what else it
+   touches before they act?
+3. **Remove.** Can people take out an entire feature without breaking what
    depends on it?
-3. **Mental model.** What understanding of the project do they end up with after
-   working through it? This one is now asked by questionnaire and interview
-   rather than by a recall test — see `protocol.md` §5.6 for why, and what that
-   costs.
-4. **AI collaboration.** Does sgt change how they work with the AI assistant?
 
-We are not claiming sgt can do things git cannot. Both tools can handle all
-three of the study's requests. We are asking how well people perform with each.
+We are not claiming sgt can do things git cannot. Both tools can handle every
+card in the session, and the paper says so. We are asking whether people perform
+the same tasks faster, more safely, or with better foresight under each tool.
 
 ## How it works
 
@@ -40,21 +37,17 @@ compare each person against themselves.
 - **Two conditions.** Plain git (the control) and sgt (the treatment). Both
   halves include an AI coding assistant (Claude Code).
 - **Two projects** of similar size and shape, so nobody sees the same project
-  twice. The projects are small command-line apps — one for course registration,
+  twice. The projects are small command-line apps, one for course registration,
   one for conference scheduling.
 - **Counterbalanced order.** We vary which condition and which project each
   participant sees first, to control for learning and ordering effects.
-- **Three requests per half, twenty minutes.** The participant works on a
-  project they have never seen, as if the original maintainer has left and they
-  are picking it up. Before the clock starts they read a page describing what
-  the program does.
-- **Twelve participants**, about two hours each, of which about 100 minutes is
-  scheduled steps.
-
-There were six requests per half and forty-five minutes until 2026-08-17. Pilots
-ran out of time on three of them in both conditions, which is a floor rather
-than a measurement, so those three were cut. `protocol.md` §2 records which
-three, why, and what the study lost with them.
+- **Four cards per half, 24 minutes.** The cards walk from observing a defect,
+  through locating its cause and reversing it, to removing a feature. The
+  participant works on a project they have never seen, as if the original
+  maintainer has left and they are picking it up. Before the clock starts they
+  read a page describing what the program does.
+- **Twelve participants**, about 90 minutes each (`TOTAL_ESTIMATE_MIN` in
+  `web/src/study/flow.ts`, which the printed sheets are generated from).
 
 The two projects were built commit by commit over a scripted six-week history.
 That history contains, on purpose: one commit doing two unrelated things, one
@@ -66,7 +59,7 @@ how the projects were constructed.
 
 There are three roles:
 
-- **Participant.** Works through the three requests while thinking out loud.
+- **Participant.** Works through the four cards while thinking out loud.
   They see the handouts from `materials/`, rendered by the website.
 - **Facilitator.** Sets up the session, keeps time, observes, scores, and
   conducts the debrief interview. Their guide is `participant-materials.md`.
@@ -79,8 +72,8 @@ There are three roles:
 
 | File | What it contains |
 |---|---|
-| `README.md` | This page — start here |
-| `protocol.md` | The full pre-registration: every question, scale, measure, and figure |
+| `README.md` | This page, start here |
+| `protocol.md` | The full protocol: every question, scale, measure, and figure |
 | `running-the-study.md` | Step-by-step guide for running sessions via the website |
 | `participant-materials.md` | The facilitator's script and answer keys |
 | `answer-key.json` | Ground-truth data loaded into the web console for scoring |
@@ -103,11 +96,11 @@ machine) is in `scripts/study-bundle/`. Other scripts:
 | `make-study-bundle.sh` | Builds one of the four bundles (2 conditions x 2 projects) |
 | `make-practice-repo.sh` | Builds the throwaway warm-up repository for practice |
 | `setup-study-session.sh` | Prepares one workspace on a machine you control |
-| `score_study_repo.py` | Scores the removal request (checks whether the right code was removed) |
+| `score_study_repo.py` | Scores the removal cards (checks removal, collateral damage, and the behavioral probe via `--expect-behaviour`) |
 | `study-bundle/tests/test_telemetry.py` | End-to-end test for the recording pipeline (needs the emulator) |
 | `study-bundle/tests/test_shim.py` | Checks that each recorded event is attributed to whoever caused it |
 | `study-bundle/tests/test_doctor.py` | Checks that the setup check runs the session's environment, not the machine's |
-| `study/measure_reach_key.py` | Measures the answer for the two prediction trials by running the behaviours |
+| `study/measure_reach_key.py` | Measures the answer for the prediction trial by running the behaviours |
 
 ## Current status
 
@@ -116,8 +109,8 @@ machine) is in `scripts/study-bundle/`. Other scripts:
 - Both projects built and tested in both conditions. All tests pass.
 - Setup and bundling pipeline, with the sgt tool version pinned and recorded,
   and both editors' extensions pinned to fixed versions.
-- The closed-question key for request 1 and the rubrics for requests 2 and 3, in
-  `answer-key.json`.
+- The locate answers for the defect card and the rubrics for the removal cards,
+  in `answer-key.json`.
 - All handouts, this guide, and both task sheets.
 - The warm-up repository, rebuilt: sixteen commits over four modules, four
   named features, and a build-time check on every handle the practice sheets
@@ -125,30 +118,29 @@ machine) is in `scripts/study-bundle/`. Other scripts:
 - Three pilots run (two sgt, one git), which found twelve tool defects and four
   study-design problems. All the defects are fixed.
 - The website: consent flow, background questionnaire, the project brief, the
-  practice sheets, per-request timing with a pause the participant can take on
-  the three requests, the two prediction trials with their own two-stage clocks
-  and no pause, the three post-half questionnaires (NASA-TLX, UMUX-Lite, and
-  the history and agent block), the end-of-session comparison block, live
-  session monitoring, the scoring interface, and the three paper figures with
-  SVG export.
+  practice sheets, four task cards per half with per-card timing (observation,
+  locate, reversal with a prediction trial, staged removal), the three
+  post-half questionnaires (NASA-TLX, UMUX-Lite, and the twelve-item HLAC
+  block), the end-of-session comparison block, live session monitoring, the
+  scoring interface, and the three paper figures with SVG export.
 - The participant bundle: one-command setup, an assistant profile isolated from
   the participant's own account and billing, prompt and command recording from
   the terminal, the editor and the assistant alike, and an upload pipeline that
   cannot lose or double-count events.
-- Tests: 107 in `web/` covering the Firestore security rules, the analysis
-  pipeline, the chart components, and the schedule the welcome page promises.
-  28 of those are the security rules and need the Firestore emulator. Without
-  it they skip, but the run still comes back red, so a red `npm test` is worth
-  reading before assuming something broke. `web/README.md` says how to start the
-  emulator, including the part where Homebrew's Java is not on your PATH.
+- Tests in `web/` covering the Firestore security rules, the analysis pipeline,
+  the chart components, and the schedule the welcome page promises. 28 of those
+  are the security rules and need the Firestore emulator. Without it they skip,
+  but the run still comes back red, so a red `npm test` is worth reading before
+  assuming something broke. `web/README.md` says how to start the emulator,
+  including the part where Homebrew's Java is not on your PATH.
 - The bundle has three test files of its own, all in
   `scripts/study-bundle/tests/`: 36 checks on the recording pipeline end to end
   (needs the emulator), 13 on event attribution, and 8 on the setup check.
 
 ### Not ready (needed before participant 1)
 
-- Ethics approval and pre-registration on OSF (Open Science Framework).
-  `protocol.md` is the pre-registration text.
+- Ethics approval and registration on OSF (Open Science Framework).
+  `protocol.md` is the registration text.
 - Bundles built and deployed for the real cohort. `scripts/publish-study.sh`
   does the build, the deploy, and the check that the live site is serving what
   was just built, so this is one command rather than a series of uploads and
@@ -158,15 +150,14 @@ machine) is in `scripts/study-bundle/`. Other scripts:
   are good at finding defects but tell you nothing about whether a human can
   finish in the time given.
 - A pilot on the second project (confplan). Nobody has run it yet.
-- A decision on the `Sgt-Op` commit trailers, which make plain git history
-  harder to read in the sgt condition than in the git condition. See the end of
-  `pilot-03-findings.md`. Whatever is decided has to be disclosed in the paper.
 
-### Recently resolved
+## Other files in this directory
 
-The tool limitation that threatened the fourth research question (RQ4: AI
-collaboration) is fixed. sgt can now record a plan and check the agent's work
-against it. It used to match none of the plan steps even when the work
-implemented the plan exactly, which would have forced us to narrow the question.
-It now matches every step of a plan built as stated. See finding O11 in
-`pilot-01-findings.md`.
+- `remote-setup.md` -- how to set up a participant's laptop, API keys, and
+  Claude Code.
+- `testbed-spec.md` -- how the two study projects were built.
+- `build-log-*.md` -- the ground truth for each project's history.
+- `pilot-01-findings.md`, `pilot-02-findings.md`, `pilot-03-findings.md` --
+  what the pilot sessions found.
+- `sgt-findings.md` -- the running list of known sgt problems discovered during
+  the study.

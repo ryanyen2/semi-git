@@ -1,4 +1,4 @@
-// The three requests, in both projects.
+// The four cards, in both projects.
 //
 // Wording is the participant's handout, verbatim. The confplan text is the
 // coursecraft text with the nouns swapped per the isomorphism map in
@@ -6,42 +6,40 @@
 // student->attendee, enroll->register, drop->unregister, instructor->speaker,
 // timetable->program, department->track, prerequisite->series dependency.
 //
-// Nothing here names a git or an sgt verb. The request states a goal in product
+// Nothing here names a git or an sgt verb. A card states a goal in product
 // terms and the participant chooses the mechanism, which is the whole point:
 // naming the verb would tell them which tool we expect them to reach for.
 //
-// Three requests, not six, and twenty minutes a half rather than forty-five.
-// The cut set was: a second regression-localization request, a build-two-
-// alternatives-and-discard-one request, and a history-surgery request. Pilots
-// ran out of time on all three, which produces a floor rather than a
-// measurement: a request nobody finishes in either condition cannot separate
-// the conditions. What is left is one question about the past and one change to
-// the present with a correction on top of it, which is the smallest set that
-// still exercises both claims. Finding the thing to change is most of the work
-// in the second request, so search is measured twice and paid for once.
+// WHAT THIS BLOCK MEASURES, AND WHY IT IS SHAPED THIS WAY
+//
+// The claim is not that intent-aligned history helps you understand a codebase.
+// It is that it lets you *reverse* work an agent did, at the unit the work was
+// done in. So nothing here is a comprehension quiz. Every card ends in an
+// observable state of the running program, and the two that matter are scored
+// by what the program does afterwards, not by what the participant knew.
+//
+// Control is spent at the two ends and withheld in the middle:
+//
+//   - Seeing the defect is prescribed, down to the command line. Whether
+//     somebody thinks to run the program is not the claim, it is variance.
+//   - Locating the work and reversing it are wide open. That *is* the claim,
+//     and telling them where to look would answer the question for them.
+//   - Verifying is prescribed again, for the same reason as seeing.
+//
+// Every prescribed step is a script that ships in the workspace, so the two
+// arms see byte-identical output and nobody's result depends on their typing.
+// The sheets print what each script runs, so nothing is hidden behind it.
+//
+// The defect the block opens on is real and already in both repositories
+// (episode 17 in docs/study/testbed-spec.md). A human fixed back-to-back slots
+// in episode 13; three episodes later an agent "normalised slot comparison",
+// added a second comparison helper one character different from the first, and
+// repointed both callers at it. The commit message does not mention conflicts.
+// The test that guards the behaviour still passes, because it calls the helper
+// the agent left behind rather than the one the program now uses. Green suite,
+// broken program -- which is why the first card runs the program and not pytest.
 
 import type { Project, RequestId } from '../lib/types'
-
-/**
- * One closed question with a fixed option list.
- *
- * Closed, not free text. Pilots wrote two or three sentences that had to be
- * graded against a rubric by hand, under time pressure, at the exact moment
- * they had just spent their budget -- so the answers were short, hedged and
- * hard to score, and the writing itself became part of what we were measuring.
- * A fixed list measures whether they found the answer, which is the thing the
- * request is about.
- *
- * There is no `correct` field here on purpose. This file is compiled into the
- * bundle the participant's browser downloads, so anything in it is readable
- * from devtools. The key lives in docs/study/answer-key.json, which the
- * experimenter loads into the console by hand.
- */
-export interface ChoiceQuestion {
-  id: string
-  prompt: string
-  options: Record<Project, string[]>
-}
 
 /**
  * One thing a person does with the app, and the command that does it.
@@ -185,18 +183,19 @@ export const BEHAVIOURS: Behaviour[] = [
   },
 ]
 
+
 /**
- * A reach trial: one named piece of work, the same twelve behaviours, answered
- * twice.
+ * A reach prediction, attached to the card that performs a destructive
+ * operation rather than standing on its own.
  *
- * Twice because the difference is the measurement. The first answer comes from
- * the representation alone and the second after checking, so `checked - blind` is
- * what the representation bought -- which is a within-participant difference, and
- * needs no rubric and no second coder.
+ * It used to be two four-minute cards of its own, answered blind and then after
+ * looking. The looking stage is now the operation itself: the participant ticks
+ * what they think their revert will affect, runs it, and finds out. That costs
+ * one card instead of two, and the second answer is grounded in something that
+ * happened rather than in a second read of the same screen.
  *
- * Nothing here is executed and nothing is modified, so the trials are independent
- * of each other and of the request that follows, and the project needs no reset
- * between them.
+ * `checked - blind` is still the measurement, still a within-participant
+ * difference, and still needs no rubric and no second coder.
  */
 export interface ReachTrial {
   /** The work, in product terms. Names no git or sgt verb. */
@@ -204,52 +203,64 @@ export interface ReachTrial {
   /**
    * Seconds for the blind stage, hard, auto-submitting whatever is ticked.
    *
-   * Short on purpose. `blind` is meant to measure what the representation makes
-   * available at a glance, and given three minutes a participant stops reading
-   * and starts reasoning from what they already know about software -- which is a
-   * real skill, and not the one under test. A minute is enough to read a feature
-   * list or a page of log and not enough to derive a call graph from memory.
-   * Announcing the limit before the stage opens is part of it: a surprise cutoff
-   * would measure typing speed.
+   * Short on purpose. `blind` measures what the representation makes available
+   * at a glance; given three minutes a participant stops reading and starts
+   * reasoning from what they already know about software, which is a real skill
+   * and not the one under test. Announcing the limit before the stage opens is
+   * part of it: a surprise cutoff would measure typing speed.
    */
   blindSec: number
-  /**
-   * Seconds for the checked stage. Advisory rather than hard: the point of the
-   * stage is that they got to the truth, and cutting somebody off two clicks
-   * short would record a wrong answer they did not hold.
-   *
-   * `blindSec + checkedSec` has to equal the card's cap, or the card clock and
-   * the stage clocks tell the participant two different things about how long
-   * they have. A test holds them together.
-   */
+  /** Seconds for the second answer, after the operation has run. Advisory. */
   checkedSec: number
-  /**
-   * One line of orientation. Deliberately honest about how the work looks rather
-   * than how far it reaches: the export really does read most of the store, and
-   * the slot comparison really is one helper plus one report. Whether that
-   * appearance matches the truth is the thing being measured.
-   */
-  about: Record<Project, string>
+}
+
+/**
+ * Commands the participant is told to run exactly as written.
+ *
+ * `script` is what they type. `does` is what the sheet prints underneath it, so
+ * a prescribed step is never a black box -- a participant who wants to know
+ * what they just ran can read it, and a facilitator can check the output is the
+ * output everyone else got.
+ */
+export interface PrescribedRun {
+  script: Record<Project, string>
+  does: Record<Project, string[]>
 }
 
 export interface RequestSpec {
   id: RequestId
   /** Requests sharing a card share one timer. */
   card: string
+  /** "Step 1", "Step 4a". Written out rather than derived from the id. */
+  heading: string
   title: Record<Project, string>
   body: Record<Project, string>
   /** Minutes. Requests on the same card share the first one's cap. */
   capMin: number | null
   optional: boolean
-  /** Closed questions to answer. Empty for a pure coding request. */
-  choices: ChoiceQuestion[]
-  /** Asks for a confidence rating. Only meaningful alongside `choices`. */
-  wantsConfidence: boolean
-  /** A worked example of the kind of question being asked. Shown in a callout. */
-  tip?: Record<Project, string>
-  /** Present on the reach trials, absent on everything else. */
+  /** A prescribed step. Absent on the open ones, which is most of them. */
+  run?: PrescribedRun
+  /**
+   * A free-text box, recorded and never scored.
+   *
+   * Pilots graded prose written under time pressure against a rubric, and two
+   * graders differed on it more than the two conditions differed from each
+   * other, so the writing became part of what was measured. These boxes exist
+   * so the experimenter can see the participant understood what they were
+   * looking at, and so the interview has something to quote. The scored
+   * measures all come from what the program does afterwards.
+   */
+  note?: Record<Project, string>
+  /**
+   * A box holding one identifier -- a commit hash under git, a feature name or
+   * id under sgt -- compared against the key after the session rather than in
+   * the browser. Free text because the two arms name work differently and
+   * offering a list would tell each arm what shape of answer to look for.
+   */
+  identify?: Record<Project, string>
+  /** Present on the card that reverts. Absent everywhere else. */
   reach?: ReachTrial
-  /** What the request is testing. Never shown to the participant. */
+  /** What the card is testing. Never shown to the participant. */
   archetype: string
   serves: string
 }
@@ -257,7 +268,6 @@ export interface RequestSpec {
 export interface TaskCard {
   id: string
   title: string
-  /** "Request 1", or "Requests 2 and 3" where a card carries two. */
   heading: string
   capMin: number | null
   requests: RequestSpec[]
@@ -278,300 +288,292 @@ export const SCENARIO: Record<Project, { app: string; maintainer: string; blurb:
   },
 }
 
-/**
- * The reach trials' shared instructions, identical in both projects apart from
- * the app name. One copy, so the two trials cannot drift into asking subtly
- * different questions.
- */
-const BLIND_THEN_CHECKED: Record<Project, string> = {
-  coursecraft: `Below is one piece of work from this project's history.
-
-Under it are twelve things people do with coursecraft. Tick every one that runs
-through the code this piece of work added, the ones you would have to check if
-somebody took the work out.
-
-You answer twice. First from what you can already see, with **one minute** on the
-clock. Then again after checking properly, with **three minutes**. You do not have
-to change anything here, and nothing is graded on speed.`,
-  confplan: `Below is one piece of work from this project's history.
-
-Under it are twelve things people do with confplan. Tick every one that runs
-through the code this piece of work added, the ones you would have to check if
-somebody took the work out.
-
-You answer twice. First from what you can already see, with **one minute** on the
-clock. Then again after checking properly, with **three minutes**. You do not have
-to change anything here, and nothing is graded on speed.`,
-}
-
 export const REQUESTS: RequestSpec[] = [
   {
-    id: 'r1',
+    id: 'd1',
     card: 'c1',
+    heading: 'Step 1',
+    capMin: 3,
+    optional: false,
+    archetype: 'observe an agent-introduced defect in the running program',
+    serves: 'grounding for steps 2 and 3; observation only',
+    title: {
+      coursecraft: 'Two classes back to back',
+      confplan: 'Two sessions back to back',
+    },
+    body: {
+      coursecraft: `A support ticket came in this morning:
+
+> A student is trying to take two sections of CS101 — one Monday 09:00–10:30,
+> the other Monday 10:30–12:00. The system says they clash. They don't overlap.
+> The room audit is doing the same thing to two bookings that run back to back
+> in one room.
+
+Run the script below. It works on a scratch copy of the data, so nothing you do
+here touches the project.
+
+Then say in your own words what is wrong and what the program should do instead.
+There is no expected wording and this is not scored.`,
+      confplan: `A support ticket came in this morning:
+
+> An attendee is trying to register for two sessions of T1 — one Saturday
+> 09:00–10:30, the other Saturday 10:30–12:00. The system says they clash. They
+> don't overlap. The room audit is doing the same thing to two bookings that run
+> back to back in one room.
+
+Run the script below. It works on a scratch copy of the data, so nothing you do
+here touches the project.
+
+Then say in your own words what is wrong and what the program should do instead.
+There is no expected wording and this is not scored.`,
+    },
+    run: {
+      script: {
+        coursecraft: './show-the-problem.sh',
+        confplan: './show-the-problem.sh',
+      },
+      does: {
+        coursecraft: [
+          'makes a scratch store with one course and two sections, Mon 09:00–10:30 and Mon 10:30–12:00, in the same room',
+          'enrols one student in the first section, then tries the second',
+          'runs the room audit over the two bookings',
+          'runs the project’s own tests for conflicts and rooms',
+        ],
+        confplan: [
+          'makes a scratch store with one talk and two sessions, Sat 09:00–10:30 and Sat 10:30–12:00, in the same room',
+          'registers one attendee for the first session, then tries the second',
+          'runs the room audit over the two bookings',
+          'runs the project’s own tests for clashes and rooms',
+        ],
+      },
+    },
+    note: {
+      coursecraft:
+        'What is wrong, and what should the program do instead? A sentence or two is plenty.',
+      confplan:
+        'What is wrong, and what should the program do instead? A sentence or two is plenty.',
+    },
+  },
+  {
+    id: 'd2',
+    card: 'c2',
+    heading: 'Step 2',
     capMin: 5,
     optional: false,
-    wantsConfidence: true,
-    archetype: 'provenance in a tangled commit',
-    serves: 'RQ1 / C1',
+    archetype: 'localise the responsible unit of work from an observed symptom',
+    serves: 'C1 -- the locate measure',
     title: {
-      coursecraft: 'What changed course search?',
-      confplan: 'What changed talk search?',
+      coursecraft: 'Where did that come from?',
+      confplan: 'Where did that come from?',
     },
     body: {
-      coursecraft: `A student support ticket says this:
+      coursecraft: `Something in this project's past made the program behave that way. Find out which
+piece of work it was.
 
-> Course search lists section times in a format I don't recognise, like
-> \`[Mon 09:00-10:30, Wed 13:00-14:30]\`. Around the same time the app started
-> accepting lowercase day names, like \`mon 09:00-10:30\`.
+**How you do that is entirely up to you.** This is the part we are watching, so
+there is no script and no suggested route.
 
-Go and find out what actually happened, then answer the three questions below.`,
-      confplan: `A committee support ticket says this:
+When you have it, put its identifier in the box: a commit hash, a feature name,
+an id — whatever your setup calls the thing you found. If you are not certain,
+write down what you have and say you are not certain. That is a real answer and
+it is better than a guess.`,
+      confplan: `Something in this project's past made the program behave that way. Find out which
+piece of work it was.
 
-> Talk search lists session times in a format I don't recognise, like
-> \`[Mon 09:00-10:30, Tue 13:00-14:30]\`. Around the same time the app started
-> accepting lowercase day names, like \`mon 09:00-10:30\`.
+**How you do that is entirely up to you.** This is the part we are watching, so
+there is no script and no suggested route.
 
-Go and find out what actually happened, then answer the three questions below.`,
+When you have it, put its identifier in the box: a commit hash, a feature name,
+an id — whatever your setup calls the thing you found. If you are not certain,
+write down what you have and say you are not certain. That is a real answer and
+it is better than a guess.`,
     },
-    tip: {
-      coursecraft: `A ticket like this is really three questions. Someone reports that
-something looks different. You want to know **which piece of work** changed it,
-**when** that work landed, and **what else** the same piece of work touched on
-its way past, because the thing that broke is often not the thing the change
-was for.
-
-You do not have to answer in that order, and there is no expected route. Read
-the code, read the history, ask your assistant, or all three.`,
-      confplan: `A ticket like this is really three questions. Someone reports that
-something looks different. You want to know **which piece of work** changed it,
-**when** that work landed, and **what else** the same piece of work touched on
-its way past, because the thing that broke is often not the thing the change
-was for.
-
-You do not have to answer in that order, and there is no expected route. Read
-the code, read the history, ask your assistant, or all three.`,
+    identify: {
+      coursecraft: 'The piece of work that caused it',
+      confplan: 'The piece of work that caused it',
     },
-    choices: [
-      {
-        id: 'q1',
-        prompt: 'Were the two things in the ticket one piece of work, or two?',
-        options: {
-          coursecraft: [
-            'One piece of work. Both arrived together.',
-            'Two, days apart.',
-            'Two, on the same day.',
-            'I could not tell.',
-          ],
-          confplan: [
-            'One piece of work. Both arrived together.',
-            'Two, days apart.',
-            'Two, on the same day.',
-            'I could not tell.',
-          ],
-        },
-      },
-      {
-        id: 'q2',
-        prompt: 'When did it land?',
-        options: {
-          coursecraft: [
-            'The week of 29 June',
-            'The week of 6 July',
-            'The week of 20 July',
-            'The week of 3 August',
-            'I could not tell.',
-          ],
-          confplan: [
-            'The week of 29 June',
-            'The week of 6 July',
-            'The week of 20 July',
-            'The week of 3 August',
-            'I could not tell.',
-          ],
-        },
-      },
-      {
-        id: 'q3',
-        prompt: 'Did anything else come along with it that the change was not advertised as doing?',
-        options: {
-          coursecraft: [
-            'No, just the search command and its tests.',
-            'Yes, a change to how day names are read when a slot is parsed.',
-            'Yes, a change to how capacity limits are enforced.',
-            'Yes, a change to the export format.',
-            'I could not tell.',
-          ],
-          confplan: [
-            'No, just the search command and its tests.',
-            'Yes, a change to how day names are read when a slot is parsed.',
-            'Yes, a change to how capacity limits are enforced.',
-            'Yes, a change to the export format.',
-            'I could not tell.',
-          ],
-        },
-      },
-    ],
   },
   {
-    id: 'f1',
-    card: 'f1',
-    capMin: 4,
+    id: 'd3',
+    card: 'c3',
+    heading: 'Step 3',
+    capMin: 6,
     optional: false,
-    wantsConfidence: false,
-    archetype: 'reach prediction, target narrower than it looks',
-    serves: 'RQ1 / C1 / U1-U2',
+    archetype: 'reverse one unit of agent work; reach predicted before and after',
+    serves: 'C2 -- reversal outcome, collateral damage, and foresight',
     title: {
-      coursecraft: 'What does the timetable export reach?',
-      confplan: 'What does the agenda export reach?',
+      coursecraft: 'Take it back out',
+      confplan: 'Take it back out',
     },
     body: {
-      coursecraft: BLIND_THEN_CHECKED.coursecraft,
-      confplan: BLIND_THEN_CHECKED.confplan,
+      coursecraft: `Take that piece of work out, so back-to-back sections behave the way you said they
+should. Everything else in the program has to keep working.
+
+**Before you run anything that changes the project**, tick what you think it will
+affect. One minute, then it submits itself.
+
+You are not being graded on this and you will not be shown an answer. You are
+about to find out for yourself.
+
+Then do it, and run \`./check.sh\` to see where you ended up.`,
+      confplan: `Take that piece of work out, so back-to-back sessions behave the way you said they
+should. Everything else in the program has to keep working.
+
+**Before you run anything that changes the project**, tick what you think it will
+affect. One minute, then it submits itself.
+
+You are not being graded on this and you will not be shown an answer. You are
+about to find out for yourself.
+
+Then do it, and run \`./check.sh\` to see where you ended up.`,
     },
     reach: {
       work: {
         coursecraft:
-          'The timetable export, the work that added the command writing a timetable or the catalog out as Markdown or CSV.',
+          'The piece of work you found in step 2 — the one that changed how two time ranges are compared.',
         confplan:
-          'The agenda export, the work that added the command writing an agenda or the program out as Markdown or CSV.',
-      },
-      about: {
-        coursecraft:
-          'To do its job it reads courses, sections, rooms, students and time slots.',
-        confplan:
-          'To do its job it reads talks, sessions, rooms, attendees and time slots.',
+          'The piece of work you found in step 2 — the one that changed how two time ranges are compared.',
       },
       blindSec: 60,
-      checkedSec: 180,
+      checkedSec: 60,
     },
-    choices: [],
+    run: {
+      script: { coursecraft: './check.sh', confplan: './check.sh' },
+      does: {
+        coursecraft: [
+          'repeats step 1’s two back-to-back cases and prints what the program says now',
+          'runs the whole test suite and prints which feature areas pass',
+          'starts the command line tool, because a suite can pass in a program that will not start',
+        ],
+        confplan: [
+          'repeats step 1’s two back-to-back cases and prints what the program says now',
+          'runs the whole test suite and prints which feature areas pass',
+          'starts the command line tool, because a suite can pass in a program that will not start',
+        ],
+      },
+    },
   },
   {
-    id: 'f2',
-    card: 'f2',
-    capMin: 4,
+    id: 'w1',
+    card: 'c4',
+    heading: 'Step 4a',
+    capMin: 10,
     optional: false,
-    wantsConfidence: false,
-    archetype: 'reach prediction, target broader than it looks',
-    serves: 'RQ1 / C1 / U1-U2',
+    archetype: 'see the removal target working before removing it',
+    serves: 'grounding for 4b and 4c',
     title: {
-      coursecraft: 'What does the time-comparison change reach?',
-      confplan: 'What does the time-comparison change reach?',
+      coursecraft: 'See what the waitlist does today',
+      confplan: 'See what the queue does today',
     },
     body: {
-      coursecraft: BLIND_THEN_CHECKED.coursecraft,
-      confplan: BLIND_THEN_CHECKED.confplan,
+      coursecraft: `The next request is about the waitlist. Before it, see what the waitlist actually
+does, so "gone" means something specific rather than something you have to guess
+at.
+
+The three parts of this card share one clock. Read all three before you start.`,
+      confplan: `The next request is about the queue for full sessions. Before it, see what the
+queue actually does, so "gone" means something specific rather than something you
+have to guess at.
+
+The three parts of this card share one clock. Read all three before you start.`,
     },
-    reach: {
-      work: {
-        coursecraft:
-          'The work that made two time ranges compare the same way everywhere, so a section ending exactly when another begins is treated consistently.',
-        confplan:
-          'The work that made two time ranges compare the same way everywhere, so a session ending exactly when another begins is treated consistently.',
+    run: {
+      script: {
+        coursecraft: './show-the-waitlist.sh',
+        confplan: './show-the-waitlist.sh',
       },
-      about: {
-        coursecraft: 'It is small: one comparison helper, and one report built on it.',
-        confplan: 'It is small: one comparison helper, and one report built on it.',
+      does: {
+        coursecraft: [
+          'fills a one-seat section and puts two students in the queue behind it',
+          'shows the queue in order',
+          'drops the enrolled student, so a seat frees up',
+          'shows the freed seat being filled from the queue, and the notice that goes out',
+        ],
+        confplan: [
+          'fills a one-seat session and puts two attendees in the queue behind it',
+          'shows the queue in order',
+          'cancels the registered attendee, so a seat frees up',
+          'shows the freed seat being filled from the queue, and the notice that goes out',
+        ],
       },
-      blindSec: 60,
-      checkedSec: 180,
     },
-    choices: [],
   },
   {
-    id: 'r2',
-    card: 'c2',
-    capMin: 15,
+    id: 'w2',
+    card: 'c4',
+    heading: 'Step 4b',
+    capMin: null,
     optional: false,
-    choices: [],
-    wantsConfidence: false,
-    archetype: 'entangled removal',
-    serves: 'RQ2 / C2',
+    archetype: 'remove a feature and everything built on top of it',
+    serves: 'C2 -- removal completeness and collateral damage',
     title: {
       coursecraft: 'Take the waitlist out',
-      confplan: 'Take the waitlist out',
+      confplan: 'Take the queue out',
     },
     body: {
       coursecraft: `The department has decided that waitlists are the registrar's job now. For the
-next release the waitlist has to be gone. That means students can no longer join
-a waitlist, nobody is promoted off it when a seat frees up, and the seat notices
-stop.
+next release the waitlist has to be gone: joining a queue, the queue itself, the
+automatic filling of a freed seat, and the notices that go with it.
 
-Everything else has to keep working exactly as it does today. That includes
-enrolling, capacity limits, conflict checks, course search, exports, statistics,
-and the room audit. Back to back sections are legal and must stay legal.
+Everything else in the program has to keep working.
 
-The test suite is your safety net. When you think you are done, \`pytest -q\`
-should pass, except for the waitlist's own tests, which may be gone.`,
-      confplan: `The committee has decided that waitlists are the registration desk's job now. For
-the next release the waitlist has to be gone. That means attendees can no longer
-join a waitlist, nobody is promoted off it when a seat frees up, and the seat
-notices stop.
+If you run out of clock, stop where you are. **Not finishing is a normal
+outcome here and it is recorded as one.** It is not a mark against you, and we
+would rather see where you got to than have you rush the last step.`,
+      confplan: `The committee has decided that queues are the registration desk's job now. For
+the next release the queue has to be gone: joining a queue, the queue itself, the
+automatic filling of a freed seat, and the notices that go with it.
 
-Everything else has to keep working exactly as it does today. That includes
-registering, capacity limits, clash checks, talk search, exports, statistics,
-and the room audit. Adjacent sessions are legal and must stay legal.
+Everything else in the program has to keep working.
 
-The test suite is your safety net. When you think you are done, \`pytest -q\`
-should pass, except for the waitlist's own tests, which may be gone.`,
-    },
-    tip: {
-      coursecraft: `Most of this request is finding the right thing, not removing it.
-The waitlist was not built in one go and other work landed on top of it, so the
-first job is working out how far it reaches.`,
-      confplan: `Most of this request is finding the right thing, not removing it.
-The waitlist was not built in one go and other work landed on top of it, so the
-first job is working out how far it reaches.`,
+If you run out of clock, stop where you are. **Not finishing is a normal
+outcome here and it is recorded as one.** It is not a mark against you, and we
+would rather see where you got to than have you rush the last step.`,
     },
   },
   {
-    id: 'r3',
-    card: 'c2',
+    id: 'w3',
+    card: 'c4',
+    heading: 'Step 4c',
     capMin: null,
     optional: false,
-    choices: [],
-    wantsConfidence: false,
-    archetype: 'correction under time pressure',
-    serves: 'RQ2 / C2',
+    archetype: 'restore one part of what was just removed, under time pressure',
+    serves: 'C2 -- selective restore',
     title: {
       coursecraft: 'Drops still need to work',
-      confplan: 'Unregistering still needs to work',
+      confplan: 'Cancelling still needs to work',
     },
     body: {
-      coursecraft: `One correction to the last request. Students must still be able to drop a
-section themselves. Bring the drop command back, without any waitlist promotion
-happening when a seat frees up.`,
-      confplan: `One correction to the last request. Attendees must still be able to unregister
-from a session themselves. Bring the unregister command back, without any
-waitlist promotion happening when a seat frees up.`,
+      coursecraft: `One correction to the last request. Students must still be able to drop a section
+themselves. Bring dropping back, with no automatic filling of the freed seat when
+it happens.
+
+When you are done, run \`./check.sh\` once more.`,
+      confplan: `One correction to the last request. Attendees must still be able to cancel a
+registration themselves. Bring cancelling back, with no automatic filling of the
+freed seat when it happens.
+
+When you are done, run \`./check.sh\` once more.`,
     },
   },
 ]
 
 /**
- * Undefined, not a throw, for an id this study no longer asks.
+ * Look up a request, or undefined.
  *
- * The dashboard resolves specs from the participant's STORED request documents,
- * not from `REQUESTS`, and pilots 01 to 03 ran the six-request design -- so
- * their collections still hold `r4`, `r5` and `r6`. Throwing took the whole
- * "Requests & scoring" tab down mid-render whenever one was opened, and took
- * r1 to r3 with it. `RequestId` still names all six, so nothing catches this at
- * compile time either.
+ * Undefined is a real answer, not a defect. The experimenter dashboard renders
+ * whatever request documents a participant's collection holds, and the pilots
+ * ran earlier designs -- so their collections still hold `r1` to `r6`, `f1` and
+ * `f2`. Throwing here took the whole "Requests & scoring" tab down mid-render
+ * whenever one was opened, and took the live requests down with it.
  */
 export function requestById(id: RequestId): RequestSpec | undefined {
   return REQUESTS.find((r) => r.id === id)
 }
 
-/**
- * What the participant calls one request: "Request 2", "Prediction 1".
- *
- * Requests 2 and 3 share a card, and the card is headed "Requests 2 and 3" while
- * each request under it was headed by its title alone. Request 3's own first line
- * is "One correction to the last request", which leaves a participant working out
- * from the prose which of the two headings they are looking at.
- */
+/** What the participant calls one step: "Step 1", "Step 4b". */
 export function requestHeading(r: RequestSpec): string {
-  return `${r.reach ? 'Prediction' : 'Request'} ${r.id.slice(1)}`
+  return r.heading
 }
 
 const uncapitalise = (t: string) => t.charAt(0).toLowerCase() + t.slice(1)
@@ -585,26 +587,18 @@ export function taskCards(project: Project): TaskCard[] {
     byCard.set(r.card, list)
   }
   return [...byCard.entries()].map(([id, requests]) => {
-    // Numbered by the request, not by the card. Requests 2 and 3 share one
-    // clock, so they share one card, and calling that card "Request 2" would
-    // make the next one "Request 3" while its own text talks about request 4.
-    //
-    // The reach trials are numbered in their own series and called something
-    // else. Folding them into the request numbering would move the removal from
-    // "request 2" to "request 4" in the participant's view while the answer key,
-    // the rubrics and the facilitator sheet all still say R2 -- and `id.slice(1)`
-    // would have labelled the first trial "Request 1" twice over.
-    const noun = requests[0].reach ? 'Prediction' : 'Request'
-    const numbers = requests.map((r) => r.id.slice(1))
+    // The card's heading spans its requests: "Step 1", or "Steps 4a to 4c".
+    // Numbering the card separately from its steps was how request 3 ended up
+    // opening with "One correction to the last request" under a heading that
+    // gave it nothing to be a correction to.
+    const first = requests[0].heading
+    const last = requests[requests.length - 1].heading
     return {
       id,
-      heading:
-        numbers.length === 1
-          ? `${noun} ${numbers[0]}`
-          : `${noun}s ${numbers.slice(0, -1).join(', ')} and ${numbers[numbers.length - 1]}`,
+      heading: requests.length === 1 ? first : `${first} to ${last.replace(/^Step /, '')}`,
       // Every title is written to open a heading, so joining them mid-sentence
-      // capitalised the second one: "Take the waitlist out, then Unregistering
-      // still needs to work".
+      // capitalised the second one: "Take the waitlist out, then Drops still
+      // need to work".
       title:
         requests.length === 1
           ? requests[0].title[project]
@@ -621,28 +615,20 @@ export function taskCards(project: Project): TaskCard[] {
  * Minutes a half's task block is allowed, and what the participant sees their
  * elapsed time measured against.
  *
- * 5 for the provenance question, 4 for each reach trial, 15 shared by the removal
- * and its correction. The eight minutes the reach trials add are added to the
- * session rather than taken off anything: setup is 10 minutes in the first half
- * and 5 in the second, so neither half's setup can give up 8, and pilots hit the
- * 15-minute cap on the removal in both conditions, so taking time off that would
- * have measured the cap rather than the condition. The session is 129 minutes of
- * work and the welcome page asks for two and a half hours.
- *
- * Summed rather than written down, because it was written down before and a
- * request's cap could change without it.
+ * 3 to see the defect, 5 to locate it, 6 to reverse it, 10 shared by the removal
+ * and its correction. Summed rather than written down, because it was written
+ * down before and a card's cap could change without it.
  */
 export const BLOCK_CAP_MIN = REQUESTS.reduce((sum, r) => sum + (r.capMin ?? 0), 0)
 
-/** The reach trials, in presentation order before counterbalancing. */
+/** The steps carrying a reach prediction. One, on the card that reverts. */
 export const REACH_TRIALS = REQUESTS.filter(
   (r): r is RequestSpec & { reach: ReachTrial } => r.reach !== undefined,
 )
 
 /**
- * Requests that are not reach trials, i.e. the ones the participant is told to
- * expect as "requests". Counted rather than written down: the task preamble used
- * to say "three requests, about twenty minutes in total" and stayed that way
- * after the two reach trials and their eight minutes were added.
+ * Cards the participant is told to expect. Counted rather than written down:
+ * the task preamble used to say "three requests, about twenty minutes in total"
+ * and stayed that way through two redesigns of what was under it.
  */
-export const REQUEST_COUNT = REQUESTS.length - REACH_TRIALS.length
+export const CARD_COUNT = new Set(REQUESTS.map((r) => r.card)).size
