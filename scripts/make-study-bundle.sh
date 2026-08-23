@@ -72,6 +72,25 @@ cp -R "$BUNDLE_SRC/telemetry" "$staging/telemetry"
 cp "$BUNDLE_SRC/install/setup.sh" "$staging/install/setup.sh"
 chmod +x "$staging/install/setup.sh" "$staging"/bin/study-*
 
+# The three prescribed steps the task cards name, beside the project because
+# each one starts with `cd "$(dirname "$0")"` and reads the project's own
+# `pytest.ini` and `.venv`. Card 1 is the sentence "run ./show-the-problem.sh",
+# so a bundle without these is a session that stops on its first card -- and the
+# remote bundle is the default path, not the exception.
+#
+# Both conditions get byte-identical copies. That is the point of prescribing
+# the step: the arms are compared on what they could do about the defect, not on
+# whether they typed the same eight commands to see it.
+for s in show-the-problem check show-the-waitlist; do
+    cp "$SGT_SOURCE/scripts/study/task-scripts/$s.sh" "$staging/work/$s.sh"
+    chmod +x "$staging/work/$s.sh"
+done
+
+# The project brief travels too. It is read once on the website with no clock
+# running, and then wanted again mid-card -- "what was it allowed to refuse to
+# do?" -- at which point the only copy is behind the card being timed.
+cp "$SGT_SOURCE/docs/study/materials/03-project-$project.md" "$staging/project.md"
+
 # A key from a previous build must never travel in a bundle.
 rm -f "$staging/work/.env"
 rm -rf "$staging/work/.venv" "$staging/telemetry/state.json" \
