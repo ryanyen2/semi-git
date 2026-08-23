@@ -81,6 +81,19 @@ chmod +x "$staging/install/setup.sh" "$staging"/bin/study-*
 # Both conditions get byte-identical copies. That is the point of prescribing
 # the step: the arms are compared on what they could do about the defect, not on
 # whether they typed the same eight commands to see it.
+#
+# They are instruments, not project content, so git must not see them. Excluded
+# rather than merely untracked because `work/` is a repository that sgt mines:
+# the dirty pass reads the working tree, so three untracked shell files become
+# three symbols carrying an op and sitting in no frontier, and the integrity
+# gate below correctly calls that graph degenerate and refuses to ship it. In
+# the git arm nothing crashes, but `git status` opens on three files the
+# participant did not write, in a task about telling their own work from someone
+# else's. `.git/info/exclude` rather than a committed `.gitignore` for the same
+# reason the practice repo uses it: a tracked file added here would rewrite the
+# sha of every commit the study's answer key names.
+printf '/show-the-problem.sh\n/check.sh\n/show-the-waitlist.sh\n' \
+    >> "$staging/work/.git/info/exclude"
 for s in show-the-problem check show-the-waitlist; do
     cp "$SGT_SOURCE/scripts/study/task-scripts/$s.sh" "$staging/work/$s.sh"
     chmod +x "$staging/work/$s.sh"
