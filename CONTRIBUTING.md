@@ -52,12 +52,18 @@ there rather than reaching a user.
 A release is one tag push. Everything else is automated in
 [.github/workflows/release.yml](.github/workflows/release.yml).
 
-First, bump the version in all three places. They have to match, because the release run compares them
-against the tag and stops if they disagree.
+First, bump the version in all four places. The first three have to match, because the release run
+compares them against the tag and stops if they disagree.
 
 - `pyproject.toml`, the `version` field.
 - `editor/vscode/package.json`, the `version` field.
 - `sgt/__init__.py`, the `__version__` field.
+- `editor/vscode/package-lock.json`, twice: the top-level `version` and the one under `packages[""]`.
+
+The lock file is the one nothing checks. It is not in `check-version`, so it drifts silently, and it
+was still on 0.1.0 two releases after the other three moved. `npm ci` writes the version it finds
+there into the packed extension, so a stale lock ships a `.vsix` whose manifest disagrees with the
+tag it was built from.
 
 Then commit, tag, and push.
 
