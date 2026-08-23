@@ -921,3 +921,32 @@ def test_reverting_a_save_sha_answers_json_consumers_with_the_same_features(tmp_
     assert rc == 2 and view["ok"] is False
     assert "save" in view["message"]
     assert view["candidates"], f"no feature offered to a JSON consumer: {view}"
+
+
+@pytest.mark.parametrize("verb", ["revert", "restore"])
+def test_an_out_of_range_checkpoint_index_reports_the_range_not_an_api_key(
+        tmp_path, capsys, monkeypatch, verb):
+    """The same defect family as F94/F91, on the one handle the practice sheet types verbatim.
+    `<feature>@<n>` is a deterministic reference, but `resolve_checkpoint` returns a bare `None`
+    for an index past the feature's last chapter, so the ladder fell through to the NL rung and
+    answered `could not resolve ... set OPENAI_API_KEY to enable natural-language targets`. No key
+    conjures a chapter that does not exist, and the feature the user named resolved perfectly well:
+    the answer they can act on is how many chapters it has."""
+    _no_llm(monkeypatch)
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    get(repo)
+    from sgt.api import segments_view
+
+    feat = _revertable_feature(repo)
+    assert feat is not None
+    segs = [s for s in segments_view(repo) if s["feature_id"] == feat]
+    assert segs, "the spanning lane should cut at least one chapter"
+    past_the_end = len(segs) + 3
+
+    rc = _in(repo, [verb, f"{feat}@{past_the_end}", "--yes"])
+    out = capsys.readouterr().out
+    assert rc != 0, f"{verb} of a nonexistent chapter returned 0:\n{out}"
+    assert "OPENAI_API_KEY" not in out, (
+        f"{verb} blames a missing API key for an out-of-range chapter index:\n{out}")
+    assert str(len(segs)) in out, f"the refusal does not say how many chapters exist:\n{out}"
+    assert f"{feat}@0" in out, f"the refusal offers no chapter that does exist:\n{out}"

@@ -309,3 +309,32 @@ def test_new_lane_fallback_reuses_a_surviving_authored_record(tmp_path):
     assert af[lane_id].label == "My Lane"                    # survived the re-mint
     assert "island.py::extra" in af[lane_id].live_members()  # previously-added member survived
     assert symbol in af[lane_id].live_members()              # the re-entering symbol was added
+
+
+def test_assign_at_save_ignores_a_symbol_the_history_deleted(tmp_path):
+    """A tombstoned symbol still sits at the frontier -- its maximal in-ideal op is the removal --
+    and it belongs to no leaf, so it passed the "genuinely new" filter and the cascade minted it a
+    lane. `tree.build`'s clusterer drops dead symbols (`sgt/lens/cluster.py`), so the two layers
+    disagreed about the same symbol: every save made after a deletion added a permanent,
+    empty-labelled root feature holding one dead symbol, and an authored lane is protected from
+    rebuild, so it never went away again.
+
+    Found on the study's practice repo, where three symbols are added and then dropped on purpose.
+    Its tree read four features until the participant's first `sgt save` and seven immediately
+    after -- against a practice sheet that names the four and tells the reader that a tree showing
+    anything else means they are in the wrong repository."""
+    gb, _ = _build_and_map(tmp_path)
+    (tmp_path / "util.py").write_text(
+        "def gamma():\n    return 2\n\n\ndef omega():\n    return 9\n", encoding="utf-8")
+    gb.commit_all("util: omega")
+    get(tmp_path)
+    (tmp_path / "util.py").write_text("def gamma():\n    return 2\n", encoding="utf-8")
+    gb.commit_all("util: drop omega")
+    ideal = get(tmp_path)
+    ops = Store(tmp_path).all_ops()
+
+    summary = ledger.assign_at_save(tmp_path, ideal, ops)
+    assert "util.py::omega" not in summary["assigned"], "the cascade claimed a deleted symbol"
+    assert summary["new_lanes"] == [], f"a dead symbol minted a lane: {summary['new_lanes']}"
+    unnamed = [fid for fid, f in authored.load_authored(tmp_path).items() if not f.label]
+    assert not unnamed, f"empty-labelled authored lanes were left behind: {unnamed}"

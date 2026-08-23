@@ -37,6 +37,23 @@ git config user.name "Practice"
 git config user.email "practice@example.org"
 git config commit.gpgsign false
 
+# Ignore Python build artifacts, the way both study projects' own .gitignore
+# does. Written to .git/info/exclude rather than to a committed .gitignore
+# because every commit below has a pinned date and so a pinned sha, and the
+# practice sheet quotes one of them (`44da4ad`) verbatim -- adding a file to the
+# first commit renumbers every sha after it.
+#
+# Without this the sheet breaks in two places, and only for a participant who
+# ran the tests before their first save, which the repo's own README invites.
+# The stray `.pyc` files are untracked, so the next `sgt save` or `sgt revert`
+# sweeps them into its commit; from then on every test run dirties the tree.
+# Step 5's one-line README edit then warns "one save touched 9 features" in a
+# four-feature repo, and step 6's `sgt undo` -- the back half of the sequence
+# the sheet calls the most useful thing in these ten minutes -- refuses with
+# "put() would overwrite uncommitted changes" over a list of .pyc files and
+# offers `sgt advanced resync`, which is a remedy for something else.
+printf '__pycache__/\n*.pyc\n.pytest_cache/\n' >> .git/info/exclude
+
 commit() {
     git add -A
     GIT_AUTHOR_DATE="$1" GIT_COMMITTER_DATE="$1" git commit -q -m "$2"
@@ -576,8 +593,18 @@ build_index('$dest')
     # Every handle the practice sheet quotes, checked here rather than found
     # wrong by a participant with a facilitator watching. Add a line whenever
     # the sheet gains an example.
+    #
+    # `The Cart@2` and `44da4ad` are here because the sheet types them verbatim
+    # and neither is stable by construction. `@n` is a positional counter over a
+    # feature's chapters, and the chapter cut is the one part of this build an
+    # LLM can move: with a key, `.sgt/intent/segments.json` is written from the
+    # model rather than the deterministic fallback, so a build machine can cut
+    # The Cart into two chapters where this one cuts three -- and the sheet's
+    # last revert example would then resolve to nothing, at the end of the
+    # exercise the practice sheet calls the most useful ten minutes in it.
     for handle in "The Cart" "Discounts" "Receipts" "Shipping" \
-                  "cart.py::total" "shipping.py::shipping_cost" "receipt.py::format_money"; do
+                  "cart.py::total" "shipping.py::shipping_cost" "receipt.py::format_money" \
+                  "The Cart@2" "44da4ad"; do
         if ! "$sgt_bin" show "$handle" --json 2>/dev/null | grep -q '"ok": true'; then
             echo "  the practice sheet quotes \`$handle\` and it does not resolve." >&2
             fail=1

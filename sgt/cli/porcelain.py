@@ -420,6 +420,7 @@ def _save_attribution(repo: str, new_op_ids: frozenset, cascade: dict | None) ->
     tree has been built yet (a brand-new repo has nothing to attribute against)."""
     from sgt.core import opindex
     from sgt.core.op import _symbol_kind
+    from sgt.lens.tree import leaf_member_index as tree_leaf_member_index
     from sgt.lens.tree import load as load_tree
 
     tree_result = load_tree(repo)
@@ -427,22 +428,32 @@ def _save_attribution(repo: str, new_op_ids: frozenset, cascade: dict | None) ->
         return []
     op_leaf = tree_result.get("op_leaf", {})
     nodes = tree_result.get("nodes", {})
+    member_leaf = tree_leaf_member_index(nodes)
     by_id = {op.id: op for op in opindex.index_ops(repo)}
     new_lanes = set((cascade or {}).get("new_lanes", []))
 
     rows: dict[str, dict] = {}
     for oid in new_op_ids:
+        op = by_id.get(oid)
+        syms = sorted(
+            s for s in (op.footprint if op is not None else ())
+            if _symbol_kind(s) in ("entity", "nested", "whole_file")
+        )
         leaf = op_leaf.get(oid)
+        if leaf is None:
+            # A save does not rebuild the tree, so an op recorded seconds ago has no `op_leaf`
+            # entry: only the cascade's visibility re-vote puts one there, and that runs solely
+            # when the save introduced a *new symbol*. Every modify-only save therefore dropped
+            # its whole feature line -- including the one the practice sheet asks for ("edit
+            # anything, a function or just the README") right after promising the save says which
+            # feature the change landed in. A modified symbol is already a member of a leaf, so
+            # ask membership directly rather than reclustering to find out.
+            leaf = next((member_leaf[s] for s in syms if s in member_leaf), None)
         if leaf is None:
             continue
         row = rows.setdefault(leaf, {"feature_id": leaf, "symbols": set(), "edits": 0})
         row["edits"] += 1
-        op = by_id.get(oid)
-        if op is not None:
-            row["symbols"].update(
-                s for s in op.footprint
-                if _symbol_kind(s) in ("entity", "nested", "whole_file")
-            )
+        row["symbols"].update(syms)
     out = []
     for leaf, row in rows.items():
         nd = nodes.get(leaf, {})

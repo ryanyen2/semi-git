@@ -532,3 +532,30 @@ def test_save_does_not_claim_nothing_to_save_while_the_mine_is_incomplete(tmp_pa
     out = capsys.readouterr().out
     assert "nothing to save" not in out, f"save claimed nothing to save mid-backfill: {out!r}"
     assert rc != 0 or "added_by_user" in out
+
+
+def test_a_modify_only_save_names_the_feature_it_landed_in(tmp_path, capsys):
+    """Step 5 of the study's sgt practice sheet is "edit anything, a function or just the README",
+    then `sgt save` -- and it promises the save "tells you which feature the change landed in".
+    That held only when the save introduced a *new* symbol. Attribution reads the persisted
+    `op_leaf`, a save deliberately does not rebuild the tree, so an op recorded seconds ago has no
+    entry there yet and the entire feature line was dropped. A *modified* symbol already belongs to
+    a leaf, so its feature is known immediately, with no reclustering and no new cost on the common
+    save."""
+    from sgt.lens import map as lensmap
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "core.py").write_text(
+        "def alpha():\n    return 1\n\n\ndef beta():\n    return alpha() + 1\n", encoding="utf-8")
+    gb.commit_all("core: alpha, beta")
+    get(repo)
+    lensmap.build_map(repo)
+
+    (repo / "core.py").write_text(
+        "def alpha():\n    return 99\n\n\ndef beta():\n    return alpha() + 1\n", encoding="utf-8")
+    with _in(repo):
+        rc = cli.main(["save", "-m", "change what alpha returns"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "core.py::alpha" in out, f"the save never says where the change landed:\n{out}"
