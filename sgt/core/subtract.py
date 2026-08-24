@@ -148,6 +148,7 @@ def layout_ops_of(op_ids, by_id, pool) -> set[str]:
 
 def _repair_layout(
     path: str, pre_frontier, live_after: dict[str, str], images_of, by_id, tag: str,
+    targeted: frozenset[str] = frozenset(),
 ) -> list[Op]:
     """Re-ground the layout facts of entities the removal *keeps*.
 
@@ -221,6 +222,13 @@ def _repair_layout(
             continue
 
         residue = f"{path}::__residue__::{name}"
+        # Never put back the very thing that was asked for. `targeted` holds the symbols the user
+        # named directly, as opposed to everything the removal's closure swept up, and a residue in
+        # it is a residue somebody chose to remove. Re-emitting it made a revert of that op a no-op
+        # that reported success, and a caller looping "revert whatever still covers this path"
+        # never terminated -- `tests/core/test_tiers.py` hung there, and so did CI.
+        if residue in targeted:
+            continue
         if residue not in live_after:
             prior = pre_frontier.get(residue)
             if prior is not None:
@@ -362,9 +370,13 @@ def plan_subtraction(
             stored = store.get(op_id)
             return stored.images if stored is not None else {}
 
+        targeted_syms = frozenset(
+            sym for oid in targets for sym in by_id[oid].footprint
+        )
         for layout_path in sorted(layout_paths):
             repairs.extend(
-                _repair_layout(layout_path, pre_frontier, post_frontier, _images_any, all_by_id, tag)
+                _repair_layout(layout_path, pre_frontier, post_frontier, _images_any, all_by_id,
+                               tag, targeted_syms)
             )
         all_by_id.update({o.id: o for o in repairs})
         live_after = order.frontier(survivors | {o.id for o in repairs}, ops + repairs)
@@ -487,9 +499,11 @@ def plan_subtraction(
         return stored.images if stored is not None else {}
 
     live_after = order.frontier(survivors | {op.id for op in new_ops}, ops + new_ops)
+    targeted_syms = frozenset(sym for oid in targets for sym in by_id[oid].footprint)
     for layout_path in sorted(layout_paths):
         new_ops.extend(
-            _repair_layout(layout_path, pre_frontier, live_after, _images_any, all_by_id, tag)
+            _repair_layout(layout_path, pre_frontier, live_after, _images_any, all_by_id, tag,
+                           targeted_syms)
         )
 
     new_ops.extend(_prune_emptied_paths(layout_paths, pre_frontier, live_after,
