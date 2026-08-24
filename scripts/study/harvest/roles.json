@@ -1,0 +1,50 @@
+[
+  {
+    "name": "hour-of-day",
+    "prompt": "The quarterly report needs a chart of what time of day people ride. Add a page to the dashboard showing the average count for each hour of the day, drawn as a bar chart, with the busiest hour called out at the top. Draw the chart as inline SVG, we don't want to pull in a charting library for one page. Link it from the nav."
+  },
+  {
+    "name": "weekday-split",
+    "prompt": "Commuters and weekend riders are different populations and the report treats them separately. Split the hour of day page so you can see weekdays and weekends side by side. Keep the combined view too, people are used to it."
+  },
+  {
+    "name": "monthly-trend",
+    "prompt": "Add a page showing the total for each month going back to the start of the file, as a chart. The point is to see the summer peak and the winter dip. Put the highest and lowest month in plain text above the chart."
+  },
+  {
+    "name": "sidewalk-compare",
+    "prompt": "The bridge has a counter on each sidewalk and people keep asking whether the two sides are balanced. Add a page comparing east and west: totals for each, and how the split changes across the hours of the day."
+  },
+  {
+    "name": "sidewalk-doubt",
+    "prompt": "A couple of people have said the two sidewalk counters do not agree with each other and that one of them looks wrong. Have a look at the two series yourself, decide whether we should still be adding them together for the headline numbers, and do whatever you conclude is right. Put your reasoning in the message."
+  },
+  {
+    "name": "year-summary",
+    "prompt": "I need a page with one row per year: total crossings, average day, busiest day and its date. This is the table that goes at the front of the report."
+  },
+  {
+    "name": "quiet-days",
+    "prompt": "February 2019 was the snowstorm and the counts for those days are almost nothing, single digit hours. They drag the averages down and they are not telling us anything about cycling. Work out a sensible way to keep days like that out of the averages, and apply it. Say in the message what rule you used."
+  },
+  {
+    "name": "denominator",
+    "prompt": "The hour of day page divides by every day in the file, including days where the counter was clearly down. Have a look at what the denominator should be and sort it out."
+  },
+  {
+    "name": "csv-export",
+    "prompt": "People keep asking me to send them the daily numbers. Add a download link that gives back the daily totals as a csv so I can stop doing it by hand."
+  },
+  {
+    "name": "weekday-headline",
+    "prompt": "We quote the average day figure in the report and everyone reads it as a normal working day, but it is dragged down by weekends. Make the headline number on the front page mean what people already think it means, and label it so nobody is confused."
+  },
+  {
+    "name": "date-range",
+    "prompt": "The dashboard always shows the whole file, which is seven years. Let me pick a start and end date and have every page respect it. Default to the last complete year."
+  },
+  {
+    "name": "rounding",
+    "prompt": "The numbers on the front page are quoted down to the single bike and that is false precision for a counter like this. Round them sensibly wherever we show them."
+  }
+]

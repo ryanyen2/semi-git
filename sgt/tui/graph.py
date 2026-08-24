@@ -1580,6 +1580,16 @@ def render_verb_preview_lines(
     # of it, or none? (segments carry their `op_ids`; the car dict drops them, so join on segments.)
     # Keep the op total + the touched count so the magnitude bar can split a *partial* checkpoint
     # into its kept vs. leaving cells, not just flag it.
+    # A revert that rewrites a symbol in place removes no op from it, so a checkpoint whose whole
+    # effect is being subtracted has an empty intersection with `touched` and used to render as
+    # `kept` -- the one word it must never say about the chapter the user just named. Ops whose
+    # symbols are being subtracted count as touched for display, since that is exactly what the
+    # edit does to them.
+    # The ops the user actually named. A revert that rewrites a symbol in place removes no op, so
+    # `touched` is empty for it and the chapter being reverted used to render as `kept` -- the one
+    # word it must never say about the thing the user just asked to undo.
+    touched = touched | set(preview_view.get("target_ops") or ())
+
     seg_status: dict = {}
     for seg in segments:
         if seg.get("feature_id") != focus_fid:
@@ -1605,8 +1615,14 @@ def render_verb_preview_lines(
                      f"{_bold(flabel, color=color)}  {bp(focus_fid, hexc)}{delta}")
         # The typeable form of what is about to run -- a long content-hash target collapses to
         # the same 8-char handle every other surface prints.
-        short = target[2:10] if (target.startswith("f-") and len(target) > 20) else (
-            target[:8] if re.fullmatch(r"[0-9a-f]{40,}", target) else target)
+        # Any `@<chapter>` suffix is split off first and put back after. Shortening the whole
+        # string collapsed `f-0a413ceb…@Exclude Event Days` to `0a413ceb`, so the command the
+        # preview told you to re-run was a revert of the entire feature rather than the one chapter
+        # you asked about -- on this history, sixty-seven edits instead of one.
+        head, sep, chapter = target.partition("@")
+        short = head[2:10] if (head.startswith("f-") and len(head) > 20) else (
+            head[:8] if re.fullmatch(r"[0-9a-f]{40,}", head) else head)
+        short = f"{short}{sep}{chapter}" if sep else short
         lines.append(_dim(f"      sgt {verb} {short}", color=color))
         lines.append("")
 

@@ -33,10 +33,10 @@ Thanks for taking part. Plan for ${PLAN_FOR}, including breaks.
 
 ## What you'll do
 
-- Work on a small program you have never seen. Someone built it over six weeks and then left.
+- Take over a small web dashboard you have never seen. Someone built it over six weeks, mostly by describing what she wanted to an AI assistant, and then left.
 - Read a short description of what it does, with no clock running.
-- Handle three requests that have come in about it, and answer two short questions about what a past piece of work touched.
-- Do that twice, with two different setups for looking at the project's history, on two different projects.
+- Work through four cards: see what it does today, find the piece of work behind one of its behaviours, take that work out, and put it back.
+- Do that twice, with two different setups for reading the project's history, on two different projects.
 
 We are comparing the two setups. We are not testing you. If something confuses you, that is the most useful thing you can tell us.
 
@@ -121,79 +121,80 @@ export const HANDOUT_MD = `# Welcome\n\n${WELCOME_MD}\n`
 // on the way past.
 
 export const PROJECT_BRIEF: Record<Project, string> = {
-  coursecraft: `
-You are taking over **coursecraft**. Riley Chen built it over the last six weeks, partly by working with an AI assistant, and has now left the team.
+  bikecount: `
+You are taking over **bikecount** from Dana Whitfield, who has left the transport data team.
 
 ## What it is for
 
-A university department runs course registration by hand every term: a spreadsheet of who is in which class, a second one for room bookings, and a lot of email. coursecraft replaces that. It is a command line tool. One person in the department office runs it, and everything it knows lives in a single file on disk.
+There is a counter on the Fremont Bridge in Seattle with a sensor on each sidewalk. It counts bikes crossing, one number per hour, going back to 2012. The city publishes the file.
 
-## Who uses it, and how
+bikecount reads that file and puts it on a web page. Open it in a browser and you get the busiest day on record, a chart of what time of day people ride, totals by month and by year, and a comparison of the two sidewalks. There is no login and no database. It reads the csv off disk every time you load a page.
 
-Someone in the office types commands at a terminal. There is no web page and no login. A normal term looks like this:
+Three people use it. Its numbers go into the cycling team's quarterly report.
 
-- At the start of term they add the **courses** the department is running, and for each course the **sections** it is taught in. A section is one timetabled group, with a teacher, a room, a weekly time slot, and a cap on how many people fit.
-- Students get added to the system, then **enrolled** into sections.
-- When a student wants out, they are **dropped** from a section, which frees the seat.
+## How it was built
 
-## What it refuses to do
+Dana built it over six weeks, mostly by describing what she wanted to an AI assistant and checking the result. Each piece of work is one afternoon's job, and the history says what each one was for.
 
-Most of the value is in what it stops you doing by accident. When someone is enrolled, the app checks that:
+## What is in it
 
-- the section is not already full,
-- the student has passed whatever the course requires first,
-- and the new section does not clash with something else in their week.
+- **Hour of day.** What time people ride, weekdays and weekends apart.
+- **By month and by year.** Totals over time, and a table for the front of the report.
+- **East against west.** Whether the two sidewalks are balanced.
+- **Quiet days.** A list of days that are nothing like a normal day, such as the February 2019 snowstorm and Christmas. Dana started keeping it because those days kept being read as real drops in cycling.
+- **A csv download**, so people stop asking for the numbers by email.
 
-A section that ends at 10:30 and one that starts at 10:30 do not clash. That was a deliberate decision.
+## How to run it
 
-## The rest of it
+    python3 -m bikecount.server
 
-- **Waitlists.** When a section is full a student can join a queue instead. When a seat frees up the next person in the queue gets it, and a notice is left for the office to pass on.
-- **Search.** Find courses by typing part of a name or a topic.
-- **Views and exports.** One student's week, one teacher's timetable, the whole catalogue as a spreadsheet, and a count of how full everything is.
-- **A room audit**, which lists rooms that got double booked.
+Then open http://localhost:8000. To check nothing is broken:
+
+    python3 check.py
+
+It renders every page and fails loudly if one of them throws.
 
 ## Its condition
 
-It works and it has a test suite that passes. It has never had a second maintainer.
-`.trim(),
-
-  confplan: `
-You are taking over **confplan**. Sam Park built it over the last six weeks, partly by working with an AI assistant, and has now left the team.
+It works. The smoke check passes. It has never had a second maintainer.
+`,
+  footfall: `
+You are taking over **footfall** from Dana Whitfield, who has left the transport data team.
 
 ## What it is for
 
-A conference committee plans its two-day program by hand every year: a spreadsheet of who is booked into which talk, a second one for room bookings, and a lot of email. confplan replaces that. It is a command line tool. One person on the committee runs it, and everything it knows lives in a single file on disk.
+The city has a sensor on each side of the crossing between Southern Cross station and the Collins Street offices in Melbourne. They count people walking past, one number per hour, going back to 2013. The council publishes the file.
 
-## Who uses it, and how
+footfall reads that file and puts it on a web page. Open it in a browser and you get the busiest day on record, a chart of what time of day people walk past, totals by month and by year, and a comparison of the two sides. There is no login and no database. It reads the csv off disk every time you load a page.
 
-Someone on the committee types commands at a terminal. There is no web page and no login. A normal year looks like this:
+Three people use it. Its numbers go into the transport committee's quarterly paper.
 
-- While the program is being built they add the **talks** that were accepted, and for each talk the **sessions** it is given. A session is one scheduled slot, with a speaker, a room, a time on one of the two days, and a cap on how many people fit.
-- Attendees get added to the system, then **registered** into sessions.
-- When an attendee wants out, they are **unregistered** from a session, which frees the seat.
+## How it was built
 
-## What it refuses to do
+Dana built it over six weeks, mostly by describing what she wanted to an AI assistant and checking the result. Each piece of work is one afternoon's job, and the history says what each one was for.
 
-Most of the value is in what it stops you doing by accident. When someone is registered, the app checks that:
+## What is in it
 
-- the session is not already full,
-- the attendee has been to whatever the talk expects first,
-- and the new session does not clash with something else in their day.
+- **Hour of day.** What time people walk past, weekdays and weekends apart.
+- **By month and by year.** Totals over time, and a table for the front of the paper.
+- **North against south.** Whether the two sides of the crossing are balanced.
+- **Event days.** A list of days that are nothing like a normal day, such as Grand Final Friday, Melbourne Cup and Christmas. Dana started keeping it because those days kept being read as real changes in how many people walk to work.
+- **A csv download**, so people stop asking for the numbers by email.
 
-A session that ends at 10:30 and one that starts at 10:30 do not clash. That was a deliberate decision.
+## How to run it
 
-## The rest of it
+    python3 -m footfall.server
 
-- **Waitlists.** When a session is full an attendee can join a queue instead. When a seat frees up the next person in the queue gets it, and a notice is left for the committee to pass on.
-- **Search.** Find talks by typing part of a title or a topic.
-- **Views and exports.** One attendee's day, one speaker's schedule, the whole program as a spreadsheet, and a count of how full everything is.
-- **A room audit**, which lists rooms that got double booked.
+Then open http://localhost:8000. To check nothing is broken:
+
+    python3 check.py
+
+It renders every page and fails loudly if one of them throws.
 
 ## Its condition
 
-It works and it has a test suite that passes. It has never had a second maintainer.
-`.trim(),
+It works. The smoke check passes. It has never had a second maintainer.
+`,
 }
 
 /**
@@ -301,7 +302,15 @@ git blame shipping.py
 git revert 7e6e383
 \`\`\`
 
-Makes a new commit that undoes an old one. It can conflict if later commits touched the same lines; fix the conflict, or \`git revert --abort\`. Undo the revert itself with \`git revert HEAD\`, or throw the lot away with \`git reset --hard 7e6e383\`. This is the practice copy, so break it if you like.
+Makes a new commit that undoes an old one. It can conflict if later commits touched the same lines. When it does, git stops and leaves the conflict markers in the file for you to resolve, then \`git add\` the file and \`git revert --continue\`. \`git revert --abort\` walks away from the whole thing.
+
+To put back something you reverted, revert the revert:
+
+\`\`\`
+git revert HEAD
+\`\`\`
+
+Or throw the lot away with \`git reset --hard 7e6e383\`. This is the practice copy, so break it if you like.
 
 Branches, for trying something you might throw away:
 
@@ -327,143 +336,107 @@ Tell us if any of that behaved differently from what you expected.
 const TUTORIAL_SGT = `
 ## What it is
 
-\`sgt\` sits on top of an ordinary git repository. Git records which lines in which files changed. \`sgt\` records which functions and classes changed, and groups related work under a name. It calls those groups **features**.
+\`sgt\` sits on top of an ordinary git repository. Git records which lines in which files changed. \`sgt\` records which functions and classes changed, and groups related work under a name.
 
-Ten minutes will not make you fluent and we do not expect it to. Every command ends by printing what you might want to run next, so you can follow that rather than memorising anything.
+Two words are worth learning, because you will type both of them.
+
+A **feature** is a body of work that grew over time, like "the hourly charts".
+
+A **chapter** is one step inside a feature, like "split it into weekday and weekend". Chapters are what you usually want. A feature can be months of work; a chapter is normally one afternoon.
+
+Ten minutes will not make you fluent and we do not expect it to. Every command ends by printing what you might want to run next.
 
 ## The practice project
 
 Run \`study-practice\`. It puts you in a throwaway copy of a small shopping cart program. Nothing you do to it counts.
 
-\`sgt\` has already read its history and found four features:
-
-| Feature | What it is |
-|---|---|
-| **The Cart** | adding and removing things, and the total |
-| **Discounts** | a percentage off, or a coupon code |
-| **Receipts** | turning a cart into something you can print |
-| **Shipping** | what it costs to post an order |
-
-Those names are what you hand back to the commands below.
-
-Every command on this sheet runs in the practice copy, and the four names above only exist there. If \`sgt log --tree\` shows anything else, you are in the real project: run \`study-practice\` and try again. Nothing on this sheet applies to the real project's history.
+If anything below shows names you do not recognise, you are in the real project. Run \`study-practice\` again.
 
 ## 1. The editor first
 
-\`\`\`
-study-code
-\`\`\`
+    study-code
 
-That opens the practice project in VS Code with the **semi-git** extension installed. Click the semi-git icon in the left bar and you get:
+That opens the practice project in VS Code with the **semi-git** extension. Click the semi-git icon in the left bar:
 
-- **Now**, for where things stand and anything waiting on you.
-- **Features**, the four above as a tree. Expand one to see what it covers.
+- **Now**, for where things stand.
+- **Features**, the work as a tree. Expand a feature to see its chapters.
 - **Changes**, for what you have edited and not yet saved.
 
-At the bottom, the **SGT Workbench** panel draws every feature as a row across time, so you can see which ones were being worked on at the same moment. There is a search box in its toolbar: type \`shipping\` into it.
+At the bottom, the **workbench** panel draws every feature as a row across time. The chips under each row are its chapters.
 
-Right-clicking a feature offers the same verbs as the commands below. **Toggle Feature Blame** puts the owning feature at the end of whichever line your cursor is on.
-
-Open \`shipping.py\` with blame on. That is the shape of the thing you will be asked about later.
+Right-clicking a feature or a chapter offers the same verbs as the commands below. **Toggle Feature Blame** puts the owning feature at the end of whichever line your cursor is on.
 
 ## 2. Look around, in the terminal
 
-\`\`\`
-sgt now           where things stand
-sgt log           your saved work, newest first
-sgt log --map     one row per feature, across time
-sgt log --tree    just the four features and their handles
-\`\`\`
+    sgt now           where things stand
+    sgt log           the jobs somebody did, newest first, in their own words
+    sgt log --map     one row per feature, with its chapters underneath
 
-In \`--map\`, the bars are how busy a feature was at that moment, and the \`@0\`, \`@1\`, \`@2\` chips underneath are its **checkpoints**, the chapters within one feature.
+In \`--map\`, the bars show how busy a feature was at that moment. The \`@0\`, \`@1\`, \`@2\` chips underneath are its chapters, each with a name.
 
-## 3. Ask what one thing is
+## 3. List the chapters
 
-Hand back a name, a function, or a save id. All three of these work:
+    sgt intent list
 
-\`\`\`
-sgt show "Shipping"                what the feature covers
-sgt show cart.py::total            what one function belongs to
-sgt show 44da4ad                   what one save did
-\`\`\`
+One line per chapter, each with the handle you can type back:
 
-Try the first. It tells you it covers five things in two files, lists the four saves that built it, and says how many edits removing it would take with it.
+    ● The Cart  [f-3f9a21b4]  3 checkpoint(s)
+        [0] Cart Basics        (f-3f9a21b4@0)
+        [1] Remove Items       (f-3f9a21b4@1)
+        [2] Cart Total         (f-3f9a21b4@2)
 
-For a feature's chapters:
+## 4. Ask what one thing is
 
-\`\`\`
-sgt log --focus "Shipping"
-\`\`\`
+Hand back a handle, a name, or a function:
 
-## 4. Find something when you do not know its name
+    sgt show "The Cart@Cart Total"       what that chapter covers
+    sgt show cart.py::total              what one function belongs to
+
+The chapter view tells you which symbols it covers, which saves built it, and what removing it would cost. Read that last line before you remove anything.
+
+## 5. Find something when you do not know its name
 
 Describe it:
 
-\`\`\`
-sgt find "the thing that works out postage"
-\`\`\`
+    sgt find "the bit that works out postage"
 
-It ranks features, saves and functions against your words and hands you back the ids. The search box in the workbench toolbar does the same thing.
+It ranks features, chapters and functions against your words. The search box in the workbench toolbar does the same.
 
-## 5. Record a change
-
-Edit anything, a function or just the README, then:
-
-\`\`\`
-sgt save -m "what you changed, in your own words"
-\`\`\`
-
-Your words become the name of that work, and it tells you which feature the change landed in. Do it once now so you have seen it happen.
-
-## 6. Take something out, and put it back
+## 6. Take one chapter out, and put it back
 
 Do this whole sequence. It is the most useful thing in these ten minutes.
 
-\`\`\`
-sgt revert "Receipts"
-\`\`\`
+    sgt revert "The Cart@Cart Total"
 
-Nothing has happened yet. That was a preview, and three things in it are worth reading: which chapters would go, that it removes 14 edits across 2 files, and the line saying **3 other features unchanged**. Now do it:
+Nothing has happened yet. That was a preview, and three things in it are worth reading: which chapter is marked **removed**, which ones say **kept**, and the line saying how many other features are unchanged. Now do it:
 
-\`\`\`
-sgt revert "Receipts" --yes
-python -m pytest -q
-\`\`\`
+    sgt revert "The Cart@Cart Total" --yes
+    python -m pytest -q
 
-\`receipt.py\` and its tests are gone, and the other nine tests still pass. Put it back:
+Then put it back:
 
-\`\`\`
-sgt undo
-python -m pytest -q
-\`\`\`
+    sgt restore "The Cart@Cart Total" --yes
+    python -m pytest -q
 
-Eleven again. \`sgt undo\` reverses the last thing sgt did; \`sgt restore "<name>"\` brings back something removed longer ago.
+Both take the same words. If you would rather not think about which verb undoes what, \`sgt undo\` reverses whatever you last did.
 
-You can also take out one chapter rather than a whole feature:
-
-\`\`\`
-sgt revert "The Cart"@2
-\`\`\`
-
-The chapters it is keeping say **kept**; only the one you named comes out. Preview first is the rule everywhere, including in the editor.
+You can name the whole feature instead of one chapter, and it will take the lot. The preview lists every chapter it would remove, so read it before saying yes.
 
 ## 7. Your assistant
 
-\`claude\` starts it in the study shell. It can drive this tool as well as the shell, so "what came along with free shipping over fifty" and "take the receipts out" are both things you can just type at it. The workbench paints what a change would do to the graph while it happens.
+\`claude\` starts it in the study shell. It can drive this tool as well as the shell, so "what happened to the free shipping rule" and "take the cart total out" are both things you can type at it.
 
-It can also plan before it acts. Ask it to plan first, or use its plan mode, and it lays out the steps it intends to take before touching anything; \`sgt\` records that plan next to the work, so afterwards you can compare what it said it would do with what it did. You do not have to try that now. It is worth knowing about for the second request.
+It can also plan before it acts. Ask it to plan first, or use its plan mode, and it lays out the steps before touching anything. You do not have to try that now.
 
 ## 8. Help
 
-\`\`\`
-sgt --help
-sgt <command> --help
-\`\`\`
+    sgt --help
+    sgt <command> --help
 
 ## Before we start
 
 Tell us if anything printed something you could not make sense of.
-`.trim()
+`
 
 export function tutorialFor(condition: Condition): string {
   return condition === 'git' ? TUTORIAL_GIT : TUTORIAL_SGT
@@ -509,9 +482,9 @@ export const spell = (n: number) =>
  */
 export const TASK_PREAMBLE = (app: string, maintainer: string, blurb: string) =>
   `
-You are the new maintainer of **${app}**, the program you just read about, ${blurb}. ${maintainer} built it over the last six weeks, partly by working with an AI assistant, and has now left the team.
+You have taken over **${app}**, the dashboard you just read about, ${blurb}. ${maintainer} built it over the last six weeks, mostly by describing what she wanted to an AI assistant, and has now left the team.
 
-You have the code, its full history, and your assistant. There are ${spell(CARD_COUNT)} cards to work through in order, ${BLOCK_CAP_MIN} minutes of work in total. Some steps tell you exactly what to run; the ones that matter leave it entirely to you, and those are marked. Every card has its own clock, and running out of time on one is a normal result rather than a failure.
+You have the code, its full history, and your assistant. There are ${spell(CARD_COUNT)} cards to work through in order, ${BLOCK_CAP_MIN} minutes of work in total. Some cards tell you exactly what to run. The ones that matter leave it entirely to you, and those are marked. Every card has its own clock, and running out of time on one is a normal result rather than a failure.
 
 Tell us what you are thinking as you go.
 `.trim()
@@ -528,8 +501,8 @@ Tell us what you are thinking as you go.
  *
  * The step carrying the reach prediction IS printed -- it is the step that
  * reverses the work, and leaving it off took the middle out of the sheet, so the
- * paper went from "find what caused it" straight to the waitlist. What is left
- * off is the grid of twelve checkboxes inside it: answered twice against two
+ * paper went from "find what caused it" straight to putting it back. What is left
+ * off is the grid of checkboxes inside it: answered twice against two
  * clocks, it cannot be represented on paper without inviting someone to fill it
  * in there, so the sheet names it and points at the screen.
  */
@@ -566,7 +539,7 @@ export function sheetTasksMd(project: Project): string {
         out.push('', `**Before you change anything:** ${r.reach.work[project]}`)
         out.push(
           '',
-          `On screen there is a list of twelve things people do with ${SCENARIO[project].app}. ` +
+          `On screen there is a list of the things you can see on ${SCENARIO[project].app}'s pages. ` +
             `Tick the ones you think this will affect. ${r.reach.blindSec} seconds, then it ` +
             'submits itself. You answer once more afterwards, knowing what happened.',
         )

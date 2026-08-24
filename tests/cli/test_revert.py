@@ -380,7 +380,14 @@ def test_revert_by_nl_resolves_via_the_intent_ledger_without_the_llm(tmp_path, c
     assert rc == 0
     out = json.loads(capsys.readouterr().out)
     assert out["ok"] and op_id in out["removed"]           # resolved to the ledgered op and reverted it
-    assert current_ideal(repo).op_ids < before
+    # The reverted op is gone. Not a strict subset, though: a revert also emits the layout repairs
+    # that keep surviving entities' separators alive (here, `b.py::__residue__::baz` back to
+    # `b'\n'`), so the after-set can carry ops the before-set did not. That was already true of the
+    # spliced path; the upward-closed path used to skip the repair pass and silently drop the
+    # trailing newline instead.
+    after = current_ideal(repo).op_ids
+    assert op_id not in after
+    assert after != before
 
 
 def test_revert_by_nl_with_no_ledger_match_still_reaches_the_llm_rung(tmp_path, capsys, monkeypatch):

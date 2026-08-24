@@ -550,3 +550,757 @@ so the duplicate-child symptom disappears while the members are still lost. It
 is kept for a different and smaller reason — a bundle's graph should be a
 function of the code, not of whatever tree the source repository happens to
 carry.
+
+---
+
+## Found while harvesting the bikecount testbed (2026-08-23)
+
+These came out of building a study repo by letting agents do real work sessions
+against it, rather than replaying an authored episode spec. Both are things a
+participant would hit in the first ten minutes.
+
+### Finding 39 (open): `sgt session land` leaves the working tree behind the commit
+
+`sgt session land <name>` advances the branch and writes the ops, but the main
+repo's working tree and index stay at the pre-land state. `git status` shows the
+landed work as staged deletions, the files on disk are the old ones, and
+`sgt log --summary` reports "4 file(s) on disk differ from the recorded state
+— `sgt save` absorbs them".
+
+That last line is the dangerous part. The suggested next action is exactly wrong:
+`sgt save` would absorb the stale tree and record the landed work as deleted. The
+recorded ideal is already correct (49 ops, including all 36 the session stamped);
+only the checkout is missing.
+
+Reproduce:
+
+    sgt session start work --base main
+    # edit and `sgt save` inside .sgt/local/sessions/work
+    sgt session land work
+    git status --short          # staged modifications reverting the landed work
+    grep <new symbol> <file>    # not there
+
+`sgt switch main` does not fix it. It reports the right op count and writes
+nothing, presumably because it declines to write over a dirty index. `git reset
+--hard HEAD` does fix it, after which `sgt log --summary` says "in sync". The
+harvest runner does that reset after every land as a workaround.
+
+### Finding 40 (open): landing writes a plumbing commit and hundreds of trailers
+
+Each land produces a merge commit subjected `sgt land: main`, and both it and the
+work commit carry one `Sgt-Op:` trailer per op. A single session put 36 trailer
+lines on two commits. sgt's own views hide these (`gitbind.is_bookkeeping`), so
+this costs the sgt arm nothing.
+
+It is the git arm that pays, which is the wrong way round for a study that is
+trying to be fair to git. `git log` opens on plumbing subjects and `git show`
+buries the message under trailers. Pilot 03 recorded the same thing and it was
+closed for the old testbed; it comes back the moment history is built by landing
+sessions rather than by committing directly. The fix belongs in the bundle build:
+render the git arm by stripping the trailers and dropping the plumbing commits,
+which changes the shas, so the answer key has to be regenerated per arm.
+
+### Finding 41 (open, testbed design): the pedestrian twin is not isomorphic where it matters
+
+The two study projects have to be the same shape, because a participant does one
+in each half and the halves have to be equally hard. Fremont Bridge and the
+Melbourne pedestrian counters are the same shape as data, one location with two
+sensors and one row per hour, but not the same shape as a task.
+
+Fremont's two sidewalks are directional. On a 2019 weekday the east sidewalk
+peaks at 8am and the west at 5pm, so a decision to stop trusting one counter
+moves the headline "busiest hour" from 5pm to 8am and visibly inverts the chart.
+That is the clearest symptom in the dataset and it needs no domain knowledge to
+read.
+
+Melbourne has no equivalent. Scanning every sensor's 2019 weekday profile, all of
+them are evening-heavy and none peaks in the morning; the two Bourke Street Mall
+sides both peak at 1pm and differ only in level. Dropping one side changes the
+numbers and changes nothing anyone would notice.
+
+So one of three things has to happen, and it is a decision rather than a bug:
+
+  - find a twin that is directional, which means another city's bike counter with
+    a per-direction split rather than a pedestrian counter
+  - pick a target story that works in both, for instance the headline moving from
+    "average day" to "average weekday", which is a real change of about 19 percent
+    in Fremont and exists in Melbourne too
+  - keep Melbourne and accept that its 2020 lockdown collapse is its own strongest
+    story, then require only that the two targets have comparable effect sizes
+    rather than the same mechanism
+
+The third is the most honest and the least tidy. Whichever is chosen, the
+selection gate has to score both projects, not one.
+
+### Finding 42 (open): `sgt now` and the extension's Now panel show sgt's own plumbing
+
+`sgt now` is the orient-me surface, the thing a person reads when they sit back
+down, and the thing the study will put in front of someone who has never seen the
+repo. On a history built by landing sessions, most of it is sgt talking about
+itself. Three of the five entries here are plumbing:
+
+    recently done
+        f2a6b202  sgt land: main
+        6a8c38a1  add a monthly totals page with a bar chart
+        11043d79  sgt land: main
+        7c1f0b74  split the hour of day chart into weekday and weekend
+        43f29733  sgt land: main
+
+`recently_done` is `history_view(repo, limit=5)["latest_commits"]`
+(`sgt/api.py:2707`), an unfiltered window over the newest commits.
+`is_bookkeeping_message` already exists in `sgt/store/gitbind.py:110` and already
+knows a `sgt land:` subject is not a person's work, but it is only called from the
+miner (`sgt/core/mine.py:345`) and from `gitbind.py:789`, never here.
+
+This is not only a terminal problem. `sgt/api.py:1398` says this view feeds the
+extension's Now tree, and `editor/vscode/src/types.ts:816` consumes
+`recently_done` directly, so the panel in the sidebar shows the same three lines.
+
+It reads worse the more sessions there are, which is exactly the shape of history
+this testbed is built to have. A five-line list that spends three lines on
+`sgt land: main` is a list that answers nothing.
+
+Filtering `is_bookkeeping_message` out of `recently_done` would fix both surfaces
+at once. Worth raising the limit at the same time, since dropping the plumbing
+from a window of five leaves two.
+
+### Finding 43 (open): `sgt session start` does not mine before recording the base, so the first session claims the whole repo
+
+`start` records what already existed with `lens.ideal_for_ref(repo, base_sha)`
+(`sgt/core/session.py:133`) and does not mine on contact first. `new_op_ids`, the
+function that later diffs against that record, does exactly the opposite: it calls
+`lens.get(session.scratch)` first, with the comment "mine-on-contact first to
+absorb any committed-but-not-yet-mined work". One side of the same subtraction
+mines and the other does not.
+
+When the base commit has not been read yet, `base_op_ids` comes back empty, every
+op in the scratch tree looks new, and `land` stamps the session name onto all of
+them. The session then owns code it never touched.
+
+Measured on the first harvest. `weekday-split` and `monthly-trend` were attributed
+correctly, 6 and 16 symbols, the work they actually did. `hour-of-day`, the first
+session to start, claimed 43 symbols including `load_readings`, `Reading`,
+`daily_totals`, `render_overview`, `page`, `serve`, `README.md` and the csv data
+file, none of which it wrote. What that costs is the whole point of the verb:
+
+    $ sgt revert --session hour-of-day
+     ▸ rewind  hour-of-day
+     also affected
+       ● a dashboard over the…      loses 28 edits, re-draft
+       ● add a monthly totals page… loses 6 edits, re-draft
+       ● Hour-of-Day Charts         loses 14 edits, re-draft
+     removes 48 edits across 21 symbols · 7 files
+
+Reverting one afternoon's work offers to demolish the repo, and the preview is
+honest about it, which means a participant who reads the preview correctly
+concludes the tool is dangerous.
+
+It only bites the first session of a fresh repo, which is exactly the case a study
+fixture is built from, and exactly the case a new user is in on day one. Any read
+that mines first avoids it; the harvest bootstrap now runs `sgt log --summary`
+after the seed commit and asserts the op count is not zero. The real fix is one
+line in `start`: mine before reading the base ideal, the way `new_op_ids` already
+does.
+
+**Finding 41 resolved, same day.** The problem was the sensor pair, not the city.
+Bourke Street Mall is a shopping strip, so both of its sides peak at 1pm and no
+commute-shaped story exists there. Scanning every Melbourne sensor's 2019 weekday
+profile for a morning peak turns up several, and one of them is a matched pair at
+a single location that behaves exactly like the Fremont sidewalks:
+
+    2019 weekday, Spencer St-Collins St
+      peak hour   both sides: 5pm    south only: 8am    north only: 5pm
+
+It sits on the walk between Southern Cross Station and the Collins St offices, so
+the two sides carry opposite halves of the commute. Dropping either sensor moves
+the headline busiest hour, which is the same change the Seattle data supports:
+
+                        both sensors    one sensor dropped
+      bikecount             5pm                8am
+      footfall              5pm                8am
+
+Two cities, two different things being counted, one mechanism. The twin is
+isomorphic where the task needs it to be, and `prep_counts.py` now defaults to
+that pair with the reasoning written down next to it.
+
+A second story was tested and rejected on the way. Moving the headline from
+"average day" to "average weekday" is worth +16.6 percent in Fremont and +1.4
+percent at Bourke Street Mall, so it would have been a real change in one arm and
+noise in the other.
+
+### Finding 44 (open): a landed session is addressable but not discoverable
+
+`sgt revert --session <name>` is the most reliable removal verb sgt has. The
+workflows guide says so: session attribution "does not depend on the grouping at
+all" and "is exact from the very first run". Measured here, it is exactly that,
+8 symbols and 11 edits for a session that wrote 8 symbols worth of code.
+
+There is no way to find out that the session exists.
+
+    sgt session status      lists only sessions that have not landed yet
+    sgt log                 no session names
+    sgt log --tree          no session names
+    sgt log --map           no session names
+    sgt now                 no session names
+    sgt show hour-of-day    ✗ 'hour-of-day' is not a known feature, checkpoint,
+                              op, or symbol
+
+So the name has to be known before it can be used, and nothing in the tool will
+tell you it. Worse, the only way to see what a session contains is to type
+`sgt revert --session <name>` and read the preview, which means the single
+affordance for looking at a piece of work is spelled with the word that destroys
+it. A cautious person will not type it.
+
+For the study this decides which verb the task can be built on. Either sessions
+get a read surface, or the task is built on feature labels instead, which
+`sgt log` already suggests by name and which the participant can actually see:
+
+    next:  sgt show "add an east vs west sidewalk comparison page"  (what is it)
+           sgt revert "add an east vs west sidewalk comparison page"  (remove it)
+
+Two smaller things worth fixing alongside. `sgt show` refusing a session name is a
+one-line resolver addition, since `ops_by_session` already exists and already does
+the lookup. And `sgt session status` reporting "no active sessions" after a land
+is true but reads as "there were none", when what a person wants is the list of
+work that did land.
+
+### Finding 45: agent-written commit messages are legible, which narrows what the study can claim
+
+Not a bug. A result, found by building the testbed the way point 5 asks for, and
+one that should change the paper's claim before the study runs rather than after.
+
+The harvested git history reads like this, with no editing:
+
+    ee68435 add a by-year summary table
+    3d7ce27 show the east/west split by year, not just as one whole-file average
+    5ff9a1d add an east vs west sidewalk comparison page
+    d44d00a add a monthly trend page with a chart back to the start of the file
+    1052a4d split the hour-of-day chart into weekday and weekend views
+    de5d5f9 add hour of day chart for the quarterly report
+
+Every subject says what the work was in the words a person would use. That is not
+luck and it is not generosity toward git: when an agent writes the code and the
+message, the message describes what it was asked to do, and what it was asked to
+do is the intent. Git history built by agents already carries intent at the commit
+level.
+
+At the same moment sgt's own tree filed the weekday-split work under a feature
+called "Monthly Trend Charts", which is wrong. On locating alone, git was ahead.
+
+So "intent-aligned history makes it cheaper to locate the work behind a defect"
+(C1 in the protocol) is in trouble, and the protocol already says that equal
+locate performance falsifies it. Better to narrow the claim now than to run twelve
+participants into it.
+
+What survives, measured on the same history and the same piece of work:
+
+    $ git revert de5d5f9
+    CONFLICT (content): Merge conflict in bikecount/counts.py
+    CONFLICT (content): Merge conflict in bikecount/pages.py
+    CONFLICT (content): Merge conflict in bikecount/server.py
+    CONFLICT (content): Merge conflict in check.py
+    error: could not revert de5d5f9... add hour of day chart
+
+    $ sgt revert --session hour-of-day --yes
+      ✓ revert applied — 11 edits removed, 0 added.
+    $ python3 check.py
+      ok: 62,030 readings, 2,585 days, overview renders
+
+Four conflicted files against a clean removal that leaves the app running. The
+cause is structural rather than lucky: every session in this history edits
+`pages.py::page` to add its nav link and `server.py::Handler.do_GET` to add its
+route, so any commit's changes to those two symbols have been edited again by
+every commit after it.
+
+The claim the evidence supports is about operating on intent, not reading it.
+Reading is a solved problem when agents write the messages. Undoing one intent
+whose lines have been overwritten five times is not, and that is where the two
+representations actually differ.
+
+`select_target.py` now runs the git revert as a gate. A piece of work that plain
+git can undo cleanly cannot carry a task, however good it looks otherwise.
+
+### Finding 46 (open): the overlap warning names a bookkeeping symbol instead of the consequence
+
+Two harvested sessions ended up sharing one rule. `quiet-days` added a
+`QUIET_DAY_CROSSINGS` threshold and applied it to the by-year average;
+`denominator`, two sessions later, reused the same constant on the hour-of-day
+page. So one intent came to live in two sessions, which is the ordinary way an
+idea spreads through a codebase.
+
+Reverting the first one is therefore not clean, and sgt knows it:
+
+    $ sgt revert --session quiet-days
+     removes 3 edits across 2 symbols · 2 files
+      ⚠ kept unchanged (the removal overlaps later edits — needs your edit):
+        bikecount/counts.py::__residue__::hourly_averages
+
+The detection is right and the refusal to silently rewrite is right. The sentence
+is the problem. It names `__residue__::hourly_averages`, which is sgt's own
+positioning record and not a thing anyone wrote, and the strongest word in it is
+"needs your edit".
+
+What it means is this:
+
+    $ sgt revert --session quiet-days --yes
+      ✓ revert applied — 3 edits removed, 0 added.
+    $ python3 check.py
+      NameError: name 'counts' is not defined
+
+The app stops running. A person who read the warning had no way to get from
+"a residue symbol was kept unchanged" to "the dashboard will not start". Under a
+clock they will read the tick, see "revert applied", and move on.
+
+`sgt undo` recovers it completely, which is the saving grace and worth the
+participant knowing before they start.
+
+Two fixes, in order of value. Say the consequence: an overlap that leaves a
+dangling reference is a broken build, and the oracle is already configured and
+could be run against the candidate before applying rather than after. And do not
+show `__anchor__`/`__residue__` names in a message meant for a person; the
+containing symbol or just the file would carry the same information.
+
+Related to finding 43, where the same class of internal name inflated a footprint
+from 8 symbols to 43. These entries are load-bearing inside sgt and meaningless
+outside it, and they are currently leaking into the surfaces a person reads.
+
+### Finding 47 (open): the checkpoint-revert preview does not describe what a checkpoint revert does
+
+This is the best operation in the tool and the worst preview of one.
+
+`sgt revert <feature>@<n>` subtracts one checkpoint's contribution from symbols
+that later work also edited, and keeps the later work. That is the thing plain git
+cannot do at all, and applying it says so clearly:
+
+    $ sgt revert "Time-Based Count Summaries"@6 --yes
+      subtracted from shared code (later work kept):
+        bikecount/counts.py::yearly_summary, bikecount/pages.py::render_years
+      ✓ revert applied — 2 symbol(s) changed, no whole edit removed.
+
+The by-year column goes back from "Average weekday" to "Average day", every other
+page is untouched, and the app still runs. Exactly right.
+
+The preview shown before that, on the same command without `--yes`, says:
+
+    ▸ rewind  Time-Based Count Summaries  0083b63a  ████████████  67→69 edits
+         [6███]  @6 Weekday Average Day    ██  · kept
+         ... every other checkpoint also · kept
+     · 3 other features unchanged
+
+Three things in that are wrong for a reader. The checkpoint being reverted is
+labelled `kept`. The edit count goes up, 67 to 69, with nothing saying why. And
+nothing anywhere says the two sentences that turn out to matter, which are that
+two symbols will be rewritten and that later work on them survives.
+
+A whole-feature revert previews beautifully by comparison, naming every checkpoint
+and marking it `removed`. So the machinery for a good preview exists; the
+checkpoint path is not using it.
+
+For the study this is the difference between a participant reaching for the
+sharpest verb sgt has and backing away from it. Under a clock, "everything kept,
+edits went up" reads as "this will not do what I want".
+
+The fix is to say in the preview what the apply path already says: name the
+symbols that will be rewritten, say later work on them is kept, and either explain
+the edit-count rise or drop the count from this path.
+
+## Found while designing the name-addressed task set (2026-08-23)
+
+The task is meant to have participants type the labels they can see, not ids:
+`sgt revert "<Feature Name>:<Checkpoint Name>"`, and the same for `restore`.
+Testing that exact pair of commands turned up three problems.
+
+### Finding 48: revert takes a checkpoint by name, restore does not give it back
+
+`sgt revert "Time-Based Count Summaries:Weekday Average Day"` works, resolving the
+label through `checkpoint_slug`, and does the right thing: it subtracts that
+checkpoint's contribution from two symbols later work also edited, keeps the later
+work, and the app still runs. Note the separator is `:` and not `@`; `@` is
+index-only (`sgt/intent/segment.py:381`), and a spec like `<feature>@<name>` falls
+through to the natural-language resolver, which offered to remove 99 edits.
+
+Running restore with the identical selector does nothing:
+
+    $ sgt restore "Time-Based Count Summaries:Weekday Average Day" --yes
+     restores 0 edits · no file changes
+      ⚠ the earlier revert also removed 2 op(s) this restore does not bring back:
+        bikecount/counts.py::yearly_summary, bikecount/pages.py::render_years
+
+Honest, and still the wrong outcome. The warning names exactly the two symbols the
+revert had just reported changing, so both halves know what happened and only one
+acts on it. `sgt undo` restores it correctly.
+
+### Finding 49: reverting a whole feature by name can leave a file that will not parse
+
+**Diagnosis corrected after a wrong first attempt, kept here because the wrong one
+is the tempting one.** My first fix made `_fold_file` emit a newline whenever two
+entities ended up adjacent with no gap between them. It made the symptom go away
+and it was the wrong layer. `tests/core/test_fold.py` asserts, deliberately and in
+a comment, that the fold is "pure verbatim concatenation with zero synthesized
+bytes between entities", and the test next to it records why that holds in
+practice: *a real mined ideal always carries a trailing residue segment, even if
+empty*. The fold synthesizing bytes is a stated invariant, not an oversight, and
+the one failing test was the invariant doing its job. Backed out.
+
+The real defect is upstream. A residue op carries the gap after its anchor entity,
+and the revert removed one while leaving the entities on both sides of it live. The
+gap did not go missing at materialization; it was deleted. So the fix belongs in
+whatever decides a revert's op-set: a residue whose neighbouring entities both
+survive should fall back to its earlier version rather than being pruned to
+nothing. That is real kernel work with its own edge cases (what should happen when
+the gap itself was introduced by the reverted work, and both neighbours were too),
+and it should be designed rather than patched in the middle of designing a study.
+
+The symptom, for the record:
+
+    $ sgt revert "Monthly Trend Charts" --yes
+      ✓ revert applied — 13 edits removed, 0 added.
+    $ python3 check.py
+      File "bikecount/counts.py", line 76
+        return sorted(months.items())def hourly_averages(readings):
+      SyntaxError: invalid syntax
+
+Two functions concatenated with no newline between them. `workflows.md` §7 records
+this hazard for `propose land --subset`, where two features sit adjacent in a file
+and share the whitespace between them. It is not confined to `--subset`: a plain
+feature revert hits it too, and the result is not a subtly wrong file but one
+Python cannot read.
+
+The oracle is configured in this repo and would have caught it. Nothing ran it.
+
+### Finding 50: restore refuses to undo the revert that broke the file
+
+    $ sgt restore "Monthly Trend Charts" --yes
+    ✗ [restore] would leave two live versions of bikecount/pages.py::render_monthly:
+      641858df and 6c6a6ee0 both claim the same next version, refused (+2 more)
+
+So the state after finding 49 is a repository that does not compile, and the verb
+whose whole job is putting work back declines. `sgt undo` recovers it fully, which
+means the recovery path exists and is simply not the one the participant will
+reach for after typing `revert`.
+
+Taken together these three decide how the next task set can be written. Only two
+commands round-trip today: `sgt revert "<Feature>:<Checkpoint>"` forward, and
+`sgt undo` back. Any task that asks a participant to restore by name is asking
+them to do something that does not currently work.
+
+
+## Fixes landed for 48, 49 and 50 (2026-08-23)
+
+All three are in, and the round trip the task set needs works by name in both
+directions:
+
+    before:   Average weekday
+    sgt revert  "Time-Based Count Summaries@Weekday Average Day"  -> Average day
+    sgt restore "Time-Based Count Summaries@Weekday Average Day"  -> Average weekday
+    python3 check.py                                              -> ok
+
+**Finding 48 and the `@` half.** `sgt/intent/segment.py` and `sgt/select/resolve.py`:
+`@` took an index and nothing else, so `<feature>@<chapter name>` was not read as a
+checkpoint at all, fell through to the natural-language rung, matched the feature
+alone, and offered to remove 99 edits. Naming a chapter can no longer resolve to
+something bigger than the chapter.
+
+**Finding 49.** `sgt/core/subtract.py`. `plan_subtraction` returns early when the
+removal is upward-closed, which is what an ordinary feature revert is, and that
+branch ran `_prune_emptied_paths` but never `_repair_layout`. Its own comment said
+"it needs the same pass" while running half of it. Both passes now run, so the
+entities a revert keeps hold on to their separators and to whatever module-level
+code lived in the gap.
+
+Recorded above is a wrong first attempt at this, which patched `fold` to synthesize
+a newline. One test failed and it was right to: "the fold synthesizes nothing" is a
+stated invariant, and the defect was a residue op being deleted, one layer up.
+
+**Finding 50 and the restore half of 48.** `sgt/core/verbs.py`, two changes to
+`plan_restore_op_set`. A revert does not only remove, it synthesizes stand-in ops to
+hold the layout; restore only ever added, so re-admitting the originals forked
+against those stand-ins and restore refused the very rewind revert had just made.
+Separately, a *checkpoint* revert removes no ops at all -- it layers a rework op
+carrying the subtracted bytes -- so restore found nothing to re-admit and answered
+"already in the current ideal; no change" against a page that plainly still showed
+the revert. Both paths now peel the scaffolding off.
+
+Two things worth a second opinion rather than burying:
+
+  - Revert-authored ops are identified by the `intent` string a revert stamps on
+    them, and intent is advisory metadata everywhere else in the kernel. The
+    alternative rule, drop whichever side of a fork is not being restored, would
+    discard a teammate's competing later edit, so this is deliberately the narrow
+    and conservative choice. A structural marker would be better and is a bigger
+    change.
+  - Restore's output now reads backwards on the checkpoint path: `restores 0 edits
+    ... ✓ restore applied — 2 edits removed, 0 added`. True, since what it removes
+    is scaffolding, and confusing. It needs a wording pass before a participant
+    reads it.
+
+Finding 47 is untouched: the checkpoint preview still reports `67→69 edits` and
+marks the checkpoint being reverted as `kept`. The operation underneath it is now
+correct in both directions, and what it says about itself beforehand is not.
+
+### Finding 51 (open): `--as` renames whatever feature the save lands in, which can make the label worse
+
+The plan for the next testbed was to have each harvest agent name its own work with
+`sgt save -m "..." --as "<name>"`, so the feature layer would carry labels as
+specific as the checkpoint layer already does. It does the opposite.
+
+`--as` names the feature the save *lands in*, and on a repo whose clustering has
+already collapsed nine sessions into one node, that means renaming the node:
+
+    $ sgt save -m "add busiest weekday" --as "Busiest Weekday"
+      ✓ named "Busiest Weekday"
+    $ sgt log --tree
+        Busiest Weekday (0083b63a) · 30 symbols
+
+Thirty symbols spanning most of the project, under the name of the six-line
+function that happened to be saved last. The generated name it replaced,
+"Time-Based Count Summaries", was vague but at least honest about its scope. Every
+later agent doing the same thing would overwrite it again, so the final label is
+whichever job happened to go last.
+
+`--as` labels; it does not split. The actual problem is granularity, and the verb
+for that is `sgt feature regroup split`.
+
+Two ways forward for the study, and they are not equivalent:
+
+  - Curate the tree at build time with `regroup split`/`rename`, then freeze it in
+    the bundle. Defensible, since a real team would correct a bad auto-grouping and
+    sgt ships the verbs for it, but the study would then be measuring sgt with a
+    hand-corrected feature tree and the paper has to say so.
+  - Build the task on checkpoints, which were already specific without any
+    curation ("Weekday Average Day", "Drop Snowstorm-Quiet Days"). The feature part
+    of the selector is then just the container the participant reads off the same
+    line of `sgt log --map`, and these all resolve:
+
+        sgt revert "Time-Based Count Summaries@Weekday Average Day"
+        sgt revert "f-0083b63a@Weekday Average Day"
+        sgt revert "0083b63a@Weekday Average Day"
+
+The second needs nothing fixed and nothing curated, so it is what the next task set
+should use.
+
+One display bug spotted alongside: given `f-0083b63a@Weekday Average Day` the
+preview echoes back `sgt revert 0083b63a`, dropping the checkpoint from the command
+it suggests re-running. The bare-handle form echoes correctly.
+
+### Finding 52 (open): checkpoint boundaries follow time, not intent, so an interleaved intent gets tangled back together
+
+The footfall history was harvested with three jobs that build one idea, spaced out
+so other work lands between them, which is how a real backlog behaves:
+
+    4830f91  track the days that behave nothing like a normal day   (session 3)
+    8345af6  mark event days on the daily and monthly charts        (session 5)
+    af1e290  leave event days out of the averages                   (session 8)
+
+sgt cut that into two features and, inside one of them, into a checkpoint that
+merges the event-day work with a job that has nothing to do with it:
+
+    Calendar Context (f-0129e017@2)   14 edits · 9 symbols in 6 files
+      saves  4830f91  track the days that behave nothing like a normal day
+             376992e  add a by-month page to see the office summer dip
+             8345af6  mark event days on the daily and monthly charts
+
+    Exclude Event Days (f-0a413ceb@3)  1 edit · 1 symbol
+      saves  af1e290  leave event days out of the averages
+
+So "take the event-day handling out" cannot be said in this vocabulary. Reverting
+`Calendar Context` also deletes the by-month page. Reverting `Exclude Event Days`
+gets a third of the way. The intent the participant is asked about exists in the
+history, in three commits with three clear messages, and does not exist as anything
+addressable in the feature tree.
+
+This is worth stating plainly because it cuts against the thesis. The pitch is that
+line-level history tangles unrelated work and intent-level history does not. Here
+the intent-level grouping did the tangling: `376992e` fell between two event-day
+jobs in time, and the segmenter cut on time.
+
+Two things follow. For the study, a task cannot assume an intent is addressable
+just because it is legible in the log; the gate has to check that a candidate is a
+single selector, and the bikecount gate did not test for that. For sgt, the
+segmenter has the save messages available and they say plainly which of those three
+belong together. Whatever it is cutting on, it is not that.
+
+The counterpart finding is that `sgt show <checkpoint>` is the best read surface in
+the tool. It lists the symbols, names the saves that built the checkpoint, and says
+what reverting costs, all in one screen. That is exactly how the tangle above became
+visible in about ten seconds.
+
+### Finding 53: whether a feature can be removed at all is decided by the app's architecture, not by the tool
+
+Measured by reverting all sixteen checkpoints of the footfall history one at a
+time, in a copy, and running the app afterwards. Seven leave a repository that will
+not start. The cause is the same every time and it is not sgt's.
+
+Every job that adds a page has to edit two shared symbols: `pages.py::page`, to put
+a link in the nav, and `server.py::Handler.do_GET`, to add a route. So the fifth
+page's work is welded to the first page's work through two functions neither job was
+really about. Undo any early checkpoint and the routes that came later lose the
+function that dispatches them.
+
+This matters well beyond the testbed. The whole proposition is that history recorded
+at the level of intent lets you remove one intent. That holds only if the intents
+are separable in the code. A router and a nav bar that every feature must edit are a
+funnel: they turn twelve independent jobs into one chain, and no representation of
+history can unpick what the source has welded together. Line-level history is not
+what defeats you there.
+
+Two consequences. For the testbed, the seed is wrong and gets fixed: pages become
+self-registering modules discovered at import, so adding one is a new file and
+touches nothing shared. For the paper, this is a limit worth stating rather than
+hiding, because it predicts where sgt helps and where it cannot. The measurement is
+cheap and repeatable: revert each unit, run the app, count what survives.
+
+The related trap, worth its own line. The default view had been showing the last
+complete year, and that year is quiet enough that removing a feature moved no number
+on any page. The gate reported "no change" for work that plainly changes the app.
+Both gates now snapshot the full range. A visibility check that silently measures a
+window where nothing happens is worse than having no visibility check, because it
+answers confidently.
+
+### Finding 53 confirmed: fixing the architecture fixed the feature tree
+
+Finding 53 said that whether a piece of work can be removed is decided by the app's
+shape, not by the tool, and that the seed's shared router and nav bar welded twelve
+independent jobs into one chain. The seed was rebuilt so pages are self-registering
+modules found at import, and the same twelve jobs were harvested again against it.
+
+The grouping changed on its own, with no curation:
+
+    before, shared router          after, self-registering pages
+    5 features from 12 sessions    8 features from 12 sessions
+    one node holding 27 symbols    largest node holds 21
+    event-day work buried in a     "Event Day Tracking" is its own feature,
+    checkpoint next to an          with its own chapters
+    unrelated by-month page
+
+Nothing about sgt changed between those two runs. The clustering could finally
+separate the event-day work because the code no longer forced every job through
+`pages.py::page` and `server.py::Handler.do_GET`.
+
+That is the finding worth carrying into the paper. Intent-level history can only
+offer you units the source actually has. Where a codebase funnels every feature
+through a shared function, no representation recovers the separation, and where it
+does not, the grouping falls out. It also gives a cheap diagnostic anyone can run
+on their own repository: revert each unit in a copy, start the app, and count what
+survives.
+
+### Finding 54 (fixed): a revert can break the program while the preview reports one symbol
+
+Reverting the target chapter in the bikecount testbed previewed as small and
+truthful:
+
+    removes 1 edit across 1 symbol · 1 file: bikecount/metrics.py
+      subtracted from shared code (later work kept): metrics.py::hourly_averages
+
+Applying it left the app dead:
+
+    NameError: name 'events' is not defined
+
+The chapter had added `import events` along with the code that used it. Imports are
+ordinary text inside a residue, not symbols of their own (`workflows.md` §7), so the
+import went back with the residue. A different function, in the same file, added by
+a different job, still wanted it. Nothing in the preview was wrong. It was answering
+a narrower question than the one the user was asking, which is "is my program still
+going to work".
+
+The counts are about the op set. Whether the program runs is a different question,
+and the project already has something that knows the answer: the oracle in
+`.sgt/oracle.json`, which every study repo configures and which nothing was running.
+
+Fixed by running it once after a destructive verb applies and saying so when it
+goes red:
+
+    ✓ revert applied — 1 edit removed, 1 added. (`sgt undo` reverses this.)
+    ⚠ smoke now fails after this revert. The edit did what it said; something it
+      did not name depends on what went.
+       `sgt undo` puts it back, or fix the break and `sgt save`.
+
+Silent when the checks pass, silent when no oracle is configured, and never fatal:
+the edit has already landed and this only reports. Verified on both testbeds, loud
+on the bikecount target and quiet on the footfall one, which reverts cleanly.
+
+This is the single change most likely to matter to a participant under a clock. The
+old behaviour ended on a green tick.
+
+### Finding 52 was wrong. sgt does group an interleaved intent, and I had not found the surface
+
+Finding 52 said the intent spanning three sessions "does not exist as anything
+addressable in the feature tree", and used that to argue the segmenter cuts on time
+rather than on intent. The first half is true of the feature tree. The conclusion
+was wrong, because the feature tree is not the only grouping sgt builds.
+
+`sgt intent list` also prints themes, and the harvested history produced this one
+without any help:
+
+    ● Event Day Handling  [theme-df22484c1cd9]
+      across f-02528149, f-03f61b86, f-05b64a22, f-08915a9f, f-1cda3c85  (coupled, llm)
+
+    $ sgt intent revert theme-df22484c1cd9
+    reverting 3 atom(s) as one group:
+        138f7d96  keep event days out of the averages
+        7e81c4cc  start tracking event days that break the normal commute pattern
+        9fa083e6  mark event days on the daily and monthly charts
+      tier: coupled ●
+
+Exactly the three jobs, spread over three afternoons with unrelated work between
+them, grouped as one thing and removable as one thing. That is the claim the
+project makes, working, on a history nobody authored to make it work.
+
+What was actually wrong was reachability, and it is the same shape as finding 44.
+The grouping was computed, and printed, and then only a second verb most people
+will never find could act on it:
+
+    sgt show   theme-df22484c1cd9    ✗ not a known feature, checkpoint, op, or symbol
+    sgt revert theme-df22484c1cd9    ✗ nothing in this codebase plausibly matches
+    sgt intent revert theme-df22484c1cd9   works
+
+Fixed by resolving a `theme-` id on the plain `revert`/`restore` path, through the
+same `resolve_group` lookup `sgt intent revert` uses, so the two spellings cannot
+disagree about what a theme contains. Verified round trip on the footfall testbed:
+the removal leaves the app running and `restore` with the same id puts it back.
+
+Two things worth carrying out of this. The tool was better than my finding said,
+and I would not have known without trying the verb rather than reading the tree.
+And the pattern is now three for three: sessions (44), themes (52), and chapters
+(48) were each computed correctly and each unreachable from the verb a person would
+actually type. The grouping work is done. The addressing is where this leaks.
+
+### Finding 55 (open): a theme reverts but does not fully restore
+
+Following finding 52's correction, `sgt revert <theme-id>` and `sgt restore
+<theme-id>` were wired onto the plain verbs. Revert works:
+
+    $ sgt revert theme-df22484c1cd9 --yes
+      ✓ revert applied — 14 edits removed, 10 added.
+    references to the removed module: 6 -> 0
+
+Restore does not come all the way back:
+
+    $ sgt restore theme-df22484c1cd9 --yes
+      ✓ restore applied — 1 edit removed, 13 added.
+    references to the removed module: 0 -> 1
+
+The app runs either way, so nothing is loudly broken, and the counts are not
+symmetric: 14 removed against 13 added. A theme revert is a union of three atoms'
+op-sets plus forward subtraction on the symbols they shared, and the inverse is
+evidently not the union of the inverses.
+
+This is why the study's target is a chapter rather than the theme. The chapter
+round-trips exactly, verified on both testbeds by the gate, and the theme does not.
+
+Recorded rather than worked around, because the theme is the better story and
+should become the target once this is fixed: it is the only grouping that holds all
+three event-day jobs, both testbeds produced one unaided, and it is what a
+participant would mean by "the event day handling".
+
+A second thing the gate caught, worth keeping separate: reverting the whole theme
+moved no rendered page at all over the full date range. Removing the tracking and
+the exclusion together cancels out on every page the dashboard draws. A target
+nobody can see the effect of cannot carry a task whatever else is true of it.
+
+**One bug of my own, found by testing the apply rather than the preview.**
+`_emit_verb_result` takes `yes` keyword-only, and the new branch passed it
+positionally, where it landed in `extra`. The preview was right, the confirm line
+said "re-run with --yes to apply" when `--yes` had been given, and nothing was
+applied. A verb that previews correctly and silently does nothing is worse than one
+that refuses, and only running the apply would have caught it.

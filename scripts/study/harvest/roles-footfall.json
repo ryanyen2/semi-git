@@ -1,0 +1,50 @@
+[
+  {
+    "name": "hour-profile",
+    "prompt": "The committee paper needs a chart of what time of day people walk past. Add a page showing the average count for each hour of the day, with the busiest hour called out at the top. Link it from the nav."
+  },
+  {
+    "name": "weekday-weekend",
+    "prompt": "Office workers and weekend visitors are different crowds and the paper treats them separately. Split the hour of day page so weekdays and weekends can be seen side by side. Keep the combined view as well."
+  },
+  {
+    "name": "event-days",
+    "prompt": "There are days that are nothing like a normal day here. Grand final parade, New Year, the marathon, that sort of thing. Start keeping track of which days those are, so we can tell them apart later. There is a list in my email I will paste in later, for now put in the handful you can find by looking at the numbers and leave it easy to add more."
+  },
+  {
+    "name": "monthly-trend",
+    "prompt": "Add a page showing the total for each month back to the start of the file, as a chart. The point is to see the summer dip when the offices empty out. Put the highest and lowest month in words above the chart."
+  },
+  {
+    "name": "event-annotation",
+    "prompt": "On the daily and monthly charts, make the event days we track stand out from the ordinary ones, so nobody reads a spike as growth when it was the marathon. However you think is clearest."
+  },
+  {
+    "name": "side-compare",
+    "prompt": "There is a sensor on each side of the crossing and people keep asking whether the two sides are balanced. Add a page comparing north and south: totals for each, and how the split changes across the hours of the day."
+  },
+  {
+    "name": "year-table",
+    "prompt": "I need a page with one row per year: total, average day, busiest day and its date. This is the table that goes at the front of the paper."
+  },
+  {
+    "name": "event-exclusion",
+    "prompt": "The averages are being pulled around by the event days. A marathon Sunday is not what an average Sunday looks like. Keep them out of the averages wherever we show one, but do not lose them from the totals or the daily table."
+  },
+  {
+    "name": "csv-download",
+    "prompt": "People keep asking me to email them the daily numbers. Add a download link that gives back the daily totals as a csv so I can stop doing it by hand."
+  },
+  {
+    "name": "quiet-sensor",
+    "prompt": "Someone said one of the two sensors reads low and has done for a while. Have a look at the two series yourself, decide whether we should still be adding them together for the headline numbers, and do whatever you conclude is right. Put your reasoning in the message."
+  },
+  {
+    "name": "date-window",
+    "prompt": "The dashboard always shows the whole file, which is ten years. Let me pick a start and end date and have every page respect it. Default to the last complete year."
+  },
+  {
+    "name": "rounding",
+    "prompt": "The numbers on the front page are quoted down to the single person and that is false precision for a sensor like this. Round them sensibly wherever we show them."
+  }
+]

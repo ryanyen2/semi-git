@@ -4,10 +4,10 @@ Thanks for taking part. Plan for two and a half hours, including breaks.
 
 ## What you'll do
 
-- Work on a small program you have never seen. Someone built it over six weeks and then left.
+- Take over a small web dashboard you have never seen. Someone built it over six weeks, mostly by describing what she wanted to an AI assistant, and then left.
 - Read a short description of what it does, with no clock running.
-- Handle three requests that have come in about it, and answer two short questions about what a past piece of work touched.
-- Do that twice, with two different setups for looking at the project's history, on two different projects.
+- Work through four cards: see what it does today, find the piece of work behind one of its behaviours, take that work out, and put it back.
+- Do that twice, with two different setups for reading the project's history, on two different projects.
 
 We are comparing the two setups. We are not testing you. If something confuses you, that is the most useful thing you can tell us.
 
@@ -32,16 +32,16 @@ We record the screen and audio. You can ask us to stop at any time.
 | 10 | Setting up your machine |
 | 10 | A practice project |
 | 5 | Reading about the project you are taking over |
-| 24 | 4 cards: see a defect, find what caused it, take it out, then remove a feature |
+| 19 | 4 cards: see a defect, find what caused it, take it out, then remove a feature |
 | 6 | Three short questionnaires |
 | 15 | Setting up the second project, and practice again |
 | 5 | Reading about the second project |
-| 24 | The same 4 cards, on the second project |
+| 19 | The same 4 cards, on the second project |
 | 6 | Questionnaires again |
 | 5 | Comparing the two |
 | 3 | Handing your data over |
 
-That is about 90 minutes of work. The rest is breaks.
+That is about 80 minutes of work. The rest is breaks.
 
 Every card has its own time limit, and you can see it counting down. The clock
 only starts once you have read about the project, so there is no rush before

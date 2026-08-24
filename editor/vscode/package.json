@@ -2,7 +2,7 @@
   "name": "semi-git",
   "displayName": "semi-git (sgt)",
   "description": "See which feature owns each line of code, and remove or restore one feature's work without touching the rest.",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "publisher": "semi-git",
   "license": "MIT",
   "repository": {
@@ -50,7 +50,7 @@
         "sgt.inlayHints.enabled": {
           "type": "boolean",
           "default": false,
-          "description": "Show a ‹feature-label ·N ops› inlay hint at each symbol's definition line."
+          "description": "Show a \u2039feature-label \u00b7N ops\u203a inlay hint at each symbol's definition line."
         },
         "sgt.diagnostics.drift": {
           "type": "boolean",
@@ -66,19 +66,51 @@
     },
     "viewsContainers": {
       "activitybar": [
-        { "id": "semi-git", "title": "semi-git", "icon": "media/sgt-icon.svg" }
+        {
+          "id": "semi-git",
+          "title": "semi-git",
+          "icon": "media/sgt-icon.svg"
+        }
       ],
       "panel": [
-        { "id": "sgtWorkbenchPanel", "title": "SGT Workbench", "icon": "media/sgt-icon.svg" }
+        {
+          "id": "sgtWorkbenchPanel",
+          "title": "SGT Workbench",
+          "icon": "media/sgt-icon.svg"
+        }
       ]
     },
     "views": {
       "semi-git": [
-        { "id": "sgtNow", "name": "Now", "icon": "media/sgt-icon.svg", "when": "sgt.hasRoot" },
-        { "id": "sgtFeatures", "name": "Features", "icon": "media/sgt-icon.svg" },
-        { "id": "sgtForks", "name": "Forks", "icon": "media/sgt-icon.svg", "when": "sgt.hasRoot" },
-        { "id": "sgtChanges", "name": "Changes", "icon": "media/sgt-icon.svg", "when": "sgt.hasRoot" },
-        { "id": "sgtCompositions", "name": "Compositions", "icon": "media/sgt-icon.svg", "when": "sgt.hasRoot" }
+        {
+          "id": "sgtNow",
+          "name": "Now",
+          "icon": "media/sgt-icon.svg",
+          "when": "sgt.hasRoot"
+        },
+        {
+          "id": "sgtFeatures",
+          "name": "Features",
+          "icon": "media/sgt-icon.svg"
+        },
+        {
+          "id": "sgtForks",
+          "name": "Forks",
+          "icon": "media/sgt-icon.svg",
+          "when": "sgt.hasRoot"
+        },
+        {
+          "id": "sgtChanges",
+          "name": "Changes",
+          "icon": "media/sgt-icon.svg",
+          "when": "sgt.hasRoot"
+        },
+        {
+          "id": "sgtCompositions",
+          "name": "Compositions",
+          "icon": "media/sgt-icon.svg",
+          "when": "sgt.hasRoot"
+        }
       ],
       "sgtWorkbenchPanel": [
         {
@@ -97,54 +129,231 @@
       }
     ],
     "commands": [
-      { "command": "sgt.refresh", "title": "Refresh", "category": "semi-git", "icon": "$(refresh)" },
-      { "command": "sgt.runNextAction", "title": "Run Next Action", "category": "semi-git" },
-      { "command": "sgt.toggleBlame", "title": "Toggle Feature Blame", "category": "semi-git" },
-      { "command": "sgt.openWorkbench", "title": "Open Composition Workbench", "category": "semi-git", "icon": "$(type-hierarchy)" },
-      { "command": "sgt.revealInWorkbench", "title": "Reveal Feature in Workbench", "category": "semi-git" },
-      { "command": "sgt.previewRevert", "title": "Preview Revert (plug out)", "category": "semi-git", "icon": "$(diff)" },
-      { "command": "sgt.revert", "title": "Revert (choose which dependents to keep)", "category": "semi-git" },
-      { "command": "sgt.revertSymbol", "title": "Revert Symbol Under Cursor (choose dependents)", "category": "semi-git" },
-      { "command": "sgt.restore", "title": "Restore (plug in)", "category": "semi-git" },
-      { "command": "sgt.edit", "title": "Edit in place", "category": "semi-git" },
-      { "command": "sgt.showPlanQuickPick", "title": "Show Plan Steps", "category": "semi-git" },
-      { "command": "sgt.showPlanDiff", "title": "Show Plan Step Diff", "category": "semi-git" },
-      { "command": "sgt.init", "title": "Initialize (sgt init)", "category": "semi-git" },
-      { "command": "sgt.resolveFork", "title": "Resolve Fork", "category": "semi-git" },
-      { "command": "sgt.resolveStalledPlan", "title": "Resolve Stalled Plan", "category": "semi-git" },
-      { "command": "sgt.proposeLand", "title": "Land Proposal", "category": "semi-git (advanced)" },
-      { "command": "sgt.proposePublish", "title": "Publish Proposal (GitHub PR)", "category": "semi-git (advanced)" },
-      { "command": "sgt.viewProposal", "title": "View Proposal", "category": "semi-git (advanced)" },
-      { "command": "sgt.jumpToLocation", "title": "Jump to Location", "category": "semi-git" },
-      { "command": "sgt.switch", "title": "Switch Branch", "category": "semi-git" },
-      { "command": "sgt.save", "title": "Save", "category": "semi-git" },
-      { "command": "sgt.undo", "title": "Undo Last Operation", "category": "semi-git" },
-      { "command": "sgt.sync", "title": "Sync", "category": "semi-git", "icon": "$(sync)" },
-      { "command": "sgt.push", "title": "Push", "category": "semi-git", "icon": "$(repo-push)" },
-      { "command": "sgt.land", "title": "Land Branch", "category": "semi-git" }
+      {
+        "command": "sgt.refresh",
+        "title": "Refresh",
+        "category": "semi-git",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "sgt.runNextAction",
+        "title": "Run Next Action",
+        "category": "semi-git"
+      },
+      {
+        "command": "sgt.toggleBlame",
+        "title": "Toggle Feature Blame",
+        "category": "semi-git"
+      },
+      {
+        "command": "sgt.openWorkbench",
+        "title": "Open Composition Workbench",
+        "category": "semi-git",
+        "icon": "$(type-hierarchy)"
+      },
+      {
+        "command": "sgt.revealInWorkbench",
+        "title": "Reveal Feature in Workbench",
+        "category": "semi-git"
+      },
+      {
+        "command": "sgt.previewRevert",
+        "title": "Preview Revert (plug out)",
+        "category": "semi-git",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "sgt.revert",
+        "title": "Revert (choose which dependents to keep)",
+        "category": "semi-git"
+      },
+      {
+        "command": "sgt.revertSymbol",
+        "title": "Revert Symbol Under Cursor (choose dependents)",
+        "category": "semi-git"
+      },
+      {
+        "command": "sgt.restore",
+        "title": "Restore (plug in)",
+        "category": "semi-git"
+      },
+      {
+        "command": "sgt.edit",
+        "title": "Edit in place",
+        "category": "semi-git"
+      },
+      {
+        "command": "sgt.showPlanQuickPick",
+        "title": "Show Plan Steps",
+        "category": "semi-git"
+      },
+      {
+        "command": "sgt.showPlanDiff",
+        "title": "Show Plan Step Diff",
+        "category": "semi-git"
+      },
+      {
+        "command": "sgt.init",
+        "title": "Initialize (sgt init)",
+        "category": "semi-git"
+      },
+      {
+        "command": "sgt.resolveFork",
+        "title": "Resolve Fork",
+        "category": "semi-git"
+      },
+      {
+        "command": "sgt.resolveStalledPlan",
+        "title": "Resolve Stalled Plan",
+        "category": "semi-git"
+      },
+      {
+        "command": "sgt.proposeLand",
+        "title": "Land Proposal",
+        "category": "semi-git (advanced)"
+      },
+      {
+        "command": "sgt.proposePublish",
+        "title": "Publish Proposal (GitHub PR)",
+        "category": "semi-git (advanced)"
+      },
+      {
+        "command": "sgt.viewProposal",
+        "title": "View Proposal",
+        "category": "semi-git (advanced)"
+      },
+      {
+        "command": "sgt.jumpToLocation",
+        "title": "Jump to Location",
+        "category": "semi-git"
+      },
+      {
+        "command": "sgt.switch",
+        "title": "Switch Branch",
+        "category": "semi-git"
+      },
+      {
+        "command": "sgt.save",
+        "title": "Save",
+        "category": "semi-git"
+      },
+      {
+        "command": "sgt.undo",
+        "title": "Undo Last Operation",
+        "category": "semi-git"
+      },
+      {
+        "command": "sgt.sync",
+        "title": "Sync",
+        "category": "semi-git",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "sgt.push",
+        "title": "Push",
+        "category": "semi-git",
+        "icon": "$(repo-push)"
+      },
+      {
+        "command": "sgt.land",
+        "title": "Land Branch",
+        "category": "semi-git"
+      }
     ],
     "menus": {
       "view/title": [
-        { "command": "sgt.refresh", "when": "view == sgtNow", "group": "navigation" },
-        { "command": "sgt.refresh", "when": "view == sgtFeatures", "group": "navigation" },
-        { "command": "sgt.refresh", "when": "view == sgtForks", "group": "navigation" },
-        { "command": "sgt.refresh", "when": "view == sgtChanges", "group": "navigation" },
-        { "command": "sgt.refresh", "when": "view == sgtCompositions", "group": "navigation" },
-        { "command": "sgt.sync", "when": "view == sgtCompositions", "group": "navigation" },
-        { "command": "sgt.push", "when": "view == sgtCompositions", "group": "navigation" }
+        {
+          "command": "sgt.refresh",
+          "when": "view == sgtNow",
+          "group": "navigation"
+        },
+        {
+          "command": "sgt.refresh",
+          "when": "view == sgtFeatures",
+          "group": "navigation"
+        },
+        {
+          "command": "sgt.refresh",
+          "when": "view == sgtForks",
+          "group": "navigation"
+        },
+        {
+          "command": "sgt.refresh",
+          "when": "view == sgtChanges",
+          "group": "navigation"
+        },
+        {
+          "command": "sgt.refresh",
+          "when": "view == sgtCompositions",
+          "group": "navigation"
+        },
+        {
+          "command": "sgt.sync",
+          "when": "view == sgtCompositions",
+          "group": "navigation"
+        },
+        {
+          "command": "sgt.push",
+          "when": "view == sgtCompositions",
+          "group": "navigation"
+        }
       ],
       "editor/context": [
-        { "command": "sgt.revertSymbol", "when": "sgt.hasRoot && editorTextFocus", "group": "sgt@1" },
-        { "command": "sgt.revealInWorkbench", "when": "sgt.hasRoot && editorTextFocus", "group": "sgt@2" }
+        {
+          "command": "sgt.revertSymbol",
+          "when": "sgt.hasRoot && editorTextFocus",
+          "group": "sgt@1"
+        },
+        {
+          "command": "sgt.revealInWorkbench",
+          "when": "sgt.hasRoot && editorTextFocus",
+          "group": "sgt@2"
+        }
       ],
       "view/item/context": [
-        { "command": "sgt.previewRevert", "when": "view == sgtFeatures && viewItem == sgtFeature" },
-        { "command": "sgt.revert", "when": "view == sgtFeatures && viewItem == sgtFeature" },
-        { "command": "sgt.restore", "when": "view == sgtFeatures && viewItem == sgtFeature" },
-        { "command": "sgt.edit", "when": "view == sgtFeatures && viewItem == sgtFeature" },
-        { "command": "sgt.resolveFork", "when": "view == sgtForks && viewItem == sgtFork" },
-        { "command": "sgt.proposeLand", "when": "view == sgtCompositions && viewItem == sgtProposal" },
-        { "command": "sgt.proposePublish", "when": "view == sgtCompositions && viewItem == sgtProposal" }
+        {
+          "command": "sgt.previewRevert",
+          "when": "view == sgtFeatures && viewItem == sgtFeature"
+        },
+        {
+          "command": "sgt.revert",
+          "when": "view == sgtFeatures && viewItem == sgtFeature"
+        },
+        {
+          "command": "sgt.restore",
+          "when": "view == sgtFeatures && viewItem == sgtFeature"
+        },
+        {
+          "command": "sgt.edit",
+          "when": "view == sgtFeatures && viewItem == sgtFeature"
+        },
+        {
+          "command": "sgt.resolveFork",
+          "when": "view == sgtForks && viewItem == sgtFork"
+        },
+        {
+          "command": "sgt.proposeLand",
+          "when": "view == sgtCompositions && viewItem == sgtProposal"
+        },
+        {
+          "command": "sgt.proposePublish",
+          "when": "view == sgtCompositions && viewItem == sgtProposal"
+        },
+        {
+          "command": "sgt.previewRevert",
+          "when": "view == sgtFeatures && viewItem == sgtChapter",
+          "group": "sgt@1"
+        },
+        {
+          "command": "sgt.revert",
+          "when": "view == sgtFeatures && viewItem == sgtChapter",
+          "group": "sgt@1"
+        },
+        {
+          "command": "sgt.restore",
+          "when": "view == sgtFeatures && viewItem == sgtChapter",
+          "group": "sgt@1"
+        }
       ]
     },
     "walkthroughs": [
@@ -157,22 +366,34 @@
             "id": "install",
             "title": "Install the sgt CLI",
             "description": "This extension shells out to the `sgt` CLI on your PATH.",
-            "media": { "markdown": "walkthroughs/getting-started/install.md" },
-            "completionEvents": ["onContext:sgt.hasRoot"]
+            "media": {
+              "markdown": "walkthroughs/getting-started/install.md"
+            },
+            "completionEvents": [
+              "onContext:sgt.hasRoot"
+            ]
           },
           {
             "id": "init",
             "title": "Initialize this workspace",
             "description": "Read your git history into the op store under `.sgt/`.",
-            "media": { "markdown": "walkthroughs/getting-started/init.md" },
-            "completionEvents": ["onCommand:sgt.init"]
+            "media": {
+              "markdown": "walkthroughs/getting-started/init.md"
+            },
+            "completionEvents": [
+              "onCommand:sgt.init"
+            ]
           },
           {
             "id": "explore",
             "title": "Explore your feature tree",
             "description": "See your codebase clustered into features.",
-            "media": { "markdown": "walkthroughs/getting-started/explore.md" },
-            "completionEvents": ["onView:sgtFeatures"]
+            "media": {
+              "markdown": "walkthroughs/getting-started/explore.md"
+            },
+            "completionEvents": [
+              "onView:sgtFeatures"
+            ]
           }
         ]
       }

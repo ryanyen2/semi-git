@@ -70,13 +70,13 @@ describe('the validation itself', () => {
 
   it('rejects a key that answers only one project', () => {
     const half = clone()
-    delete half.requestKeys.d2.locate!.confplan
-    expect(() => validateGroundTruth(half)).toThrow(/not confplan/)
+    delete half.requestKeys.d2.locate!.footfall
+    expect(() => validateGroundTruth(half)).toThrow(/not footfall/)
   })
 
   it('rejects a key that accepts nothing for a locate step', () => {
     const empty = clone()
-    empty.requestKeys.d2.locate!.confplan = []
+    empty.requestKeys.d2.locate!.footfall = []
     expect(() => validateGroundTruth(empty)).toThrow(/accepts nothing for d2/)
   })
 
@@ -89,7 +89,7 @@ describe('the validation itself', () => {
   it('rejects a reach answer naming a behaviour the trial does not offer', () => {
     const drifted = clone()
     drifted.requestKeys.d3.reach = ['agenda', 'refund']
-    expect(() => validateGroundTruth(drifted)).toThrow(/does not offer: refund/)
+    expect(() => validateGroundTruth(drifted)).toThrow(/does not offer: agenda, refund/)
   })
 
   it('rejects a reach answer that names every behaviour', () => {

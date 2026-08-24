@@ -31,8 +31,8 @@ const participant = () => env.authenticatedContext('participant-uid')
 const otherAnon = () => env.authenticatedContext('other-anon-uid')
 
 const blocks = [
-  { half: 1, condition: 'git', project: 'coursecraft', label: 'Setup A' },
-  { half: 2, condition: 'sgt', project: 'confplan', label: 'Setup B' },
+  { half: 1, condition: 'git', project: 'bikecount', label: 'Setup A' },
+  { half: 2, condition: 'sgt', project: 'footfall', label: 'Setup B' },
 ]
 
 beforeAll(async () => {
@@ -195,8 +195,8 @@ describe('a participant cannot move their own condition', () => {
     await assertFails(
       updateDoc(doc(db, 'participants', CODE), {
         blocks: [
-          { half: 1, condition: 'sgt', project: 'confplan', label: 'Setup A' },
-          { half: 2, condition: 'git', project: 'coursecraft', label: 'Setup B' },
+          { half: 1, condition: 'sgt', project: 'footfall', label: 'Setup A' },
+          { half: 2, condition: 'git', project: 'bikecount', label: 'Setup B' },
         ],
       }),
     )

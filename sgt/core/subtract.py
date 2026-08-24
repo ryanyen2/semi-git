@@ -343,17 +343,41 @@ def plan_subtraction(
         return stored.images if stored is not None else {}
 
     if not forward:
-        # Nothing to splice forward -- but a file whose whole live chain was excluded can still be
-        # left covered by its leading-gap sentinel, so it needs the same pass (F42).
+        # Nothing to splice forward -- but the file still needs both layout passes, the same two
+        # the spliced path runs below. It used to run only the pruning one, and the gap that left
+        # is not cosmetic: a plain feature revert is upward-closed, so it arrives *here* rather
+        # than below, and the entities it keeps lost their separators. The observed damage was
+        # `return sorted(months.items())def hourly_averages(readings):`, a file Python cannot
+        # parse, plus a module-level constant that lived in the removed gap and took every later
+        # reference down with it. `_repair_layout` re-grounds exactly that, from the recorded
+        # pre-removal image, and had simply never been reached on this branch.
         post_frontier = order.frontier(survivors, ops)
-        emptied = _prune_emptied_paths(layout_paths, pre_frontier, post_frontier,
-                                       by_id, _images, removal, tag)
+        repairs: list[Op] = []
+        all_by_id = dict(by_id)
+
+        def _images_any(op_id: str) -> dict[str, bytes | None]:
+            op = all_by_id.get(op_id)
+            if op is not None and op.images:
+                return op.images
+            stored = store.get(op_id)
+            return stored.images if stored is not None else {}
+
+        for layout_path in sorted(layout_paths):
+            repairs.extend(
+                _repair_layout(layout_path, pre_frontier, post_frontier, _images_any, all_by_id, tag)
+            )
+        all_by_id.update({o.id: o for o in repairs})
+        live_after = order.frontier(survivors | {o.id for o in repairs}, ops + repairs)
+
+        emptied = _prune_emptied_paths(layout_paths, pre_frontier, live_after,
+                                       all_by_id, _images_any, removal, tag)
+        new_ops = repairs + list(emptied)
         return SubtractionPlan(
-            ok=True, after_ids=frozenset(survivors | {o.id for o in emptied}),
-            new_ops=tuple(emptied), excluded=frozenset(excluded),
+            ok=True, after_ids=frozenset(survivors | {o.id for o in new_ops}),
+            new_ops=tuple(new_ops), excluded=frozenset(excluded),
             broken_references=_broken_references(
-                ops, survivors, removal, _born_symbols(removal, by_id), by_id, _images,
-                post_frontier, emptied),
+                ops, survivors, removal, _born_symbols(removal, by_id), by_id, _images_any,
+                live_after, new_ops),
         )
 
     chains = order._ordered_chains(live, ops)

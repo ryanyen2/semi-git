@@ -6,20 +6,20 @@ import { BLOCK_CAP_MIN } from './tasks'
 // docs/study/participant-materials.md, "Which condition, which project".
 const GROUPS: Record<GroupId, Array<{ condition: Condition; project: Project }>> = {
   1: [
-    { condition: 'git', project: 'coursecraft' },
-    { condition: 'sgt', project: 'confplan' },
+    { condition: 'git', project: 'bikecount' },
+    { condition: 'sgt', project: 'footfall' },
   ],
   2: [
-    { condition: 'sgt', project: 'coursecraft' },
-    { condition: 'git', project: 'confplan' },
+    { condition: 'sgt', project: 'bikecount' },
+    { condition: 'git', project: 'footfall' },
   ],
   3: [
-    { condition: 'git', project: 'confplan' },
-    { condition: 'sgt', project: 'coursecraft' },
+    { condition: 'git', project: 'footfall' },
+    { condition: 'sgt', project: 'bikecount' },
   ],
   4: [
-    { condition: 'sgt', project: 'confplan' },
-    { condition: 'git', project: 'coursecraft' },
+    { condition: 'sgt', project: 'footfall' },
+    { condition: 'git', project: 'bikecount' },
   ],
 }
 

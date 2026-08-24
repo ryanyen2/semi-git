@@ -1,284 +1,207 @@
 {
-  "version": "answer-key-v3",
-  "_note": "Load this into the study console under Setup. It is deliberately not compiled into the website: a participant with devtools open must not be able to read the answers out of the JavaScript. Sources: docs/study/testbed-spec.md and docs/study/build-log-*.md.",
-  "episodes": [
-    {
-      "id": "E1",
-      "shape": "scaffold",
-      "author": "agent",
-      "coursecraft": "models (Course, Section, Student), JSON store, CLI skeleton",
-      "confplan": "models (Talk, Session, Attendee), JSON store, CLI skeleton"
-    },
-    {
-      "id": "E2",
-      "shape": "model feature",
-      "author": "agent",
-      "coursecraft": "rooms and weekly time-slot grid",
-      "confplan": "rooms and two-day slot grid"
-    },
-    {
-      "id": "E3",
-      "shape": "feature",
-      "author": "human",
-      "coursecraft": "add and list courses and sections",
-      "confplan": "add and list talks and sessions"
-    },
-    {
-      "id": "E4",
-      "shape": "feature",
-      "author": "agent",
-      "coursecraft": "student enrollment command",
-      "confplan": "attendee registration command"
-    },
-    {
-      "id": "E5",
-      "shape": "bugfix",
-      "author": "human",
-      "coursecraft": "id reuse after delete corrupts the store",
-      "confplan": "id reuse after delete corrupts the store"
-    },
-    {
-      "id": "E6",
-      "shape": "feature",
-      "author": "human",
-      "coursecraft": "section capacity limits",
-      "confplan": "session capacity limits"
-    },
-    {
-      "id": "E7",
-      "shape": "feature",
-      "author": "agent",
-      "coursecraft": "time-conflict detection on enroll",
-      "confplan": "clash detection on register"
-    },
-    {
-      "id": "E8",
-      "shape": "tangled save",
-      "author": "human",
-      "coursecraft": "course search and filter, plus an unrelated date-parsing fix in the same save",
-      "confplan": "talk search and filter, plus the same unrelated fix"
-    },
-    {
-      "id": "E9",
-      "shape": "feature",
-      "author": "agent",
-      "coursecraft": "prerequisite enforcement",
-      "confplan": "series-dependency enforcement"
-    },
-    {
-      "id": "E10",
-      "shape": "refactor",
-      "author": "agent",
-      "coursecraft": "extract storage into a repository class",
-      "confplan": "extract storage into a repository class"
-    },
-    {
-      "id": "E11",
-      "shape": "feature F",
-      "author": "agent",
-      "coursecraft": "waitlist: join when a section is full",
-      "confplan": "waitlist: join when a session is full"
-    },
-    {
-      "id": "E12",
-      "shape": "dependent of F",
-      "author": "agent",
-      "coursecraft": "auto-promotion when a seat frees",
-      "confplan": "auto-promotion when a seat frees"
-    },
-    {
-      "id": "E13",
-      "shape": "interleaved keeper fix",
-      "author": "human",
-      "coursecraft": "back-to-back slots wrongly flagged as conflicts",
-      "confplan": "adjacent slots wrongly flagged as clashes"
-    },
-    {
-      "id": "E14",
-      "shape": "feature touching F",
-      "author": "agent",
-      "coursecraft": "drop command, with a cascade that triggers promotion",
-      "confplan": "unregister command, same cascade"
-    },
-    {
-      "id": "E15",
-      "shape": "tangled keeper",
-      "author": "human",
-      "coursecraft": "timetable export (markdown and csv), co-saved with a small waitlist message fix",
-      "confplan": "program export, co-saved with the same small fix"
-    },
-    {
-      "id": "E16",
-      "shape": "abandoned experiment",
-      "author": "agent",
-      "coursecraft": "priority enrollment for seniors, then reverted",
-      "confplan": "speaker-priority registration, then reverted"
-    },
-    {
-      "id": "E17",
-      "shape": "regression refactor",
-      "author": "agent",
-      "coursecraft": "normalize slot comparison for cross-listed sections; silently makes boundary-touching slots overlap",
-      "confplan": "normalize slot comparison across rooms; the same silent change"
-    },
-    {
-      "id": "E18",
-      "shape": "feature",
-      "author": "agent",
-      "coursecraft": "instructor schedule view",
-      "confplan": "speaker schedule view"
-    },
-    {
-      "id": "E19",
-      "shape": "feature",
-      "author": "human",
-      "coursecraft": "enrollment statistics report",
-      "confplan": "registration statistics report"
-    },
-    {
-      "id": "E20",
-      "shape": "bugfix",
-      "author": "human",
-      "coursecraft": "export escaping bug",
-      "confplan": "export escaping bug"
-    },
-    {
-      "id": "E21",
-      "shape": "dependent of F",
-      "author": "agent",
-      "coursecraft": "waitlist notification digest built on promotion events",
-      "confplan": "waitlist notification digest built on promotion events"
-    },
-    {
-      "id": "E22",
-      "shape": "polish",
-      "author": "human",
-      "coursecraft": "README and CLI help text",
-      "confplan": "README and CLI help text"
-    }
-  ],
+  "version": "answer-key-v4",
+  "episodes": {
+    "bikecount": [
+      {
+        "sha": "e261747",
+        "subject": "bikecount: a dashboard over the Fremont Bridge bicycle counter",
+        "session": null
+      },
+      {
+        "sha": "196f7b6",
+        "subject": "add a by-hour page showing average rides per hour",
+        "session": "hour-profile"
+      },
+      {
+        "sha": "b9f66c7",
+        "subject": "split the by-hour page into weekday and weekend charts",
+        "session": "weekday-weekend"
+      },
+      {
+        "sha": "66ca5b9",
+        "subject": "track known non-normal days like storms and holidays",
+        "session": "event-days"
+      },
+      {
+        "sha": "977e808",
+        "subject": "add a monthly totals page to see the seasonal swing",
+        "session": "monthly-trend"
+      },
+      {
+        "sha": "0c56354",
+        "subject": "mark tracked event days on the daily and monthly charts",
+        "session": "event-annotation"
+      },
+      {
+        "sha": "ca89fc2",
+        "subject": "add an east vs west comparison page",
+        "session": "side-compare"
+      },
+      {
+        "sha": "e36a2d2",
+        "subject": "add a by-year summary table",
+        "session": "year-table"
+      },
+      {
+        "sha": "c360a3d",
+        "subject": "exclude event days from averages, keep them in totals",
+        "session": "event-exclusion"
+      },
+      {
+        "sha": "a656515",
+        "subject": "add a csv download link for daily totals",
+        "session": "csv-download"
+      },
+      {
+        "sha": "dbd71ff",
+        "subject": "show the east/west split drifting over time, keep totals summed",
+        "session": "quiet-sensor"
+      },
+      {
+        "sha": "22496d8",
+        "subject": "scope every page to a picked date window, default last complete year",
+        "session": "date-window"
+      },
+      {
+        "sha": "7b19d0e",
+        "subject": "round bike counts on the overview page to the nearest 10",
+        "session": "rounding"
+      }
+    ],
+    "footfall": [
+      {
+        "sha": "d008345",
+        "subject": "footfall: a dashboard over the Spencer Street pedestrian counter",
+        "session": null
+      },
+      {
+        "sha": "e53bda8",
+        "subject": "add an hourly footfall page for the committee paper",
+        "session": "hour-profile"
+      },
+      {
+        "sha": "ef202b5",
+        "subject": "split the hourly page into weekday and weekend charts",
+        "session": "weekday-weekend"
+      },
+      {
+        "sha": "7e81c4c",
+        "subject": "start tracking event days that break the normal commute pattern",
+        "session": "event-days"
+      },
+      {
+        "sha": "f4688e7",
+        "subject": "add a monthly totals page",
+        "session": "monthly-trend"
+      },
+      {
+        "sha": "9fa083e",
+        "subject": "mark event days on the daily and monthly charts",
+        "session": "event-annotation"
+      },
+      {
+        "sha": "d13a40d",
+        "subject": "add a north v south page",
+        "session": "side-compare"
+      },
+      {
+        "sha": "f27e594",
+        "subject": "add a by-year summary table",
+        "session": "year-table"
+      },
+      {
+        "sha": "138f7d9",
+        "subject": "keep event days out of the averages",
+        "session": "event-exclusion"
+      },
+      {
+        "sha": "a89b935",
+        "subject": "add a csv download link for daily totals",
+        "session": "csv-download"
+      },
+      {
+        "sha": "1fe351c",
+        "subject": "note that the south sensor's lower count is real, not a fault",
+        "session": "quiet-sensor"
+      },
+      {
+        "sha": "7f14248",
+        "subject": "add a date window every page respects",
+        "session": "date-window"
+      },
+      {
+        "sha": "b1c4e59",
+        "subject": "round front page numbers to the nearest 10",
+        "session": "rounding"
+      }
+    ]
+  },
+  "_note": "Generated by scripts/study/harvest/write_answer_key.py from the built testbeds. Regenerate it whenever either testbed is rebuilt: chapter indexes and commit shas both move, and a key that names work the repository no longer contains scores everyone as wrong.",
+  "reachKeyVersion": "reach-key-v2",
   "requestKeys": {
     "d1": {
-      "coursecraft": "E17. Observation only, nothing scored. The two cases the script shows: `enroll` refuses a Mon 10:30-12:00 section for a student already in Mon 09:00-10:30, and `room audit` reports a clash between two back-to-back bookings in one room. Both are wrong. `pytest -m conflicts` PASSES, which is the point -- test_back_to_back_is_fine calls slots.overlaps, and the program calls slots.ranges_clash.",
-      "confplan": "Same shape. `register` refuses a Sat 10:30-12:00 session for an attendee already in Sat 09:00-10:30, `room audit` reports a clash between back-to-back bookings, and the suite is green."
+      "_note": "Observation only, nothing scored. The participant is asked which days the averages leave out and why. Any wording that names the unusual days and the reason on the page is right."
+    },
+    "d4": {
+      "_note": "Scored from the repository, not from a string: the removed work is back and every page matches the state at the start. Run scripts/study/score_dashboard.py against the original snapshot."
     },
     "d2": {
-      "coursecraft": "E17, \"normalize slot comparison for cross-listed sections and room audits\", 2026-07-27. Adds slots.ranges_clash (`<` where slots.overlaps has `<=`) and repoints enrollment.enroll and scheduling.room_clashes at it, orphaning E13's fix three episodes earlier. The message mentions neither conflicts nor enrolment.",
-      "confplan": "E17, \"normalize slot comparison for cross-track sessions and room audits\", 2026-07-27. Same shape: adds slots.ranges_clash and repoints registration.register and scheduling.room_clashes at it.",
-      "_locateNote": "ACCEPTED ANSWERS, not one correct string. The two arms name work in different vocabularies, so a sha and a feature label are both right. Matched leniently by web/src/analysis/pipeline.ts locateMatches (case and punctuation ignored, shas by 7+ char prefix) and that match is PROVISIONAL -- the experimenter reads the answer and decides. REGENERATE THE SHAS AFTER EVERY BUNDLE BUILD: the git and sgt arms are separate builds with different shas, and the shas below are from the fixtures at ~/repos/sgt-study, not from a shipped bundle. The sgt arm's feature LABEL is written by an LLM at build time and is not stable across rebuilds, so the feature ID is the anchor and the label is listed as a courtesy.",
+      "bikecount": "Event-Day Averages",
+      "footfall": "Exclude Event Days",
+      "_locateNote": "Accepted answers, not one correct string. The two arms name work differently, so a commit sha and a chapter name are both right. The match is provisional and the experimenter reads the answer.",
       "locate": {
-        "coursecraft": [
-          "25e91a9a1d220c850defd53f0b5eb66f45c46e79",
-          "25e91a9",
-          "ranges_clash",
-          "slot comparison",
-          "normalize slot comparison",
-          "E17"
+        "bikecount": [
+          "Event-Day Averages",
+          "add a by-year summary table@Event-Day Averages",
+          "c360a3d",
+          "exclude event days from averages, keep them in totals",
+          "f-00f15095",
+          "f-00f15095@1"
         ],
-        "confplan": [
-          "704e7a4555eff2bfeb847bc806627284d04b0d91",
-          "704e7a4",
-          "ranges_clash",
-          "slot comparison",
-          "normalize slot comparison",
-          "E17"
+        "footfall": [
+          "138f7d9",
+          "Exclude Event Days",
+          "add a north v south page@Exclude Event Days",
+          "f-1cda3c85",
+          "f-1cda3c85@1",
+          "keep event days out of the averages"
         ]
       }
     },
     "d3": {
-      "reach": [
-        "cancel",
-        "promote",
-        "register",
-        "rooms"
-      ],
-      "_reachNote": "GENERATED by scripts/study/measure_reach_key.py -- do not edit by hand. Target slot_normalization. Behaviour ids the work reaches, measured as call-graph reach from each command handler and cross-checked against the suite in both fixtures. Not reached: agenda, notices, queue, scheduleSession, search, showQueue, speaker, stats.",
-      "coursecraft": "Remove E17 so enroll and room audit stop treating touching endpoints as a clash. A clean revert: after it, slots.overlaps is the only comparison again and nothing else in the package calls ranges_clash. Scored by scripts/score_study_repo.py --expect-behaviour back-to-back-allowed, plus every other marker still passing.",
-      "confplan": "Same shape."
-    },
-    "w1": {
-      "coursecraft": "Observation only, nothing scored. The tour shows joining a queue, the queue in order, a freed seat being filled, the notice, and dropping.",
-      "confplan": "Same shape."
-    },
-    "w2": {
-      "coursecraft": "E11 waitlist, with E12 promotion, E14 drop cascade and E21 notices on top. E13 and E15 are interleaved keepers and must survive.",
-      "confplan": "E11 waitlist (f85493e + 1911a8f), E12 promotion (d4051d6), cancel cascade (f8de0fd), notices (b4e06f2). Keepers: de52f62 back-to-back, 4f9b974 agenda export."
-    },
-    "w3": {
-      "coursecraft": "E14 drop command comes back, without the promotion cascade.",
-      "confplan": "E14 unregister command comes back, without the promotion cascade."
-    },
-    "r1": {
-      "coursecraft": "E8. git 9f5f7e5 / sgt 079fa49, authored 2026-07-10. Search plus a one-line day-parsing fix (day.capitalize() in slots.parse_slot) landed together, in a change whose message mentions only search.",
-      "confplan": "E8. git d0711a1 / sgt 7ede859 \"add talk search\", authored 2026-07-10. Search plus silent lowercase-day leniency in slots.parse_slot.",
-      "_choicesNote": "Indexes into the option arrays in web/src/study/tasks.ts, which are the same in both projects. q1=0 one piece of work: both arrived in the same change. q2=1 the week of 6 July: 2026-07-10 is the Friday of the week beginning Monday 6 July. q3=1 the day-name change: the same change adds day.capitalize() to parse_slot.",
-      "choices": {
-        "coursecraft": {
-          "q1": 0,
-          "q2": 1,
-          "q3": 1
-        },
-        "confplan": {
-          "q1": 0,
-          "q2": 1,
-          "q3": 1
-        }
+      "reach": {
+        "bikecount": [
+          "yearTable"
+        ],
+        "footfall": [
+          "busiestHour",
+          "hourWeekday",
+          "hourWeekend",
+          "sideSplit"
+        ]
       },
-      "_retired": "Retired 2026-08-22 with the locate-and-reverse redesign. Kept so pilot documents still read."
-    },
-    "r2": {
-      "coursecraft": "E11 waitlist, with E12 promotion, E14 drop cascade and E21 notices on top. E13 and E15 are interleaved keepers and must survive.",
-      "confplan": "E11 waitlist (f85493e + 1911a8f), E12 promotion (d4051d6), cancel cascade (f8de0fd), notices (b4e06f2). Keepers: de52f62 back-to-back, 4f9b974 agenda export.",
-      "_retired": "Retired 2026-08-22 with the locate-and-reverse redesign. Kept so pilot documents still read."
-    },
-    "r3": {
-      "coursecraft": "E14 drop command comes back, without the promotion cascade.",
-      "confplan": "E14 unregister command comes back, without the promotion cascade.",
-      "_retired": "Retired 2026-08-22 with the locate-and-reverse redesign. Kept so pilot documents still read."
-    },
-    "f1": {
-      "coursecraft": "E15. git 9e0c81b \"timetable export\", authored 2026-07-21. export.export_markdown and export.export_csv.",
-      "confplan": "E15. git 4f9b974 \"agenda export\", authored 2026-07-21. export.export_markdown and export.export_csv.",
-      "reach": [
-        "agenda"
+      "_reachNote": "Measured, not written: each testbed was copied, the target chapter reverted, every page re-rendered, and the pages that moved mapped onto the options the trial offers.",
+      "bikecount": [
+        "years"
       ],
-      "_reachNote": "GENERATED by scripts/study/measure_reach_key.py -- do not edit by hand. Target agenda_export. Behaviour ids the work reaches, measured as call-graph reach from each command handler and cross-checked against the suite in both fixtures. Not reached: cancel, notices, promote, queue, register, rooms, scheduleSession, search, showQueue, speaker, stats.",
-      "_retired": "Retired 2026-08-22 with the locate-and-reverse redesign. Kept so pilot documents still read."
-    },
-    "f2": {
-      "coursecraft": "E17. git 25e91a9 \"normalize slot comparison for cross-listed sections and room audits\", authored 2026-07-27. slots.ranges_clash and scheduling.room_clashes. Note: coursecraft lands this as ONE commit where confplan lands it as two -- the fixtures are isomorphic in reach, which the measurement script checks, but not in commit count. The trial names the work in product terms, so this does not reach the participant.",
-      "confplan": "E17. git 704e7a4 \"normalize slot comparison for cross-track sessions and room audits\" plus 6ca9a53 \"route registration clash checks through the shared helper\", authored 2026-07-27. slots.ranges_clash and scheduling.room_clashes. 6ca9a53 is also the regression that silently re-broke E13's back-to-back fix: ranges_clash uses a strict comparison where overlaps does not, and test_back_to_back_is_fine asserts on slots.overlaps directly, so the suite never catches it.",
-      "reach": [
-        "cancel",
-        "promote",
-        "register",
-        "rooms"
-      ],
-      "_reachNote": "GENERATED by scripts/study/measure_reach_key.py -- do not edit by hand. Target slot_normalization. Behaviour ids the work reaches, measured as call-graph reach from each command handler and cross-checked against the suite in both fixtures. Not reached: agenda, notices, queue, scheduleSession, search, showQueue, speaker, stats.",
-      "_retired": "Retired 2026-08-22 with the locate-and-reverse redesign. Kept so pilot documents still read."
+      "footfall": [
+        "hourly",
+        "sides"
+      ]
     }
   },
-  "_rubricsNote": "r1 has no rubric on purpose. Its three questions are closed, so they are scored from `requestKeys.r1.choices` by the analysis and there is nothing left for a person to judge; a rubric here would have the facilitator grade by hand exactly what the key already grades.",
   "rubrics": {
-    "r2": [
+    "d4": [
       {
-        "id": "gone",
-        "label": "Waitlist gone: joining, promotion and notices all removed",
+        "id": "back",
+        "label": "The work is back and the dashboard matches the start",
         "points": 1
       },
       {
         "id": "intact",
-        "label": "Everything else still passes, and the app still starts",
-        "points": 1
-      }
-    ],
-    "r3": [
-      {
-        "id": "drop",
-        "label": "Dropping works again, with no promotion when a seat frees",
+        "label": "Nothing else changed, and the smoke check passes",
         "points": 1
       }
     ]
-  },
-  "reachKeyVersion": "reach-key-v1"
+  }
 }

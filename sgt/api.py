@@ -739,6 +739,14 @@ def _project_verb_preview(repo, preview) -> dict:
         "removed": sorted(preview.removed),
         "added": sorted(preview.added),
         "affected_symbols": list(preview.affected_symbols),
+        # Symbols the edit rewrites in place, keeping the later work layered on top of them
+        # (`sgt.core.subtract`). Every surface used to read only `removed`/`added`, so a revert
+        # that removes no whole op -- which is what reverting one checkpoint of a symbol several
+        # people have since edited does -- projected as touching nothing at all. The preview then
+        # marked the very checkpoint being reverted as `kept`. These are the ops' real effect and
+        # every reader needs them.
+        "subtracted_symbols": list(getattr(preview, "subtracted_symbols", ()) or ()),
+        "target_ops": sorted(getattr(preview, "target_ops", ()) or ()),
         "forked": preview.forked,
         "files": files,
         "message": preview.message,

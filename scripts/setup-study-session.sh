@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Set up one participant's workspace. Run this before the participant sits down.
 #
-#   scripts/setup-study-session.sh <participant> <git|sgt> <coursecraft|confplan>
+#   scripts/setup-study-session.sh <participant> <git|sgt> <bikecount|footfall>
 #
 # It makes a fresh copy of the study project, builds its test environment, and
 # checks that the tests pass. For the sgt condition it also installs sgt from a
@@ -18,13 +18,13 @@ MATERIALS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../docs/study" && pwd)/materials
 TASK_SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")/study/task-scripts" && pwd)"
 
 if [ $# -ne 3 ]; then
-    echo "usage: $0 <participant> <git|sgt> <coursecraft|confplan>" >&2
+    echo "usage: $0 <participant> <git|sgt> <bikecount|footfall>" >&2
     exit 2
 fi
 participant="$1"; condition="$2"; project="$3"
 
 case "$condition" in git|sgt) ;; *) echo "condition must be git or sgt" >&2; exit 2 ;; esac
-case "$project" in coursecraft|confplan) ;; *) echo "project must be coursecraft or confplan" >&2; exit 2 ;; esac
+case "$project" in bikecount|footfall) ;; *) echo "project must be bikecount or footfall" >&2; exit 2 ;; esac
 
 workspace="$HOME/study/$participant"
 if [ -e "$workspace" ]; then

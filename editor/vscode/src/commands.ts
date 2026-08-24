@@ -12,9 +12,24 @@ import { Store } from "./store";
 import { BlameView, EmitView, NextAction, PlanView, ProposalChecklistEntry } from "./types";
 import { WorkbenchProvider } from "./workbench";
 
-async function pickFeature(store: Store, provided?: string): Promise<string | undefined> {
-  if (provided) {
-    return provided;
+/** What a tree item hands a command. A feature node carries `id`; a chapter node carries its
+ * segment, and the selector for a chapter is `<feature-id>@<index>` -- the same string the
+ * terminal takes. Without this the three verbs on a chapter silently acted on nothing, because
+ * they were written when only features were selectable and read a bare string. */
+function selectorOf(provided?: unknown): string | undefined {
+  if (!provided) return undefined;
+  if (typeof provided === "string") return provided;
+  const node = provided as { kind?: string; id?: string; segment?: { feature_id: string; seg_index: number } };
+  if (node.kind === "chapter" && node.segment) {
+    return `${node.segment.feature_id}@${node.segment.seg_index}`;
+  }
+  return typeof node.id === "string" ? node.id : undefined;
+}
+
+async function pickFeature(store: Store, provided?: unknown): Promise<string | undefined> {
+  const direct = selectorOf(provided);
+  if (direct) {
+    return direct;
   }
   let map;
   try {
@@ -315,19 +330,19 @@ export function registerCommands(
     await workbench.revealFeature(feature);
   });
 
-  reg("sgt.previewRevert", async (id?: string) => {
+  reg("sgt.previewRevert", async (id?: unknown) => {
     const feature = await pickFeature(store, id);
     if (feature) {
       void preview.preview(feature);
     }
   });
-  reg("sgt.revert", async (id?: string) => {
+  reg("sgt.revert", async (id?: unknown) => {
     const feature = await pickFeature(store, id);
     if (feature) {
       await revertWithFrontier(store, feature, preview);
     }
   });
-  reg("sgt.restore", async (id?: string) => {
+  reg("sgt.restore", async (id?: unknown) => {
     const feature = await pickFeature(store, id);
     if (feature) {
       await restoreWithPreview(store, feature, preview);
@@ -337,7 +352,7 @@ export function registerCommands(
   // `sgt edit <sel>` (U4/KTD5): draft an in-place change. This drafts a continuation hollow and
   // mechanically repoints dependents; the user then edits the working tree and Saves to fulfill.
   // (No preview/frontier yet -- `sgt edit` has no `--emit`; that's a flagged CLI follow-up.)
-  reg("sgt.edit", async (id?: string) => {
+  reg("sgt.edit", async (id?: unknown) => {
     const sel = await pickFeature(store, id);
     if (!sel) {
       return;
