@@ -72,32 +72,13 @@ cp -R "$BUNDLE_SRC/telemetry" "$staging/telemetry"
 cp "$BUNDLE_SRC/install/setup.sh" "$staging/install/setup.sh"
 chmod +x "$staging/install/setup.sh" "$staging"/bin/study-*
 
-# The three prescribed steps the task cards name, beside the project because
-# each one starts with `cd "$(dirname "$0")"` and reads the project's own
-# `pytest.ini` and `.venv`. Card 1 is the sentence "run ./show-the-problem.sh",
-# so a bundle without these is a session that stops on its first card -- and the
-# remote bundle is the default path, not the exception.
-#
-# Both conditions get byte-identical copies. That is the point of prescribing
-# the step: the arms are compared on what they could do about the defect, not on
-# whether they typed the same eight commands to see it.
-#
-# They are instruments, not project content, so git must not see them. Excluded
-# rather than merely untracked because `work/` is a repository that sgt mines:
-# the dirty pass reads the working tree, so three untracked shell files become
-# three symbols carrying an op and sitting in no frontier, and the integrity
-# gate below correctly calls that graph degenerate and refuses to ship it. In
-# the git arm nothing crashes, but `git status` opens on three files the
-# participant did not write, in a task about telling their own work from someone
-# else's. `.git/info/exclude` rather than a committed `.gitignore` for the same
-# reason the practice repo uses it: a tracked file added here would rewrite the
-# sha of every commit the study's answer key names.
-printf '/show-the-problem.sh\n/check.sh\n/show-the-waitlist.sh\n' \
-    >> "$staging/work/.git/info/exclude"
-for s in show-the-problem check show-the-waitlist; do
-    cp "$SGT_SOURCE/scripts/study/task-scripts/$s.sh" "$staging/work/$s.sh"
-    chmod +x "$staging/work/$s.sh"
-done
+# No prescribed scripts travel any more. The old block staged three of them
+# (show-the-problem, check, show-the-waitlist) for a task design that drove a
+# command line app and needed a scratch store built before anything could be seen.
+# The dashboard shows its own state in a browser, and the only thing a card asks
+# anyone to run is `python3 check.py`, which the project already ships and which
+# grows as pages are added. A staged script would be a fourth copy of that going
+# stale on its own schedule.
 
 # The project brief travels too. It is read once on the website with no clock
 # running, and then wanted again mid-card -- "what was it allowed to refuse to
@@ -117,19 +98,18 @@ rm -rf "$staging/work/.venv" "$staging/telemetry/state.json" \
 # file written back, against their own copy of the tool, during setup.
 rm -rf "$staging/work/.claude"
 
-echo "  Building the test environment."
-(
-    cd "$staging/work"
-    rm -rf .venv
-    uv venv -q -p 3.12
-    uv pip install -q -p .venv/bin/python pytest
-)
-
-tests="$(cd "$staging/work" && .venv/bin/python -m pytest -q 2>&1 | tail -1)"
-echo "  $tests"
-case "$tests" in
-    *"38 passed"*) ;;
-    *) echo "Expected 38 passing tests. Not shipping this." >&2; exit 1 ;;
+# The dashboards have no test suite. They have `check.py`, which renders every page
+# the app knows about and fails loudly if one throws, and which grows on its own as
+# pages are added because it walks `pages.discover()` rather than a list. That is
+# the thing to run before shipping a bundle: not a count of passing tests, which was
+# the old command line testbeds' shape and pinned at "38 passed", but the question
+# a participant will ask on their first card, which is whether the dashboard comes up.
+echo "  Checking the dashboard renders."
+smoke="$(cd "$staging/work" && python3 check.py 2>&1 | tail -1)"
+echo "  $smoke"
+case "$smoke" in
+    ok:*) ;;
+    *) echo "The dashboard does not render. Not shipping this." >&2; exit 1 ;;
 esac
 
 tool_build=""
