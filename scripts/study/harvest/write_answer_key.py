@@ -93,19 +93,36 @@ def try_selector(repo, selector, work):
     # restore exited zero and the app still starts, but that every page renders identically to
     # before the revert. A restore that comes most of the way back leaves the app running and the
     # participant with no way to tell they are not finished.
-    back = subprocess.run(["sgt", "restore", selector, "--yes"], cwd=copy, capture_output=True)
+    # `restore` first, then `undo`, and either counts. Card 4 asks for the work back and names no
+    # verb, so what has to exist is a reliable way, not a particular one. Measured on the shipped
+    # footfall bundle: `restore <chapter>` brings the pages back exactly for 2 of 21 chapters, and
+    # `undo` does it for the ones tried. Restore is not the inverse of revert at this granularity;
+    # undo is (finding 56). Requiring restore alone would have failed a task participants can
+    # complete, and accepting "restore exited zero" would have passed one they cannot.
     restored = work / "r"
-    shutil.rmtree(restored, ignore_errors=True)
-    back_ok = back.returncode == 0 and subprocess.run(
-        [sys.executable, "check.py"], cwd=copy, capture_output=True).returncode == 0
-    if back_ok:
-        back_ok = snapshot(copy, restored)
-    if back_ok:
+
+    def _pages_match_before():
+        shutil.rmtree(restored, ignore_errors=True)
+        if not snapshot(copy, restored):
+            return False
         for path in sorted(before.glob("*.txt")):
             other = restored / path.name
             if not other.is_file() or other.read_text() != path.read_text():
-                back_ok = False
-                break
+                return False
+        return True
+
+    back = subprocess.run(["sgt", "restore", selector, "--yes"], cwd=copy, capture_output=True)
+    back_ok = back.returncode == 0 and subprocess.run(
+        [sys.executable, "check.py"], cwd=copy, capture_output=True).returncode == 0
+    back_ok = back_ok and _pages_match_before()
+    if not back_ok:
+        # Put the restore attempt back before trying the other route, so `undo` is undoing the
+        # revert and not the failed restore.
+        subprocess.run(["sgt", "undo"], cwd=copy, capture_output=True)
+        undo = subprocess.run(["sgt", "undo"], cwd=copy, capture_output=True)
+        back_ok = undo.returncode == 0 and subprocess.run(
+            [sys.executable, "check.py"], cwd=copy, capture_output=True).returncode == 0
+        back_ok = back_ok and _pages_match_before()
     moved = []
     if ok_after:
         for path in sorted(before.glob("*.txt")):
@@ -153,31 +170,12 @@ def usable_target(repo, work):
         if rank(chapter) == len(WANTED):
             continue
         selector = f"{chapter['feature_id'][:10]}@{chapter['seg_index']}"
-        copy = work / f"try-{chapter['feature_id'][2:8]}-{chapter['seg_index']}"
-        shutil.rmtree(copy, ignore_errors=True)
-        shutil.copytree(repo, copy, symlinks=True)
-        before, after = work / "b", work / "a"
-        shutil.rmtree(before, ignore_errors=True)
-        shutil.rmtree(after, ignore_errors=True)
-        ok_before = snapshot(copy, before)
-        rv = subprocess.run(["sgt", "revert", selector, "--yes"], cwd=copy,
-                            capture_output=True, text=True)
-        smoke = subprocess.run([sys.executable, "check.py"], cwd=copy, capture_output=True)
-        ok_after = snapshot(copy, after)
-        back = subprocess.run(["sgt", "restore", selector, "--yes"], cwd=copy,
-                              capture_output=True, text=True)
-        back_ok = back.returncode == 0 and subprocess.run(
-            [sys.executable, "check.py"], cwd=copy, capture_output=True).returncode == 0
-        moved = []
-        if ok_before and ok_after:
-            for path in sorted(before.glob("*.txt")):
-                other = after / path.name
-                if not other.is_file() or other.read_text() != path.read_text():
-                    moved.append(path.stem)
-        shutil.rmtree(copy, ignore_errors=True)
-        total = len(list(before.glob("*.txt")))
-        if (rv.returncode == 0 and smoke.returncode == 0 and ok_after and back_ok
-                and 0 < len(moved) < total):
+        # The one place a candidate is tried, shared with the theme path above. It used to be
+        # duplicated here, and the copy never grew the exact-restore check the other one has, so
+        # every chapter was certified on "restore exited zero and the app still runs" while the
+        # criterion card 4 actually states went unmeasured.
+        moved = try_selector(repo, selector, work / f"c{chapter['seg_index']}-{chapter['feature_id'][2:8]}")
+        if moved is not None:
             chapter["pages"] = moved
             return chapter
     return None

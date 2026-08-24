@@ -146,49 +146,69 @@
       "_note": "Scored from the repository, not from a string: the removed work is back and every page matches the state at the start. Run scripts/study/score_dashboard.py against the original snapshot."
     },
     "d2": {
-      "bikecount": "Event-Day Averages",
-      "footfall": "Exclude Event Days",
+      "bikecount": "Event-Day Handling",
+      "footfall": "Event Day Handling",
       "_locateNote": "Accepted answers, not one correct string. The two arms name work differently, so a commit sha and a chapter name are both right. The match is provisional and the experimenter reads the answer.",
       "locate": {
         "bikecount": [
-          "Event-Day Averages",
-          "add a by-year summary table@Event-Day Averages",
-          "b8eafca",
+          "0c56354",
+          "66ca5b9",
+          "Event-Day Handling",
           "c360a3d",
           "exclude event days from averages, keep them in totals",
-          "f-00f15095",
-          "f-00f15095@1"
+          "mark tracked event days on the daily and monthly charts",
+          "theme-4a6670e474a2",
+          "track known non-normal days like storms and holidays"
         ],
         "footfall": [
           "138f7d9",
-          "6980520",
-          "Exclude Event Days",
-          "add a north v south page@Exclude Event Days",
-          "f-1cda3c85",
-          "f-1cda3c85@1",
-          "keep event days out of the averages"
+          "7e81c4c",
+          "9fa083e",
+          "Event Day Handling",
+          "keep event days out of the averages",
+          "mark event days on the daily and monthly charts",
+          "start tracking event days that break the normal commute pattern",
+          "theme-df22484c1cd9"
         ]
       }
     },
     "d3": {
       "reach": {
         "bikecount": [
+          "busiestDay",
+          "busiestHour",
+          "eventMarks",
+          "hourWeekday",
+          "hourWeekend",
+          "monthly",
+          "recentChart",
           "yearTable"
         ],
         "footfall": [
+          "busiestDay",
           "busiestHour",
+          "eventMarks",
           "hourWeekday",
           "hourWeekend",
-          "sideSplit"
+          "monthly",
+          "recentChart",
+          "sideSplit",
+          "yearTable"
         ]
       },
       "_reachNote": "Measured, not written: each testbed was copied, the target chapter reverted, every page re-rendered, and the pages that moved mapped onto the options the trial offers.",
       "bikecount": [
+        "hourly",
+        "monthly",
+        "overview",
         "years"
       ],
       "footfall": [
         "hourly",
-        "sides"
+        "monthly",
+        "overview",
+        "sides",
+        "yearly"
       ]
     }
   },
