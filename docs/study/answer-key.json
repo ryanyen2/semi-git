@@ -153,6 +153,7 @@
         "bikecount": [
           "Event-Day Averages",
           "add a by-year summary table@Event-Day Averages",
+          "b8eafca",
           "c360a3d",
           "exclude event days from averages, keep them in totals",
           "f-00f15095",
@@ -160,6 +161,7 @@
         ],
         "footfall": [
           "138f7d9",
+          "6980520",
           "Exclude Event Days",
           "add a north v south page@Exclude Event Days",
           "f-1cda3c85",

@@ -207,6 +207,27 @@ def target_chapter(repo):
     return None
 
 
+def matching_shas(baseline_repo, subjects):
+    """The git arm's shas for the same commits, found by subject.
+
+    The two arms are separate builds: the git one is rendered from the sgt one with sgt's trailers
+    and plumbing commits stripped, which rewrites every sha. So the sha a git participant reads off
+    `git log` is not the sha the sgt repo carries, and a key holding only one arm's shas marks the
+    other arm wrong for typing exactly what its own tool showed it. Subjects survive the rewrite,
+    so they are what the two are matched on.
+    """
+    if not baseline_repo or not Path(baseline_repo).is_dir():
+        return []
+    out = []
+    r = subprocess.run(["git", "log", "--format=%h%x00%s", "--no-merges"],
+                       cwd=baseline_repo, capture_output=True, text=True)
+    for line in r.stdout.splitlines():
+        short, _, subject = line.partition("\x00")
+        if subject in subjects:
+            out.append(short)
+    return out
+
+
 def _theme_saves(repo, theme_id):
     """The commits a theme groups, with their subjects: what a git participant would type."""
     from sgt import state
@@ -315,6 +336,12 @@ PAGE_TO_BEHAVIOUR = {
 
 
 def main(bike, foot, out_path):
+    # The git arm of each project, rendered by render_git_arm.sh. Optional: if it is not built yet
+    # the key still generates, without that arm's shas, and says so.
+    baselines = {
+        "bikecount": str(Path(bike).resolve().parent / "baseline-bikecount"),
+        "footfall": str(Path(foot).resolve().parent / "baseline-footfall"),
+    }
     work = Path("/private/tmp/claude-501/-Users-r4yen-repos-semi-git/"
                 "98ec4b59-83fc-485f-855a-1a547335d911/scratchpad/key")
     work.mkdir(parents=True, exist_ok=True)
@@ -342,6 +369,12 @@ def main(bike, foot, out_path):
             ]
             for save in saves_for(repo, set(chapter["op_ids"])):
                 accepted.extend([save["sha"], save["subject"]])
+        subjects = {a for a in accepted if " " in a and not a.startswith("f-")}
+        arm_shas = matching_shas(baselines[project], subjects)
+        if not arm_shas:
+            print(f"  note: no git-arm repo at {baselines[project]}, so that arm's shas are not "
+                  f"in the key. Build it with render_git_arm.sh and regenerate.", file=sys.stderr)
+        accepted.extend(arm_shas)
         locate[project] = sorted({a for a in accepted if a})
 
         pages = chapter["pages"]
