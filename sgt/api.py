@@ -739,13 +739,15 @@ def _project_verb_preview(repo, preview) -> dict:
         "removed": sorted(preview.removed),
         "added": sorted(preview.added),
         "affected_symbols": list(preview.affected_symbols),
-        # Symbols the edit rewrites in place, keeping the later work layered on top of them
-        # (`sgt.core.subtract`). Every surface used to read only `removed`/`added`, so a revert
-        # that removes no whole op -- which is what reverting one checkpoint of a symbol several
-        # people have since edited does -- projected as touching nothing at all. The preview then
-        # marked the very checkpoint being reverted as `kept`. These are the ops' real effect and
-        # every reader needs them.
-        "subtracted_symbols": list(getattr(preview, "subtracted_symbols", ()) or ()),
+        # The ops the user actually named, as opposed to what the removal's closure swept up.
+        # `removed` is empty whenever the edit rewrites symbols in place instead of dropping ops,
+        # which is the ordinary case for reverting one checkpoint of a symbol later work has since
+        # touched, and the preview then had no way to tell which chapter had been asked for and
+        # marked it `kept` -- the one word it must never say about the thing being reverted.
+        #
+        # `subtracted_symbols` is deliberately not re-emitted here: `cli/ideal_edit.py` already
+        # puts it in the view alongside its three siblings, and adding it a second time changed
+        # nothing but the key order in the golden CLI surface.
         "target_ops": sorted(getattr(preview, "target_ops", ()) or ()),
         "forked": preview.forked,
         "files": files,
