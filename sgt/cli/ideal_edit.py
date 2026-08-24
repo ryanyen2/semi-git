@@ -56,6 +56,16 @@ def _oracle_after_apply(repo: str, verb: str) -> list[str]:
     catch. Running the whole pipeline would put a full test suite on the end of every revert, and a
     verb that becomes slow is a verb people stop previewing with.
     """
+    import sys
+
+    # Only on an interactive terminal. This exists to stop a person walking away from a green
+    # tick, and it costs a real build every time it runs. On the automated paths -- the test
+    # suite, an agent driving the MCP server, a script -- nobody is reading the sentence and the
+    # cost lands on every revert. The suite went from minutes to a thirty-minute CI timeout before
+    # this gate: hundreds of reverts, each paying for a build nobody read.
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        return []
+
     from sgt.config import load_oracle_config
 
     try:
