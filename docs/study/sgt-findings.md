@@ -1379,7 +1379,38 @@ Recorded rather than fixed, because fixing it means re-cutting what the trial of
 into finer observations, and that is a design change to make deliberately rather
 than at the end of a long session.
 
-### Finding 58 (fixed): the post-apply check ran everywhere, and CI went from four minutes to a timeout
+### Finding 58 (fixed): a layout repair resurrected the very op the user asked to remove, and CI hung
+
+**Corrected. The first diagnosis below was wrong, and the wrong one is the tidy one.**
+
+CI timed out at thirty minutes on all three Python versions, stalled at 25 percent
+with no progress for twenty-nine of them. I reasoned that the post-apply oracle run
+from finding 54 was firing on every revert in the suite, gated it on a terminal, and
+said that fixed it. It did not. CI timed out again in exactly the same place.
+
+What found it was mechanical rather than clever. `pytest -o faulthandler_timeout`
+dumped a stack from the hung test; `git checkout <pre-change> -- sgt/` confirmed the
+hang was mine at all; restoring one changed file at a time landed on
+`sgt/core/subtract.py`, which was neither file I had suspected.
+
+The actual bug. `tests/core/test_tiers.py` loops "revert whatever ops still cover
+`a.py`, until none do". Finding 49's fix re-grounds the residue of entities a
+removal keeps, and it was re-emitting a residue op for `a.py` on every pass, so the
+loop never terminated.
+
+The test's pattern is fine. The repair was putting back the exact thing the user had
+just named. Reverting that op reported success and changed nothing, which is the
+same silent-no-op shape as findings 54 and 56. `_repair_layout` now skips any symbol
+in the removal's *direct* targets, as opposed to everything its closure swept up.
+
+Verified both directions: the hanging file passes in seconds, and finding 49's
+original symptom stays fixed -- reverting the event-day feature still leaves
+`metrics.py` parsing and every page rendering.
+
+The gating of the oracle call is kept anyway. It is right on its own terms, since a
+real build per revert on an automated path is cost nobody reads.
+
+### The claim that was wrong: the post-apply check was not why CI timed out
 
 Finding 54 added a run of the project's first oracle tier after a destructive verb,
 so a revert that quietly breaks the program says so instead of ending on a green
