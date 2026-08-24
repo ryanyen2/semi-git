@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Score one participant's study repo after a removal task.
+"""RETIRED. Use scripts/study/score_dashboard.py instead.
+
+This scored the coursecraft/confplan command line testbeds, which were replaced by
+the bikecount/footfall dashboards. It counts pytest markers and drives a CLI, and
+neither exists any more. Kept so the pilot write-ups that cite it still read.
+
+Score one participant's study repo after a removal task.
 
     scripts/score_study_repo.py <repo> --expect-removed waitlist,promotion,notify
 

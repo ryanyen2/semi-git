@@ -55,23 +55,42 @@ export function validateGroundTruth(parsed: GroundTruth): void {
     // A reach answer naming an id the trial does not offer can never be ticked,
     // so it is a guaranteed miss that lowers everyone's score by the same amount
     // and leaves the ranking intact -- invisible in the results.
+    // The reach answer is per project now, because the two testbeds are harvested rather than
+    // written and the same job genuinely lands on different pages in each. A plain array is still
+    // read as "the same for both", so an older key still validates. Every project the study runs
+    // has to be answered, or a participant on the unanswered one scores zero on a trial they
+    // completed.
     if (spec?.reach && entry.reach) {
-      if (entry.reach.length === 0) {
-        throw new Error(`That key's reach answer for ${requestId} is empty.`)
+      const perProject: Array<[string, string[]]> = Array.isArray(entry.reach)
+        ? PROJECTS.map((p) => [p, entry.reach as string[]])
+        : Object.entries(entry.reach as Record<string, string[]>)
+      const answered = perProject.map(([p]) => p)
+      const missing = PROJECTS.filter((p) => !answered.includes(p))
+      if (missing.length > 0) {
+        throw new Error(
+          `That key's reach answer for ${requestId} covers ${answered.join(', ') || 'nothing'} ` +
+            `but not ${missing.join(', ')}. Participants on the missing project would score ` +
+            'zero on a prediction they actually made.',
+        )
       }
       const offered = BEHAVIOURS.map((b) => b.id)
-      const unknown = entry.reach.filter((id) => !offered.includes(id))
-      if (unknown.length > 0) {
-        throw new Error(
-          `That key answers ${requestId} with behaviours the trial does not offer: ` +
-            `${unknown.join(', ')}. The key and the behaviour list have drifted apart.`,
-        )
-      }
-      if (entry.reach.length === offered.length) {
-        throw new Error(
-          `That key says ${requestId} reaches all ${offered.length} behaviours, which ` +
-            'ticking everything would score perfectly. It looks like a placeholder.',
-        )
+      for (const [project, ids] of perProject) {
+        if (ids.length === 0) {
+          throw new Error(`That key's reach answer for ${requestId} on ${project} is empty.`)
+        }
+        const unknown = ids.filter((id) => !offered.includes(id))
+        if (unknown.length > 0) {
+          throw new Error(
+            `That key answers ${requestId} on ${project} with behaviours the trial does not ` +
+              `offer: ${unknown.join(', ')}. The key and the behaviour list have drifted apart.`,
+          )
+        }
+        if (ids.length === offered.length) {
+          throw new Error(
+            `That key says ${requestId} on ${project} reaches all ${offered.length} behaviours, ` +
+              'which ticking everything would score perfectly. It looks like a placeholder.',
+          )
+        }
       }
     }
 

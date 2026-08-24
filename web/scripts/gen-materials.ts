@@ -18,8 +18,8 @@ export const SHEETS: Record<string, string> = {
   '../docs/study/materials/00-welcome.md': HANDOUT_MD,
   '../docs/study/materials/02-tutorial-git.md': sheetTutorialMd('git'),
   '../docs/study/materials/02-tutorial-sgt.md': sheetTutorialMd('sgt'),
-  '../docs/study/materials/03-project-confplan.md': sheetBriefMd('confplan'),
-  '../docs/study/materials/03-project-coursecraft.md': sheetBriefMd('coursecraft'),
-  '../docs/study/materials/03-tasks-confplan.md': sheetTasksMd('confplan'),
-  '../docs/study/materials/03-tasks-coursecraft.md': sheetTasksMd('coursecraft'),
+  '../docs/study/materials/03-project-footfall.md': sheetBriefMd('footfall'),
+  '../docs/study/materials/03-project-bikecount.md': sheetBriefMd('bikecount'),
+  '../docs/study/materials/03-tasks-footfall.md': sheetTasksMd('footfall'),
+  '../docs/study/materials/03-tasks-bikecount.md': sheetTasksMd('bikecount'),
 }

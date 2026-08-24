@@ -52,7 +52,7 @@ function requestDoc(over: Partial<RequestDoc> = {}): RequestDoc & { id: string }
     requestId: 'r1',
     half: 1,
     condition: 'git',
-    project: 'coursecraft',
+    project: 'bikecount',
     openedAt: T0,
     submittedAt: T0 + 600_000,
     elapsedMs: 600_000,
@@ -189,7 +189,7 @@ describe('per-request measures', () => {
     // the match is lenient: a sha typed as `f-25e91a9` has to find the forty
     // character one. The arithmetic is trivial and the comparison is the whole
     // measure, so the thing worth pinning is that both vocabularies land.
-    const key = { locate: { d2: { coursecraft: ['25e91a9a1d22', 'ranges_clash'] } }, reach: {} }
+    const key = { locate: { d2: { bikecount: ['25e91a9a1d22', 'ranges_clash'] } }, reach: {} }
     const score = (typed: string) =>
       analyzeParticipant(
         {
@@ -222,7 +222,7 @@ describe('per-request measures', () => {
           events: [],
           scoring: [],
         },
-        { locate: { d2: { coursecraft: ['25e91a9'] } }, reach: {} },
+        { locate: { d2: { bikecount: ['25e91a9'] } }, reach: {} },
       )
       expect(a.requests[0].locateCorrect).toBeNull()
     }

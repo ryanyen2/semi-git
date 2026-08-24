@@ -26,12 +26,18 @@ def _repo(tmp_path):
 # -- shape predicates (the part revert/restore now share verbatim) ------------------------------
 
 
-def test_checkpoint_shape_requires_a_digit_index_or_a_slug():
+def test_checkpoint_shape_takes_an_index_or_a_name_after_either_separator():
     assert sel.is_checkpoint_shaped("f-ab12@3")
     assert sel.is_checkpoint_shaped("f-ab12:add-retry")
     assert sel.is_checkpoint_shaped("auth work:tidy")
-    # `@` followed by a non-digit is not an index; with no `:` either, this is not a checkpoint.
-    assert not sel.is_checkpoint_shaped("f-ab12@tip")
+    # `@` used to mean an index and nothing else, so `<feature>@<chapter name>` was not read as a
+    # checkpoint at all: it fell through to the natural-language rung, matched the feature on its
+    # own, and offered to revert the whole thing. People read `@6 Weekday Average Day` off
+    # `sgt log --map` and type back the half that means something to them, and naming a chapter must
+    # not resolve to something larger than the chapter. A name that matches no checkpoint still
+    # falls through exactly as before -- the shape is permissive, the resolution is not.
+    assert sel.is_checkpoint_shaped("f-ab12@tip")
+    assert sel.is_checkpoint_shaped("Time-Based Count Summaries@Weekday Average Day")
     assert not sel.is_checkpoint_shaped("f-ab12")
     # A `file::name` symbol carries colons but is never a checkpoint spec.
     assert not sel.is_checkpoint_shaped("a.py::foo")

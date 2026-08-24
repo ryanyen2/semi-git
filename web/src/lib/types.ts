@@ -4,10 +4,10 @@
 // writer and reader is how a study loses a measure it thought it had.
 
 export type Condition = 'git' | 'sgt'
-export type Project = 'coursecraft' | 'confplan'
+export type Project = 'bikecount' | 'footfall'
 
 /** Both projects, for the checks that have to assert every one is covered. */
-export const PROJECTS: readonly Project[] = ['coursecraft', 'confplan']
+export const PROJECTS: readonly Project[] = ['bikecount', 'footfall']
 export type Half = 1 | 2
 
 /** Counterbalancing group. Determines condition order and project pairing. */
@@ -96,20 +96,20 @@ export interface ResponseDoc {
  */
 export type RequestId =
   /**
-   * The live set: see the defect, locate the work behind it, reverse it, then
-   * remove a feature and correct the removal.
+   * The live set: see what the dashboard does today, locate the work behind one
+   * of its behaviours, take that work out, and put it back.
    */
-  | 'd1' | 'd2' | 'd3'
-  | 'w1' | 'w2' | 'w3'
+  | 'd1' | 'd2' | 'd3' | 'd4'
   /**
-   * Retired. `r1`-`r3` were the three-request design, `r4`-`r6` the six-request
-   * one before it, and `f1`/`f2` the two standalone reach trials whose
-   * measurement now rides on `d3`. Kept so pilot documents still read: narrowing
-   * this to the live set would make every read of a pilot document a lie the
-   * compiler endorses, and would make `requestById`'s undefined branch -- the one
-   * that stopped the dashboard throwing mid-render -- look unreachable to
-   * whoever reads it next.
+   * Retired. `w1`-`w3` were the feature-removal block, `r1`-`r3` the three-request
+   * design, `r4`-`r6` the six-request one before it, and `f1`/`f2` the two
+   * standalone reach trials whose measurement now rides on `d3`. Kept so pilot
+   * documents still read: narrowing this to the live set would make every read of
+   * a pilot document a lie the compiler endorses, and would make `requestById`'s
+   * undefined branch -- the one that stopped the dashboard throwing mid-render --
+   * look unreachable to whoever reads it next.
    */
+  | 'w1' | 'w2' | 'w3'
   | 'r1' | 'r2' | 'r3' | 'r4' | 'r5' | 'r6'
   | 'f1' | 'f2'
 
@@ -280,14 +280,14 @@ export interface GroundTruth {
     id: string
     shape: string
     author: 'human' | 'agent'
-    coursecraft: string
-    confplan: string
+    bikecount: string
+    footfall: string
   }>
   requestKeys: Record<
     string,
     {
-      coursecraft: string
-      confplan: string
+      bikecount: string
+      footfall: string
       /**
        * The work a locate step is looking for, per project: the commit sha in
        * the study repository, plus every other string that names the same work

@@ -43,7 +43,7 @@ if [ "$SITE_ONLY" -eq 0 ]; then
     fi
 
     echo "==> Building the four bundles."
-    for spec in "git coursecraft" "sgt coursecraft" "git confplan" "sgt confplan"; do
+    for spec in "git bikecount" "sgt bikecount" "git footfall" "sgt footfall"; do
         # Split explicitly: zsh does not word-split an unquoted expansion, so
         # `set -- $spec` passes one argument there and silently builds nothing.
         condition="${spec%% *}"
@@ -76,7 +76,7 @@ echo "==> Checking what is actually being served."
 # retry this check cried wolf on its own first run, and a check that is usually
 # wrong is worse than no check -- it is the alarm you learn to ignore.
 ok=1
-for name in study-coursecraft-a study-coursecraft-b study-confplan-a study-confplan-b; do
+for name in study-bikecount-a study-bikecount-b study-footfall-a study-footfall-b; do
     local_size=$(wc -c < "web/public/bundles/$name.tgz" | tr -d ' ')
     for attempt in 1 2 3 4 5 6; do
         served=$(curl -s -H 'Cache-Control: no-cache' -o /dev/null \

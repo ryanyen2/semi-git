@@ -44,11 +44,11 @@ describe('the session schedule', () => {
   // Spelled words rather than digits, because that is what the prose uses and a
   // digit would pass this while reading wrong on the page.
   it('quotes the same card count and total everywhere it says one', () => {
-    const preamble = TASK_PREAMBLE('confplan', 'Sam Park', 'a small tool')
+    const preamble = TASK_PREAMBLE('footfall', 'Sam Park', 'a small tool')
     expect(preamble).toContain(`${BLOCK_CAP_MIN} minutes of work in total`)
     expect(preamble).toContain(`${spell(CARD_COUNT)} cards to work through in order`)
     expect(DEBRIEF_MD).toContain(`the same ${spell(CARD_COUNT)} cards`)
-    expect(CARD_COUNT).toBe(taskCards('confplan').length)
+    expect(CARD_COUNT).toBe(taskCards('footfall').length)
   })
 
   it('estimates every step that takes time', () => {

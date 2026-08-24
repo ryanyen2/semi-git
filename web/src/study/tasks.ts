@@ -1,7 +1,7 @@
 // The four cards, in both projects.
 //
-// Wording is the participant's handout, verbatim. The confplan text is the
-// coursecraft text with the nouns swapped per the isomorphism map in
+// Wording is the participant's handout, verbatim. The footfall text is the
+// bikecount text with the nouns swapped per the isomorphism map in
 // docs/study/testbed-spec.md §1: course->talk, section->session,
 // student->attendee, enroll->register, drop->unregister, instructor->speaker,
 // timetable->program, department->track, prerequisite->series dependency.
@@ -71,115 +71,84 @@ export interface Behaviour {
  */
 export const BEHAVIOURS: Behaviour[] = [
   {
-    id: 'register',
+    id: 'busiestDay',
     label: {
-      coursecraft: 'Enrolling a student in a section',
-      confplan: 'Registering an attendee for a session',
+      bikecount: 'The busiest day figure on the front page',
+      footfall: 'The busiest day figure on the front page',
     },
-    command: { coursecraft: 'coursecraft enroll', confplan: 'confplan register' },
+    command: { bikecount: '/', footfall: '/' },
   },
   {
-    id: 'cancel',
+    id: 'recentChart',
     label: {
-      coursecraft: 'Dropping a student from a section',
-      confplan: 'Cancelling a registration',
+      bikecount: 'The last fortnight chart on the front page',
+      footfall: 'The last fortnight chart on the front page',
     },
-    command: { coursecraft: 'coursecraft drop', confplan: 'confplan cancel' },
+    command: { bikecount: '/', footfall: '/' },
   },
   {
-    id: 'queue',
+    id: 'hourWeekday',
     label: {
-      coursecraft: 'Queueing for the next free seat',
-      confplan: 'Queueing for the next freed seat',
+      bikecount: 'The weekday hour-of-day chart',
+      footfall: 'The weekday hour-of-day chart',
     },
-    command: {
-      coursecraft: 'coursecraft waitlist join',
-      confplan: 'confplan waitlist join',
-    },
+    command: { bikecount: '/hourly', footfall: '/hourly' },
   },
   {
-    id: 'showQueue',
+    id: 'hourWeekend',
     label: {
-      coursecraft: "Listing a section's waitlist in order",
-      confplan: "Listing a session's queue in order",
+      bikecount: 'The weekend hour-of-day chart',
+      footfall: 'The weekend hour-of-day chart',
     },
-    command: {
-      coursecraft: 'coursecraft waitlist show',
-      confplan: 'confplan waitlist show',
-    },
+    command: { bikecount: '/hourly', footfall: '/hourly' },
   },
   {
-    id: 'promote',
+    id: 'busiestHour',
     label: {
-      coursecraft: 'Filling a freed seat from the queue',
-      confplan: 'Filling a freed seat from the queue',
+      bikecount: 'The busiest hour called out above that chart',
+      footfall: 'The busiest hour called out above that chart',
     },
-    command: {
-      coursecraft: 'coursecraft waitlist promote',
-      confplan: 'confplan waitlist promote',
-    },
+    command: { bikecount: '/hourly', footfall: '/hourly' },
   },
   {
-    id: 'notices',
+    id: 'monthly',
     label: {
-      coursecraft: 'Showing pending student notices',
-      confplan: 'Showing pending attendee notices',
+      bikecount: 'The month-by-month chart',
+      footfall: 'The month-by-month chart',
     },
-    command: { coursecraft: 'coursecraft notices', confplan: 'confplan notices' },
+    command: { bikecount: '/monthly', footfall: '/monthly' },
   },
   {
-    id: 'search',
+    id: 'eventMarks',
     label: {
-      coursecraft: 'Finding courses by code or title',
-      confplan: 'Finding talks by code or title',
+      bikecount: 'The marks that flag unusual days on the charts',
+      footfall: 'The marks that flag unusual days on the charts',
     },
-    command: { coursecraft: 'coursecraft search', confplan: 'confplan search' },
+    command: { bikecount: '/monthly', footfall: '/monthly' },
   },
   {
-    id: 'agenda',
+    id: 'yearTable',
     label: {
-      coursecraft: 'Exporting a timetable or the catalog',
-      confplan: 'Exporting an agenda or the program',
+      bikecount: 'The one-row-per-year table',
+      footfall: 'The one-row-per-year table',
     },
-    command: { coursecraft: 'coursecraft export', confplan: 'confplan agenda' },
+    command: { bikecount: '/yearly', footfall: '/yearly' },
   },
   {
-    id: 'rooms',
+    id: 'sideSplit',
     label: {
-      coursecraft: 'Finding double-booked rooms',
-      confplan: 'Finding double-booked rooms',
+      bikecount: 'The east against west comparison',
+      footfall: 'The north against south comparison',
     },
-    command: {
-      coursecraft: 'coursecraft room audit',
-      confplan: 'confplan room audit',
-    },
+    command: { bikecount: '/sides', footfall: '/sides' },
   },
   {
-    id: 'stats',
+    id: 'csv',
     label: {
-      coursecraft: 'Per-course enrollment statistics',
-      confplan: 'Per-talk registration statistics',
+      bikecount: 'The daily totals csv download',
+      footfall: 'The daily totals csv download',
     },
-    command: { coursecraft: 'coursecraft stats', confplan: 'confplan stats' },
-  },
-  {
-    id: 'speaker',
-    label: {
-      coursecraft: "An instructor's weekly schedule",
-      confplan: "A speaker's weekend schedule",
-    },
-    command: { coursecraft: 'coursecraft instructor', confplan: 'confplan speaker' },
-  },
-  {
-    id: 'scheduleSession',
-    label: {
-      coursecraft: 'Adding a section of a course',
-      confplan: 'Scheduling a session of a talk',
-    },
-    command: {
-      coursecraft: 'coursecraft section add',
-      confplan: 'confplan session add',
-    },
+    command: { bikecount: '/daily.csv', footfall: '/daily.csv' },
   },
 ]
 
@@ -274,17 +243,17 @@ export interface TaskCard {
 }
 
 export const SCENARIO: Record<Project, { app: string; maintainer: string; blurb: string }> = {
-  coursecraft: {
-    app: 'coursecraft',
-    maintainer: 'Riley Chen',
+  bikecount: {
+    app: 'bikecount',
+    maintainer: 'Dana Whitfield',
     blurb:
-      'a small command line tool that a university department uses to manage course registration',
+      'a small web dashboard over the bicycle counter on the Fremont Bridge in Seattle',
   },
-  confplan: {
-    app: 'confplan',
-    maintainer: 'Sam Park',
+  footfall: {
+    app: 'footfall',
+    maintainer: 'Dana Whitfield',
     blurb:
-      'a small command line tool that a conference committee uses to plan a two-day program',
+      'a small web dashboard over the pedestrian counter on Spencer Street in Melbourne',
   },
 }
 
@@ -292,268 +261,85 @@ export const REQUESTS: RequestSpec[] = [
   {
     id: 'd1',
     card: 'c1',
-    heading: 'Step 1',
+    heading: 'Card 1',
     capMin: 3,
     optional: false,
-    archetype: 'observe an agent-introduced defect in the running program',
-    serves: 'grounding for steps 2 and 3; observation only',
+    archetype: 'see what the program does today, before being asked to change it',
+    serves: 'grounding for cards 2, 3 and 4; observation only',
     title: {
-      coursecraft: 'Two classes back to back',
-      confplan: 'Two sessions back to back',
+      bikecount: 'What does it leave out?',
+      footfall: 'What does it leave out?',
     },
     body: {
-      coursecraft: `A support ticket came in this morning:
-
-> A student is trying to take two sections of CS101 — one Monday 09:00–10:30,
-> the other Monday 10:30–12:00. The system says they clash. They don't overlap.
-> The room audit is doing the same thing to two bookings that run back to back
-> in one room.
-
-Run the script below. It works on a scratch copy of the data, so nothing you do
-here touches the project.
-
-Then say in your own words what is wrong and what the program should do instead.
-There is no expected wording and this is not scored.`,
-      confplan: `A support ticket came in this morning:
-
-> An attendee is trying to register for two sessions of T1 — one Saturday
-> 09:00–10:30, the other Saturday 10:30–12:00. The system says they clash. They
-> don't overlap. The room audit is doing the same thing to two bookings that run
-> back to back in one room.
-
-Run the script below. It works on a scratch copy of the data, so nothing you do
-here touches the project.
-
-Then say in your own words what is wrong and what the program should do instead.
-There is no expected wording and this is not scored.`,
-    },
-    run: {
-      script: {
-        coursecraft: './show-the-problem.sh',
-        confplan: './show-the-problem.sh',
-      },
-      does: {
-        coursecraft: [
-          'makes a scratch store with one course and two sections, Mon 09:00–10:30 and Mon 10:30–12:00, in the same room',
-          'enrols one student in the first section, then tries the second',
-          'runs the room audit over the two bookings',
-          'runs the project’s own tests for conflicts and rooms',
-        ],
-        confplan: [
-          'makes a scratch store with one talk and two sessions, Sat 09:00–10:30 and Sat 10:30–12:00, in the same room',
-          'registers one attendee for the first session, then tries the second',
-          'runs the room audit over the two bookings',
-          'runs the project’s own tests for clashes and rooms',
-        ],
-      },
+      bikecount: 'Open the dashboard and look at the hour of day page.\n\n    python3 -m bikecount.server\n\nThe averages on that page do not count every day in the file. Some days are left out on purpose. Use the app, and the wording on the page itself, to work out which days those are and why somebody decided to leave them out.\n\nNothing here is scored and there is no expected wording.',
+      footfall: 'Open the dashboard and look at the hour of day page.\n\n    python3 -m footfall.server\n\nThe averages on that page do not count every day in the file. Some days are left out on purpose. Use the app, and the wording on the page itself, to work out which days those are and why somebody decided to leave them out.\n\nNothing here is scored and there is no expected wording.',
     },
     note: {
-      coursecraft:
-        'What is wrong, and what should the program do instead? A sentence or two is plenty.',
-      confplan:
-        'What is wrong, and what should the program do instead? A sentence or two is plenty.',
+      bikecount: 'Which days are left out, and what reason is given?',
+      footfall: 'Which days are left out, and what reason is given?',
     },
   },
   {
     id: 'd2',
     card: 'c2',
-    heading: 'Step 2',
+    heading: 'Card 2',
     capMin: 5,
     optional: false,
-    archetype: 'localise the responsible unit of work from an observed symptom',
-    serves: 'C1 -- the locate measure',
+    archetype: 'locate the piece of work behind a behaviour',
+    serves: 'RQ1, claim C1',
     title: {
-      coursecraft: 'Where did that come from?',
-      confplan: 'Where did that come from?',
+      bikecount: 'Who did that, and when?',
+      footfall: 'Who did that, and when?',
     },
     body: {
-      coursecraft: `Something in this project's past made the program behave that way. Find out which
-piece of work it was.
-
-**How you do that is entirely up to you.** This is the part we are watching, so
-there is no script and no suggested route.
-
-When you have it, put its identifier in the box: a commit hash, a feature name,
-an id — whatever your setup calls the thing you found. If you are not certain,
-write down what you have and say you are not certain. That is a real answer and
-it is better than a guess.`,
-      confplan: `Something in this project's past made the program behave that way. Find out which
-piece of work it was.
-
-**How you do that is entirely up to you.** This is the part we are watching, so
-there is no script and no suggested route.
-
-When you have it, put its identifier in the box: a commit hash, a feature name,
-an id — whatever your setup calls the thing you found. If you are not certain,
-write down what you have and say you are not certain. That is a real answer and
-it is better than a guess.`,
+      bikecount: 'Leaving those days out was a decision somebody made at some point in this project\'s history. Find the piece of work that made it.\n\n**How you do that is entirely up to you.** There is no script and no suggested route. This is the part we are watching.\n\nPut its name in the box: a commit hash, a feature name, a chapter name, an id, whatever your setup calls the thing you found. If you are not certain, write down what you have and say so. That is a real answer and it beats a guess.',
+      footfall: 'Leaving those days out was a decision somebody made at some point in this project\'s history. Find the piece of work that made it.\n\n**How you do that is entirely up to you.** There is no script and no suggested route. This is the part we are watching.\n\nPut its name in the box: a commit hash, a feature name, a chapter name, an id, whatever your setup calls the thing you found. If you are not certain, write down what you have and say so. That is a real answer and it beats a guess.',
     },
     identify: {
-      coursecraft: 'The piece of work that caused it',
-      confplan: 'The piece of work that caused it',
+      bikecount: 'The piece of work that did it',
+      footfall: 'The piece of work that did it',
     },
   },
   {
     id: 'd3',
     card: 'c3',
-    heading: 'Step 3',
+    heading: 'Card 3',
     capMin: 6,
     optional: false,
-    archetype: 'reverse one unit of agent work; reach predicted before and after',
-    serves: 'C2 -- reversal outcome, collateral damage, and foresight',
+    archetype: 'remove one piece of work without disturbing the rest',
+    serves: 'RQ1b and RQ2, claim C2',
     title: {
-      coursecraft: 'Take it back out',
-      confplan: 'Take it back out',
+      bikecount: 'Take it out',
+      footfall: 'Take it out',
     },
     body: {
-      coursecraft: `Take that piece of work out, so back-to-back sections behave the way you said they
-should. Everything else in the program has to keep working.
-
-**Before you run anything that changes the project**, tick what you think it will
-affect. One minute, then it submits itself.
-
-You are not being graded on this and you will not be shown an answer. You are
-about to find out for yourself.
-
-Then do it, and run \`./check.sh\` to see where you ended up.`,
-      confplan: `Take that piece of work out, so back-to-back sessions behave the way you said they
-should. Everything else in the program has to keep working.
-
-**Before you run anything that changes the project**, tick what you think it will
-affect. One minute, then it submits itself.
-
-You are not being graded on this and you will not be shown an answer. You are
-about to find out for yourself.
-
-Then do it, and run \`./check.sh\` to see where you ended up.`,
+      bikecount: 'The committee has been clear that it wants the averages to count every day the sensors recorded, including the unusual ones. They never asked for days to be dropped.\n\nTake that piece of work out. Every other part of the dashboard has to keep working.\n\nBefore you run anything that changes the project, tick which parts of the dashboard you think this will change. One minute, then it submits itself. You are not graded on it and you will not be shown an answer. You are about to find out for yourself.\n\nThen do it, and run the smoke check to see where you ended up:\n\n    python3 check.py',
+      footfall: 'The committee has been clear that it wants the averages to count every day the sensors recorded, including the unusual ones. They never asked for days to be dropped.\n\nTake that piece of work out. Every other part of the dashboard has to keep working.\n\nBefore you run anything that changes the project, tick which parts of the dashboard you think this will change. One minute, then it submits itself. You are not graded on it and you will not be shown an answer. You are about to find out for yourself.\n\nThen do it, and run the smoke check to see where you ended up:\n\n    python3 check.py',
     },
     reach: {
       work: {
-        coursecraft:
-          'The piece of work you found in step 2 — the one that changed how two time ranges are compared.',
-        confplan:
-          'The piece of work you found in step 2 — the one that changed how two time ranges are compared.',
+        bikecount: 'The work you found in card 2: the one that keeps unusual days out of the averages.',
+        footfall: 'The work you found in card 2: the one that keeps unusual days out of the averages.',
       },
       blindSec: 60,
-      checkedSec: 60,
-    },
-    run: {
-      script: { coursecraft: './check.sh', confplan: './check.sh' },
-      does: {
-        coursecraft: [
-          'repeats step 1’s two back-to-back cases and prints what the program says now',
-          'runs the whole test suite and prints which feature areas pass',
-          'starts the command line tool, because a suite can pass in a program that will not start',
-        ],
-        confplan: [
-          'repeats step 1’s two back-to-back cases and prints what the program says now',
-          'runs the whole test suite and prints which feature areas pass',
-          'starts the command line tool, because a suite can pass in a program that will not start',
-        ],
-      },
+      checkedSec: 120,
     },
   },
   {
-    id: 'w1',
+    id: 'd4',
     card: 'c4',
-    heading: 'Step 4a',
-    capMin: 10,
+    heading: 'Card 4',
+    capMin: 5,
     optional: false,
-    archetype: 'see the removal target working before removing it',
-    serves: 'grounding for 4b and 4c',
+    archetype: 'put a removed piece of work back',
+    serves: 'RQ2, claim C2',
     title: {
-      coursecraft: 'See what the waitlist does today',
-      confplan: 'See what the queue does today',
+      bikecount: 'Put it back',
+      footfall: 'Put it back',
     },
     body: {
-      coursecraft: `The next request is about the waitlist. Before it, see what the waitlist actually
-does, so "gone" means something specific rather than something you have to guess
-at.
-
-The three parts of this card share one clock. Read all three before you start.`,
-      confplan: `The next request is about the queue for full sessions. Before it, see what the
-queue actually does, so "gone" means something specific rather than something you
-have to guess at.
-
-The three parts of this card share one clock. Read all three before you start.`,
-    },
-    run: {
-      script: {
-        coursecraft: './show-the-waitlist.sh',
-        confplan: './show-the-waitlist.sh',
-      },
-      does: {
-        coursecraft: [
-          'fills a one-seat section and puts two students in the queue behind it',
-          'shows the queue in order',
-          'drops the enrolled student, so a seat frees up',
-          'shows the freed seat being filled from the queue, and the notice that goes out',
-        ],
-        confplan: [
-          'fills a one-seat session and puts two attendees in the queue behind it',
-          'shows the queue in order',
-          'cancels the registered attendee, so a seat frees up',
-          'shows the freed seat being filled from the queue, and the notice that goes out',
-        ],
-      },
-    },
-  },
-  {
-    id: 'w2',
-    card: 'c4',
-    heading: 'Step 4b',
-    capMin: null,
-    optional: false,
-    archetype: 'remove a feature and everything built on top of it',
-    serves: 'C2 -- removal completeness and collateral damage',
-    title: {
-      coursecraft: 'Take the waitlist out',
-      confplan: 'Take the queue out',
-    },
-    body: {
-      coursecraft: `The department has decided that waitlists are the registrar's job now. For the
-next release the waitlist has to be gone: joining a queue, the queue itself, the
-automatic filling of a freed seat, and the notices that go with it.
-
-Everything else in the program has to keep working.
-
-If you run out of clock, stop where you are. **Not finishing is a normal
-outcome here and it is recorded as one.** It is not a mark against you, and we
-would rather see where you got to than have you rush the last step.`,
-      confplan: `The committee has decided that queues are the registration desk's job now. For
-the next release the queue has to be gone: joining a queue, the queue itself, the
-automatic filling of a freed seat, and the notices that go with it.
-
-Everything else in the program has to keep working.
-
-If you run out of clock, stop where you are. **Not finishing is a normal
-outcome here and it is recorded as one.** It is not a mark against you, and we
-would rather see where you got to than have you rush the last step.`,
-    },
-  },
-  {
-    id: 'w3',
-    card: 'c4',
-    heading: 'Step 4c',
-    capMin: null,
-    optional: false,
-    archetype: 'restore one part of what was just removed, under time pressure',
-    serves: 'C2 -- selective restore',
-    title: {
-      coursecraft: 'Drops still need to work',
-      confplan: 'Cancelling still needs to work',
-    },
-    body: {
-      coursecraft: `One correction to the last request. Students must still be able to drop a section
-themselves. Bring dropping back, with no automatic filling of the freed seat when
-it happens.
-
-When you are done, run \`./check.sh\` once more.`,
-      confplan: `One correction to the last request. Attendees must still be able to cancel a
-registration themselves. Bring cancelling back, with no automatic filling of the
-freed seat when it happens.
-
-When you are done, run \`./check.sh\` once more.`,
+      bikecount: 'The committee has changed its mind. Having seen the averages with every day counted, they now agree with Dana: a snowstorm that shut the city says nothing about how many people cycle to work, and it should come out of the averages after all.\n\nPut the work you just removed back, exactly as it was, and check the dashboard matches what it showed at the start.\n\nIf you run out of clock, stop where you are. Not finishing is a normal outcome here and it is recorded as one.',
+      footfall: 'The committee has changed its mind. Having seen the averages with every day counted, they now agree with Dana: a public holiday when the offices are shut says nothing about how many people walk to work, and it should come out of the averages after all.\n\nPut the work you just removed back, exactly as it was, and check the dashboard matches what it showed at the start.\n\nIf you run out of clock, stop where you are. Not finishing is a normal outcome here and it is recorded as one.',
     },
   },
 ]

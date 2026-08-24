@@ -82,3 +82,8 @@ texput.log
 # is a partial write from a build that was still running
 paper/main.synctex.gz
 paper/main.synctex(busy)
+
+# The raw open-data downloads the study testbeds are built from. Hundreds of
+# megabytes, republished by Seattle and Melbourne, and reduced to the small csv
+# each testbed ships by scripts/study/prep_counts.py.
+docs/study/data/

@@ -14,6 +14,75 @@ from ._common import _emit_json, _fail, _fail_json
 from .rewrite import _print_draft, _print_repair_result
 
 
+def _resolve_theme(repo: str, target: str) -> tuple[frozenset[str], str] | None:
+    """A theme id -> the ops its member commits landed, plus a human label.
+
+    Deliberately the same lookup `sgt intent revert` uses (`sgt.intent.group.resolve_group`), so
+    the two spellings can never disagree about what a theme contains."""
+    from sgt import state
+    from sgt.intent import group as intent_group
+
+    try:
+        themes = state.load_json(repo, "intent_themes", default={}) or {}
+        resolved = intent_group.resolve_group(target, themes, intent_group.atoms(repo))
+    except Exception:  # noqa: BLE001 -- an unresolvable theme falls through to the other rungs
+        return None
+    if resolved is None:
+        return None
+    _kind, members = resolved
+    op_ids = frozenset(oid for a in members for oid in getattr(a, "op_ids", ()) or ())
+    if not op_ids:
+        return None
+    label = (themes.get(target) or {}).get("label") or target
+    return op_ids, label
+
+
+def _oracle_after_apply(repo: str, verb: str) -> list[str]:
+    """Run the project's own checks after a destructive edit and say if they now fail.
+
+    The counts a preview gives are about the op set, and an op set can shrink by one symbol while
+    the program stops running. The case that prompted this: reverting one checkpoint reported
+    "removes 1 edit across 1 symbol · 1 file" and left `NameError: name 'events' is not defined`,
+    because the import it took with it was still wanted by a function it never mentioned. Nothing
+    in the preview was wrong; it was answering a narrower question than the one being asked.
+
+    So ask the wider one, with the thing that already knows the answer. The oracle is configured
+    per project (`.sgt/oracle.json`) and is normally run on demand. Quiet when it passes, quiet
+    when no oracle is configured, and never fatal: the edit is already applied and this only
+    reports.
+
+    Only the *first* configured tier runs. Tiers are declared cheapest first, so tier one is the
+    parse-or-smoke check that answers "does this still start", which is the failure this exists to
+    catch. Running the whole pipeline would put a full test suite on the end of every revert, and a
+    verb that becomes slow is a verb people stop previewing with.
+    """
+    from sgt.config import load_oracle_config
+
+    try:
+        cfg = load_oracle_config(repo)
+        if cfg is None or not cfg.tiers:
+            return []
+        from sgt.core import oracle
+
+        verdict = oracle.run(repo, tier=cfg.tiers[0].name)
+    except Exception:  # noqa: BLE001 -- a check that cannot run must never fail the edit
+        return []
+
+    if not isinstance(verdict, dict) or not verdict.get("configured", True):
+        return []
+    # `run` reports one record per tier, stopping at the first failure.
+    failed = [name for name, rec in (verdict.get("tiers") or {}).items()
+              if isinstance(rec, dict) and rec.get("status") not in (None, "pass", "green")]
+    if not failed:
+        return []
+    failing = failed[0]
+    return [
+        f"  ⚠ {failing} now fails after this {verb}. The edit did what it said; something it "
+        f"did not name depends on what went.",
+        "     `sgt undo` puts it back, or fix the break and `sgt save`.",
+    ]
+
+
 def _dirty_refusal(exc, as_json: bool) -> int:
     """Render a `DirtyWorkingTreeError` from a materializing verb as a clean refusal, not a raw
     traceback with a half-written `.sgt` (F4/F5). The guard's message already names the offending
@@ -226,6 +295,8 @@ def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict
             print(f"  ✓ {preview.verb} applied — {_applied_magnitude(preview)}. "
                   f"(`sgt undo` reverses this.)")
         for line in _subtraction_report(preview):
+            print(line)
+        for line in _oracle_after_apply(repo, preview.verb):
             print(line)
         # Repeated after the apply only when a confirm scrolled the preview away. Under `--yes` there
         # is no prompt between the two prints, so the same warning landed twice, two lines apart, and
@@ -459,6 +530,25 @@ def _kernel_edit_verb(
     # detail tell users to type, so a rewind whose inverse could not be addressed the same way was a
     # one-way door -- `sgt restore <feature>@<n>` used to fall past every deterministic rung to the
     # NL one and exit `could not resolve ... set OPENAI_API_KEY`.
+    # A theme id names an intent that runs across several features -- exactly the shape a job that
+    # was done over three afternoons has. `sgt intent list` prints these, `sgt intent revert` has
+    # always been able to remove one, and plain `sgt revert` could not, so the tool showed people a
+    # grouping it then refused to act on and the answer was a second verb they had to already know.
+    # Same resolution, same removal path, one verb.
+    if target.startswith("theme-"):
+        from sgt.intent import group as intent_group
+
+        themed = _resolve_theme(repo, target)
+        if themed is not None:
+            op_ids, label = themed
+            preview = (verbs.plan_revert_op_set(repo, label, op_ids,
+                                                take_dependents=take_dependents)
+                       if cmd == "revert" else
+                       verbs.plan_restore_op_set(repo, label, op_ids))
+            # `yes` is keyword-only; passing it positionally lands it in `extra` and the apply
+            # silently degrades to a preview that says "re-run with --yes" when --yes was given.
+            return _emit_verb_result(repo, preview, emit, as_json, yes=yes)
+
     if select_resolve.is_checkpoint_shaped(target):
         from sgt.intent.segment import resolve_checkpoint
 

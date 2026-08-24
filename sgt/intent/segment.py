@@ -375,14 +375,21 @@ def _checkpoint_parts(
     feature. Stops one step short of applying the selector, which is the step `resolve_checkpoint`
     and `checkpoint_miss` answer differently -- sharing everything before it is what keeps the two
     from disagreeing about which specs are even in scope."""
-    # Split into the feature part and a selector, either @<index> or :<slug>. Feature ids are
+    # Split into the feature part and a selector: @<index>, @<name>, or :<name>. Feature ids are
     # `f-XXXXXXXX` (no `@`/`:`), so a right-partition cleanly isolates the selector; `@` wins when
     # both appear (an explicit index is unambiguous).
+    #
+    # `@` used to be index-only. People read `@2 Monthly Trend Page` off `sgt log --map` and then
+    # type back the half of it that means something to them, so `<feature>@<name>` was the natural
+    # guess and it resolved to nothing -- `revert` fell through to the natural-language rung, which
+    # matched the feature alone and offered to remove the whole thing. Naming a chapter is now a
+    # smaller request than naming its parent, whichever separator was reached for.
     if "@" in spec and spec.rpartition("@")[2].isdigit():
         feat_part, _, sel = spec.rpartition("@")
         by_index, want = True, sel
-    elif ":" in spec:
-        feat_part, _, sel = spec.rpartition(":")
+    elif "@" in spec or ":" in spec:
+        sep = "@" if "@" in spec else ":"
+        feat_part, _, sel = spec.rpartition(sep)
         by_index, want = False, checkpoint_slug(sel)
     else:
         return None

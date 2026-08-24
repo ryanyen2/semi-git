@@ -55,15 +55,20 @@ class Selection:
 
 
 def is_checkpoint_shaped(target: str) -> bool:
-    """`<feature>@<n>` or `<feature>:<slug>` -- the intent-segment rewind unit. Neither `@<digits>`
-    nor a lone `:` appears in a feature handle or an op id, so the shape is unambiguous and is tried
-    first. `::` is excluded: that is a `file::name` symbol, and letting it in here would send every
-    symbol through a pointless checkpoint lookup. (The cost of the exclusion is that a feature
-    *label* containing `::` can't be used as a checkpoint's feature part -- labels are prose, so this
-    has never come up, and `@<n>` remains available for it.)"""
+    """`<feature>@<n>`, `<feature>@<name>` or `<feature>:<name>` -- the intent-segment rewind unit.
+    Neither `@` nor a lone `:` appears in a feature handle or an op id, so the shape is unambiguous
+    and is tried first. `::` is excluded: that is a `file::name` symbol, and letting it in here would
+    send every symbol through a pointless checkpoint lookup. (The cost of the exclusion is that a
+    feature *label* containing `::` can't be used as a checkpoint's feature part -- labels are prose,
+    so this has never come up, and `@<n>` remains available for it.)
+
+    `@` was once index-only here, so `<feature>@<chapter name>` was not even recognised as a
+    checkpoint and fell through to the natural-language rung, which matched the feature alone and
+    offered to revert all of it. Reading a chapter's name off `sgt log --map` and typing it back is
+    the obvious move, and it must not resolve to something larger than what was asked for."""
     if "::" in target:
         return False
-    return ("@" in target and target.rpartition("@")[2].isdigit()) or ":" in target
+    return "@" in target or ":" in target
 
 
 def is_handle_shaped(target: str) -> bool:

@@ -8,10 +8,10 @@ import { Callout, Copyable, fmtAgo } from '../ui/bits'
 import { OWNER_EMAIL } from './ExperimenterApp'
 
 const BUNDLE_KEYS = [
-  ['git-coursecraft', 'Git · coursecraft'],
-  ['sgt-coursecraft', 'sgt · coursecraft'],
-  ['git-confplan', 'Git · confplan'],
-  ['sgt-confplan', 'sgt · confplan'],
+  ['git-bikecount', 'Git · bikecount'],
+  ['sgt-bikecount', 'sgt · bikecount'],
+  ['git-footfall', 'Git · footfall'],
+  ['sgt-footfall', 'sgt · footfall'],
 ] as const
 
 export function Settings() {

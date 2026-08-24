@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build one participant folder, ready to hand out.
 #
-#   scripts/make-study-bundle.sh <git|sgt> <coursecraft|confplan>
+#   scripts/make-study-bundle.sh <git|sgt> <bikecount|footfall>
 #
 # One bundle per condition and project, not per participant: four in total,
 # built once and reused. Everything specific to a person -- which half they are
@@ -44,13 +44,13 @@ GITLENS_VERSION="${GITLENS_VERSION:-19.0.1}"
 EDITOR_EXTENSIONS='["ms-python.python@2026.4.0", "ms-python.vscode-pylance@2026.3.1", "ms-python.debugpy@2026.6.0", "ms-python.vscode-python-envs@1.36.0"]'
 
 if [ $# -ne 2 ]; then
-    echo "usage: $0 <git|sgt> <coursecraft|confplan>" >&2
+    echo "usage: $0 <git|sgt> <bikecount|footfall>" >&2
     exit 2
 fi
 condition="$1"; project="$2"
 
 case "$condition" in git|sgt) ;; *) echo "condition must be git or sgt" >&2; exit 2 ;; esac
-case "$project" in coursecraft|confplan) ;; *) echo "project must be coursecraft or confplan" >&2; exit 2 ;; esac
+case "$project" in bikecount|footfall) ;; *) echo "project must be bikecount or footfall" >&2; exit 2 ;; esac
 
 # The participant sees this name. It says nothing about which setup is which.
 token=a; [ "$condition" = sgt ] && token=b

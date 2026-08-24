@@ -25,7 +25,7 @@ characterization-gated flip, not U8's.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from sgt.core import lens, order
@@ -57,6 +57,11 @@ class VerbPreview:
     pruned_symbols: tuple[str, ...] = ()  # target-introduced symbols bottomed at their tip
     kept_conflicts: tuple[str, ...] = ()  # symbols left unchanged that need a manual edit
     broken_references: tuple[str, ...] = ()  # surviving symbols still naming removed code
+    target_ops: frozenset[str] = frozenset()  # the ops the user actually named. Distinct from
+    # `removed`, which is empty whenever the edit rewrites symbols in place instead of dropping
+    # ops -- the ordinary case for reverting one checkpoint of a symbol later work has touched.
+    # Without this the preview could not tell which chapter had been asked for and marked it
+    # `kept`, the one word it must never say about the thing being reverted.
 
     @property
     def removed(self) -> frozenset[str]:
@@ -202,7 +207,8 @@ def _plan_removal(
     included -- explicit, never the default (the 2026-08-09 study-testbed demolition)."""
     if take_dependents:
         after = ideal.op_ids - order.upset_in_many(target_ids, ideal.op_ids, ops, declared)
-        return _validated(verb, tag, ideal.op_ids, after, ops, declared)
+        out = _validated(verb, tag, ideal.op_ids, after, ops, declared)
+        return replace(out, target_ops=frozenset(target_ids))
 
     from sgt.core.subtract import plan_subtraction
 
@@ -221,7 +227,7 @@ def _plan_removal(
         affected_symbols=base.affected_symbols, message=plan.message,
         new_ops=plan.new_ops, subtracted_symbols=plan.subtracted_symbols,
         pruned_symbols=plan.pruned_symbols, kept_conflicts=plan.kept_conflicts,
-        broken_references=plan.broken_references,
+        broken_references=plan.broken_references, target_ops=frozenset(target_ids),
     )
 
 
@@ -342,6 +348,26 @@ def plan_revert_op_set(repo: str | Path, tag: str, op_ids: frozenset[str], *,
                          take_dependents=take_dependents)
 
 
+def _revert_scaffolding_over(requested: frozenset[str], ideal, ops: list[Op]) -> frozenset[str]:
+    """Live ops a previous revert authored that sit on the symbols `requested` touches.
+
+    Kept deliberately narrow. Only ops carrying the intent a revert stamps on the ops it
+    synthesizes count, and only where they overlap the symbols being restored, so an unrelated
+    revert's scaffolding elsewhere in the repository is never disturbed and no op a person wrote is
+    ever a candidate. Anything this drops that something else still needs comes back as an
+    ungrounded refusal from `_validated`, which is the same answer the caller got before."""
+    by_id = {op.id: op for op in ops}
+    symbols = {sym for oid in requested if oid in by_id for sym in by_id[oid].footprint}
+    if not symbols:
+        return frozenset()
+    return frozenset(
+        oid for oid in ideal.op_ids - requested
+        if oid in by_id
+        and (by_id[oid].intent or "").startswith("revert ")
+        and symbols & set(by_id[oid].footprint)
+    )
+
+
 def plan_restore_op_set(repo: str | Path, tag: str, op_ids: frozenset[str]) -> VerbPreview:
     """`plan_revert_op_set`'s inverse: re-admit an already-resolved op-set X as the exact ideal edit
     `I ∪ downset_in_many(X)` against the full provenance ideal (`HEAD`, which still holds reverted
@@ -355,14 +381,52 @@ def plan_restore_op_set(repo: str | Path, tag: str, op_ids: frozenset[str]) -> V
     rather than an apply it did not make. `tag` is a human-facing label for the preview only."""
     ops, ideal, declared = _load(repo)
     source = lens.ideal_for_ref(repo, "HEAD")
-    op_ids = frozenset(op_ids) - ideal.op_ids
+    requested = frozenset(op_ids)
+    op_ids = requested - ideal.op_ids
     if not op_ids:
+        # Every requested op is still live, and its effect can still be gone. A checkpoint revert
+        # removes nothing: it layers a rework op over the symbols the checkpoint touched, carrying
+        # the bytes with that checkpoint's contribution subtracted out ("2 symbol(s) changed, no
+        # whole edit removed"). So the inverse is not re-admitting anything, it is peeling that
+        # stand-in back off, and reporting "already in the current ideal; no change" against a page
+        # that plainly still shows the revert was the most confusing answer either verb gave.
+        masking = _revert_scaffolding_over(requested, ideal, ops)
+        if masking:
+            return _validated("restore", tag, ideal.op_ids, ideal.op_ids - masking, ops, declared)
         return _preview("restore", tag, ideal.op_ids, ideal.op_ids, ops,
                         message=f"{tag}: already in the current ideal; no change")
 
     added = _with_layout_siblings(order.downset_in_many(op_ids, source.op_ids, ops, declared),
                                   ops, ideal.op_ids, source.op_ids, declared)
-    return _validated("restore", tag, ideal.op_ids, ideal.op_ids | added, ops, declared)
+    candidate = ideal.op_ids | added
+
+    # A revert does not only remove: it synthesizes stand-in ops to hold the layout the removal
+    # would otherwise have torn out (`sgt.core.subtract`). Re-admitting the originals then puts two
+    # ops on the same symbol claiming the same next version, and `restore` refused the exact rewind
+    # `revert` had just performed -- a one-way door in the pair of verbs that are supposed to be
+    # each other's inverse. The stand-in has no purpose once the thing it stood in for is back.
+    #
+    # Only ops a revert authored are ever dropped, identified by the intent it stamps on them.
+    # Intent is advisory metadata everywhere else, and leaning on it here is a smell, but the
+    # alternative rule -- "drop whichever side of the fork is not being restored" -- would happily
+    # discard a teammate's later edit that legitimately competes. Narrow and conservative beats
+    # general and destructive: an op with no such mark is never touched, and a fork that survives
+    # this still refuses below exactly as it did before.
+    by_id = {op.id: op for op in ops}
+
+    def _is_revert_scaffolding(op_id: str) -> bool:
+        op = by_id.get(op_id)
+        return op is not None and (op.intent or "").startswith("revert ")
+
+    for _ in range(len(candidate)):
+        forked = order.forks(ops, candidate)
+        drop = {oid for _sym, a, b in forked for oid in (a, b)
+                if oid not in added and _is_revert_scaffolding(oid)}
+        if not drop:
+            break
+        candidate -= drop
+
+    return _validated("restore", tag, ideal.op_ids, candidate, ops, declared)
 
 
 def plan_after(repo: str | Path, a: str, b: str) -> VerbPreview:

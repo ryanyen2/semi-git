@@ -65,7 +65,15 @@ git blame shipping.py
 git revert 7e6e383
 ```
 
-Makes a new commit that undoes an old one. It can conflict if later commits touched the same lines; fix the conflict, or `git revert --abort`. Undo the revert itself with `git revert HEAD`, or throw the lot away with `git reset --hard 7e6e383`. This is the practice copy, so break it if you like.
+Makes a new commit that undoes an old one. It can conflict if later commits touched the same lines. When it does, git stops and leaves the conflict markers in the file for you to resolve, then `git add` the file and `git revert --continue`. `git revert --abort` walks away from the whole thing.
+
+To put back something you reverted, revert the revert:
+
+```
+git revert HEAD
+```
+
+Or throw the lot away with `git reset --hard 7e6e383`. This is the practice copy, so break it if you like.
 
 Branches, for trying something you might throw away:
 
