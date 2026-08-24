@@ -1069,13 +1069,28 @@ def test_a_chunked_backfill_admits_every_op_the_finished_store_can_ground(tmp_pa
     get(warmup)
     monkeypatch.setattr(lens_mod, "_CHUNK_BUDGET_SECONDS", (time.monotonic() - started) / 3)
 
-    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
-    chunks = 0
-    for _ in range(60):
-        get(repo)
-        chunks += 1
-        if sync_status(repo)["reached_genesis"]:
+    # Shrink the budget until the walk actually takes more than one chunk, rather than calibrating
+    # once and asserting. The warm-up mine leaves the page cache hot, so the timed run is routinely
+    # faster than the run it was timing, and a third of it can still swallow the whole history in
+    # one go. That is not a failure of the invariant under test, it is the fixture failing to set
+    # itself up, and it was failing CI on whichever Python version happened to get the fastest
+    # runner while the other two passed.
+    budget = lens_mod._CHUNK_BUDGET_SECONDS
+    for attempt in range(6):
+        monkeypatch.setattr(lens_mod, "_CHUNK_BUDGET_SECONDS", budget / (4 ** attempt))
+        repo = corpus.CORPUS["linear_history"].build(tmp_path / f"repo{attempt}")
+        chunks = 0
+        for _ in range(60):
+            get(repo)
+            chunks += 1
+            if sync_status(repo)["reached_genesis"]:
+                break
+        if sync_status(repo)["reached_genesis"] and chunks > 1:
             break
+    else:
+        pytest.skip("could not force a multi-chunk mine on this machine; the invariant is untested "
+                    "here rather than violated")
+
     assert sync_status(repo)["reached_genesis"], "chunked walk never finished; test cannot conclude"
     assert chunks > 1, "history mined in one chunk; test cannot conclude"
 
