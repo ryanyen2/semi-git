@@ -1378,3 +1378,30 @@ touches five of those pages.
 Recorded rather than fixed, because fixing it means re-cutting what the trial offers
 into finer observations, and that is a design change to make deliberately rather
 than at the end of a long session.
+
+### Finding 58 (fixed): the post-apply check ran everywhere, and CI went from four minutes to a timeout
+
+Finding 54 added a run of the project's first oracle tier after a destructive verb,
+so a revert that quietly breaks the program says so instead of ending on a green
+tick. It ran on every revert and restore, on every path.
+
+CI before that change: about four and a half minutes, failing one pre-existing
+assertion. CI after: timed out at thirty minutes on all three Python versions,
+stalled at 25 percent with no progress for twenty-nine of them. Hundreds of reverts
+in the suite, each paying for a real build that nothing read.
+
+Gated on an interactive terminal. The sentence exists for a person who is about to
+walk away from a green tick; on the automated paths -- the test suite, an agent
+driving the MCP server, a script -- there is nobody to read it and the cost is pure.
+
+**What this says about how it was tested.** The change was verified by running the
+verb by hand on two testbeds, and by running the test files that cover the code it
+touches. Both passed. What neither could show is the cost of a per-call build
+multiplied by a whole suite, because a targeted run is exactly the thing that hides
+it. The full suite is around twenty-eight minutes locally against four in CI, so
+"run the affected tests" had become the habit, and this is the class of regression
+that habit cannot catch.
+
+It was also pushed and tagged before CI finished, on the strength of the Release
+workflow going green. Release only checks that the version numbers agree and builds
+the artifacts. CI was the job that would have caught this.
