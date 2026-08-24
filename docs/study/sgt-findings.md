@@ -1281,9 +1281,23 @@ Restore does not come all the way back:
     references to the removed module: 0 -> 1
 
 The app runs either way, so nothing is loudly broken, and the counts are not
-symmetric: 14 removed against 13 added. A theme revert is a union of three atoms'
-op-sets plus forward subtraction on the symbols they shared, and the inverse is
-evidently not the union of the inverses.
+symmetric: 14 removed against 13 added.
+
+**Diagnosed further, and it is not a one-liner.** Reverting the theme removed 13 of
+its 18 ops and left seven stand-ins in their place. Restore adds the 13 back, and
+drops exactly one stand-in, the only one that collides with what it re-admits. The
+other six go on masking the restored content.
+
+The obvious fix is to drop all seven, and it does not work: `Ideal.from_ops` refuses
+the result, because other live ops are grounded on those stand-ins. They are
+load-bearing, not leftovers. So the inverse of a forward subtraction is not "put the
+originals back and take the patches away" -- the patches have been built on.
+
+I tried that fix, watched it get rejected by validation on the case that motivated
+it, and backed it out rather than leave a guarded branch that never fires. What this
+needs is an inverse for forward subtraction that re-grounds the dependents as it
+goes, which is the same shape of work as finding 49 and wants designing rather than
+patching.
 
 This is why the study's target is a chapter rather than the theme. The chapter
 round-trips exactly, verified on both testbeds by the gate, and the theme does not.
