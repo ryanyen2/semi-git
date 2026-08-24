@@ -2,7 +2,7 @@
   "name": "semi-git",
   "displayName": "semi-git (sgt)",
   "description": "See which feature owns each line of code, and remove or restore one feature's work without touching the rest.",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "publisher": "semi-git",
   "license": "MIT",
   "repository": {
