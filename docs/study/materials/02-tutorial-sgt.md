@@ -84,10 +84,10 @@ Nothing has happened yet. That was a preview, and three things in it are worth r
 
 Then put it back:
 
-    sgt restore "The Cart@Cart Total" --yes
+    sgt undo
     python -m pytest -q
 
-Both take the same words. If you would rather not think about which verb undoes what, `sgt undo` reverses whatever you last did.
+`sgt undo` reverses whatever you last did, and it is the one to reach for. There is also `sgt restore "The Cart@Cart Total"`, which takes the same words as `revert`, but it does not always bring everything back, so check the result if you use it.
 
 You can name the whole feature instead of one chapter, and it will take the lot. The preview lists every chapter it would remove, so read it before saying yes.
 

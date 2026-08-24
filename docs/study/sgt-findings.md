@@ -1318,3 +1318,63 @@ positionally, where it landed in `extra`. The preview was right, the confirm lin
 said "re-run with --yes to apply" when `--yes` had been given, and nothing was
 applied. A verb that previews correctly and silently does nothing is worse than one
 that refuses, and only running the apply would have caught it.
+
+### Finding 56: `restore` is not the inverse of `revert`. `undo` is.
+
+Finding 55 read this as a theme-specific problem. It is general, and it is the most
+important thing in this file.
+
+Measured on the shipped footfall bundle, every chapter reverted in a copy and then
+put back, with "put back" meaning every page renders identically to before:
+
+    sgt restore <chapter>    2 of 21 chapters come back exactly
+    sgt undo                 comes back exactly
+
+Nineteen of twenty-one restores exit zero, leave the app running, and do not bring
+the work back. Nothing says so. That is the same shape as finding 54, and worse,
+because here the verb whose entire job is putting things back is the one that
+quietly does not.
+
+The cause, from finding 55's investigation: a revert does not only remove ops, it
+synthesizes stand-ins to hold the layout and the shared symbols together, and later
+work gets grounded on those stand-ins. Restore adds the originals back and drops
+only the stand-in that collides. The rest keep masking the restored content, and
+they cannot simply all be dropped because `Ideal.from_ops` refuses the result.
+`undo` sidesteps all of it by inverting the recorded operation rather than
+recomputing an inverse from the op set.
+
+What this changes:
+
+  - The study's card 4 does not name a verb, and the practice sheets teach `undo`
+    alongside `restore`, so the task is completable. The sgt sheet's line "Both take
+    the same words" is now a promise the tool does not keep, and is corrected.
+  - The answer-key gate accepts either route and records which one worked. It
+    required `restore` for one iteration, which failed every candidate on the
+    bundle and would have been read as "the harvest produced no usable target"
+    rather than as "the verb is broken".
+  - A user reaching for `restore` after a `revert` today should be told to use
+    `undo`. That is a one-line change to what revert prints, and worth making
+    before this reaches anyone.
+
+**And a process note.** The gate had this check in one of two code paths. The theme
+path got it; the chapter path was a near-copy that never grew it, so every chapter
+was certified on "restore exited zero and the app still runs" while the criterion
+card 4 actually states went unmeasured. Two paths doing the same job, one of them
+correct. They are one function now.
+
+### Finding 57 (open): the selected target reaches almost every option the reach trial offers
+
+With the theme as the target, the measured reach is 9 of the 10 things the trial
+offers on footfall and 8 of 10 on bikecount. Ticking every box would score close to
+perfect, so `blind`, `checked`, and the `gain` between them all compress toward the
+ceiling and RQ1b stops discriminating.
+
+This is the cost of the target the design asks for. A theme spanning three sessions
+touches most of a small dashboard, and a narrower chapter has a much better reach
+key but is a smaller piece of work. The trial's option list, not the target, is what
+should change: ten options over six pages is too coarse when one intent legitimately
+touches five of those pages.
+
+Recorded rather than fixed, because fixing it means re-cutting what the trial offers
+into finer observations, and that is a design change to make deliberately rather
+than at the end of a long session.
