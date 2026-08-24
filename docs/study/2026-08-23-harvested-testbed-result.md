@@ -157,3 +157,69 @@ The surface pass against `legibility-rubric.md` is done for criteria 2, 3 and 4 
 not for criterion 1, which asks whether a plain-English description of the symptom
 finds the right work through `sgt find`. That needs a key and a person to judge the
 ranking.
+
+---
+
+## Shipped, 2026-08-24, v0.5.0
+
+Both testbeds are harvested, both arms are built, and the site is deployed. What
+changed between the write-up above and the release, and why.
+
+### The task is stated as a capability now
+
+The first draft asked a participant to reconcile a number: the report says 2,882
+and the dashboard says 3,432. That is a symptom, and chasing it is line-level work,
+which is git's home ground. The cards name the behaviour instead:
+
+  1. see which days the averages leave out, and why
+  2. find the piece of work that decided that
+  3. take it out
+  4. put it back
+
+Card 4 is new, and is why both practice sheets now teach putting work back.
+
+### The seed's architecture decided what was possible
+
+The first footfall harvest could not support the task. Seven of sixteen chapters
+left a repository that would not start, because every job had to edit
+`pages.py::page` for its nav link and `server.py::Handler.do_GET` for its route.
+Twelve independent jobs, welded into one chain by two functions none of them was
+about.
+
+The seed was rebuilt so pages self-register, the same twelve jobs were harvested
+again, and the grouping changed on its own: five features became eight, and the
+event-day work became its own feature instead of sitting in a checkpoint beside an
+unrelated by-month page. Nothing about sgt changed between those runs.
+
+Intent-level history can only offer units the source actually has.
+
+### What the gate refuses, and why each refusal earned its place
+
+  - **plain git must conflict.** Work git can undo cleanly cannot separate the two
+    tools, however good it looks otherwise.
+  - **the app must still run**, measured by reverting each candidate in a copy and
+    starting it.
+  - **something visible must change, and not everything**, measured over the full
+    date range after a harvested job made every page default to one quiet year in
+    which several features could be removed without a number moving.
+  - **the restore must come back exactly.** Not "exited zero and still runs":
+    every page identical to before.
+
+That last refusal is the useful one. The cross-feature theme is the better story,
+the only grouping holding all three event-day jobs, and both testbeds produced one
+unaided. `sgt restore` does not bring it all the way back (finding 55), so the gate
+rejected it and the study uses a chapter that round-trips exactly. The theme should
+become the target when that is fixed.
+
+### The measurements that were wrong, and were caught
+
+Three of my own instruments gave confident wrong answers before they gave right
+ones. A fixed port meant a snapshot talked to a previous run's server. A shared work
+directory meant one project was compared against the other's baseline. An unmapped
+page name silently emptied a reach key. None failed loudly; each answered.
+
+The same shape turned up in sgt twice: a preview that named one symbol while the
+program stopped running, and a theme revert that previewed correctly and applied
+nothing because `yes` was passed positionally into a keyword-only parameter.
+
+Testing the preview rather than the operation would have shipped both.
