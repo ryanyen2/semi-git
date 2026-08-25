@@ -8,15 +8,15 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { basename } from 'node:path'
-import { BLOCK_CAP_MIN, CARD_COUNT, taskCards } from '../src/study/tasks'
+import { BLOCK_ESTIMATE_MIN, REQUESTS, STAGE_COUNT } from '../src/study/tasks'
 import { STEPS, TOTAL_ESTIMATE_MIN, stepById } from '../src/study/flow'
 import { DEBRIEF_MD, PLAN_FOR, TASK_PREAMBLE, WELCOME_MD, spell } from '../src/study/content'
 import { SHEETS } from '../scripts/gen-materials'
 
 describe('the session schedule', () => {
-  it('estimates a task block as the sum of its cards caps', () => {
+  it('estimates a task block as the caps plus the answering', () => {
     for (const id of ['tasks-1', 'tasks-2']) {
-      expect(stepById(id)?.estimateMin, `${id} does not follow the caps`).toBe(BLOCK_CAP_MIN)
+      expect(stepById(id)?.estimateMin, `${id} does not follow the caps`).toBe(BLOCK_ESTIMATE_MIN)
     }
   })
 
@@ -26,13 +26,13 @@ describe('the session schedule', () => {
   // room for breaks. If this fails, the sentence in content.ts is what changes --
   // not this bound.
   it('fits the work inside the time the page asks people to set aside', () => {
-    expect(PLAN_FOR).toBe('two and a half hours')
-    expect(TOTAL_ESTIMATE_MIN).toBeLessThanOrEqual(150 - 15)
+    expect(PLAN_FOR).toBe('an hour and a half')
+    expect(TOTAL_ESTIMATE_MIN).toBeLessThanOrEqual(90 - 4)
   })
 
   it('shows the participant the same total it computes', () => {
     expect(WELCOME_MD).toContain(`about ${TOTAL_ESTIMATE_MIN} minutes of work`)
-    expect(WELCOME_MD).toContain(`| ${BLOCK_CAP_MIN} |`)
+    expect(WELCOME_MD).toContain(`| ${BLOCK_ESTIMATE_MIN} |`)
   })
 
   // A step with a clock and no estimate is missing from the schedule the
@@ -43,12 +43,11 @@ describe('the session schedule', () => {
   // requests, about twenty minutes" two redesigns after that stopped being true.
   // Spelled words rather than digits, because that is what the prose uses and a
   // digit would pass this while reading wrong on the page.
-  it('quotes the same card count and total everywhere it says one', () => {
+  it('quotes the same stage count everywhere it says one', () => {
     const preamble = TASK_PREAMBLE('footfall', 'Sam Park', 'a small tool')
-    expect(preamble).toContain(`${BLOCK_CAP_MIN} minutes of work in total`)
-    expect(preamble).toContain(`${spell(CARD_COUNT)} cards to work through in order`)
-    expect(DEBRIEF_MD).toContain(`the same ${spell(CARD_COUNT)} cards`)
-    expect(CARD_COUNT).toBe(taskCards('footfall').length)
+    expect(preamble).toContain(`${spell(STAGE_COUNT)} stages`)
+    expect(DEBRIEF_MD).toContain(`the same ${spell(STAGE_COUNT)} stages`)
+    expect(STAGE_COUNT).toBe(REQUESTS.length)
   })
 
   it('estimates every step that takes time', () => {
@@ -92,6 +91,6 @@ describe('the printed sheets', () => {
   it('tells the participant the same total the website computes', () => {
     const text = readFileSync('../docs/study/materials/00-welcome.md', 'utf8')
     expect(text).toContain(`about ${TOTAL_ESTIMATE_MIN} minutes of work`)
-    expect(text).toContain(`| ${BLOCK_CAP_MIN} |`)
+    expect(text).toContain(`| ${BLOCK_ESTIMATE_MIN} |`)
   })
 })

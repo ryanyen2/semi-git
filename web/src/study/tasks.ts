@@ -1,59 +1,43 @@
-// The four cards, in both projects.
+// The four stages, in both projects. Protocol v2 (docs/study/protocol-v2.md).
 //
 // Wording is the participant's handout, verbatim. The footfall text is the
 // bikecount text with the nouns swapped per the isomorphism map in
-// docs/study/testbed-spec.md §1: course->talk, section->session,
-// student->attendee, enroll->register, drop->unregister, instructor->speaker,
-// timetable->program, department->track, prerequisite->series dependency.
+// docs/study/testbed-spec.md. Nothing here names a git or an sgt verb: a stage
+// states what happened and what to do in product terms, and the participant
+// chooses the mechanism inside the tool they were given.
 //
-// Nothing here names a git or an sgt verb. A card states a goal in product
-// terms and the participant chooses the mechanism, which is the whole point:
-// naming the verb would tell them which tool we expect them to reach for.
+// WHAT THE BLOCK MEASURES, AND WHY IT IS SHAPED THIS WAY
 //
-// WHAT THIS BLOCK MEASURES, AND WHY IT IS SHAPED THIS WAY
+// Protocol v1 gave people an unfamiliar codebase and an open task, and pilots
+// spent their timed minutes orienting and choosing strategies. Those costs
+// landed on top of the thing under test, which is whether the representation
+// of history helps at each step. So v2 prescribes everything except the step
+// itself. Each stage starts from a scripted state (`./stage N`), tells the
+// participant exactly what happened, and asks for one thing. A stage that goes
+// wrong cannot spoil the next one, because the next one resets the state.
 //
-// The claim is not that intent-aligned history helps you understand a codebase.
-// It is that it lets you *reverse* work an agent did, at the unit the work was
-// done in. So nothing here is a comprehension quiz. Every card ends in an
-// observable state of the running program, and the two that matter are scored
-// by what the program does afterwards, not by what the participant knew.
+// Each stage runs in two phases. The work is capped at STAGE_CAP_MIN minutes
+// with a visible countdown. The quiz and the three rating statements that
+// follow are untimed: they are measurements of what the person took away, not
+// more work to race through.
 //
-// Control is spent at the two ends and withheld in the middle:
-//
-//   - Seeing the defect is prescribed, down to the command line. Whether
-//     somebody thinks to run the program is not the claim, it is variance.
-//   - Locating the work and reversing it are wide open. That *is* the claim,
-//     and telling them where to look would answer the question for them.
-//   - Verifying is prescribed again, for the same reason as seeing.
-//
-// Every prescribed step is a script that ships in the workspace, so the two
-// arms see byte-identical output and nobody's result depends on their typing.
-// The sheets print what each script runs, so nothing is hidden behind it.
-//
-// The defect the block opens on is real and already in both repositories
-// (episode 17 in docs/study/testbed-spec.md). A human fixed back-to-back slots
-// in episode 13; three episodes later an agent "normalised slot comparison",
-// added a second comparison helper one character different from the first, and
-// repointed both callers at it. The commit message does not mention conflicts.
-// The test that guards the behaviour still passes, because it calls the helper
-// the agent left behind rather than the one the program now uses. Green suite,
-// broken program -- which is why the first card runs the program and not pytest.
+// There is no live AI assistant in the block. Stage 1's "assistant work" is a
+// recorded agent session replayed by `./stage 1`, so every participant reads
+// byte-identical changes. See protocol v2 section 3 for what that trades away.
 
 import type { Project, RequestId } from '../lib/types'
 
 /**
- * One thing a person does with the app, and the command that does it.
+ * One thing a person can see the app do, and the page that shows it.
  *
- * The command is named on purpose. Without it "cancelling a registration" and
- * "filling a freed seat from the queue" are two descriptions a participant has to
- * guess the boundary between; with it there is exactly one thing each option
- * means, and both arms can run `--help`. It is still product language -- no git
- * or sgt verb appears anywhere in this list.
+ * The page is named on purpose. Without it, "the busiest hour" and "the
+ * weekday chart" are two descriptions a participant has to guess the boundary
+ * between; with it there is exactly one thing each option means. It is still
+ * product language. No git or sgt verb appears anywhere in this list.
  *
  * Ids are the stored answer, so this wording can change between pilots without
- * orphaning what has already been collected. They are also the ids
- * scripts/study/measure_reach_key.py measures, and it fails if a command handler
- * behind one of them disappears.
+ * orphaning what has already been collected. They are also the ids the key
+ * generators measure, and generation fails if a page behind one disappears.
  */
 export interface Behaviour {
   id: string
@@ -62,12 +46,12 @@ export interface Behaviour {
 }
 
 /**
- * Twelve, and the same twelve in both trials.
+ * Ten, and the same ten on every checklist in the block.
  *
- * One list learned once, so the second trial costs no reading, and the two trials
- * are directly comparable. Twelve because both correct answers have to sit well
- * inside it -- one reaches one behaviour and the other reaches four -- so neither
- * "tick everything" nor "tick almost nothing" is close to right.
+ * One list learned once, so the later checklists cost no reading and the
+ * answers are directly comparable. The keys have to sit well inside it, so
+ * neither "tick everything" nor "tick nothing" is close to right; the key
+ * upload refuses a key naming zero or all ten (`answerKey.ts`).
  */
 export const BEHAVIOURS: Behaviour[] = [
   {
@@ -152,94 +136,89 @@ export const BEHAVIOURS: Behaviour[] = [
   },
 ]
 
-
-/**
- * A reach prediction, attached to the card that performs a destructive
- * operation rather than standing on its own.
- *
- * It used to be two four-minute cards of its own, answered blind and then after
- * looking. The looking stage is now the operation itself: the participant ticks
- * what they think their revert will affect, runs it, and finds out. That costs
- * one card instead of two, and the second answer is grounded in something that
- * happened rather than in a second read of the same screen.
- *
- * `checked - blind` is still the measurement, still a within-participant
- * difference, and still needs no rubric and no second coder.
- */
-export interface ReachTrial {
-  /** The work, in product terms. Names no git or sgt verb. */
-  work: Record<Project, string>
-  /**
-   * Seconds for the blind stage, hard, auto-submitting whatever is ticked.
-   *
-   * Short on purpose. `blind` measures what the representation makes available
-   * at a glance; given three minutes a participant stops reading and starts
-   * reasoning from what they already know about software, which is a real skill
-   * and not the one under test. Announcing the limit before the stage opens is
-   * part of it: a surprise cutoff would measure typing speed.
-   */
-  blindSec: number
-  /** Seconds for the second answer, after the operation has run. Advisory. */
-  checkedSec: number
-}
-
 /**
  * Commands the participant is told to run exactly as written.
  *
- * `script` is what they type. `does` is what the sheet prints underneath it, so
- * a prescribed step is never a black box -- a participant who wants to know
- * what they just ran can read it, and a facilitator can check the output is the
- * output everyone else got.
+ * `script` is what they type. `does` is what the sheet prints underneath it,
+ * so a prescribed step is never a black box. A participant who wants to know
+ * what they just ran can read it, and a facilitator can check the output is
+ * the output everyone else got.
  */
 export interface PrescribedRun {
   script: Record<Project, string>
   does: Record<Project, string[]>
 }
 
-export interface RequestSpec {
-  id: RequestId
-  /** Requests sharing a card share one timer. */
-  card: string
-  /** "Step 1", "Step 4a". Written out rather than derived from the id. */
-  heading: string
-  title: Record<Project, string>
-  body: Record<Project, string>
-  /** Minutes. Requests on the same card share the first one's cap. */
-  capMin: number | null
-  optional: boolean
-  /** A prescribed step. Absent on the open ones, which is most of them. */
-  run?: PrescribedRun
-  /**
-   * A free-text box, recorded and never scored.
-   *
-   * Pilots graded prose written under time pressure against a rubric, and two
-   * graders differed on it more than the two conditions differed from each
-   * other, so the writing became part of what was measured. These boxes exist
-   * so the experimenter can see the participant understood what they were
-   * looking at, and so the interview has something to quote. The scored
-   * measures all come from what the program does afterwards.
-   */
-  note?: Record<Project, string>
-  /**
-   * A box holding one identifier -- a commit hash under git, a feature name or
-   * id under sgt -- compared against the key after the session rather than in
-   * the browser. Free text because the two arms name work differently and
-   * offering a list would tell each arm what shape of answer to look for.
-   */
-  identify?: Record<Project, string>
-  /** Present on the card that reverts. Absent everywhere else. */
-  reach?: ReachTrial
-  /** What the card is testing. Never shown to the participant. */
-  archetype: string
+/** One quiz item on a stage, answered after the work with no clock running. */
+export type QuizItem =
+  | {
+      kind: 'behaviours'
+      id: string
+      /** Same wording in both projects on purpose: the checklist is the
+       * measurement, and two wordings would be two measurements. */
+      prompt: string
+      /** Scored as set F1 against the measured key in answer-key.json. */
+      scored: true
+    }
+  | {
+      kind: 'choice'
+      id: string
+      prompt: string
+      options: Array<{ value: string; label: string }>
+      /** Scored exact against the key, or recorded as a self-report. */
+      scored: boolean
+    }
+  | {
+      kind: 'text'
+      id: string
+      prompt: string
+      /** Never scored. Kept for the interview and the qualitative analysis. */
+      scored: false
+    }
+
+/**
+ * One of the three rating statements a stage ends with. Protocol v2's
+ * replacement for the HLAC battery: the same kind of 7-point item, asked in
+ * the minute after the experience it asks about instead of ten minutes later.
+ * One of each stage's three is reverse-keyed, as the guard against
+ * straight-lining.
+ */
+export interface StageRating {
+  id: string
+  label: string
+  reverse?: boolean
+  /** Which claim the item serves. Shown in the dashboard, never to the participant. */
   serves: string
 }
 
-export interface TaskCard {
-  id: string
-  title: string
+export interface RequestSpec {
+  id: RequestId
+  /** "Stage 1". Written out rather than derived from the id. */
   heading: string
-  capMin: number | null
-  requests: RequestSpec[]
+  title: Record<Project, string>
+  body: Record<Project, string>
+  /** Minutes for the work phase. The quiz that follows is untimed. */
+  capMin: number
+  optional: boolean
+  /** The stage-reset command, printed first on every card. */
+  run: PrescribedRun
+  /**
+   * A box holding one identifier -- a commit hash under git, a named piece of
+   * work under sgt -- shown during the WORK phase, because finding it is the
+   * work. Free text, compared against the key after the session rather than
+   * in the browser (see protocol v2 section 4).
+   */
+  identify?: Record<Project, string>
+  /** The quiz, in order. Rendered after the work phase, untimed. */
+  quiz: QuizItem[]
+  /** Whether the quiz ends with a 0-100 confidence slider. Only stages whose
+   * quiz has a right answer carry one; calibration needs both halves. */
+  quizConfidence: boolean
+  /** The three rating statements. */
+  ratings: StageRating[]
+  /** What the stage is testing. Never shown to the participant. */
+  archetype: string
+  serves: string
 }
 
 export const SCENARIO: Record<Project, { app: string; maintainer: string; blurb: string }> = {
@@ -257,164 +236,336 @@ export const SCENARIO: Record<Project, { app: string; maintainer: string; blurb:
   },
 }
 
+const MECHANISM_REMOVE = [
+  { value: 'clean', label: 'It applied cleanly in one step' },
+  { value: 'conflicts', label: 'I had to resolve conflicts along the way' },
+  { value: 'hand', label: 'I ended up editing files by hand' },
+  { value: 'unfinished', label: 'I did not finish' },
+]
+
+const MECHANISM_RESTORE = [
+  { value: 'undid', label: 'I undid the removal in one step' },
+  { value: 'history', label: 'I brought it back from the history another way' },
+  { value: 'hand', label: 'I re-made the change by hand' },
+  { value: 'unfinished', label: 'I did not finish' },
+]
+
+// NOTE for the testbed build: stage 1's story below must match the recorded
+// session that `./stage 1` replays, and the build gate in scripts/study/
+// re-checks that the replayed change spans at least two files and contains
+// exactly two distinguishable jobs (the requested one and one smaller
+// unrequested fix). If the gate selects a different session, this wording is
+// what changes. The quiz key for s1 is measured by rendering every page
+// before and after the replay, never written by hand.
 export const REQUESTS: RequestSpec[] = [
   {
-    id: 'd1',
-    card: 'c1',
-    heading: 'Card 1',
-    capMin: 3,
+    id: 's1',
+    heading: 'Stage 1',
+    capMin: 4,
     optional: false,
-    archetype: 'see what the program does today, before being asked to change it',
-    serves: 'grounding for cards 2, 3 and 4; observation only',
-    title: {
-      bikecount: 'What does it leave out?',
-      footfall: 'What does it leave out?',
-    },
-    body: {
-      bikecount: 'Open the dashboard and look at the hour of day page.\n\n    python3 -m bikecount.server\n\nThe averages on that page do not count every day in the file. Some days are left out on purpose. Use the app, and the wording on the page itself, to work out which days those are and why somebody decided to leave them out.\n\nNothing here is scored and there is no expected wording.',
-      footfall: 'Open the dashboard and look at the hour of day page.\n\n    python3 -m footfall.server\n\nThe averages on that page do not count every day in the file. Some days are left out on purpose. Use the app, and the wording on the page itself, to work out which days those are and why somebody decided to leave them out.\n\nNothing here is scored and there is no expected wording.',
-    },
-    note: {
-      bikecount: 'Which days are left out, and what reason is given?',
-      footfall: 'Which days are left out, and what reason is given?',
-    },
-  },
-  {
-    id: 'd2',
-    card: 'c2',
-    heading: 'Card 2',
-    capMin: 5,
-    optional: false,
-    archetype: 'locate the piece of work behind a behaviour',
+    archetype: 'read a multi-file assistant change and record it',
     serves: 'RQ1, claim C1',
     title: {
-      bikecount: 'Who did that, and when?',
-      footfall: 'Who did that, and when?',
+      bikecount: 'Record what the assistant did',
+      footfall: 'Record what the assistant did',
     },
     body: {
-      bikecount: 'Leaving those days out was a decision somebody made at some point in this project\'s history. Find the piece of work that made it.\n\n**How you do that is entirely up to you.** There is no script and no suggested route. This is the part we are watching.\n\nPut its name in the box: a commit hash, a feature name, a chapter name, an id, whatever your setup calls the thing you found. If you are not certain, write down what you have and say so. That is a real answer and it beats a guess.',
-      footfall: 'Leaving those days out was a decision somebody made at some point in this project\'s history. Find the piece of work that made it.\n\n**How you do that is entirely up to you.** There is no script and no suggested route. This is the part we are watching.\n\nPut its name in the box: a commit hash, a feature name, a chapter name, an id, whatever your setup calls the thing you found. If you are not certain, write down what you have and say so. That is a real answer and it beats a guess.',
+      bikecount:
+        'Start by putting the project in this stage\'s starting state:\n\n    ./stage 1\n\nEarlier today you asked the coding assistant to round the numbers on the dashboard\'s front page to the nearest ten, so they stop implying one-bike precision. The assistant has finished. Its changes are in your working copy, and nothing is recorded in the project\'s history yet.\n\nRead what it changed, in the editor or the terminal, until you could describe it to a colleague. Then record all of it, the way this setup records finished work.',
+      footfall:
+        'Start by putting the project in this stage\'s starting state:\n\n    ./stage 1\n\nEarlier today you asked the coding assistant to round the numbers on the dashboard\'s front page to the nearest ten, so they stop implying single-person precision. The assistant has finished. Its changes are in your working copy, and nothing is recorded in the project\'s history yet.\n\nRead what it changed, in the editor or the terminal, until you could describe it to a colleague. Then record all of it, the way this setup records finished work.',
+    },
+    run: {
+      script: { bikecount: './stage 1', footfall: './stage 1' },
+      does: {
+        bikecount: [
+          'resets the project to this stage\'s starting state',
+          'replays the assistant\'s changes into your working copy, unrecorded',
+        ],
+        footfall: [
+          'resets the project to this stage\'s starting state',
+          'replays the assistant\'s changes into your working copy, unrecorded',
+        ],
+      },
+    },
+    quiz: [
+      {
+        kind: 'behaviours',
+        id: 'behaviours',
+        prompt: 'Which parts of the dashboard did the assistant\'s work change?',
+        scored: true,
+      },
+      // Not "how many separate jobs was this". Both setups answer that from
+      // the diff and neither helps, because a change is only grouped into
+      // pieces of work once it is in the history -- until then sgt files it
+      // against the features the touched code already belongs to. Asking it
+      // would have scored a question the study's own claim does not cover.
+      {
+        kind: 'text',
+        id: 'joined',
+        prompt:
+          'Your change is now part of the project\'s history. What else is in the same piece of work, if you can tell?',
+        scored: false,
+      },
+      {
+        kind: 'text',
+        id: 'says',
+        prompt: 'In one sentence, what does the history now say happened?',
+        scored: false,
+      },
+    ],
+    quizConfidence: true,
+    ratings: [
+      {
+        id: 'recordKnown',
+        label: 'I know what the record I just made contains.',
+        serves: 'C1',
+      },
+      {
+        id: 'changesLegible',
+        label: 'I could tell what the assistant changed without reading every line.',
+        serves: 'C1',
+      },
+      {
+        id: 'unnoticed',
+        label: 'Something could be in that record that I did not notice.',
+        reverse: true,
+        serves: 'C1',
+      },
+    ],
+  },
+  {
+    id: 's2',
+    heading: 'Stage 2',
+    capMin: 4,
+    optional: false,
+    archetype: 'locate the piece of work behind a described defect',
+    serves: 'RQ2, claim C2; the reach answer is C3\'s prediction',
+    title: {
+      bikecount: 'Find the work behind the wrong number',
+      footfall: 'Find the work behind the wrong number',
+    },
+    body: {
+      bikecount:
+        'Reset first. Anything left over from the last stage is gone after this, which is deliberate:\n\n    ./stage 2\n\nThe cycling team published a report last year. It says the average day in 2018 saw **2,882** crossings. The dashboard\'s by-year page now says **2,900** for the same year. The reset script prints both numbers so you can see them side by side.\n\nHere is what happened. A colleague changed how the dashboard works out an average. Days on the project\'s list of unusual days, like the February 2019 snowstorm and Christmas, are now left out of every average. There was a reason for it, but the report was written when every day still counted, and the committee wants the two to agree again.\n\nYour job in this stage is only to find that work in the project\'s history. Put its name in the box: a commit hash, a named piece of work, an id, whatever this setup calls the thing you found. If you are not certain, write down what you have and say so. That beats a guess.',
+      footfall:
+        'Reset first. Anything left over from the last stage is gone after this, which is deliberate:\n\n    ./stage 2\n\nThe transport committee published a paper last year. It says the average day in 2018 saw **2,882** people walk past. The dashboard\'s by-year page now says **2,900** for the same year. The reset script prints both numbers so you can see them side by side.\n\nHere is what happened. A colleague changed how the dashboard works out an average. Days on the project\'s list of event days, like Grand Final Friday and Christmas, are now left out of every average. There was a reason for it, but the paper was written when every day still counted, and the committee wants the two to agree again.\n\nYour job in this stage is only to find that work in the project\'s history. Put its name in the box: a commit hash, a named piece of work, an id, whatever this setup calls the thing you found. If you are not certain, write down what you have and say so. That beats a guess.',
+    },
+    run: {
+      script: { bikecount: './stage 2', footfall: './stage 2' },
+      does: {
+        bikecount: [
+          'puts the project back to its full history, discarding anything from the last stage',
+          'prints the number the report quotes next to the number the dashboard shows',
+        ],
+        footfall: [
+          'puts the project back to its full history, discarding anything from the last stage',
+          'prints the number the paper quotes next to the number the dashboard shows',
+        ],
+      },
     },
     identify: {
-      bikecount: 'The piece of work that did it',
-      footfall: 'The piece of work that did it',
+      bikecount: 'The piece of work that changed the averages',
+      footfall: 'The piece of work that changed the averages',
     },
+    quiz: [
+      {
+        kind: 'behaviours',
+        id: 'behaviours',
+        prompt:
+          'Which parts of the dashboard run through the code that work touches? Tick what you would re-check if it were taken out. You have not taken it out yet; answer from what the history shows you.',
+        scored: true,
+      },
+    ],
+    quizConfidence: true,
+    ratings: [
+      {
+        id: 'foundRight',
+        label: 'I am confident I found the right piece of work.',
+        serves: 'C2',
+      },
+      {
+        id: 'why',
+        label: 'I could tell why the change had been made.',
+        serves: 'C2',
+      },
+      {
+        id: 'guessedNames',
+        label: 'I had to guess at names or ids to find it.',
+        reverse: true,
+        serves: 'C2',
+      },
+    ],
   },
   {
-    id: 'd3',
-    card: 'c3',
-    heading: 'Card 3',
-    capMin: 6,
+    id: 's3',
+    heading: 'Stage 3',
+    capMin: 4,
     optional: false,
-    archetype: 'remove one piece of work without disturbing the rest',
-    serves: 'RQ1b and RQ2, claim C2',
+    archetype: 'remove one piece of work that later work has landed on',
+    serves: 'RQ3, claim C3',
     title: {
-      bikecount: 'Take it out',
-      footfall: 'Take it out',
+      bikecount: 'Take that work out',
+      footfall: 'Take that work out',
     },
     body: {
-      bikecount: 'The committee has been clear that it wants the averages to count every day the sensors recorded, including the unusual ones. They never asked for days to be dropped.\n\nTake that piece of work out. Every other part of the dashboard has to keep working.\n\nBefore you run anything that changes the project, tick which parts of the dashboard you think this will change. One minute, then it submits itself. You are not graded on it and you will not be shown an answer. You are about to find out for yourself.\n\nThen do it, and run the smoke check to see where you ended up:\n\n    python3 check.py',
-      footfall: 'The committee has been clear that it wants the averages to count every day the sensors recorded, including the unusual ones. They never asked for days to be dropped.\n\nTake that piece of work out. Every other part of the dashboard has to keep working.\n\nBefore you run anything that changes the project, tick which parts of the dashboard you think this will change. One minute, then it submits itself. You are not graded on it and you will not be shown an answer. You are about to find out for yourself.\n\nThen do it, and run the smoke check to see where you ended up:\n\n    python3 check.py',
+      bikecount:
+        'Reset first:\n\n    ./stage 3\n\nIt names the work to take out, so you have it even if the last stage ran out of time. Finding it was that stage\'s job. This one is about the removal.\n\nThe committee never approved the change. They want the averages to count every day the sensors recorded, including the unusual ones, so the dashboard reads **2,882** for 2018 again. Take that piece of work out. Everything else the dashboard shows has to keep working.\n\nWhen you think you are done:\n\n    ./check 3\n\nIt prints the same words for everyone and tells you what the dashboard shows now. It does not mark you, and a red line in it is information rather than a verdict.',
+      footfall:
+        'Reset first:\n\n    ./stage 3\n\nIt names the work to take out, so you have it even if the last stage ran out of time. Finding it was that stage\'s job. This one is about the removal.\n\nThe committee never approved the change. They want the averages to count every day the sensors recorded, including the unusual ones, so the dashboard reads **2,882** for 2018 again. Take that piece of work out. Everything else the dashboard shows has to keep working.\n\nWhen you think you are done:\n\n    ./check 3\n\nIt prints the same words for everyone and tells you what the dashboard shows now. It does not mark you, and a red line in it is information rather than a verdict.',
     },
-    reach: {
-      work: {
-        bikecount: 'The work you found in card 2: the one that keeps unusual days out of the averages.',
-        footfall: 'The work you found in card 2: the one that keeps unusual days out of the averages.',
+    run: {
+      script: { bikecount: './stage 3', footfall: './stage 3' },
+      does: {
+        bikecount: [
+          'puts the project back to its full history, discarding anything from the last stage',
+          'names the work to take out, in the words this setup uses for it',
+        ],
+        footfall: [
+          'puts the project back to its full history, discarding anything from the last stage',
+          'names the work to take out, in the words this setup uses for it',
+        ],
       },
-      blindSec: 60,
-      checkedSec: 120,
     },
+    quiz: [
+      {
+        kind: 'behaviours',
+        id: 'behaviours',
+        prompt:
+          'Which parts of the dashboard changed when the work came out? Tick what you saw change, not what you expected to change.',
+        scored: true,
+      },
+      {
+        kind: 'choice',
+        id: 'mechanism',
+        prompt: 'How did the removal go?',
+        options: MECHANISM_REMOVE,
+        scored: false,
+      },
+    ],
+    quizConfidence: true,
+    ratings: [
+      {
+        id: 'knewReach',
+        label: 'Before I ran it, I knew what the removal would touch.',
+        serves: 'C3',
+      },
+      {
+        id: 'matchedIntent',
+        label: 'The result matches what I intended.',
+        serves: 'C3',
+      },
+      {
+        id: 'worriedBroke',
+        label: 'I was worried I had broken something else.',
+        reverse: true,
+        serves: 'C3',
+      },
+    ],
   },
   {
-    id: 'd4',
-    card: 'c4',
-    heading: 'Card 4',
-    capMin: 5,
+    id: 's4',
+    heading: 'Stage 4',
+    capMin: 4,
     optional: false,
-    archetype: 'put a removed piece of work back',
-    serves: 'RQ2, claim C2',
+    archetype: 'put a removed piece of work back exactly',
+    serves: 'RQ3, claim C3',
     title: {
       bikecount: 'Put it back',
       footfall: 'Put it back',
     },
     body: {
-      bikecount: 'The committee has changed its mind. Having seen the averages with every day counted, they now agree with Dana: a snowstorm that shut the city says nothing about how many people cycle to work, and it should come out of the averages after all.\n\nPut the work you just removed back, exactly as it was, and check the dashboard matches what it showed at the start.\n\nIf you run out of clock, stop where you are. Not finishing is a normal outcome here and it is recorded as one.',
-      footfall: 'The committee has changed its mind. Having seen the averages with every day counted, they now agree with Dana: a public holiday when the offices are shut says nothing about how many people walk to work, and it should come out of the averages after all.\n\nPut the work you just removed back, exactly as it was, and check the dashboard matches what it showed at the start.\n\nIf you run out of clock, stop where you are. Not finishing is a normal outcome here and it is recorded as one.',
+      bikecount:
+        'Reset first:\n\n    ./stage 4\n\nThis puts the project in the state where that work has already been taken out. It is the same state for everyone, whether or not your own removal worked, so nothing from the last stage follows you here.\n\nThe committee has changed its mind. Having seen the averages with every day counted, they now agree with your colleague: a snowstorm that shut the city says nothing about how many people cycle to work on an ordinary day, and it should stay out of the averages after all. Put the work back, exactly as it was, so 2018 reads **2,900** again.\n\nWhen you think you are done:\n\n    ./check 4',
+      footfall:
+        'Reset first:\n\n    ./stage 4\n\nThis puts the project in the state where that work has already been taken out. It is the same state for everyone, whether or not your own removal worked, so nothing from the last stage follows you here.\n\nThe committee has changed its mind. Having seen the averages with every day counted, they now agree with your colleague: a public holiday when the offices are shut says nothing about how many people walk to work on an ordinary day, and it should stay out of the averages after all. Put the work back, exactly as it was, so 2018 reads **2,900** again.\n\nWhen you think you are done:\n\n    ./check 4',
     },
+    run: {
+      script: { bikecount: './stage 4', footfall: './stage 4' },
+      does: {
+        bikecount: [
+          'puts the project in the state where that work has already been taken out, the same for everyone',
+        ],
+        footfall: [
+          'puts the project in the state where that work has already been taken out, the same for everyone',
+        ],
+      },
+    },
+    quiz: [
+      {
+        kind: 'choice',
+        id: 'mechanism',
+        prompt: 'How did you put it back?',
+        options: MECHANISM_RESTORE,
+        scored: false,
+      },
+      {
+        kind: 'text',
+        id: 'convince',
+        prompt:
+          'How would you convince a colleague the work is back, without showing them the code?',
+        scored: false,
+      },
+    ],
+    quizConfidence: false,
+    ratings: [
+      {
+        id: 'backExact',
+        label: 'The project is back exactly as it was before the removal.',
+        serves: 'C3',
+      },
+      {
+        id: 'historySays',
+        label: 'I could tell from the history that the work was back.',
+        serves: 'C3',
+      },
+      {
+        id: 'recheckByHand',
+        label: 'I would re-check everything by hand before trusting it.',
+        reverse: true,
+        serves: 'C3',
+      },
+    ],
   },
 ]
 
 /**
- * Look up a request, or undefined.
+ * Look up a stage, or undefined.
  *
  * Undefined is a real answer, not a defect. The experimenter dashboard renders
  * whatever request documents a participant's collection holds, and the pilots
- * ran earlier designs -- so their collections still hold `r1` to `r6`, `f1` and
- * `f2`. Throwing here took the whole "Requests & scoring" tab down mid-render
- * whenever one was opened, and took the live requests down with it.
+ * ran earlier designs, so their collections still hold `d1` to `d4`, `r1` to
+ * `r6`, `w1` to `w3`, `f1` and `f2`. Throwing here took the whole "Requests &
+ * scoring" tab down mid-render whenever one was opened.
  */
 export function requestById(id: RequestId): RequestSpec | undefined {
   return REQUESTS.find((r) => r.id === id)
 }
 
-/** What the participant calls one step: "Step 1", "Step 4b". */
+/** What the participant calls one stage: "Stage 1". */
 export function requestHeading(r: RequestSpec): string {
   return r.heading
 }
 
-const uncapitalise = (t: string) => t.charAt(0).toLowerCase() + t.slice(1)
-
-/** Requests grouped into cards. Requests on one card share a single timer. */
-export function taskCards(project: Project): TaskCard[] {
-  const byCard = new Map<string, RequestSpec[]>()
-  for (const r of REQUESTS) {
-    const list = byCard.get(r.card) ?? []
-    list.push(r)
-    byCard.set(r.card, list)
-  }
-  return [...byCard.entries()].map(([id, requests]) => {
-    // The card's heading spans its requests: "Step 1", or "Steps 4a to 4c".
-    // Numbering the card separately from its steps was how request 3 ended up
-    // opening with "One correction to the last request" under a heading that
-    // gave it nothing to be a correction to.
-    const first = requests[0].heading
-    const last = requests[requests.length - 1].heading
-    return {
-      id,
-      heading: requests.length === 1 ? first : `${first} to ${last.replace(/^Step /, '')}`,
-      // Every title is written to open a heading, so joining them mid-sentence
-      // capitalised the second one: "Take the waitlist out, then Drops still
-      // need to work".
-      title:
-        requests.length === 1
-          ? requests[0].title[project]
-          : requests
-              .map((r, i) => (i ? uncapitalise(r.title[project]) : r.title[project]))
-              .join(', then '),
-      capMin: requests[0].capMin,
-      requests,
-    }
-  })
-}
-
 /**
- * Minutes a half's task block is allowed, and what the participant sees their
- * elapsed time measured against.
- *
- * 3 to see the defect, 5 to locate it, 6 to reverse it, 10 shared by the removal
- * and its correction. Summed rather than written down, because it was written
- * down before and a card's cap could change without it.
+ * Minutes of capped work in a half. Summed rather than written down, because
+ * it was written down before and a stage's cap could change without it.
  */
-export const BLOCK_CAP_MIN = REQUESTS.reduce((sum, r) => sum + (r.capMin ?? 0), 0)
-
-/** The steps carrying a reach prediction. One, on the card that reverts. */
-export const REACH_TRIALS = REQUESTS.filter(
-  (r): r is RequestSpec & { reach: ReachTrial } => r.reach !== undefined,
-)
+export const BLOCK_CAP_MIN = REQUESTS.reduce((sum, r) => sum + r.capMin, 0)
 
 /**
- * Cards the participant is told to expect. Counted rather than written down:
- * the task preamble used to say "three requests, about twenty minutes in total"
+ * Minutes a quiz-and-ratings pass is budgeted at, per stage. Untimed on
+ * screen; this exists only so the schedule the participant reads includes the
+ * answering, not just the work.
+ */
+export const QUIZ_EST_MIN = 1
+
+/** What a task block costs in the schedule: the caps plus the answering. */
+export const BLOCK_ESTIMATE_MIN = BLOCK_CAP_MIN + REQUESTS.length * QUIZ_EST_MIN
+
+/**
+ * Stages the participant is told to expect. Counted rather than written down:
+ * an earlier design's preamble said "three requests, about twenty minutes"
  * and stayed that way through two redesigns of what was under it.
  */
-export const CARD_COUNT = new Set(REQUESTS.map((r) => r.card)).size
+export const STAGE_COUNT = REQUESTS.length

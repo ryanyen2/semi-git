@@ -1,7 +1,8 @@
 # Study protocol
 
 Date: 2026-08-22
-Status: The operational protocol. This is what the study website implements.
+Status: SUPERSEDED by `protocol-v2.md` (2026-08-25), the staged comparison.
+Kept for the record; the website now implements version 2.
 
 Related documents:
 - `docs/design/2026-08-21-controlled-study-redesign.md`, the design argument

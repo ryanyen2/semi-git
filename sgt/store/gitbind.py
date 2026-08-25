@@ -104,7 +104,7 @@ def format_bookkeeping_trailer() -> str:
 # for anything semantic -- a real commit a user happened to title "sgt revert x" would be hidden
 # from a list, which is recoverable, but must never be treated as sgt's own for op purposes.
 _LEGACY_BOOKKEEPING_PREFIXES = ("sgt revert ", "sgt restore ", "sgt pin ", "sgt cherry-pick ",
-                                "sgt undo:", "sgt: materialize ideal")
+                                "sgt undo:", "sgt: materialize ideal", "sgt land: ")
 
 
 def is_bookkeeping_message(commit_message: str) -> bool:

@@ -41,7 +41,7 @@ from sgt.config import load_oracle_config
 from sgt.core import lens, oracle
 from sgt.core.ideal import Ideal
 from sgt.lens.pins import Contradiction
-from sgt.store.gitbind import GitBinding, format_op_trailers
+from sgt.store.gitbind import GitBinding, format_bookkeeping_trailer, format_op_trailers
 
 from . import ingest as _ingest
 from . import log as _log
@@ -310,7 +310,14 @@ def land(repo: str | Path, branch: str | None = None, retries: int = 5) -> LandR
         gb.stage_all()
         tree = gb.write_tree()
         parents = [p for p in dict.fromkeys([old, ours]) if p is not None]
+        # Stamped as sgt's own plumbing, like every other commit sgt authors. A land commit is a
+        # materialization, not a piece of the developer's work, and without the trailer it showed
+        # up in every human-facing history list: `sgt now`'s "recently done" listed three
+        # `sgt land: main` rows against two real ones, so the first command a new user runs was
+        # more than half internal bookkeeping they cannot act on. `_LEGACY_BOOKKEEPING_PREFIXES`
+        # covers histories landed before this, so both old and new repos read the same.
         trailers = format_op_trailers(sorted(res.merged_ideal.op_ids))
+        trailers = f"{trailers}\n{format_bookkeeping_trailer()}" if trailers else format_bookkeeping_trailer()
         new = gb.commit_tree(tree, parents, f"sgt land: {branch}", trailers=trailers)
 
         if gb.update_ref_cas(ref, new, old):

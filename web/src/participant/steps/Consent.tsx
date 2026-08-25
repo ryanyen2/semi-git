@@ -10,15 +10,15 @@ import type { PublicConfig } from '../../lib/types'
 const FALLBACK_INFO = `
 ## What we are asking you to do
 
-You will work on two small programs you have never seen, using two different setups for reading and changing their history, with an AI coding assistant available in both. We are comparing the two setups.
+You will work through four short guided stages on two small programs you have never seen, using two different setups for reading and changing their history. One stage shows you changes an AI coding assistant made earlier; there is no live assistant to direct. We are comparing the two setups. At the end, if you brought a repository of your own and agree below, we look at it together for a short interview.
 
 ## What we record
 
-Your screen and voice for the session. Your answers on this site. The commands you run and the messages you send to the assistant, captured by a small logger inside the study folder. Nothing outside that folder is read.
+Your screen and voice for the session. Your answers on this site. The commands you run in the terminal and through the editor, captured by a small logger inside the study folder. Nothing outside that folder is read.
 
 ## What we do not record
 
-Anything from before or after the session. Any file outside the study folder. Any account of yours. The assistant runs on a key we issue and revoke.
+Anything from before or after the session. Any file outside the study folder. Any account of yours. The tools run on keys we issue and revoke. A repository you bring for the interview is read, never changed, and nothing from it is kept after the session except the recorded conversation.
 
 ## Storing and sharing
 

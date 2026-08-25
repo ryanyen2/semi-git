@@ -1,5 +1,12 @@
 # Running a session
 
+> **Out of date (2026-08-25).** This guide still describes the protocol v1
+> cards. The study was redesigned as the four-stage comparison in
+> `protocol-v2.md`, and this document needs rewriting against it before the
+> next session: the stage scripts, the per-stage quizzes, the own-repository
+> interview, and the new answer key (`answer-key.json`, v5 draft) all change
+> what the facilitator says and scores.
+
 This is the facilitator's copy. It contains the answers, so do not screen-share it.
 
 The study now runs from a website. The mechanical steps (setting up machines,

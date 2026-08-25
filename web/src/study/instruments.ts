@@ -82,12 +82,12 @@ export interface Instrument {
 
 export const CONSENT: Instrument = {
   id: 'consent',
-  version: 'consent-v1',
+  version: 'consent-v2',
   title: 'Consent',
   perHalf: false,
-  estimateMin: 3,
+  estimateMin: 2,
   intro:
-    'Please read each line and tick it if you agree. The first five are needed to take part. The last one is genuinely optional and ticking or not ticking it makes no difference to anything else.',
+    'Please read each line and tick it if you agree. The first five are needed to take part. The last two are genuinely optional, and ticking or not ticking them makes no difference to anything else, including your payment.',
   items: [
     {
       id: 'read',
@@ -106,7 +106,7 @@ export const CONSENT: Instrument = {
       type: 'checkbox',
       required: true,
       label:
-        'I agree that the commands I run and the messages I send to the AI assistant during the session are recorded.',
+        'I agree that the commands I run during the session, in the terminal and through the editor, are recorded.',
     },
     {
       id: 'deidentified',
@@ -126,6 +126,20 @@ export const CONSENT: Instrument = {
       required: false,
       label:
         'Optional: I agree to short anonymized quotes from my session appearing in a publication.',
+    },
+    // The own-repository walkthrough (protocol v2 section 7). Optional and
+    // separately ticked, because it is the one part of the session that
+    // touches code the participant owns, and the one part where anything
+    // leaves the machine: the labelling step sends short code excerpts to a
+    // language model service to name the pieces of work. Declining swaps in a
+    // prepared public repository for the interview and costs nothing.
+    {
+      id: 'ownRepo',
+      type: 'checkbox',
+      required: false,
+      label:
+        'Optional: for the closing interview, I agree that a repository I bring is processed on this machine to build a view of its history, and that short excerpts of its code are sent to a language model service to name the pieces of work. Nothing from the repository is kept after the session; only the recorded conversation about it is.',
+      help: 'If you leave this unticked, the interview uses a prepared public repository instead.',
     },
     {
       id: 'name',
@@ -399,6 +413,67 @@ export const UMUX_LITE: Instrument = {
 }
 
 // ---------------------------------------------------------------------------
+// After each half: UMUX-Lite plus the two design checks
+// ---------------------------------------------------------------------------
+//
+// Protocol v2's whole per-half battery. The TLX and the twelve-item HLAC
+// block are gone from the flow: a four-minute stage does not need a six-scale
+// workload instrument, and the HLAC items are replaced by the three rating
+// statements each stage ends with, asked in the minute after the experience
+// they ask about instead of ten minutes later. The two manipulation checks
+// survive, riding here instead of on HLAC, and stay flagged `check` for the
+// same reason as before: they are checks on the design, not outcomes, and a
+// five-point check plotted in a block of seven-point items reads as a finding
+// on the wrong axis.
+
+export const AFTER_HALF: Instrument = {
+  id: 'after',
+  version: 'after-half-v1',
+  title: 'This setup',
+  perHalf: true,
+  estimateMin: 2,
+  intro:
+    'Four questions about the setup you just used for those stages. Nothing here is timed.',
+  items: [
+    umuxItem(
+      'capability',
+      "This setup's capabilities meet my requirements.",
+      'usability / capability',
+    ),
+    umuxItem('easy', 'This setup is easy to use.', 'usability / ease'),
+    {
+      id: 'realistic',
+      type: 'likert',
+      required: true,
+      check: true,
+      min: 1,
+      max: 5,
+      shortLabel: 'Stages were realistic',
+      serves: 'manipulation check — task realism',
+      anchors: ['Strongly disagree', 'Strongly agree'],
+      label:
+        'These stages were realistic. I can see this situation happening in real development.',
+    },
+    {
+      id: 'timePressure',
+      type: 'select',
+      required: true,
+      check: true,
+      serves: 'manipulation check — did the cap bind',
+      label: 'How much time pressure did you feel?',
+      help: 'About the clock specifically, not about how hard the work was.',
+      options: [
+        { value: '1', label: 'Too much. I could not cope, regardless of difficulty' },
+        { value: '2', label: 'A fair amount. I could have done better with more time' },
+        { value: '3', label: 'Not much. I had to hurry a bit, but it was fine' },
+        { value: '4', label: 'Very little. I was quite comfortable with the time' },
+        { value: '5', label: 'None at all' },
+      ],
+    },
+  ],
+}
+
+// ---------------------------------------------------------------------------
 // History legibility and agent collaboration. This is Figure 1.
 // ---------------------------------------------------------------------------
 
@@ -621,10 +696,10 @@ const pref = (id: string, label: string, serves?: string): Item => ({
 
 export const PREFERENCE: Instrument = {
   id: 'preference',
-  version: 'preference-v2',
+  version: 'preference-v3',
   title: 'Comparing the two setups',
   perHalf: false,
-  estimateMin: 5,
+  estimateMin: 3,
   // Rewritten shorter, and closed.
   //
   // The v1 block ran eighteen items, five of which were required free-text
@@ -661,20 +736,19 @@ export const PREFERENCE: Instrument = {
       required: false,
       label: 'Setup A was the one you used first. Setup B was the one you used second.',
     },
+    // One item per stage the participant just did twice, in outcome terms,
+    // never in tool terms -- "taking one piece of work out without breaking
+    // the rest", not "reverting a feature". A question phrased as a mechanism
+    // only one setup has is not a comparison, it is a leading question with a
+    // forced answer. Each item names the same job as one stage, so every
+    // comparison here has a scored measure and a rating triplet to cross
+    // against.
     section('secJobs', 'The jobs you just did'),
-    pref('jobWhatChanged', 'Working out when a behavior changed, and what caused it', 'C1'),
-    pref('jobWhatCameWith', 'Working out what else came along with a change', 'C1'),
-    pref('jobRemove', 'Taking one piece of work out without breaking the rest', 'C2'),
-    pref('jobPutBack', 'Putting back part of what you took out, after the fact', 'C2'),
-    pref('jobIntended', 'Being confident the result was what you intended', 'C2'),
-    pref('jobRecover', 'Getting back to a good state when something went wrong', 'C2'),
-    // Verification only. Directing the assistant is near-identical across the two
-    // arms -- same assistant, same prompts -- so half of the old wording was
-    // noise, and the two halves are known to come apart: in the closest
-    // published comparison 23 of 24 people called one tool more helpful while
-    // only 10 of 24 trusted its output more. The HLAC block already splits them
-    // into two items, so collapsing them here disagreed with our own battery.
-    pref('jobAgent', 'Checking what the AI assistant had actually done', 'Q4'),
+    pref('jobRecord', 'Recording work an assistant did, and knowing what you recorded', 'C1'),
+    pref('jobFind', 'Finding the piece of work behind a wrong behavior', 'C2'),
+    pref('jobRemove', 'Taking one piece of work out without breaking the rest', 'C3'),
+    pref('jobPutBack', 'Putting removed work back, after the fact', 'C3'),
+    pref('jobIntended', 'Being confident the result was what you intended', 'C3'),
 
     {
       id: 'reasons',
@@ -694,7 +768,7 @@ export const PREFERENCE: Instrument = {
         { value: 'whole', label: 'I could see the whole piece of work, not just the lines' },
         { value: 'undoEasy', label: 'Undoing was easy' },
         { value: 'undoTrust', label: 'I trusted what the undo had done' },
-        { value: 'check', label: "I could check the assistant's work against what I asked" },
+        { value: 'record', label: 'I knew what had gone into the record when I saved' },
         { value: 'familiar', label: 'I already knew the commands, so I was faster' },
         { value: 'predictable', label: 'I could predict exactly what it would do' },
         { value: 'escape', label: 'When it went wrong I knew how to get out' },
@@ -706,7 +780,7 @@ export const PREFERENCE: Instrument = {
     // Two hypotheticals, pointing opposite ways: a repository you will never see
     // again is not a job that rewards reading history carefully, and a codebase
     // you will own for a year is. A participant who picks the same setup for
-    // both, having also picked it for all seven jobs above, is evidence of
+    // both, having also picked it for all five jobs above, is evidence of
     // demand characteristics and is reported as such. Differentiated answers
     // are the credible signal.
     //
@@ -716,7 +790,7 @@ export const PREFERENCE: Instrument = {
     //
     // These are the weakest items in the block and are kept deliberately few:
     // each asks a person to forecast from thirty-five minutes of use, which the
-    // seven items above do not.
+    // five items above do not.
     pref(
       'scenarioThrowaway',
       'A repository you have never seen and will not see again',
@@ -777,12 +851,17 @@ export const PREFERENCE: Instrument = {
   ],
 }
 
+// TLX, UMUX_LITE and HLAC are retired from the flow (protocol v2 replaced
+// them with the per-stage rating triplets and the AFTER_HALF battery), but
+// they stay registered so pilot responses recorded under the old design still
+// render in the dashboard.
 export const ALL_INSTRUMENTS: Instrument[] = [
   CONSENT,
   BACKGROUND,
   TLX,
   UMUX_LITE,
   HLAC,
+  AFTER_HALF,
   PREFERENCE,
 ]
 

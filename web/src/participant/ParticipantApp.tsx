@@ -10,7 +10,7 @@ import { ConsentStep } from './steps/Consent'
 import { FormStep } from './steps/FormStep'
 import { SetupStep } from './steps/Setup'
 import { TutorialStep } from './steps/Tutorial'
-import { BriefStep } from './steps/Brief'
+import { InterviewStep } from './steps/Interview'
 import { TasksStep } from './steps/Tasks'
 import { HandoverStep } from './steps/Handover'
 import { DoneStep } from './steps/Done'
@@ -146,8 +146,8 @@ function StepBody({ stepId }: { stepId: string }) {
       return <SetupStep step={step} />
     case 'tutorial':
       return <TutorialStep step={step} />
-    case 'brief':
-      return <BriefStep step={step} />
+    case 'interview':
+      return <InterviewStep />
     case 'tasks':
       return <TasksStep step={step} />
     case 'form':

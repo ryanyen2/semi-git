@@ -756,6 +756,13 @@ def _status(repo: str, as_json: bool = False, full: bool = False, *, color: bool
         print(f"  ⚠ kept {len(view['backstop_kept'])} unreproducible file(s) — left on disk (not "
               f"deleted); repair the chain (`sgt advanced fsck --tree`) to materialize them")
         print(f"      {clip(view['backstop_kept'])}")
+    # Not a warning, and no command offered: these are files sgt has never recorded an entity for
+    # (`.gitignore`, most config), so nothing can materialize them and there is nothing to repair.
+    # They used to print as damage above, pointing at an `fsck --tree` that answers "0 drifted
+    # path(s)" and leaves the line exactly where it was.
+    if view.get("never_recorded"):
+        print(f"  · {len(view['never_recorded'])} file(s) sgt does not track, left alone: "
+              f"{clip(view['never_recorded'])}")
     if view.get("unmanaged"):
         print(f"  ⚠ {len(view['unmanaged'])} unmanaged path(s) (symlinks, untouched): "
               f"{clip(view['unmanaged'])}")

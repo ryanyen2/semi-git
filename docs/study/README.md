@@ -4,8 +4,9 @@ Start here. This document explains what the study is, how it works, and where
 everything lives.
 
 After this, read `running-the-study.md` for the step-by-step guide to running
-sessions using the study website. `protocol.md` pins down every question, scale,
-and figure. `participant-materials.md` has the facilitator's script and the
+sessions using the study website. `protocol-v2.md` pins down every question,
+scale, and figure; `protocol.md` is the superseded version 1 design, kept for
+the record. `participant-materials.md` has the facilitator's script and the
 answer keys.
 
 ## What we are asking
@@ -17,35 +18,39 @@ pieces of work a person meant to do, at the level of functions and classes,
 not lines and diffs. The question is whether that actually helps when someone
 has to reverse what an agent did.
 
-We want to find out three things:
+We want to find out three things (protocol v2):
 
-1. **Locate.** Can people find which piece of work caused a visible defect?
-2. **Reverse.** Can people undo that work safely, predicting what else it
-   touches before they act?
-3. **Remove.** Can people take out an entire feature without breaking what
-   depends on it?
+1. **Read the record.** When an assistant has changed several files, do people
+   know what they are recording when they save it?
+2. **Locate.** Can people find the piece of work behind a described defect?
+3. **Operate.** Can people take that work out and put it back at the level the
+   task names, predicting what else it touches before they act?
 
 We are not claiming sgt can do things git cannot. Both tools can handle every
-card in the session, and the paper says so. We are asking whether people perform
-the same tasks faster, more safely, or with better foresight under each tool.
+stage in the session, and the paper says so. We are asking whether people
+perform the same steps faster, more safely, or with better foresight under
+each tool.
 
 ## How it works
 
 This is a **within-subjects** study: every participant does both setups, so we
 compare each person against themselves.
 
-- **Two conditions.** Plain git (the control) and sgt (the treatment). Both
-  halves include an AI coding assistant (Claude Code).
-- **Two projects** of similar size and shape, so nobody sees the same project
-  twice. The projects are small command-line apps, one for course registration,
-  one for conference scheduling.
+- **Two conditions.** Plain git (the control) and sgt (the treatment). There
+  is no live AI assistant in the task block: the assistant's work is replayed
+  from a recording, so every participant reads identical changes.
+- **Two projects** of the same shape under different nouns, so nobody sees the
+  same project twice: two small web dashboards over public sensor data
+  (`bikecount` and `footfall`), harvested from real agent work.
 - **Counterbalanced order.** We vary which condition and which project each
   participant sees first, to control for learning and ordering effects.
-- **Four cards per half, 24 minutes.** The cards walk from observing a defect,
-  through locating its cause and reversing it, to removing a feature. The
-  participant works on a project they have never seen, as if the original
-  maintainer has left and they are picking it up. Before the clock starts they
-  read a page describing what the program does.
+- **Four guided stages per half.** Each stage starts from a scripted state
+  (`./stage N`), tells the participant exactly what happened, and asks for one
+  thing: record the assistant's changes, find the work behind a wrong number,
+  take it out, put it back. A short untimed quiz and three rating statements
+  follow each stage.
+- **A closing interview over the participant's own repository**, with the
+  semantic view built for it during the session.
 - **Twelve participants**, about 90 minutes each (`TOTAL_ESTIMATE_MIN` in
   `web/src/study/flow.ts`, which the printed sheets are generated from).
 
@@ -73,7 +78,8 @@ There are three roles:
 | File | What it contains |
 |---|---|
 | `README.md` | This page, start here |
-| `protocol.md` | The full protocol: every question, scale, measure, and figure |
+| `protocol-v2.md` | The full protocol: every question, scale, measure, and figure |
+| `protocol.md` | The superseded version 1 protocol (locate-and-reverse), kept for the record |
 | `running-the-study.md` | Step-by-step guide for running sessions via the website |
 | `participant-materials.md` | The facilitator's script and answer keys |
 | `answer-key.json` | Ground-truth data loaded into the web console for scoring |

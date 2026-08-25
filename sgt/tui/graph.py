@@ -1683,12 +1683,22 @@ def render_verb_preview_lines(
             ob, oa = n["ops_before"], n["ops_after"]
             present = ob if frame == "before" else oa
             bar = _magnitude_bar(ob, oa, present, ahex, color=color)
+            # Worded from the sign, not from the role. `restore` is `revert`'s inverse, so a
+            # feature the removal took ops off is the same feature the restore puts them back on
+            # -- and the role stays `blast` either way. Wording the badge from the role alone
+            # printed "loses -6 edits, re-draft" on every restore preview: a double negative on
+            # the one line that says what the operation is about to do.
+            delta = oa - ob
             if n["role"] == "foundation":
                 glyph = _paint(ahex, "◈", color=color)
-                badge = "prerequisite, kept" if ob == oa else f"gains {oa - ob} edits"
+                badge = ("prerequisite, kept" if delta == 0
+                         else f"gains {delta} edits" if delta > 0
+                         else f"loses {-delta} edits")
             else:  # blast (target is drawn as the rail above, never here)
                 glyph = _paint(ahex, "●", color=color)
-                badge = f"loses {ob - oa} edits, re-draft"
+                badge = ("unchanged" if delta == 0
+                         else f"gains {delta} edits back" if delta > 0
+                         else f"loses {-delta} edits, re-draft")
             note = _dim(badge, color=color)
             lines.append(f"   {glyph} {_ellipsize(albl, 28).ljust(28)}  {bar}  {note}")
         if len(others) > 8:

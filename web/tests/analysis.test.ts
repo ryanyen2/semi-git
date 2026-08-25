@@ -189,13 +189,13 @@ describe('per-request measures', () => {
     // the match is lenient: a sha typed as `f-25e91a9` has to find the forty
     // character one. The arithmetic is trivial and the comparison is the whole
     // measure, so the thing worth pinning is that both vocabularies land.
-    const key = { locate: { d2: { bikecount: ['25e91a9a1d22', 'ranges_clash'] } }, reach: {} }
+    const key = { locate: { s2: { bikecount: ['25e91a9a1d22', 'ranges_clash'] } }, reach: {} }
     const score = (typed: string) =>
       analyzeParticipant(
         {
           participant: participantDoc(),
           responses: [],
-          requests: [requestDoc({ requestId: 'd2', locate: typed })],
+          requests: [requestDoc({ requestId: 's2', locate: typed })],
           events: [],
           scoring: [],
         },
@@ -218,11 +218,11 @@ describe('per-request measures', () => {
         {
           participant: participantDoc(),
           responses: [],
-          requests: [requestDoc({ requestId: 'd2', locate: typed })],
+          requests: [requestDoc({ requestId: 's2', locate: typed })],
           events: [],
           scoring: [],
         },
-        { locate: { d2: { bikecount: ['25e91a9'] } }, reach: {} },
+        { locate: { s2: { bikecount: ['25e91a9'] } }, reach: {} },
       )
       expect(a.requests[0].locateCorrect).toBeNull()
     }
@@ -234,7 +234,7 @@ describe('per-request measures', () => {
     const a = analyzeParticipant({
       participant: participantDoc(),
       responses: [],
-      requests: [requestDoc({ requestId: 'd2', locate: '25e91a9' })],
+      requests: [requestDoc({ requestId: 's2', locate: '25e91a9' })],
       events: [],
       scoring: [],
     })
@@ -466,7 +466,7 @@ describe('the whole pipeline on a full cohort', () => {
 
   it('rolls per-request measures up to a per-condition value', () => {
     const p = dataset.participants[0]
-    const total = conditionValue(p, 'git', (m) => m.score, 'sum', ['d3', 'w2', 'w3'])
+    const total = conditionValue(p, 'git', (m) => m.score, 'sum', ['s3', 's4'])
     expect(Number.isFinite(total)).toBe(true)
     expect(total).toBeGreaterThanOrEqual(0)
   })

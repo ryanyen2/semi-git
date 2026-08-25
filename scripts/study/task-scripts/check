@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# ./check 3|4 -- where you ended up.
+#
+# Prescribed so that whether somebody thinks to verify is not part of what the
+# study measures, and worded identically in both setups so the two arms read the
+# same words for the same outcome.
+#
+# It reports. It does not score, and it says so: a participant reading a green
+# line as "you are correct" would stop looking, and the scoring happens
+# afterwards from the repository (scripts/study/score_dashboard.py).
+set -euo pipefail
+cd "$(dirname "$0")"
+
+stage="${1:-}"
+case "$stage" in 3|4) ;; *) echo "usage: ./check 3|4" >&2; exit 2 ;; esac
+
+bold=$'\033[1m'; dim=$'\033[2m'; green=$'\033[32m'; red=$'\033[31m'; off=$'\033[0m'
+py="$(command -v python3)"; [ -x .venv/bin/python ] && py=.venv/bin/python
+
+echo "${bold}Does the program still run?${off}"
+if out=$("$py" check.py 2>&1); then
+    echo "  ${green}yes${off}   $out"
+else
+    echo "  ${red}no${off}"
+    printf '%s\n' "$out" | tail -5 | sed 's/^/       /'
+fi
+
+now=$("$py" - <<'PY' 2>/dev/null || echo "?"
+import sys
+sys.path.insert(0, ".")
+from bikecount import data, metrics, server
+for row in metrics.yearly_summary(data.load_readings(server.DATA)):
+    if row[0] == 2018:
+        print(f"{row[2]:,}")
+        break
+PY
+)
+
+echo
+# 2,882 is the average over every day of 2018, which is what the published
+# report was written against; 2,900 is the average once the event days are left
+# out. Stage 3 asks for the first, stage 4 puts the second back.
+if [ "$stage" = 3 ]; then
+    echo "${bold}Do the averages count every day again?${off}"
+    want="2,882"; note="the number the published report quotes"
+else
+    echo "${bold}Is the dashboard back to what it showed before the removal?${off}"
+    want="2,900"; note="what the by-year page showed before"
+fi
+echo "    the 2018 average day should be  ${bold}${want}${off}   ${dim}(${note})${off}"
+echo "    it currently reads              ${bold}${now}${off}"
+if [ "$now" = "$want" ]; then
+    echo "    ${green}those match${off}"
+else
+    echo "    ${red}those do not match yet${off}"
+fi
+
+echo
+echo "${dim}This tells you where you are. It does not mark you, and a red line here"
+echo "is information rather than a verdict.${off}"

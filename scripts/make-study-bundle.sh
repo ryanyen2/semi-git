@@ -72,18 +72,31 @@ cp -R "$BUNDLE_SRC/telemetry" "$staging/telemetry"
 cp "$BUNDLE_SRC/install/setup.sh" "$staging/install/setup.sh"
 chmod +x "$staging/install/setup.sh" "$staging"/bin/study-*
 
-# No prescribed scripts travel any more. The old block staged three of them
-# (show-the-problem, check, show-the-waitlist) for a task design that drove a
-# command line app and needed a scratch store built before anything could be seen.
-# The dashboard shows its own state in a browser, and the only thing a card asks
-# anyone to run is `python3 check.py`, which the project already ships and which
-# grows as pages are added. A staged script would be a fourth copy of that going
-# stale on its own schedule.
+# The two task scripts travel with the work repo. Protocol v2 opens every stage
+# with `./stage N` and closes the two operating stages with `./check N`, so
+# these are not optional extras: without them the participant cannot start.
+cp "$SGT_SOURCE/scripts/study/task-scripts/stage" "$staging/work/stage"
+cp "$SGT_SOURCE/scripts/study/task-scripts/check" "$staging/work/check"
+chmod +x "$staging/work/stage" "$staging/work/check"
 
-# The project brief travels too. It is read once on the website with no clock
-# running, and then wanted again mid-card -- "what was it allowed to refuse to
-# do?" -- at which point the only copy is behind the card being timed.
-cp "$SGT_SOURCE/docs/study/materials/03-project-$project.md" "$staging/project.md"
+# The stage states themselves: tags, the stage-1 patch, and (in the sgt arm) a
+# pristine copy of sgt's own record. Built here, once, so nothing is computed on
+# the participant's machine while a clock is running. The git arm is built
+# against the sgt arm and refuses to finish unless both render the same pages,
+# so the two arms must be built in that order -- see build_stages.sh.
+stage_args=("$staging/work" "$condition")
+if [ "$condition" = git ]; then
+    sgt_twin="${STUDY_SGT_TWIN:-$STUDY_REPOS/$project}"
+    [ -d "$sgt_twin" ] || { echo "no sgt twin at $sgt_twin to match the removed state against" >&2; exit 1; }
+    stage_args+=(--match "$sgt_twin")
+fi
+echo "  Building the stage states."
+"$SGT_SOURCE/scripts/study/build_stages.sh" "${stage_args[@]}"
+
+# No project brief travels any more. Protocol v2 has no brief step: each stage
+# card carries the two sentences of context it needs, which is the point of the
+# design -- the participant is told what just happened one stage at a time
+# rather than asked to hold a page of background.
 
 # A key from a previous build must never travel in a bundle.
 rm -f "$staging/work/.env"

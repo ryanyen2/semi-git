@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+# ./stage 1|2|3|4 -- put the project where this stage starts.
+#
+# Every stage begins with this, and it undoes whatever the last stage left
+# behind. That is deliberate (docs/study/protocol-v2.md §3): a stage that went
+# badly must not make the next one harder, so everyone starts each stage from
+# the same place.
+#
+# It resets to a state built before the session by
+# `scripts/study/build_stages.sh`, so nothing here computes anything under a
+# clock.
+set -euo pipefail
+cd "$(dirname "$0")"
+
+stage="${1:-}"
+case "$stage" in
+    1|2|3|4) ;;
+    *) echo "usage: ./stage 1|2|3|4" >&2; exit 2 ;;
+esac
+
+bold=$'\033[1m'; dim=$'\033[2m'; off=$'\033[0m'
+py="$(command -v python3)"; [ -x .venv/bin/python ] && py=.venv/bin/python
+have_sgt() { [ -d .sgt ] && command -v sgt >/dev/null 2>&1; }
+
+reset_to() {
+    # `-B main`, not a plain checkout of the tag. Checking a tag out directly
+    # detaches HEAD, and sgt keys its record by the branch it is on -- so every
+    # command after a detached reset read and wrote a different record than the
+    # one the project shipped with. It still reverted, but the restore in stage 4
+    # then resolved against the wrong removal and put back two files out of five.
+    git checkout -q -f -B main "$1" 2>/dev/null || { echo "this project is missing $1" >&2; exit 1; }
+    git clean -qfd
+    if have_sgt; then
+        # Putting the files back is not the whole reset. sgt keeps a record of
+        # every removal, and carrying stage 3's record into stage 4 makes the
+        # restore there reverse the wrong removal and put back two files out of
+        # five. So its state goes back to exactly what shipped, then re-derives
+        # against wherever the history now stands.
+        if [ -f .study/sgt-pristine.tar ]; then
+            rm -rf .sgt && tar -xf .study/sgt-pristine.tar -C .
+        fi
+        sgt advanced resync >/dev/null 2>&1 || true
+    fi
+}
+
+# The 2018 average the by-year page shows, read from the app the same way the
+# page does. It is the number the whole removal story is about, so the stage
+# that opens the story prints it and the check that closes it prints it again.
+average_2018() {
+    "$py" - <<'PY' 2>/dev/null || echo "?"
+import sys
+sys.path.insert(0, ".")
+from bikecount import data, metrics, server
+for row in metrics.yearly_summary(data.load_readings(server.DATA)):
+    if row[0] == 2018:
+        print(f"{row[2]:,}")
+        break
+PY
+}
+
+echo "${bold}Putting the project where stage $stage starts.${off}"
+
+case "$stage" in
+1)
+    reset_to study/stage1
+    [ -f .study/stage1.patch ] || { echo "this project is missing .study/stage1.patch" >&2; exit 1; }
+    git apply .study/stage1.patch
+    echo
+    echo "The assistant's changes are in your working copy. Nothing is recorded yet."
+    echo "${dim}Files it changed:${off}"
+    git status --short | sed 's/^/    /'
+    ;;
+2)
+    reset_to study/full
+    echo
+    echo "The project is back to its full history, with nothing of yours left in it."
+    echo
+    echo "${bold}The disagreement this stage is about:${off}"
+    echo "    the published report says the 2018 average day was  ${bold}2,882${off}"
+    echo "    the dashboard's by-year page now says               ${bold}$(average_2018)${off}"
+    ;;
+3)
+    reset_to study/full
+    echo
+    echo "The project is back to its full history, with nothing of yours left in it."
+    echo
+    echo "${bold}The work to take out is:${off}"
+    if have_sgt; then
+        echo "    Event-Day Handling"
+        echo "${dim}    (that is its name in this setup's history view)${off}"
+    else
+        echo "${dim}    three commits, oldest first:${off}"
+        for s in "track known non-normal days like storms and holidays" \
+                 "mark tracked event days on the daily and monthly charts" \
+                 "exclude event days from averages, keep them in totals"; do
+            printf '    %s\n' "$(git log --format='%h  %s' --fixed-strings --grep="$s" -1)"
+        done
+    fi
+    ;;
+4)
+    # The removed state has to be one the setup itself recorded making, not just
+    # a tree that happens to look like it. Resetting straight onto a pre-built
+    # removed commit and letting sgt re-derive its record from that history left
+    # sgt with nothing marked as removed, so `sgt restore` answered "restores 0
+    # edits" and this stage could not be completed at all.
+    #
+    # So each setup arrives here the way it would have arrived here in real
+    # work: git checks out the branch holding the three revert commits, and sgt
+    # performs the removal it records as a removal. Both end on the same
+    # dashboard (build_stages.sh refuses to ship them otherwise); what differs
+    # is what each one's history says happened, which is the thing under study.
+    if have_sgt; then
+        reset_to study/full
+        sgt revert "Event-Day Handling" --yes >/dev/null 2>&1 || {
+            echo "could not set this stage up; tell your facilitator" >&2; exit 1; }
+    else
+        reset_to study/removed
+    fi
+    echo
+    echo "The project is in the state where that work has already been taken out."
+    echo "This is the same starting point for everyone, whether or not your own"
+    echo "removal in the last stage worked."
+    ;;
+esac
+
+echo
+echo "${dim}Ready. The project is in this folder.${off}"

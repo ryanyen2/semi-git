@@ -1,13 +1,14 @@
 # Welcome
 
-Thanks for taking part. Plan for two and a half hours, including breaks.
+Thanks for taking part. Plan for an hour and a half, including breaks.
 
 ## What you'll do
 
-- Take over a small web dashboard you have never seen. Someone built it over six weeks, mostly by describing what she wanted to an AI assistant, and then left.
-- Read a short description of what it does, with no clock running.
-- Work through four cards: see what it does today, find the piece of work behind one of its behaviours, take that work out, and put it back.
-- Do that twice, with two different setups for reading the project's history, on two different projects.
+- Work through four short stages on a small web dashboard: record a change an AI assistant made, find the piece of work behind a wrong number, take that work out, and put it back.
+- Do that twice, with two different setups for reading and changing the project's history, on two different projects.
+- At the end, look at one of your own repositories through one of the setups, and talk with us about it.
+
+Each stage tells you exactly what has happened and what to do. You never have to work out what the project is for, and a script resets the project between stages, so nothing you do in one stage can spoil the next.
 
 We are comparing the two setups. We are not testing you. If something confuses you, that is the most useful thing you can tell us.
 
@@ -19,42 +20,34 @@ We are comparing the two setups. We are not testing you. If something confuses y
 
 We record the screen and audio. You can ask us to stop at any time.
 
-## What you can use
+## One thing that may surprise you
 
-- Any tool on the machine.
-- An AI coding assistant, set up and paid for by us. Ask it for anything, including running commands. Use it as much or as little as you normally would.
+There is no AI assistant to chat with during the timed stages. The first stage shows you changes an assistant made earlier; you read them and record them, but you do not direct it. We removed the live assistant so that every participant sees exactly the same changes.
 
 ## How the time goes
 
 | Minutes | What |
 |---|---|
-| 8 | Consent and a few questions about your background |
-| 10 | Setting up your machine |
-| 10 | A practice project |
-| 5 | Reading about the project you are taking over |
-| 19 | 4 cards: see a defect, find what caused it, take it out, then remove a feature |
-| 6 | Three short questionnaires |
-| 15 | Setting up the second project, and practice again |
-| 5 | Reading about the second project |
-| 19 | The same 4 cards, on the second project |
-| 6 | Questionnaires again |
-| 5 | Comparing the two |
-| 3 | Handing your data over |
+| 4 | Consent and a few questions about your background |
+| 6 | Setting up your machine |
+| 5 | Practice with the first setup, on a throwaway project |
+| 20 | Four stages with the first setup, each a few minutes plus a few questions |
+| 2 | Questions about that setup |
+| 6 | Setting up and practising the second setup |
+| 20 | The same four stages with the second setup, on the second project |
+| 2 | Questions again |
+| 3 | Comparing the two |
+| 15 | One of your own repositories, and a short interview |
+| 2 | Handing your data over |
 
-That is about 80 minutes of work. The rest is breaks.
+That is about 85 minutes of work. The rest is breaks.
 
-Every card has its own time limit, and you can see it counting down. The clock
-only starts once you have read about the project, so there is no rush before
-that.
-
-- Stopping in the middle is fine.
-- Finishing early is fine.
-- We expect people to run out of time on some of them. That is a normal result, not a problem.
+Each stage has a visible countdown for the doing part. The questions after a stage are never timed. We expect people to run out of time on some stages. That is a normal result, not a problem.
 
 ## One thing to know
 
-Nothing you do can break anything that matters. Every project is a fresh copy. If you get one into a state you can't get out of, say so and we'll reset it. Getting stuck is information for us, so please don't hide it.
+Nothing you do can break anything that matters. Every project is a fresh copy, and every stage starts by resetting it. If you get stuck, say so. Getting stuck is information for us, so please don't hide it.
 
 ## Your own machine stays untouched
 
-The setup step installs everything inside one folder and uses its own Python. It does not change your shell, your global packages, or your existing AI assistant account. The assistant runs on a key we issue for this session and revoke afterwards, so nothing is billed to you.
+The setup step installs everything inside one folder and uses its own Python. It does not change your shell, your global packages, or anything you have installed. If you brought a repository of your own for the interview, it is only read, never changed.
