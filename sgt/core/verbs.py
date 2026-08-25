@@ -261,6 +261,16 @@ def _matching_revert_event(
     return None
 
 
+def _named(preview: VerbPreview, target_ids) -> VerbPreview:
+    """Stamp what the user named onto a restore preview.
+
+    Only the removal planner set `target_ops`, so a restore preview could not say which ops it had
+    been asked for. `cli.ideal_edit._restore_gap` has to find the revert a restore reverses, and
+    with nothing to match on it guessed by recency and named the wrong one.
+    """
+    return replace(preview, target_ops=frozenset(target_ids))
+
+
 def _event_op_ids(event: dict, field: str) -> frozenset[str] | None:
     """An op-id set off a journal entry, or None when that field is not shaped like one.
 
@@ -341,9 +351,10 @@ def _plan_restore_via_journal(
     if already:
         # Already reversed (a second `restore` of the same handle), so there is nothing to do and
         # nothing to fall back to -- the union would say the same. Report it as the no-op it is.
-        return _preview("restore", tag, current, current, ops,
-                        message=f"{tag}: that revert has already been reversed; no change")
-    return preview if preview.ok else None
+        return _named(_preview("restore", tag, current, current, ops,
+                               message=f"{tag}: that revert has already been reversed; no change"),
+                      target_ids)
+    return _named(preview, target_ids) if preview.ok else None
 
 
 # -- plans (pure) ---------------------------------------------------------------------------------
@@ -446,7 +457,8 @@ def plan_restore(repo: str | Path, target: str) -> VerbPreview:
         return exact
     added = _with_layout_siblings(order.downset_in(op_id, source_ids, ops, declared),
                                   ops, ideal.op_ids, source_ids, declared)
-    return _validated("restore", target, ideal.op_ids, ideal.op_ids | added, ops, declared)
+    return _named(
+        _validated("restore", target, ideal.op_ids, ideal.op_ids | added, ops, declared), {op_id})
 
 
 def plan_cherry_pick(repo: str | Path, target: str, source_ref: str) -> VerbPreview:
@@ -554,9 +566,11 @@ def plan_restore_op_set(repo: str | Path, tag: str, op_ids: frozenset[str]) -> V
         # that plainly still shows the revert was the most confusing answer either verb gave.
         masking = _revert_scaffolding_over(requested, ideal, ops)
         if masking:
-            return _validated("restore", tag, ideal.op_ids, ideal.op_ids - masking, ops, declared)
-        return _preview("restore", tag, ideal.op_ids, ideal.op_ids, ops,
-                        message=f"{tag}: already in the current ideal; no change")
+            return _named(
+                _validated("restore", tag, ideal.op_ids, ideal.op_ids - masking, ops, declared),
+                requested)
+        return _named(_preview("restore", tag, ideal.op_ids, ideal.op_ids, ops,
+                               message=f"{tag}: already in the current ideal; no change"), requested)
 
     added = _with_layout_siblings(order.downset_in_many(op_ids, source.op_ids, ops, declared),
                                   ops, ideal.op_ids, source.op_ids, declared)
@@ -588,7 +602,7 @@ def plan_restore_op_set(repo: str | Path, tag: str, op_ids: frozenset[str]) -> V
             break
         candidate -= drop
 
-    return _validated("restore", tag, ideal.op_ids, candidate, ops, declared)
+    return _named(_validated("restore", tag, ideal.op_ids, candidate, ops, declared), requested)
 
 
 def plan_after(repo: str | Path, a: str, b: str) -> VerbPreview:

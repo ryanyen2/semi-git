@@ -652,4 +652,5 @@ def plan_restore_feature(repo: str | Path, ref: str) -> core_verbs.VerbPreview:
     # path never needs, the same reason `core.verbs.plan_restore_op_set` defers it.
     source = kernel_lens.ideal_for_ref(repo, "HEAD")
     after = ideal.op_ids | order.downset_in_many(op_ids, source.op_ids, ops, declared)
-    return core_verbs._validated("restore", feature_id, ideal.op_ids, after, ops, declared)
+    return core_verbs._named(
+        core_verbs._validated("restore", feature_id, ideal.op_ids, after, ops, declared), op_ids)

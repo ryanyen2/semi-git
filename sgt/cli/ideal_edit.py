@@ -370,7 +370,24 @@ def _restore_gap(repo: str, preview) -> dict | None:
     except Exception:
         return None
 
-    for event in reversed(events):
+    # Which revert is this restore reversing? Recency is not the answer. Revert `bar`, revert
+    # `baz`, restore `bar`, and the newest entry carrying a delta is the `baz` revert, so the
+    # report named work this restore never claimed and pointed at `sgt undo` -- which would have
+    # thrown away the restore that had just worked. `plan_restore` answers this exactly, from the
+    # `verb` and `target_ops` the entry now carries, so ask it rather than guessing again here.
+    # Entries written before those keys existed match nothing, and fall back to the walk.
+    candidates = None
+    if getattr(preview, "target_ops", None):
+        from sgt.core import verbs as _verbs
+
+        try:
+            found = _verbs._matching_revert_event(Path(repo), frozenset(preview.target_ops))
+        except Exception:
+            found = None
+        if found is not None:
+            candidates = [found[0]]
+
+    for event in candidates if candidates is not None else reversed(events):
         prior = set(event.get("ideal") or ())
         result = set(event.get("result") or ())
         removed = prior - result
@@ -410,7 +427,11 @@ def _restore_gap(repo: str, preview) -> dict | None:
                 for sym in op.footprint if op else ():
                     for infix in ("::__anchor__::", "::__residue__::"):
                         sym = sym.replace(infix, "::")
-                    if "__" not in sym:
+                    # `\x00HEAD\x00` (`mine._RESIDUE_HEAD`) is the gap before a file's first
+                    # entity, not an entity. It survives the infix collapse above because it
+                    # carries no `__`, and printing it puts a raw null byte on the terminal and
+                    # into the MCP payload.
+                    if "__" not in sym and "\x00" not in sym:
                         names.add(sym)
             symbols = sorted(names)
         except Exception:
