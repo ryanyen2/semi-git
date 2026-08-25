@@ -28,7 +28,7 @@ import {
   type Specificity,
 } from '../study/taxonomy'
 import { gitExpertise, tlxScore, tlxSubscales, umuxLiteScore } from '../lib/stats'
-import { HLAC } from '../study/instruments'
+import { AFTER_HALF, HLAC } from '../study/instruments'
 
 export interface CategorizedEvent {
   id: string
@@ -94,8 +94,20 @@ export interface RequestMetrics {
   score: number | null
   outOf: number | null
   collateralDamage: number | null
-  /** The two-stage prediction, on the step that reverts. */
+  /** The prediction-against-outcome pair. Protocol v1 stored both answers on
+   * the reverting card; protocol v2 predicts on s2 and reports on s3, so this
+   * lives on the s3 metric and is null everywhere else. */
   reach: ReachMetrics | null
+  /**
+   * F1 of a stage quiz's behaviour checklist against the measured key, where
+   * the stage has one (s1: what the recorded change touched; s2: what the
+   * found work reaches; s3: what the removal changed). Null when the stage
+   * has no checklist, the key has no entry, or the quiz was never submitted.
+   */
+  quizPicksF1: number | null
+  /** Whether a scored multiple-choice quiz item matched the key (s1's job
+   * count). Null when unasked, unanswered, or unkeyed. */
+  quizChoiceCorrect: boolean | null
   /**
    * Whether the locate step named the right piece of work, where the request has
    * one. PROVISIONAL: a normalised containment test against the strings the key
@@ -163,6 +175,12 @@ export function reachFor(key: ReachKey, requestId: string, project: Project): st
 export interface AnswerKeys {
   locate: LocateKey
   reach: ReachKey
+  /** Correct option values for scored multiple-choice quiz items:
+   * request id -> item id -> option value. Same in both projects by
+   * construction (the build gate verifies it), so it is not per project.
+   * Optional so a key literal or an older uploaded key without one still
+   * reads; a missing map leaves choice items unscored, never wrong. */
+  choices?: Record<string, Record<string, string>>
 }
 
 /**
@@ -173,10 +191,12 @@ export interface AnswerKeys {
  * exactly like a study that did not run them.
  */
 export function keysFrom(truth: GroundTruth | null): AnswerKeys {
-  const keys: AnswerKeys = { locate: {}, reach: {} }
+  const choices: Record<string, Record<string, string>> = {}
+  const keys: AnswerKeys = { locate: {}, reach: {}, choices }
   for (const [requestId, entry] of Object.entries(truth?.requestKeys ?? {})) {
     if (entry.locate) keys.locate[requestId] = entry.locate
     if (entry.reach) keys.reach[requestId] = entry.reach
+    if (entry.choices) choices[requestId] = entry.choices
   }
   return keys
 }
@@ -577,8 +597,28 @@ function metricsFor(
 
   const reach = reachMetricsFor(req, keys.reach)
 
+  // The stage quiz, where the request has one. An absent `quiz` field means a
+  // v1 document or an unfinished stage, and stays unscored; a present
+  // behaviours array is scored even when empty, because ticking nothing is a
+  // committed answer, not a missing one.
+  const wanted = reachFor(keys.reach, req.requestId, req.project)
+  const quizPicks = Array.isArray(req.quiz?.['behaviours'])
+    ? (req.quiz!['behaviours'] as string[])
+    : null
+  const quizPicksF1 = wanted && quizPicks ? setF1(quizPicks, wanted) : null
+  const choiceKey = keys.choices?.[req.requestId]
+  let quizChoiceCorrect: boolean | null = null
+  if (choiceKey && req.quiz) {
+    for (const [itemId, want] of Object.entries(choiceKey)) {
+      const got = req.quiz[itemId]
+      if (typeof got === 'string') quizChoiceCorrect = got === want
+    }
+  }
+
   return {
     reach,
+    quizPicksF1,
+    quizChoiceCorrect,
     requestId: req.requestId,
     half: req.half,
     condition: req.condition,
@@ -645,6 +685,20 @@ function halfSummary(
     }
   }
 
+  // Protocol v2's per-half battery: the two UMUX-Lite items under their
+  // published ids, plus the two design checks. The checks land in the same
+  // `checks` bag the HLAC ones used, under the same ids, so the dashboard's
+  // check view reads both designs.
+  const afterVals = find('after')
+  if (afterVals) {
+    const afterCheckIds = new Set(AFTER_HALF.items.filter((i) => i.check).map((i) => i.id))
+    for (const [k, v] of Object.entries(afterVals)) {
+      if (!afterCheckIds.has(k)) continue
+      const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN
+      if (Number.isFinite(n)) checks[k] = n
+    }
+  }
+
   return {
     half,
     condition,
@@ -653,7 +707,11 @@ function halfSummary(
     // Carried beside the aggregate so a per-subscale figure never has to reach
     // into the stored responses, where Performance still runs the other way.
     tlxSubscales: find('tlx') ? tlxSubscales(find('tlx')!) : null,
-    umux: find('umux') ? umuxLiteScore(find('umux')!) : null,
+    umux: find('umux')
+      ? umuxLiteScore(find('umux')!)
+      : afterVals
+        ? umuxLiteScore(afterVals)
+        : null,
     hlac,
     checks,
   }
@@ -661,7 +719,7 @@ function halfSummary(
 
 export function analyzeParticipant(
   raw: RawParticipantData,
-  keys: AnswerKeys = { locate: {}, reach: {} },
+  keys: AnswerKeys = { locate: {}, reach: {}, choices: {} },
 ): ParticipantAnalysis {
   const { participant, responses, requests, events, scoring } = raw
   const windows = windowsFor(requests)
@@ -680,6 +738,43 @@ export function analyzeParticipant(
         keys,
       ),
     )
+
+  // Protocol v2's prediction-against-outcome pair spans two stages: the
+  // prediction is s2's checklist (answered before anything was operated on)
+  // and the outcome report is s3's, both scored against the same measured key
+  // of what the removal actually moves. v1 stored both answers on one card
+  // and reachMetricsFor has already handled those documents above; this fills
+  // the same slot for v2 documents, on the s3 metric.
+  for (const m of metrics) {
+    if (m.requestId !== 's3' || m.reach) continue
+    const s2 = requests.find((r) => r.requestId === 's2' && r.half === m.half)
+    const s3 = requests.find((r) => r.requestId === 's3' && r.half === m.half)
+    const wanted = reachFor(keys.reach, 's2', m.project)
+    const blindPicks = Array.isArray(s2?.quiz?.['behaviours'])
+      ? (s2!.quiz!['behaviours'] as string[])
+      : null
+    const checkedPicks = Array.isArray(s3?.quiz?.['behaviours'])
+      ? (s3!.quiz!['behaviours'] as string[])
+      : null
+    if (!wanted || !blindPicks || !checkedPicks) continue
+    const blind = setF1(blindPicks, wanted)
+    const checked = setF1(checkedPicks, wanted)
+    m.reach = {
+      blind,
+      checked,
+      gain: checked - blind,
+      blindConfidence: s2?.confidence ?? null,
+      checkedConfidence: s3?.confidence ?? null,
+      // The v2 prediction is untimed within its stage (protocol v2 section 4),
+      // so there is no blind-stage clock to report.
+      blindActiveMs: 0,
+      blindPicked: blindPicks.length,
+      checkedPicked: checkedPicks.length,
+      outOf: wanted.length,
+    }
+    m.calibration =
+      m.reach.blindConfidence == null ? null : m.reach.blindConfidence / 100 - blind
+  }
 
   const halves = participant.blocks.map((b) =>
     halfSummary(b.half, b.condition, b.project, responses),
@@ -703,7 +798,7 @@ export function analyzeParticipant(
 
 export function buildDataset(
   raws: RawParticipantData[],
-  keys: AnswerKeys = { locate: {}, reach: {} },
+  keys: AnswerKeys = { locate: {}, reach: {}, choices: {} },
 ): Dataset {
   let unassigned = 0
   const participants = raws.map((r) => {

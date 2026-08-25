@@ -636,11 +636,42 @@ function RequestCard({
         </div>
       )}
 
-      {spec.note && req.notes?.trim() && (
+      {req.notes?.trim() && (
         <div className="card soft" style={{ marginTop: '1rem' }}>
           <div className="tiny muted">What they wrote — recorded, not scored</div>
           <div className="small" style={{ marginTop: '0.4rem', whiteSpace: 'pre-wrap' }}>
             {req.notes}
+          </div>
+        </div>
+      )}
+
+      {/* The v2 stage quiz and ratings, verbatim. The checklist and choice are
+          scored by the pipeline; they are shown raw here because the
+          experimenter reads answers, not lookups. */}
+      {req.quiz && Object.keys(req.quiz).length > 0 && (
+        <div className="card soft" style={{ marginTop: '1rem' }}>
+          <div className="tiny muted">The stage quiz</div>
+          {Object.entries(req.quiz).map(([k, v]) => (
+            <div key={k} className="small" style={{ marginTop: '0.4rem' }}>
+              <span className="muted">{k}:</span>{' '}
+              {Array.isArray(v) ? (v.length ? v.join(', ') : 'nothing ticked') : v || '—'}
+            </div>
+          ))}
+          {req.confidence != null && (
+            <div className="small" style={{ marginTop: '0.4rem' }}>
+              <span className="muted">confidence:</span> {req.confidence}
+            </div>
+          )}
+        </div>
+      )}
+
+      {req.ratings && Object.keys(req.ratings).length > 0 && (
+        <div className="card soft" style={{ marginTop: '0.75rem' }}>
+          <div className="tiny muted">The three statements, 1–7 as answered (reverse items not recoded)</div>
+          <div className="small mono" style={{ marginTop: '0.4rem' }}>
+            {Object.entries(req.ratings)
+              .map(([k, v]) => `${k}: ${v}`)
+              .join('  ·  ')}
           </div>
         </div>
       )}

@@ -1,63 +1,90 @@
-# Your tasks
+# Your stages
 
-You have taken over **bikecount**, the dashboard you just read about, a small web dashboard over the bicycle counter on the Fremont Bridge in Seattle. Dana Whitfield built it over the last six weeks, mostly by describing what she wanted to an AI assistant, and has now left the team.
+You are looking after **bikecount**, a small web dashboard over the bicycle counter on the Fremont Bridge in Seattle. Dana Whitfield built it over six weeks and has left the team. It reads a public csv of hourly sensor counts and renders a handful of pages: a front page, an hour-of-day page, monthly and yearly totals, a comparison of the two sensors, and a csv download. Its numbers go into a quarterly report.
 
-You have the code, its full history, and your assistant. There are four cards to work through in order, 19 minutes of work in total. Some cards tell you exactly what to run. The ones that matter leave it entirely to you, and those are marked. Every card has its own clock, and running out of time on one is a normal result rather than a failure.
+There are four stages, in order. Each one starts with a script that puts the project in that stage's starting state, tells you what has happened, and asks you to do one thing. The doing part has a visible countdown. The questions after it do not.
 
-Tell us what you are thinking as you go.
+Running out of time on a stage is a normal result, and the next stage starts clean either way. Tell us what you are thinking as you go.
 
-Where a step asks you to tick things, the list is on screen and not on this sheet.
+After each stage, the screen asks a few short questions about what you just did. They are not timed.
 
-## Card 1: What does it leave out?
+## Stage 1: Record what the assistant did
 
-You have 3 minutes.
+You have 4 minutes for the doing part.
 
-Open the dashboard and look at the hour of day page.
+Start by putting the project in this stage's starting state:
 
-    python3 -m bikecount.server
+    ./stage 1
 
-The averages on that page do not count every day in the file. Some days are left out on purpose. Use the app, and the wording on the page itself, to work out which days those are and why somebody decided to leave them out.
+Earlier today you asked the coding assistant to round the numbers on the dashboard's front page to the nearest ten, so they stop implying one-bike precision. The assistant has finished. Its changes are in your working copy, and nothing is recorded in the project's history yet.
 
-Nothing here is scored and there is no expected wording.
+Read what it changed, in the editor or the terminal, until you could describe it to a colleague. Then record all of it, the way this setup records finished work.
 
-**Which days are left out, and what reason is given?**
+What `./stage 1` does:
 
-## Card 2: Who did that, and when?
+- resets the project to this stage's starting state
+- replays the assistant's changes into your working copy, unrecorded
 
-You have 5 minutes.
+## Stage 2: Find the work behind the wrong number
 
-Leaving those days out was a decision somebody made at some point in this project's history. Find the piece of work that made it.
+You have 4 minutes for the doing part.
 
-**How you do that is entirely up to you.** There is no script and no suggested route. This is the part we are watching.
+Reset first. Anything left over from the last stage is gone after this, which is deliberate:
 
-Put its name in the box: a commit hash, a feature name, a chapter name, an id, whatever your setup calls the thing you found. If you are not certain, write down what you have and say so. That is a real answer and it beats a guess.
+    ./stage 2
 
-**The piece of work that did it:** ______________________
+The cycling team published a report last year. It says the average day in 2018 saw **2,882** crossings. The dashboard's by-year page now says **2,900** for the same year. The reset script prints both numbers so you can see them side by side.
 
-## Card 3: Take it out
+Here is what happened. A colleague changed how the dashboard works out an average. Days on the project's list of unusual days, like the February 2019 snowstorm and Christmas, are now left out of every average. There was a reason for it, but the report was written when every day still counted, and the committee wants the two to agree again.
 
-You have 6 minutes.
+Your job in this stage is only to find that work in the project's history. Put its name in the box: a commit hash, a named piece of work, an id, whatever this setup calls the thing you found. If you are not certain, write down what you have and say so. That beats a guess.
 
-The committee has been clear that it wants the averages to count every day the sensors recorded, including the unusual ones. They never asked for days to be dropped.
+What `./stage 2` does:
 
-Take that piece of work out. Every other part of the dashboard has to keep working.
+- puts the project back to its full history, discarding anything from the last stage
+- prints the number the report quotes next to the number the dashboard shows
 
-Before you run anything that changes the project, tick which parts of the dashboard you think this will change. One minute, then it submits itself. You are not graded on it and you will not be shown an answer. You are about to find out for yourself.
+**The piece of work that changed the averages:** ______________________
 
-Then do it, and run the smoke check to see where you ended up:
+## Stage 3: Take that work out
 
-    python3 check.py
+You have 4 minutes for the doing part.
 
-**Before you change anything:** The work you found in card 2: the one that keeps unusual days out of the averages.
+Reset first:
 
-On screen there is a list of the things you can see on bikecount's pages. Tick the ones you think this will affect. 60 seconds, then it submits itself. You answer once more afterwards, knowing what happened.
+    ./stage 3
 
-## Card 4: Put it back
+It names the work to take out, so you have it even if the last stage ran out of time. Finding it was that stage's job. This one is about the removal.
 
-You have 5 minutes.
+The committee never approved the change. They want the averages to count every day the sensors recorded, including the unusual ones, so the dashboard reads **2,882** for 2018 again. Take that piece of work out. Everything else the dashboard shows has to keep working.
 
-The committee has changed its mind. Having seen the averages with every day counted, they now agree with Dana: a snowstorm that shut the city says nothing about how many people cycle to work, and it should come out of the averages after all.
+When you think you are done:
 
-Put the work you just removed back, exactly as it was, and check the dashboard matches what it showed at the start.
+    ./check 3
 
-If you run out of clock, stop where you are. Not finishing is a normal outcome here and it is recorded as one.
+It prints the same words for everyone and tells you what the dashboard shows now. It does not mark you, and a red line in it is information rather than a verdict.
+
+What `./stage 3` does:
+
+- puts the project back to its full history, discarding anything from the last stage
+- names the work to take out, in the words this setup uses for it
+
+## Stage 4: Put it back
+
+You have 4 minutes for the doing part.
+
+Reset first:
+
+    ./stage 4
+
+This puts the project in the state where that work has already been taken out. It is the same state for everyone, whether or not your own removal worked, so nothing from the last stage follows you here.
+
+The committee has changed its mind. Having seen the averages with every day counted, they now agree with your colleague: a snowstorm that shut the city says nothing about how many people cycle to work on an ordinary day, and it should stay out of the averages after all. Put the work back, exactly as it was, so 2018 reads **2,900** again.
+
+When you think you are done:
+
+    ./check 4
+
+What `./stage 4` does:
+
+- puts the project in the state where that work has already been taken out, the same for everyone

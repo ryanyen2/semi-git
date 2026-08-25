@@ -13,7 +13,7 @@ import type { Dataset, HalfSummary, ParticipantAnalysis, RequestMetrics } from '
 import { blocksForGroup, groupForOrdinal } from '../study/flow'
 import { HLAC } from '../study/instruments'
 
-const REQUEST_IDS = ['d1', 'd2', 'd3', 'w1', 'w2', 'w3'] as const
+const REQUEST_IDS = ['s1', 's2', 's3', 's4'] as const
 
 /** Rough transition weights, different enough between conditions to be visible. */
 const CHAINS: Record<Condition, Partial<Record<Category, Partial<Record<Category, number>>>>> = {
@@ -99,7 +99,7 @@ export function demoDataset(seed = 4242): Dataset {
         const seq = walk(rand, block.condition, n)
         const c = counts(seq)
         const activeMs = clamp(
-          (rid === 'w2' ? 6 : rid === 'd3' ? 6 : rid === 'd2' ? 5 : 3) * 60_000 +
+          (rid === 's3' ? 4 : rid === 's2' ? 4 : 3) * 60_000 +
             gauss() * 90_000 -
             lift * 40_000,
           60_000,
@@ -123,7 +123,7 @@ export function demoDataset(seed = 4242): Dataset {
           })
         })
 
-        const base = rid === 'd2' ? 1.1 : 1.0
+        const base = rid === 's2' ? 1.1 : 1.0
         const score = clamp(Math.round(base + ability + lift + gauss() * 0.55), 0, 2)
         const damage = Math.max(
           0,
@@ -133,7 +133,7 @@ export function demoDataset(seed = 4242): Dataset {
         // it carries a found/missed and no facilitator score. Same latent
         // ability behind both, so a person who does well on one tends to do well
         // on the other.
-        const closed = rid === 'd2'
+        const closed = rid === 's2'
         const locateCorrect = closed ? score + (sgt ? 0.6 : 0) + gauss() * 0.5 > 1.2 : null
         const confidence = clamp(Math.round(55 + score * 12 + gauss() * 14), 0, 100)
 
@@ -141,7 +141,7 @@ export function demoDataset(seed = 4242): Dataset {
         // by running the operation, so the two conditions separate mostly on the
         // blind stage and therefore on `gain` -- which is the shape the figures
         // have to be able to draw, including the case where it is absent.
-        const trial = rid === 'd3'
+        const trial = rid === 's3'
         const blindF1 = trial
           ? clamp(0.24 + (sgt ? 0.2 : 0) + ability * 0.12 + gauss() * 0.14, 0, 1)
           : 0
@@ -160,8 +160,13 @@ export function demoDataset(seed = 4242): Dataset {
             }
           : null
 
+        const quizPicksF1 =
+          rid === 's1' ? clamp(0.45 + (sgt ? 0.18 : 0) + ability * 0.1 + gauss() * 0.15, 0, 1) : null
+
         requests.push({
           reach,
+          quizPicksF1,
+          quizChoiceCorrect: rid === 's1' ? rand() < (sgt ? 0.75 : 0.5) : null,
           requestId: rid,
           half: block.half,
           condition: block.condition,
@@ -197,7 +202,7 @@ export function demoDataset(seed = 4242): Dataset {
           wrongTurns: Math.max(0, Math.round((sgt ? 0.4 : 1.2) + gauss() * 0.8)),
           score: closed ? null : score,
           outOf: closed ? null : 2,
-          collateralDamage: rid === 'w2' || rid === 'w3' ? damage : null,
+          collateralDamage: rid === 's3' || rid === 's4' ? damage : null,
           locateCorrect,
           locateAnswer: locateCorrect == null ? null : locateCorrect ? 'e7f2a19' : 'd1a2bc5',
           calibration: trial ? confidence / 100 - blindF1 : null,

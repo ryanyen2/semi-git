@@ -1077,6 +1077,13 @@ def _history_rewritten(gb: GitBinding, witness: str | None, head: str | None) ->
     if head is None:
         return False
     try:
+        # A resync already run at this exact HEAD settles it. The ops it could
+        # not drop are ones whose content is still live in the working tree, so
+        # there is nothing left for the user to do and nothing a second resync
+        # would change.
+        done = state.load_json(gb.repo, "resynced_at", default=None) or {}
+        if done.get("head") == head:
+            return False
         return bool(dropped_ideal_ops(gb.repo))
     except Exception:  # noqa: BLE001 -- a pure read feeding orientation; never fail a status call
         return False
@@ -1117,6 +1124,17 @@ def resync(repo: str | Path, *, reseed: bool = False) -> dict:
                 save_exclusions(repo, excl)
 
     ideal = get(repo)  # re-derive from current git reality (first-contact seed via provenance scan)
+    # Remember that this HEAD has been re-derived, so `_history_rewritten` stops
+    # advising a resync that has already run. Without it, a repo whose working
+    # tree still holds content from commits the history no longer reaches -- the
+    # ordinary result of moving back and keeping your changes -- reports the
+    # rewrite on every `status` forever, and the remedy it names does nothing
+    # the second time. That is the failure this module warns about a few lines
+    # up: a remedy that reports success without fixing anything is worse than
+    # none, because it also removes the reason to keep looking.
+    head = GitBinding(repo).head()
+    if head is not None:
+        state.save_json(repo, "resynced_at", {"key": key, "head": head})
     return {"key": key, "before": before, "after": len(ideal.op_ids), "reseed": reseed}
 
 
@@ -1466,7 +1484,16 @@ def materialization_skips(
 ) -> dict[str, list[str]]:
     """What `_write_working_tree` would refuse to touch, computed *without* writing -- for `status`
     to surface (R3/R4). `unmanaged`: tracked symlink paths. `backstop_kept`: tracked paths the
-    current ideal dropped whose live bytes no valid ideal over the store can regenerate."""
+    current ideal dropped whose live bytes no valid ideal over the store can regenerate, *and*
+    which the store has ops for -- a chain that may genuinely be repairable. `never_recorded`:
+    the same shape, but the store holds no op for the path at all.
+
+    The split exists because the two need opposite things said about them. A path sgt never mined
+    -- `.gitignore` in every repo built by these tools -- cannot be materialized by any repair, so
+    reporting it as damage and pointing at `sgt advanced fsck --tree` sends a user to run a command
+    that answers "0 drifted path(s)" and leaves the same warning on the next `status`. That is the
+    failure `_history_rewritten` documents for resync: a remedy that reports success without
+    fixing anything is worse than none, because it also removes the reason to keep looking."""
     repo = Path(repo)
     tracked = _tracked_paths(repo)
     unmanaged = [p for p in tracked if _writes_through_symlink(repo, p)]
@@ -1476,8 +1503,16 @@ def materialization_skips(
         and (repo / p).is_file() and not _writes_through_symlink(repo, p)
     ]
     reproducible = _reproducible_content(repo, all_ops, only_paths=set(to_delete)) if to_delete else {}
-    backstop_kept = [p for p in to_delete if (repo / p).read_bytes() != reproducible.get(p)]
-    return {"unmanaged": sorted(set(unmanaged)), "backstop_kept": sorted(backstop_kept)}
+    kept = [p for p in to_delete if (repo / p).read_bytes() != reproducible.get(p)]
+    # Which of those the store has ever mined an entity for. A footprint symbol is
+    # `path::entity`, so the path prefix is the test.
+    ops = all_ops if all_ops is not None else Store(repo).all_ops()
+    have_ops = {sym.split("::", 1)[0] for op in ops for sym in op.footprint}
+    return {
+        "unmanaged": sorted(set(unmanaged)),
+        "backstop_kept": sorted(p for p in kept if p in have_ops),
+        "never_recorded": sorted(p for p in kept if p not in have_ops),
+    }
 
 
 _TREE_CLASSES = ("drift", "unmanaged", "backstop_kept", "staged", "unseeded")

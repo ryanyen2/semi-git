@@ -80,10 +80,17 @@ export function SetupStep({ step }: { step: Step }) {
       </div>
 
       <Callout kind="accent" title="Nothing here touches your own setup">
-        The assistant runs from a profile inside the study folder, on a key we issue for this
-        session and revoke afterwards. Your own login, your own settings, and your own billing are
-        not read and not used. Removing the folder at the end removes all of it.
+        Everything runs from inside the study folder, on keys we issue for this session and revoke
+        afterwards. Your own login, your own settings, and your own billing are not read and not
+        used. Removing the folder at the end removes all of it.
       </Callout>
+
+      {half === 1 && (
+        <Callout kind="soft" title="If you brought a repository of your own">
+          Tell your facilitator now. With the consent line ticked, they start building its history
+          view in the background while you work, so it is ready for the interview at the end.
+        </Callout>
+      )}
 
       <div className="card">
         <h2>1. Download the folder for this half</h2>
@@ -151,13 +158,13 @@ export function SetupStep({ step }: { step: Step }) {
           <h2 style={{ marginBottom: '0.35rem' }}>Ready</h2>
           <p className="small" style={{ marginBottom: '0.75rem' }}>
             Open the session shell and leave it open for the rest of the half. Everything you run
-            for the study goes in here, including the assistant.
+            for the study goes in here.
           </p>
           <Copyable text="./bin/study-shell" />
           <p className="small muted" style={{ marginTop: '0.75rem', marginBottom: 0 }}>
-            Inside it, <code>claude</code> starts the assistant, <code>study-code</code> opens the
-            project in the editor, <code>study-practice</code> opens the warm-up copy, and the
-            project itself is in <code>work/</code>.
+            Inside it, <code>study-code</code> opens the project in the editor,
+            <code>study-practice</code> opens the warm-up copy, and the project itself is in{' '}
+            <code>work/</code>.
           </p>
           <p className="small muted" style={{ marginTop: '0.75rem', marginBottom: 0 }}>
             Please open the editor with <code>study-code</code> rather than your own. It uses a

@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import type { GroundTruth } from '../src/lib/types'
 import { PROJECTS } from '../src/lib/types'
-import { BEHAVIOURS, REACH_TRIALS, REQUESTS, requestById } from '../src/study/tasks'
+import { BEHAVIOURS, REQUESTS } from '../src/study/tasks'
 import { validateGroundTruth } from '../src/study/answerKey'
 
 const key = JSON.parse(readFileSync('../docs/study/answer-key.json', 'utf8')) as GroundTruth
@@ -62,39 +62,62 @@ describe('the shipped answer key', () => {
 describe('the validation itself', () => {
   const clone = () => JSON.parse(JSON.stringify(key)) as GroundTruth
 
-  it('rejects a key from before the block became locate-and-reverse', () => {
+  it('rejects a key from an earlier design of the task block', () => {
     const old = clone()
     for (const entry of Object.values(old.requestKeys)) delete entry.locate
-    expect(() => validateGroundTruth(old)).toThrow(/no locate answer for d2/)
+    expect(() => validateGroundTruth(old)).toThrow(/no locate answer for s2/)
   })
 
   it('rejects a key that answers only one project', () => {
     const half = clone()
-    delete half.requestKeys.d2.locate!.footfall
+    delete half.requestKeys.s2.locate!.footfall
     expect(() => validateGroundTruth(half)).toThrow(/not footfall/)
   })
 
   it('rejects a key that accepts nothing for a locate step', () => {
     const empty = clone()
-    empty.requestKeys.d2.locate!.footfall = []
-    expect(() => validateGroundTruth(empty)).toThrow(/accepts nothing for d2/)
+    empty.requestKeys.s2.locate!.footfall = []
+    expect(() => validateGroundTruth(empty)).toThrow(/accepts nothing for s2/)
   })
 
-  it('rejects a key with no reach answer for the prediction', () => {
+  it('rejects a key with no behaviour set for a scored checklist', () => {
     const noReach = clone()
-    delete noReach.requestKeys.d3.reach
-    expect(() => validateGroundTruth(noReach)).toThrow(/no reach answer for d3/)
+    delete noReach.requestKeys.s2.reach
+    expect(() => validateGroundTruth(noReach)).toThrow(/no behaviour set for s2/)
   })
 
-  it('rejects a reach answer naming a behaviour the trial does not offer', () => {
+  it('rejects a behaviour set naming a behaviour the checklist does not offer', () => {
     const drifted = clone()
-    drifted.requestKeys.d3.reach = ['agenda', 'refund']
+    drifted.requestKeys.s2.reach = ['agenda', 'refund']
     expect(() => validateGroundTruth(drifted)).toThrow(/does not offer: agenda, refund/)
   })
 
-  it('rejects a reach answer that names every behaviour', () => {
+  it('rejects a behaviour set that names every behaviour', () => {
     const everything = clone()
-    everything.requestKeys.d3.reach = BEHAVIOURS.map((b) => b.id)
+    everything.requestKeys.s2.reach = BEHAVIOURS.map((b) => b.id)
     expect(() => validateGroundTruth(everything)).toThrow(/placeholder/)
+  })
+
+  // No stage carries a scored multiple choice today -- stage 1's job-count
+  // question was cut because neither setup answers it from the history. The
+  // validator still checks scored choices, so these stay and light up on their
+  // own if a stage adds one, rather than being deleted and rewritten later
+  // from memory.
+  const scoredChoice = REQUESTS.flatMap((r) =>
+    r.quiz.filter((q) => q.kind === 'choice' && q.scored).map((q) => [r.id, q.id] as const),
+  )[0]
+
+  it.skipIf(!scoredChoice)('rejects a key with no correct value for a scored choice', () => {
+    const [rid] = scoredChoice!
+    const noChoice = clone()
+    delete noChoice.requestKeys[rid].choices
+    expect(() => validateGroundTruth(noChoice)).toThrow(/no correct value for/)
+  })
+
+  it.skipIf(!scoredChoice)('rejects a choice value the stage does not offer', () => {
+    const [rid, qid] = scoredChoice!
+    const drifted = clone()
+    drifted.requestKeys[rid].choices = { [qid]: 'not-an-offered-value' }
+    expect(() => validateGroundTruth(drifted)).toThrow(/not one of the options/)
   })
 })

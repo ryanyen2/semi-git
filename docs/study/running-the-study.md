@@ -1,5 +1,10 @@
 # Running the study
 
+> **Partially out of date (2026-08-25).** The flow it describes is protocol
+> v1's. The website now implements the four-stage design of `protocol-v2.md`;
+> the mechanics (console, bundles, uploads) are unchanged, but the step list,
+> the timing, and the scoring pages are not.
+
 This is the step-by-step guide for facilitators, in the order you will need
 things. Everything here assumes you are using the study website.
 

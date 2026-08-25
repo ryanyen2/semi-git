@@ -14,6 +14,34 @@ from ._common import _emit_json, _fail, _fail_json
 from .rewrite import _print_draft, _print_repair_result
 
 
+def _theme_id_for_label(repo: str, target: str) -> str | None:
+    """The theme whose label is exactly `target`, case- and punctuation-insensitively; `None` if
+    no theme or more than one matches.
+
+    `sgt intent list` prints themes by label, so the label is what a person has in front of them
+    and the id (`theme-4a6670e474a2`) is what they would have to copy. Without this, typing the
+    printed name fell past the theme rung to the fuzzy one and matched a *different* object: on
+    the study testbed `sgt revert "Event-Day Handling"` proposed the feature "Event Day Tracking",
+    which is a neighbouring two-commit feature rather than the five-feature theme. Suggesting the
+    wrong grouping under the right name is worse than not resolving, because the preview that
+    follows is about something else and reads as if it were about what was asked for.
+
+    Matching folds case and strips non-alphanumerics, so the hyphen in "Event-Day Handling" is not
+    the difference between resolving and not. Ambiguity declines to guess, like every other rung."""
+    from sgt import state
+
+    try:
+        themes = state.load_json(repo, "intent_themes", default={}) or {}
+    except Exception:  # noqa: BLE001 -- a read feeding resolution; never fail the verb
+        return None
+    squash = lambda s: "".join(ch for ch in str(s).casefold() if ch.isalnum())  # noqa: E731
+    needle = squash(target)
+    if not needle:
+        return None
+    hits = [tid for tid, body in themes.items() if squash((body or {}).get("label", "")) == needle]
+    return hits[0] if len(hits) == 1 else None
+
+
 def _resolve_theme(repo: str, target: str) -> tuple[frozenset[str], str] | None:
     """A theme id -> the ops its member commits landed, plus a human label.
 
@@ -487,16 +515,41 @@ def _subtraction_fields(preview) -> dict:
     }
 
 
+def _readable_symbols(symbols) -> list[str]:
+    """Footprint symbol names as a person should read them.
+
+    A footprint names layout entities as well as code: `file::__anchor__::name` for a splice
+    position, and `file::__residue__::\\x00HEAD\\x00` for the gap before a file's first entity.
+    Neither is a thing anyone wrote or can act on, and the residue head prints its null bytes
+    straight to the terminal -- the consequence report showed
+    `bikecount/pages/monthly.py::__residue__:: HEAD ` in the middle of the line that tells a
+    person what a revert is about to touch. Anchors collapse to the entity they position; residue
+    entries are dropped, because there is no entity behind them to name.
+
+    The same collapse `_still_removed` does for its own report; both call here now, so the two
+    lists cannot disagree about how a symbol is spelled."""
+    out: set[str] = set()
+    for sym in symbols or ():
+        sym = str(sym)
+        if "::__residue__::" in sym:
+            continue
+        sym = sym.replace("::__anchor__::", "::")
+        if "__" in sym or "\x00" in sym:
+            continue
+        out.add(sym)
+    return sorted(out)
+
+
 def _subtraction_report(preview) -> list[str]:
     """The safe-revert consequence report, printed with the preview AND after apply: what was
     spliced out of shared code, what was bottomed, and -- most important -- what was deliberately
     left alone and still needs a human: conflicting symbols kept byte-identical, and surviving
     code that still names something removed."""
     lines: list[str] = []
-    subtracted = getattr(preview, "subtracted_symbols", ())
-    pruned = getattr(preview, "pruned_symbols", ())
-    kept = getattr(preview, "kept_conflicts", ())
-    broken = getattr(preview, "broken_references", ())
+    subtracted = _readable_symbols(getattr(preview, "subtracted_symbols", ()))
+    pruned = _readable_symbols(getattr(preview, "pruned_symbols", ()))
+    kept = _readable_symbols(getattr(preview, "kept_conflicts", ()))
+    broken = _readable_symbols(getattr(preview, "broken_references", ()))
     if subtracted:
         lines.append(f"  subtracted from shared code (later work kept): {', '.join(subtracted)}")
     if pruned:
@@ -566,10 +619,13 @@ def _kernel_edit_verb(
     # always been able to remove one, and plain `sgt revert` could not, so the tool showed people a
     # grouping it then refused to act on and the answer was a second verb they had to already know.
     # Same resolution, same removal path, one verb.
-    if target.startswith("theme-"):
+    # By id, or by the label `sgt intent list` prints -- see `_theme_id_for_label` for why the
+    # label has to resolve here rather than fall through to the fuzzy rung.
+    theme_target = target if target.startswith("theme-") else _theme_id_for_label(repo, target)
+    if theme_target is not None:
         from sgt.intent import group as intent_group
 
-        themed = _resolve_theme(repo, target)
+        themed = _resolve_theme(repo, theme_target)
         if themed is not None:
             op_ids, label = themed
             preview = (verbs.plan_revert_op_set(repo, label, op_ids,

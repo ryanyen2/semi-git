@@ -3364,6 +3364,8 @@ def status_view(repo) -> dict:
         # current ideal dropped whose live bytes no valid ideal can regenerate (backstop-kept).
         "unmanaged": skips["unmanaged"],
         "backstop_kept": skips["backstop_kept"],
+        # Files sgt holds no op for at all: kept, but not damage and not repairable.
+        "never_recorded": skips.get("never_recorded", []),
         "forks": {"open": len(open_forks), "records": open_forks},
         "sync_status": sync_status(repo),
     }

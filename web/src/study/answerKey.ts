@@ -36,16 +36,37 @@ export function validateGroundTruth(parsed: GroundTruth): void {
     const entry = parsed.requestKeys[spec.id]
     if (spec.identify && !entry?.locate) {
       throw new Error(
-        `That key has no locate answer for ${spec.id}, so the step asking which piece of ` +
-          'work caused the defect would go unscored. It looks like a key from before the ' +
-          'task block became locate-and-reverse.',
+        `That key has no locate answer for ${spec.id}, so the stage asking which piece of ` +
+          'work caused the defect would go unscored. It looks like a key from an earlier ' +
+          'design of the task block.',
       )
     }
-    if (spec.reach && !entry?.reach) {
-      throw new Error(
-        `That key has no reach answer for ${spec.id}, so the prediction would score every ` +
-          'participant zero. Regenerate it with scripts/study/measure_reach_key.py.',
-      )
+    // Every scored checklist needs a measured behaviour set, and every scored
+    // multiple choice needs its correct value. A key missing either uploads
+    // clean and scores nothing, which looks exactly like a study that did not
+    // ask the question.
+    for (const q of spec.quiz) {
+      if (q.kind === 'behaviours' && q.scored && !entry?.reach) {
+        throw new Error(
+          `That key has no behaviour set for ${spec.id}, so its checklist would score every ` +
+            'participant zero. Regenerate it with the measuring scripts in scripts/study/.',
+        )
+      }
+      if (q.kind === 'choice' && q.scored) {
+        const want = entry?.choices?.[q.id]
+        if (!want) {
+          throw new Error(
+            `That key has no correct value for ${spec.id}'s "${q.id}" choice, so it would go ` +
+              'unscored.',
+          )
+        }
+        if (!q.options.some((o) => o.value === want)) {
+          throw new Error(
+            `That key answers ${spec.id}'s "${q.id}" choice with "${want}", which is not one ` +
+              'of the options the stage offers. The key and the stage have drifted apart.',
+          )
+        }
+      }
     }
   }
 
@@ -60,7 +81,8 @@ export function validateGroundTruth(parsed: GroundTruth): void {
     // read as "the same for both", so an older key still validates. Every project the study runs
     // has to be answered, or a participant on the unanswered one scores zero on a trial they
     // completed.
-    if (spec?.reach && entry.reach) {
+    const wantsBehaviours = spec?.quiz.some((q) => q.kind === 'behaviours' && q.scored) ?? false
+    if (wantsBehaviours && entry.reach) {
       const perProject: Array<[string, string[]]> = Array.isArray(entry.reach)
         ? PROJECTS.map((p) => [p, entry.reach as string[]])
         : Object.entries(entry.reach as Record<string, string[]>)

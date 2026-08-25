@@ -1,7 +1,7 @@
 // Counterbalancing, and the ordered list of steps a participant walks through.
 
 import type { BlockAssignment, Condition, GroupId, Half, Project } from '../lib/types'
-import { BLOCK_CAP_MIN } from './tasks'
+import { BLOCK_ESTIMATE_MIN } from './tasks'
 
 // docs/study/participant-materials.md, "Which condition, which project".
 const GROUPS: Record<GroupId, Array<{ condition: Condition; project: Project }>> = {
@@ -62,9 +62,9 @@ export type StepKind =
   | 'form'
   | 'setup'
   | 'tutorial'
-  | 'brief'
   | 'tasks'
   | 'preference'
+  | 'interview'
   | 'handover'
   | 'done'
 
@@ -90,46 +90,56 @@ export const STEPS: Step[] = [
     kind: 'form',
     half: null,
     instrumentId: 'background',
-    estimateMin: 3,
+    estimateMin: 2,
   },
-
-  { id: 'setup-1', phase: 'First half', title: 'Set up your machine', kind: 'setup', half: 1, estimateMin: 4 },
-  { id: 'tutorial-1', phase: 'First half', title: 'Practice', kind: 'tutorial', half: 1, estimateMin: 6 },
-  { id: 'brief-1', phase: 'First half', title: 'The project', kind: 'brief', half: 1, estimateMin: 2 },
-  // The estimate for a task block IS the sum of its cards' caps, read from the
-  // cards themselves. Written out as a number it drifts the moment a card is
-  // added, and the drift is invisible: the participant plans their afternoon
-  // around the old total while the timers enforce the new one.
+  // Setup for the first half also unpacks the shared tooling and, with the
+  // consent line ticked, starts building the view of the participant's own
+  // repository in the background, so it is ready for the interview at the end.
+  { id: 'setup-1', phase: 'First half', title: 'Set up your machine', kind: 'setup', half: 1, estimateMin: 6 },
+  { id: 'tutorial-1', phase: 'First half', title: 'Practice', kind: 'tutorial', half: 1, estimateMin: 5 },
+  // The estimate for a task block IS the caps plus the answering, read from
+  // the stages themselves. Written out as a number it drifts the moment a
+  // stage is added, and the drift is invisible: the participant plans their
+  // afternoon around the old total while the timers enforce the new one.
   {
     id: 'tasks-1',
     phase: 'First half',
-    title: 'The requests',
+    title: 'The stages',
     kind: 'tasks',
     half: 1,
-    estimateMin: BLOCK_CAP_MIN,
+    estimateMin: BLOCK_ESTIMATE_MIN,
   },
-  { id: 'tlx-1', phase: 'First half', title: 'How that felt', kind: 'form', half: 1, instrumentId: 'tlx', estimateMin: 2 },
-  { id: 'umux-1', phase: 'First half', title: 'This setup', kind: 'form', half: 1, instrumentId: 'umux', estimateMin: 1 },
-  { id: 'hlac-1', phase: 'First half', title: 'The history', kind: 'form', half: 1, instrumentId: 'hlac', estimateMin: 2 },
+  {
+    id: 'after-1',
+    phase: 'First half',
+    title: 'This setup',
+    kind: 'form',
+    half: 1,
+    instrumentId: 'after',
+    estimateMin: 2,
+  },
 
-  { id: 'setup-2', phase: 'Second half', title: 'Set up the second project', kind: 'setup', half: 2, estimateMin: 3 },
-  { id: 'tutorial-2', phase: 'Second half', title: 'Practice', kind: 'tutorial', half: 2, estimateMin: 5 },
-  { id: 'brief-2', phase: 'Second half', title: 'The project', kind: 'brief', half: 2, estimateMin: 2 },
-  // The estimate for a task block IS the sum of its cards' caps, read from the
-  // cards themselves. Written out as a number it drifts the moment a card is
-  // added, and the drift is invisible: the participant plans their afternoon
-  // around the old total while the timers enforce the new one.
+  // The second setup is short: the tooling is already on the machine, so this
+  // is unpacking the second project and running its checks.
+  { id: 'setup-2', phase: 'Second half', title: 'Set up the second project', kind: 'setup', half: 2, estimateMin: 2 },
+  { id: 'tutorial-2', phase: 'Second half', title: 'Practice', kind: 'tutorial', half: 2, estimateMin: 4 },
   {
     id: 'tasks-2',
     phase: 'Second half',
-    title: 'The requests',
+    title: 'The stages',
     kind: 'tasks',
     half: 2,
-    estimateMin: BLOCK_CAP_MIN,
+    estimateMin: BLOCK_ESTIMATE_MIN,
   },
-  { id: 'tlx-2', phase: 'Second half', title: 'How that felt', kind: 'form', half: 2, instrumentId: 'tlx', estimateMin: 2 },
-  { id: 'umux-2', phase: 'Second half', title: 'This setup', kind: 'form', half: 2, instrumentId: 'umux', estimateMin: 1 },
-  { id: 'hlac-2', phase: 'Second half', title: 'The history', kind: 'form', half: 2, instrumentId: 'hlac', estimateMin: 2 },
+  {
+    id: 'after-2',
+    phase: 'Second half',
+    title: 'This setup',
+    kind: 'form',
+    half: 2,
+    instrumentId: 'after',
+    estimateMin: 2,
+  },
 
   {
     id: 'preference',
@@ -139,6 +149,14 @@ export const STEPS: Step[] = [
     half: null,
     instrumentId: 'preference',
     estimateMin: 3,
+  },
+  {
+    id: 'interview',
+    phase: 'Finishing',
+    title: 'Your own repository',
+    kind: 'interview',
+    half: null,
+    estimateMin: 15,
   },
   { id: 'handover', phase: 'Finishing', title: 'Hand over your data', kind: 'handover', half: null, estimateMin: 2 },
   { id: 'done', phase: 'Finishing', title: 'Done', kind: 'done', half: null },

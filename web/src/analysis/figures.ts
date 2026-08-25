@@ -6,22 +6,20 @@
 // when the two drifted -- the test went on rendering a publishable figure out of
 // its own older list, which is the one property it was there to check.
 
-import type { Condition, RequestId } from '../lib/types'
+import type { Condition } from '../lib/types'
 import { conditionValue, type Dataset, type ParticipantAnalysis } from './pipeline'
 import type { PairedPanel } from '../charts/PairedEstimation'
-import { REACH_TRIALS } from '../study/tasks'
-
-/** Derived, so a third prediction trial cannot be added and left out of the figure. */
-const REACH_IDS: RequestId[] = REACH_TRIALS.map((r) => r.id)
 
 type Picker = (p: ParticipantAnalysis, c: Condition) => number
 
 /**
- * Panel order carries the argument: the top row is what people could tell, the
- * bottom row is what they managed to do.
+ * The primary tier of protocol v2, one panel per measure, in stage order: what
+ * people could read at save time, whether they found the work, what operating
+ * taught them beyond the prediction, whether the removal and the restore
+ * landed, and what got broken along the way.
  *
  * Pickers are functions of the metric rather than positions in a list, because
- * panels come and go as the requests change and an index-based picker goes on
+ * panels come and go as the stages change and an index-based picker goes on
  * rendering a plausible figure out of the wrong column when they do.
  */
 export function figure2Panels(dataset: Dataset): PairedPanel[] {
@@ -48,60 +46,77 @@ export function figure2Panels(dataset: Dataset): PairedPanel[] {
     })),
   })
 
-  const scoreOf = (rs: RequestId[]): Picker => (p, c) =>
-    conditionValue(p, c, (m) => m.score, 'sum', rs)
-
   return [
-    // The locate step is scored from the answer key rather than by a person, so
-    // it has no rubric. One work to find, so the bar is a proportion of
-    // participants who found it rather than a count out of several.
+    // Stage 1: how legibly the assistant's change read at the moment it was
+    // recorded, as F1 of the ticked behaviours against the measured key.
     build(
-      'd2',
-      'D2 locate',
-      'name the work behind the defect',
-      (p, c) => conditionValue(p, c, (m) => (m.locateCorrect ? 1 : 0), 'sum', ['d2']),
+      's1',
+      'S1 record',
+      'what the recorded change touched, F1',
+      (p, c) => conditionValue(p, c, (m) => m.quizPicksF1, 'mean', ['s1']),
+      true,
+      [0, 1],
+      'F1',
+    ),
+    // Stage 2: scored from the answer key rather than by a person, so it has
+    // no rubric. One work to find, so the bar is a proportion of participants
+    // who found it rather than a count out of several.
+    build(
+      's2',
+      'S2 locate',
+      'name the work behind the wrong number',
+      (p, c) => conditionValue(p, c, (m) => (m.locateCorrect ? 1 : 0), 'sum', ['s2']),
       true,
       [0, 1],
       'found it',
     ),
-    // The two prediction trials, averaged over the pair rather than plotted
-    // separately: they were built to point in opposite directions, so one of them
-    // on its own says as much about which target it was as about the tool.
+    // The stage 2 prediction against the stage 3 outcome report, both F1
+    // against the same measured key. `gain` is what doing the removal taught
+    // them beyond what the representation had already shown.
     build(
       'blind',
-      'Predicted at a glance',
+      'Predicted before operating',
       'reach guessed from the representation alone, F1',
-      (p, c) => conditionValue(p, c, (m) => m.reach?.blind ?? null, 'mean', REACH_IDS),
+      (p, c) => conditionValue(p, c, (m) => m.reach?.blind ?? null, 'mean', ['s3']),
       true,
       [0, 1],
       'F1',
     ),
     build(
       'gain',
-      'What checking bought',
-      'F1 after checking, minus F1 at a glance',
-      (p, c) => conditionValue(p, c, (m) => m.reach?.gain ?? null, 'mean', REACH_IDS),
+      'What operating taught',
+      'F1 after the removal, minus F1 predicted',
+      (p, c) => conditionValue(p, c, (m) => m.reach?.gain ?? null, 'mean', ['s3']),
       true,
       [-0.5, 1],
       'F1 gained',
     ),
     build(
-      'w23',
-      'R2+R3 removal',
-      'take the waitlist out, keep drops',
-      scoreOf(['w2', 'w3']),
+      's3',
+      'S3 removal',
+      'take the work out, keep the rest',
+      (p, c) => conditionValue(p, c, (m) => m.score, 'sum', ['s3']),
       true,
-      [0, 4],
+      [0, 2],
       'rubric points',
+    ),
+    build(
+      's4',
+      'S4 restore',
+      'every page back to the pre-removal snapshot',
+      (p, c) => conditionValue(p, c, (m) => m.score, 'sum', ['s4']),
+      true,
+      [0, 1],
+      'restored',
     ),
     build(
       'damage',
       'Collateral damage',
-      'tests broken outside the target',
+      'pages moved and tests broken outside the target',
       (p, c) => conditionValue(p, c, (m) => m.collateralDamage, 'sum'),
       false,
       undefined,
-      'failing tests',
+      'breakages',
     ),
   ]
 }
