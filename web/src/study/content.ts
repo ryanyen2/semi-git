@@ -253,7 +253,20 @@ Then put it back:
 
 \`restore\` is \`revert\`'s opposite and takes the same words. If you ever lose track of where you are, \`sgt undo\` reverses whatever you last did, and \`sgt now\` says where things stand.
 
-## 6. Help
+## 6. Some work spans several features
+
+One job done over a few afternoons can end up spread across more than one feature. \`sgt\` groups that too, and lists those groups at the bottom of:
+
+    sgt intent list
+
+They are removed and restored by name, exactly like a chapter:
+
+    sgt revert "<the name it lists>"
+    sgt restore "<the name it lists>"
+
+**These groups are the one thing the sidebar does not show yet**, so this is a terminal command. If a later task names a piece of work you cannot find in the tree, look at the bottom of \`sgt intent list\` and type its name.
+
+## 7. Help
 
     sgt --help
     sgt <command> --help
