@@ -1515,13 +1515,21 @@ entry) is the one finding 50 asked for when it settled for matching an advisory
 present and still correct. It answers for journal entries written before these keys
 existed.
 
-**One defect this did not fix.** `cli.ideal_edit._restore_gap` picks the revert a
-restore reverses by taking the newest journal event carrying any delta, checking
-neither `kind` nor `verb` nor the target. Revert `bar`, revert `baz`, restore `bar`,
-and it warns that `baz` stays removed and points at `sgt undo`, which would throw away
-the restore that just worked. It predates this change and this change narrows it: the
-same warning fires on the single-revert case before the fix and not after. The fields
-that would fix it now exist on the entry.
+**The warning had the same bug, one level up.** `cli.ideal_edit._restore_gap` picked
+the revert a restore reverses by taking the newest journal event carrying any delta,
+checking neither `kind` nor `verb` nor what was named. Revert `bar`, revert `baz`,
+restore `bar`, and it warned that `baz` stayed removed and pointed at `sgt undo`, which
+would have thrown away the restore that had just worked. The CLI printed it and MCP
+carried it in `restore_gap`, so an agent read the same false claim.
+
+Two verbs answering "which revert is this" with two different rules is the defect
+itself, so the warning now asks `plan_restore` and gets the event the edit used. That
+needed the preview to carry `target_ops` for a restore, which only the removal planner
+had been setting, though the field already meant "the ops the user actually named" for
+every verb. Entries written before those keys match nothing and fall back to the old
+walk. It also printed `\x00HEAD\x00` as though it were a symbol, a raw null byte on
+the terminal and in the MCP payload, because `mine._RESIDUE_HEAD` carries no `__` and
+survived the layout-infix collapse.
 
 **What this leaves open for the study.** Card 4 does not name a verb, and the practice
 sheets teach `undo` alongside `restore`, both because of finding 56. The tool no longer
