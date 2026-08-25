@@ -6,11 +6,11 @@ You already know git. This is not a lesson. It is a warm-up on the four things t
 
 ## The practice project
 
-Run `study-practice`. It puts you in a throwaway copy of a small shopping cart program. Nothing you do to it counts.
+Run `study-practice`. It prints a `cd` line -- run that line, and you are in a throwaway copy of a small shopping cart program. Nothing you do to it counts.
 
 It has four pieces: `cart.py` (adding and removing things, and the total), `discount.py` (a percentage off, or a coupon code), `receipt.py` (printing a receipt), and `shipping.py` (what postage costs). Sixteen commits, and `python -m pytest -q` passes.
 
-If `ls` shows anything else, you are in the real project. Run `study-practice` and try again.
+You are in the right place if `ls` shows `cart.py`, `discount.py`, `receipt.py` and `shipping.py` (plus a test file for each). If it shows anything about bikes or pedestrians, you are in the real project.
 
 ## 1. Open the editor
 
@@ -34,11 +34,11 @@ git show 44da4ad
 
 ## 3. Record some work
 
-Make a small edit to `receipt.py` (change any wording in a string). Then record it the way you normally would: stage it and commit it in Source Control, with a message. Or in the terminal:
+Make a small edit to `receipt.py`: change a word in the docstring at the top of the file. (Leave the code alone, so the tests keep passing.) Then record it the way you normally would: stage it and commit it in Source Control, with a message. Or in the terminal:
 
 ```
 git add receipt.py
-git commit -m "reword the receipt footer"
+git commit -m "reword the receipt docstring"
 ```
 
 Stage 1 asks you to do exactly this, on changes someone else made.
@@ -59,7 +59,15 @@ Three commits come back: free shipping over fifty arrived, then vanished inside 
 git revert 7e6e383
 ```
 
-That makes a new commit undoing an old one. It can conflict if later commits touched the same lines. When it does, git stops and leaves conflict markers in the file: resolve them, `git add` the file, and `git revert --continue`. Or walk away with `git revert --abort`.
+That makes a new commit undoing an old one. This one applies cleanly.
+
+Now try one that does not. Later commits touched the same lines here, so git stops and leaves conflict markers in the file:
+
+```
+git revert a05fc79
+```
+
+Resolve the markers, `git add` the file, then `git revert --continue`. Or walk away with `git revert --abort`.
 
 To put back what you removed, revert the revert:
 
@@ -67,7 +75,15 @@ To put back what you removed, revert the revert:
 git revert HEAD
 ```
 
-Do this whole loop once now, conflicts and all. It is the most useful thing on this sheet, and this is the free copy.
+**Do the conflicting one now.** A later task will ask you to remove work that several commits touched, and this is the only place you can practise getting out of it.
+
+## Back to the real project
+
+When you are done practising, run:
+
+    study-work
+
+That puts you back in the project the stages use. The stages will not find their commands anywhere else.
 
 ## Before we start
 

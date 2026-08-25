@@ -169,16 +169,59 @@ if [ "$arm" = sgt ]; then
 fi
 
 # --- study/removed: the target work taken out --------------------------------
+#
+# The sgt arm does this in a THROWAWAY COPY, not here.
+#
+# Two reasons. The stage script performs the removal live in stage 4 (a restore
+# has to reverse a removal this repo recorded making, not merely arrive at a
+# tree that looks removed), so the sgt arm never checks `study/removed` out and
+# does not need it. And doing it here left the op store holding the build's own
+# revert: `check_graph_integrity.py` then found `bikecount/events.py::label_for_month`
+# in no frontier and never deleted, and refused to ship the bundle -- correctly,
+# because that is a repo whose feature graph is degenerate before the
+# participant has touched it.
+#
+# What the git arm needs from the sgt arm is what the removal *looks like*, so
+# the copy renders its pages into `.study/removed-pages/` and the source repo is
+# left exactly as it was found.
 git checkout -q -f -B main study/full
 git clean -qfd
 
 if [ "$arm" = sgt ]; then
-    sgt revert "$THEME_LABEL" --yes >/dev/null
-    say "removed via: sgt revert \"$THEME_LABEL\" --yes"
+    probe="$(mktemp -d)"
+    trap 'rm -rf "$probe"' EXIT
+    cp -R "$repo/." "$probe/copy"
+    ( cd "$probe/copy" && sgt revert "$THEME_LABEL" --yes >/dev/null \
+        && python3 check.py >/dev/null ) || {
+        echo "the removal did not apply cleanly in a copy of this repo" >&2; exit 1; }
+    rm -rf "$repo/.study/removed-pages"
+    mkdir -p "$repo/.study/removed-pages"
+    python3 "$script_dir/harvest/snap.py" "$probe/copy" "$repo/.study/removed-pages" \
+        "${STUDY_SNAP_QUERY:-start=2013-09-01&end=2022-09-30}" >/dev/null 2>&1
+    ls "$repo/.study/removed-pages" | grep -q . || {
+        echo "could not render the removed state's pages" >&2; exit 1; }
+    say "removed state rendered from a copy ($(ls "$repo/.study/removed-pages" | wc -l | tr -d ' ') pages); this repo untouched"
+    rm -rf "$probe"; trap - EXIT
+    # An sgt-arm repo must not keep a `study/removed`. An earlier version built
+    # one here, and the tag kept that revert commit reachable -- which is what
+    # made `sgt restore` in stage 4 resolve against the build's removal instead
+    # of the participant's and put back two files out of five.
+    git tag -d study/removed >/dev/null 2>&1 || true
+    git checkout -q -f -B main study/full
+    git clean -qfd
+    say "left at study/full"
+    exit 0
 else
     [ -n "$match" ] || { echo "the git arm needs --match <sgt-repo> to resolve against" >&2; exit 1; }
-    want="$(git -C "$match" rev-parse study/removed 2>/dev/null)" || {
-        echo "$match has no study/removed; build the sgt arm first" >&2; exit 1; }
+    want_pages="$match/.study/removed-pages"
+    [ -d "$want_pages" ] || { echo "$match has no .study/removed-pages; build the sgt arm first" >&2; exit 1; }
+    # The sgt arm no longer keeps a `study/removed` commit to read files out of,
+    # so conflicts are resolved against a copy of it made here.
+    want_repo="$(mktemp -d)/sgt"
+    cp -R "$match/." "$want_repo"
+    ( cd "$want_repo" && sgt revert "$THEME_LABEL" --yes >/dev/null ) || {
+        echo "could not reproduce the sgt arm's removal to resolve against" >&2; exit 1; }
+    want="$(git -C "$want_repo" rev-parse HEAD)"
     GIT_SUBJECTS=()
     while IFS= read -r line; do [ -n "$line" ] && GIT_SUBJECTS+=("$line"); done < <(git_subjects_from_theme "$match")
     [ "${#GIT_SUBJECTS[@]}" -ge 2 ] || {
@@ -197,8 +240,8 @@ else
             # build the fixture.
             while read -r f; do
                 [ -n "$f" ] || continue
-                if git -C "$match" cat-file -e "$want:$f" 2>/dev/null; then
-                    git -C "$match" show "$want:$f" > "$repo/$f"
+                if git -C "$want_repo" cat-file -e "$want:$f" 2>/dev/null; then
+                    git -C "$want_repo" show "$want:$f" > "$repo/$f"
                 else
                     rm -f "$repo/$f"
                 fi
@@ -230,21 +273,16 @@ if [ -n "$match" ]; then
     # What has to agree is the state the stage hands them, and they meet it
     # through the running app. Both arms rendering the same six pages byte for
     # byte is that, stated in the same terms the study scores everything else in.
-    snap="$repo/.study/snap"; rm -rf "$snap"; mkdir -p "$snap/mine" "$snap/theirs"
+    snap="$repo/.study/snap"; rm -rf "$snap"; mkdir -p "$snap/mine"
     query="${STUDY_SNAP_QUERY:-start=2013-09-01&end=2022-09-30}"
-    here="$(cd "$script_dir/../.." && pwd)"
-    python3 "$here/scripts/study/harvest/snap.py" "$repo" "$snap/mine" "$query" >/dev/null 2>&1
-    (cd "$match" && git stash -q --include-untracked 2>/dev/null || true)
-    git -C "$match" checkout -q -f -B main study/removed
-    python3 "$here/scripts/study/harvest/snap.py" "$match" "$snap/theirs" "$query" >/dev/null 2>&1
-    git -C "$match" checkout -q -f -B main study/full
-    if ! diff -rq "$snap/mine" "$snap/theirs" >/dev/null 2>&1; then
+    python3 "$script_dir/harvest/snap.py" "$repo" "$snap/mine" "$query" >/dev/null 2>&1
+    if ! diff -rq "$snap/mine" "$want_pages" >/dev/null 2>&1; then
         echo "the two arms' removed states render different pages, so stage 4" >&2
         echo "would be a different task in each. Refusing." >&2
-        diff -rq "$snap/mine" "$snap/theirs" >&2 || true
+        diff -rq "$snap/mine" "$want_pages" >&2 || true
         exit 1
     fi
-    rm -rf "$snap"
+    rm -rf "$snap" "$(dirname "$want_repo")"
     say "removed state renders identically to the sgt arm on every page"
 fi
 

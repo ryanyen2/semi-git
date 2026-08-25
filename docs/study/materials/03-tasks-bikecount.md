@@ -2,7 +2,9 @@
 
 You are looking after **bikecount**, a small web dashboard over the bicycle counter on the Fremont Bridge in Seattle. Dana Whitfield built it over six weeks and has left the team. It reads a public csv of hourly sensor counts and renders a handful of pages: a front page, an hour-of-day page, monthly and yearly totals, a comparison of the two sensors, and a csv download. Its numbers go into a quarterly report.
 
-There are four stages, in order. Each one starts with a script that puts the project in that stage's starting state, tells you what has happened, and asks you to do one thing. The doing part has a visible countdown. The questions after it do not.
+You need to be in the project folder for these. If you have been practising, run `study-work` first.
+
+There are four stages, in order. Each one starts with a command you run yourself, `./stage 1` and so on, which puts the project in that stage's starting state. The clock starts once that command has finished printing. The doing part has a visible countdown; the questions after it do not.
 
 Running out of time on a stage is a normal result, and the next stage starts clean either way. Tell us what you are thinking as you go.
 
