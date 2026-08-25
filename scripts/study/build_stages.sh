@@ -48,16 +48,46 @@ done
 repo="$(cd "$repo" && pwd)"
 cd "$repo"
 
-# The work the removal stages target. One theme in sgt's vocabulary, three
-# commits in git's -- which is the comparison, so it is named in both here
-# rather than derived on the fly.
+# The work the removal stages target: one named piece of work in sgt's
+# vocabulary, the several commits it spans in git's. That difference is the
+# comparison.
+#
+# The label is matched loosely (`sgt revert` folds case and punctuation), which
+# matters because the two testbeds are harvested independently and named
+# themselves: bikecount's is "Event-Day Handling" and footfall's is "Event Day
+# Handling".
+#
+# The git arm's commits are read out of the sgt arm's own record of that theme
+# rather than listed here. They were listed here at first, against bikecount's
+# subjects, and footfall -- which says "keep event days out of the averages"
+# where bikecount says "exclude event days from averages, keep them in totals"
+# -- failed on the first lookup. Deriving them keeps the two arms describing the
+# same work by construction, and survives a testbed rebuild.
 THEME_LABEL="${STUDY_THEME_LABEL:-Event-Day Handling}"
-# Oldest first; reverted newest first below.
-GIT_SUBJECTS=(
-    "track known non-normal days like storms and holidays"
-    "mark tracked event days on the daily and monthly charts"
-    "exclude event days from averages, keep them in totals"
-)
+
+git_subjects_from_theme() {
+    # The subjects of the commits the sgt arm's theme spans, oldest first.
+    python3 - "$1" "$THEME_LABEL" <<'PY'
+import json, pathlib, subprocess, sys
+repo, want = pathlib.Path(sys.argv[1]), sys.argv[2]
+squash = lambda t: "".join(c for c in t.casefold() if c.isalnum())
+body = json.loads((repo / ".sgt/intent/themes.json").read_text()).get("data", {})
+hit = [v for v in body.values()
+       if isinstance(v, dict) and squash(v.get("label", "")) == squash(want)]
+if len(hit) != 1:
+    sys.exit(f"{len(hit)} themes match {want!r} in {repo}")
+shas = hit[0].get("atom_shas") or []
+rows = []
+for sha in shas:
+    out = subprocess.run(["git", "-C", str(repo), "log", "-1", "--format=%ct%x09%s", sha],
+                         capture_output=True, text=True)
+    if out.returncode == 0 and out.stdout.strip():
+        ts, subject = out.stdout.strip().split("\t", 1)
+        rows.append((int(ts), subject))
+for _ts, subject in sorted(rows):
+    print(subject)
+PY
+}
 
 say() { printf '  %s\n' "$*"; }
 
@@ -149,6 +179,12 @@ else
     [ -n "$match" ] || { echo "the git arm needs --match <sgt-repo> to resolve against" >&2; exit 1; }
     want="$(git -C "$match" rev-parse study/removed 2>/dev/null)" || {
         echo "$match has no study/removed; build the sgt arm first" >&2; exit 1; }
+    GIT_SUBJECTS=()
+    while IFS= read -r line; do [ -n "$line" ] && GIT_SUBJECTS+=("$line"); done < <(git_subjects_from_theme "$match")
+    [ "${#GIT_SUBJECTS[@]}" -ge 2 ] || {
+        echo "the sgt arm's theme spans ${#GIT_SUBJECTS[@]} commit(s); the removal stages need several" >&2
+        exit 1; }
+    say "the theme spans ${#GIT_SUBJECTS[@]} commits in this arm"
     for ((i=${#GIT_SUBJECTS[@]}-1; i>=0; i--)); do
         sha="$(sha_for_subject "${GIT_SUBJECTS[$i]}")"
         [ -n "$sha" ] || { echo "no commit for: ${GIT_SUBJECTS[$i]}" >&2; exit 1; }
@@ -229,5 +265,11 @@ git clean -qfd
 # So the stage script puts `.sgt/` back exactly as it shipped, which is what
 # "this undoes anything left over from the last stage" has to mean for a tool
 # that keeps state of its own.
-[ "$arm" = sgt ] && sgt advanced resync >/dev/null 2>&1
+# `if`, not `[ ... ] && ...`. Under `set -e` the short-circuit form exits the
+# script whenever the test is false, which is every git-arm build -- and when the
+# test is true it exits on a non-zero resync. Either way the script stopped here
+# without saying why, and the caller saw a build that had simply not run.
+if [ "$arm" = sgt ]; then
+    sgt advanced resync >/dev/null 2>&1 || true
+fi
 say "left at study/full"

@@ -79,19 +79,31 @@ cp "$SGT_SOURCE/scripts/study/task-scripts/stage" "$staging/work/stage"
 cp "$SGT_SOURCE/scripts/study/task-scripts/check" "$staging/work/check"
 chmod +x "$staging/work/stage" "$staging/work/check"
 
-# The stage states themselves: tags, the stage-1 patch, and (in the sgt arm) a
-# pristine copy of sgt's own record. Built here, once, so nothing is computed on
-# the participant's machine while a clock is running. The git arm is built
-# against the sgt arm and refuses to finish unless both render the same pages,
-# so the two arms must be built in that order -- see build_stages.sh.
-stage_args=("$staging/work" "$condition")
-if [ "$condition" = git ]; then
-    sgt_twin="${STUDY_SGT_TWIN:-$STUDY_REPOS/$project}"
-    [ -d "$sgt_twin" ] || { echo "no sgt twin at $sgt_twin to match the removed state against" >&2; exit 1; }
-    stage_args+=(--match "$sgt_twin")
+# The stage states -- tags, the stage-1 patch, and (in the sgt arm) a pristine
+# copy of sgt's own record -- are built into the SOURCE repos by
+# `scripts/study/prep-stages.sh` and travel here with the `cp -R` above.
+#
+# Not built here, and the reason is ordering: the git arm's removed state is
+# checked against the sgt arm's, so the two have to be built together, in order,
+# against each other. A bundle is built one arm at a time and has no view of its
+# twin. Verified rather than assumed, because a bundle missing these is one a
+# participant cannot start a single stage with, and nothing else would say so.
+for tag in study/full study/stage1 study/removed; do
+    git -C "$staging/work" rev-parse --verify "$tag" >/dev/null 2>&1 || {
+        echo "$source_repo has no $tag -- run scripts/study/prep-stages.sh first" >&2; exit 1; }
+done
+[ -f "$staging/work/.study/stage1.patch" ] || {
+    echo "$source_repo has no .study/stage1.patch -- run scripts/study/prep-stages.sh first" >&2; exit 1; }
+if [ "$condition" = sgt ] && [ ! -f "$staging/work/.study/sgt-pristine.tar" ]; then
+    echo "$source_repo has no .study/sgt-pristine.tar -- run scripts/study/prep-stages.sh first" >&2; exit 1
 fi
-echo "  Building the stage states."
-"$SGT_SOURCE/scripts/study/build_stages.sh" "${stage_args[@]}"
+# The stage script needs these to survive its own `git clean`; the source repo's
+# `.git/info/exclude` does not travel through `cp -R` of the working tree alone.
+mkdir -p "$staging/work/.git/info"
+for keep in '/.study/' '/stage' '/check'; do
+    grep -qxF "$keep" "$staging/work/.git/info/exclude" 2>/dev/null \
+        || echo "$keep" >> "$staging/work/.git/info/exclude"
+done
 
 # No project brief travels any more. Protocol v2 has no brief step: each stage
 # card carries the two sentences of context it needs, which is the point of the
