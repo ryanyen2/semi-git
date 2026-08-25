@@ -20,6 +20,7 @@ from sgt.cli import ideal_edit
 class FakePreview:
     verb: str = "restore"
     after_ids: frozenset = frozenset()
+    target_ops: frozenset = frozenset()
 
 
 @dataclass
@@ -101,3 +102,36 @@ def test_events_with_no_delta_are_walked_past(fake_graph):
 
 def test_an_empty_journal_reports_nothing(fake_graph):
     assert ideal_edit._restore_gap(".", FakePreview(after_ids=frozenset({"a"}))) is None
+
+
+def test_the_gap_is_computed_against_the_revert_being_reversed(fake_graph):
+    """Two reverts, then a restore of the first one. The newest event carrying a delta is the
+    *other* revert, so walking to it reports work this restore never claimed and sends the reader
+    to `sgt undo`, which would throw away the restore that just worked. The entry now says which
+    verb wrote it and what was named, so the warning can resolve the same event the edit did."""
+    fake_graph["events"] = [
+        {"kind": "ideal_edit", "applied": True, "verb": "revert", "target_ops": ["bar"],
+         "ideal": ["a", "bar"], "result": ["a"]},
+        {"kind": "ideal_edit", "applied": True, "verb": "revert", "target_ops": ["baz"],
+         "ideal": ["a", "baz"], "result": ["a"]},
+    ]
+    fake_graph["ops"] = [FakeOp("bar", ("b.py::bar",)), FakeOp("baz", ("c.py::baz",))]
+
+    gap = ideal_edit._restore_gap(
+        ".", FakePreview(after_ids=frozenset({"a", "bar"}), target_ops=frozenset({"bar"})))
+
+    assert gap is None  # bar came back and baz was never this restore's business
+
+
+def test_a_layout_sentinel_is_not_reported_as_a_symbol(fake_graph):
+    """`\x00HEAD\x00` is `mine._RESIDUE_HEAD`, the gap before a file's first entity. It is not
+    an entity and has no name a reader would recognise, and printing it puts a raw null byte on
+    the terminal and into the MCP payload."""
+    fake_graph["events"] = [
+        {"kind": "ideal_edit", "ideal": ["a", "drop1"], "result": ["a"]},
+    ]
+    fake_graph["ops"] = [FakeOp("drop1", ("f.py::__residue__::\x00HEAD\x00", "f.py::g"))]
+
+    gap = ideal_edit._restore_gap(".", FakePreview(after_ids=frozenset({"a"})))
+
+    assert gap["still_removed_symbols"] == ["f.py::g"]
