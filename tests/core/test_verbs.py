@@ -9,8 +9,10 @@ including over the `revert_to_original` after-value collision that the collision
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
+import pytest
 from hypothesis import HealthCheck, given, settings, strategies as st
 
 from sgt.core import order
@@ -547,3 +549,301 @@ def test_restore_picks_one_layout_head_when_repairs_forked_the_anchor_chain(tmp_
     verbs.restore(repo, "a.py::foo")
     assert code(get(repo), Store(repo).all_ops())["a.py"] in (
         b"def foo():\n    return 1\n", b"def foo():\n    return 2\n")
+
+
+# -- the event inverse: restore as the exact reversal of a recorded revert (fix B) ----------------
+#
+# `I ∪ ↓X` is not `I \ ↑X`'s inverse, and no amount of care inside the downset closes the gap: a
+# revert removes an *up*-set (which reaches other features' work) and mints subtraction ops, while
+# a restore unions a *down*-set and can only add. The information about what a particular revert
+# did lives in the journal event that revert wrote, so these tests pin the behaviour of resolving a
+# restore against that event instead of re-deriving it from the order structure.
+
+
+def _journal_events(repo):
+    from sgt.core import oplog
+
+    return oplog.load(repo).get(oplog._ref_key(Path(repo)), [])
+
+
+def test_apply_records_the_verb_and_its_target_ops_on_the_journal_event(tmp_path):
+    """The event inverse needs to know which revert removed what. Before this, an `ideal_edit`
+    entry carried only the before/after op-sets, so nothing durable said *which* revert wrote it
+    and `restore` had to guess at scaffolding from an advisory `intent` string."""
+    repo = _foo_chain(tmp_path / "repo", 3)
+    get(repo)
+    tip = _op_with(Store(repo).all_ops(), "a.py::foo", b"return 3")
+
+    verbs.revert(repo, tip.id)
+
+    event = _journal_events(repo)[-1]
+    assert event["verb"] == "revert"
+    assert event["target_ops"] == [tip.id]
+    assert event["applied"] is True
+
+
+def test_restore_brings_back_a_dependent_the_revert_swept(tmp_path):
+    """The direction gap, in miniature. `revert --keep-dependents=False`... i.e. the explicit
+    `take_dependents` demolition removes `↑mid` = {mid, tip}; `↓mid` = {add, mid} can never
+    return `tip`, because tip is a *dependent* of the target, not a prerequisite of it. The
+    algebraic restore therefore left the chain's head permanently gone while printing a bare ✓."""
+    repo = _foo_chain(tmp_path / "repo", 3)
+    original = get(repo).op_ids
+    ops = Store(repo).all_ops()
+    mid = _op_with(ops, "a.py::foo", b"return 2")
+
+    verbs.revert(repo, mid.id, take_dependents=True)
+    assert get(repo).op_ids != original
+
+    verbs.restore(repo, mid.id)
+    assert get(repo).op_ids == original
+    assert code(get(repo), Store(repo).all_ops())["a.py"] == b"def foo():\n    return 3\n"
+
+
+def test_restore_peels_the_splice_a_subtraction_revert_minted(tmp_path):
+    """The default (subtraction) revert removes no op at all for a shared symbol: it appends an
+    inverse-patch splice at the tip. A union can never take that back off, so `restore` used to
+    either refuse the exact rewind as a fork or report ✓ with the call site still spliced out --
+    the case `cli.ideal_edit._restore_gap` exists to warn about."""
+    from sgt.store.gitbind import init_store
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "util.py").write_text("def build():\n    a()\n    b()\n", encoding="utf-8")
+    gb.commit_all("base")
+    (repo / "util.py").write_text(
+        "def build():\n    a()\n    wl()\n    b()\n\ndef wl():\n    return 1\n",
+        encoding="utf-8")
+    gb.commit_all("feature F: wl plus wiring")
+    (repo / "util.py").write_text(
+        "def build():\n    a()\n    wl()\n    b()\n    c()\n\ndef wl():\n    return 1\n"
+        "\ndef c_helper():\n    return 2\n",
+        encoding="utf-8")
+    gb.commit_all("later feature: c")
+
+    get(repo)
+    target = next(o for o in Store(repo).all_ops()
+                  if "util.py::wl" in o.footprint and o.footprint["util.py::wl"][0] is None)
+
+    verbs.revert(repo, target.id)
+    text = code(get(repo), Store(repo).all_ops())["util.py"].decode()
+    assert "def wl" not in text and "wl()" not in text
+
+    preview = verbs.restore(repo, target.id)
+    assert preview.ok, preview.message
+    text = code(get(repo), Store(repo).all_ops())["util.py"].decode()
+    assert "def wl" in text
+    assert "wl()" in text          # the splice was peeled, not merely out-voted
+    assert "c()" in text and "def c_helper" in text  # the later feature is untouched
+
+
+def test_restore_keeps_work_committed_after_the_revert(tmp_path):
+    """What makes the event inverse worth having over `sgt undo`: undo re-materializes the prior
+    ideal as an absolute snapshot and so *refuses* once anything landed on top (the F3 guard).
+    The event inverse is a delta applied to the current ideal, so it is random-access -- the
+    reverted work comes back and the intervening commit stays."""
+    from sgt.store.gitbind import init_store
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("foo")
+    (repo / "a.py").write_text("def foo():\n    return 1\n\ndef bar():\n    return 2\n",
+                               encoding="utf-8")
+    gb.commit_all("bar")
+    get(repo)
+    bar = next(o for o in Store(repo).all_ops()
+               if "a.py::bar" in o.footprint and o.footprint["a.py::bar"][0] is None)
+
+    verbs.revert(repo, bar.id)
+
+    (repo / "b.py").write_text("def later():\n    return 3\n", encoding="utf-8")
+    gb.commit_all("unrelated later work")
+    get(repo)
+
+    preview = verbs.restore(repo, bar.id)
+    assert preview.ok, preview.message
+    files = code(get(repo), Store(repo).all_ops())
+    assert b"def bar" in files["a.py"]        # the revert was reversed
+    assert b"def later" in files["b.py"]      # and the later commit survived it
+
+
+def test_restore_declines_the_event_inverse_when_later_work_built_on_the_splice(tmp_path):
+    """The boundary the event inverse must respect. Once later work has built on a splice, that
+    splice is no longer its symbol's tip and peeling it would orphan the later op -- so the event
+    inverse declines and the restore degrades to the algebraic union, which refuses this as a
+    fork exactly as it did before. Reversing a revert *through* work layered on top of it needs
+    re-addition as a forward merge at the tip, which is a different change than this one.
+
+    What is pinned here is that the decline is non-destructive: the ideal does not move, it stays
+    valid, and the later work is still there to be built on."""
+    from sgt.store.gitbind import init_store
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "util.py").write_text("def build():\n    a()\n    b()\n", encoding="utf-8")
+    gb.commit_all("base")
+    (repo / "util.py").write_text(
+        "def build():\n    a()\n    wl()\n    b()\n\ndef wl():\n    return 1\n",
+        encoding="utf-8")
+    gb.commit_all("feature F")
+    get(repo)
+    target = next(o for o in Store(repo).all_ops()
+                  if "util.py::wl" in o.footprint and o.footprint["util.py::wl"][0] is None)
+
+    verbs.revert(repo, target.id)
+
+    text = code(get(repo), Store(repo).all_ops())["util.py"].decode()
+    (repo / "util.py").write_text(text.replace("    b()\n", "    b()\n    d()\n"),
+                                  encoding="utf-8")
+    gb.commit_all("later work on the spliced symbol")
+    get(repo)
+    before = get(repo).op_ids
+
+    preview = verbs.plan_restore(repo, target.id)
+    assert not preview.ok and preview.forked
+    assert "util.py::build" in preview.message  # names the symbol, not a wall of op ids
+
+    assert get(repo).op_ids == before  # nothing moved
+    assert is_valid_ideal(Store(repo).all_ops(), get(repo).op_ids)
+    assert "d()" in code(get(repo), Store(repo).all_ops())["util.py"].decode()
+
+
+@pytest.mark.parametrize("mangle, why", [
+    (lambda evs: evs[-1].__setitem__("ideal", 7), "a field that is a number, not a list"),
+    (lambda evs: evs[-1].__setitem__("ideal", "abc"), "a field that is a bare string"),
+    (lambda evs: evs.append(None), "a stray null where an entry should be"),
+    (lambda evs: evs.__setitem__(slice(None), "not a list at all"), "a whole log of the wrong type"),
+])
+def test_a_malformed_journal_falls_back_instead_of_crashing(tmp_path, mangle, why):
+    """The journal is a plain JSON file on disk, so it can be hand-edited or half-written.
+
+    The exact path is an optimization over the downset union and nothing more, so a journal it
+    cannot read has exactly one correct behaviour: take the answer restore gave before it existed.
+    `frozenset("abc")` is the trap -- three one-character "op-ids" rather than an error, so a
+    malformed field reaches a planner and raises from inside it unless it is rejected by shape.
+    """
+    repo = _foo_chain(tmp_path / "repo", 3)
+    get(repo)
+    tip = _op_with(Store(repo).all_ops(), "a.py::foo", b"return 3")
+    verbs.revert(repo, tip.id)
+
+    journal = Path(repo) / ".sgt" / "local" / "ideal_journal.json"
+    doc = json.loads(journal.read_text(encoding="utf-8"))
+    mangle(doc["data"]["refs/heads/main"])
+    journal.write_text(json.dumps(doc), encoding="utf-8")
+
+    preview = verbs.plan_restore(repo, tip.id)  # must not raise, whatever `why` says
+
+    assert preview.ok
+    assert tip.id in set(preview.after_ids)  # the downset union still answers
+
+
+def test_meta_cannot_overwrite_the_fields_undo_relies_on(tmp_path):
+    """`record_ideal` merges caller metadata into the entry, and undo reads that same entry to
+    re-materialize a prior ideal. A caller that could set `ideal` or `result` through `meta`
+    could therefore rewrite what undo restores, so the reserved keys are not overridable."""
+    from sgt.core import lens
+
+    repo = _foo_chain(tmp_path / "repo", 2)
+    ideal = get(repo)
+
+    reserved = ("kind", "ideal", "witness", "result", "applied")
+    lens.record_ideal(repo, ideal, "deadbeef", meta={
+        "verb": "revert", "target": "x", "target_ops": [],
+        **{k: "hijacked" for k in reserved},
+    })
+
+    event = _journal_events(repo)[-1]
+    assert not [k for k in reserved if event[k] == "hijacked"]
+    assert event["kind"] == "ideal_edit" and event["applied"] is True
+    assert event["result"] == sorted(ideal.op_ids)
+    assert event["verb"] == "revert"  # non-reserved metadata still lands
+
+
+def test_restore_does_not_resurrect_what_a_later_revert_removed(tmp_path):
+    """The event inverse reverses one edit; it must not reach through a newer one.
+
+    A revert's recorded `removed` set describes the ideal as it stood then. Re-admitting it
+    wholesale means a later, deliberate revert of one of those ops is silently undone -- the user
+    asked to reverse the first revert and got the second one reversed too, with no refusal and no
+    report. What a newer edit took out belongs to that edit."""
+    repo = _foo_chain(tmp_path / "repo", 3)
+    get(repo)
+    ops = Store(repo).all_ops()
+    v2 = _op_with(ops, "a.py::foo", b"return 2")
+    v3 = _op_with(ops, "a.py::foo", b"return 3")
+
+    verbs.revert(repo, v2.id, take_dependents=True)  # sweeps v2 and v3 together
+    verbs.restore(repo, v2.id)
+    assert v3.id in get(repo).op_ids  # the exact inverse does bring the swept dependent back
+
+    verbs.revert(repo, v3.id)  # ... and now a later edit takes v3 out on purpose
+    verbs.restore(repo, v2.id)  # reversing the *first* revert again
+
+    assert v3.id not in get(repo).op_ids
+    assert code(get(repo), Store(repo).all_ops())["a.py"] == b"def foo():\n    return 2\n"
+    assert is_valid_ideal(Store(repo).all_ops(), get(repo).op_ids)
+
+
+def test_restore_never_peels_only_some_of_the_stand_ins_a_revert_minted(tmp_path):
+    """All of them or none. A revert can mint several stand-ins for one target -- here a prune for
+    `def wl` and a splice for its call site. If later work lands on the splice, only the prune is
+    still at a tip, and peeling just that one puts the definition back while its call site stays
+    spliced out. `_validated` accepts that: groundedness and fork-freedom say nothing about
+    whether a reversal is *complete*. So the result is a half-edit reported as a success, which is
+    the failure class this whole path exists to remove."""
+    from sgt.store.gitbind import init_store
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "util.py").write_text("def build():\n    a()\n    b()\n", encoding="utf-8")
+    gb.commit_all("base")
+    (repo / "util.py").write_text(
+        "def build():\n    a()\n    wl()\n    b()\n\ndef wl():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("feature F")
+    get(repo)
+    (repo / "util.py").write_text(
+        "def build():\n    a()\n    wl()\n    b()\n    c()\n\ndef wl():\n    return 1\n"
+        "\ndef c():\n    return 2\n", encoding="utf-8")
+    gb.commit_all("an interleaved later feature")
+    get(repo)
+    target = next(o for o in Store(repo).all_ops()
+                  if "util.py::wl" in o.footprint and o.footprint["util.py::wl"][0] is None)
+
+    verbs.revert(repo, target.id)
+    text = code(get(repo), Store(repo).all_ops())["util.py"].decode()
+    (repo / "util.py").write_text(text.replace("    b()\n", "    b()\n    d()\n"),
+                                  encoding="utf-8")
+    gb.commit_all("later work on the spliced symbol")
+    get(repo)
+
+    preview = verbs.plan_restore(repo, target.id)
+    if preview.ok:
+        verbs.apply(repo, preview)
+
+    out = code(get(repo), Store(repo).all_ops())["util.py"].decode()
+    assert not ("def wl" in out and "    wl()" not in out), "half a reversal was applied"
+    assert "d()" in out  # whatever it decided, the later work is untouched
+    assert is_valid_ideal(Store(repo).all_ops(), get(repo).op_ids)
+
+
+def test_a_pre_upgrade_journal_entry_is_never_mistaken_for_a_revert(tmp_path):
+    """Real repositories hold entries written before `verb`/`target_ops` existed. They carry a
+    revert-shaped before/after delta and nothing that says which verb wrote it, so matching one
+    would reverse an edit on a guess. They must simply not match, leaving the union to answer."""
+    repo = _foo_chain(tmp_path / "repo", 3)
+    get(repo)
+    tip = _op_with(Store(repo).all_ops(), "a.py::foo", b"return 3")
+    verbs.revert(repo, tip.id)
+
+    journal = Path(repo) / ".sgt" / "local" / "ideal_journal.json"
+    doc = json.loads(journal.read_text(encoding="utf-8"))
+    for event in doc["data"]["refs/heads/main"]:
+        event.pop("verb", None)
+        event.pop("target_ops", None)
+    journal.write_text(json.dumps(doc), encoding="utf-8")
+
+    preview = verbs.plan_restore(repo, tip.id)
+
+    assert preview.ok and tip.id in set(preview.after_ids)  # the algebraic union still answers

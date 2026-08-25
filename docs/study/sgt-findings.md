@@ -1436,3 +1436,95 @@ that habit cannot catch.
 It was also pushed and tagged before CI finished, on the strength of the Release
 workflow going green. Release only checks that the version numbers agree and builds
 the artifacts. CI was the job that would have caught this.
+
+### Finding 59 (fixes 56): `restore` resolves against the revert it reverses
+
+Finding 56's diagnosis was right and its conclusion was too pessimistic. It read the
+problem as needing "an inverse for forward subtraction that re-grounds the dependents
+as it goes", which is real but is not what the common case needs. The common case
+needs a different *source of truth*.
+
+`I ∪ ↓X` cannot be `I \ ↑X`'s inverse, for two reasons no amount of care inside the
+downset fixes. Revert removes an **up**-set, which reaches other features' work, while
+restore unions a **down**-set that by construction reaches only prerequisites, so a
+swept dependent stays swept. And revert does not only subtract. It mints stand-ins,
+and a union can never take one back off.
+
+But every applied edit already writes a journal entry holding its own before/after
+op-sets. The reversal of a revert is therefore a *recorded fact* rather than something
+to re-derive, which is why finding 56 measured `undo` as the verb that works. The only
+thing keeping `restore` from that record was that the entry did not say which verb had
+written it, or what the user had named. It does now
+(`lens.record_ideal(..., meta=...)`), and `restore` looks for the revert it reverses
+before falling back to the downset (`core.verbs._plan_restore_via_journal`).
+
+The difference from `undo` is the point. Undo re-materializes the prior ideal as an
+absolute snapshot, so it reverses only the tail event and refuses once anything landed
+on top. Applying the same delta to the *current* ideal makes it random-access. Address
+any recorded revert, keep the work committed after it.
+
+Measured on the shipped footfall bundle by finding 56's criterion, every chapter
+reverted in a copy and put back, "put back" meaning every page renders identically to
+before:
+
+    before   6 of 18 chapters come back exactly   (10 of 18 pass the weak gate)
+    after   18 of 18 chapters come back exactly   (18 of 18 pass the weak gate)
+
+The denominator is 18 where finding 56's was 21. The bundle segments into 18 chapters
+as it stands today, segmentation having moved since that measurement, so the two
+absolute counts are not comparable to each other. The before and after rows are, which
+is the comparison this finding rests on. Same bundle, same chapters, same run, and the
+only difference is which `sgt` is on the path.
+
+The gap between 6 exact and 10 weak-passing is finding 56's other point, reproduced:
+four chapters exit zero with the app running and the work still missing. Twelve of the
+eighteen left the dashboard unable to render at all.
+
+That weak gate was `gate_checkpoints.py`'s own restore check, which asked only for exit
+0 and a running app. It now compares against the baseline render, the way card 4 states
+the task. The two builds then separate cleanly on footfall. Before the fix the gate
+returns no candidates at all, 5 restores failing outright and 6 leaving pages wrong,
+the study's own target among them. After it, none fail and the target is the one
+candidate the gate returns.
+
+The task itself was run end to end, both builds, card 3 then card 4 on
+`f-1cda3c85@Exclude Event Days`. Both pass the weak gate. Only the fixed build puts the
+dashboard back.
+
+**What is deliberately not fixed.** Where later work sits on a stand-in, that stand-in
+is load-bearing and peeling it would orphan the later op. Finding 55's observation,
+still true. Those cases decline the event inverse and fall back to the downset, which
+behaves exactly as it did before, refusals included.
+
+The decline is all or nothing. A revert can mint several stand-ins for one target, and
+peeling only the ones still at a tip puts a definition back while leaving its call site
+spliced out. Validation accepts that, because groundedness says nothing about whether a
+reversal is complete. Better the old answer than a new way to be quietly wrong.
+
+Reversing a revert *through* work layered on top of it still needs re-addition as a
+forward merge at the tip, the dual of how `subtract` removes. That mechanism already
+exists. It is `core.rewrite.merge_op`, wired to the CLI as `sgt resolve`, and it is
+already the remedy this codebase points at for sibling forks. Extending it to a splice
+one hop down, where peeling breaks the later op's `before_version`, is the real work.
+That is what finding 55 asked for, and it is now the only case that needs it rather
+than the common one.
+
+The structural marker this fix writes (`verb`, `target`, `target_ops` on the journal
+entry) is the one finding 50 asked for when it settled for matching an advisory
+`intent` string prefix instead. That heuristic, `_revert_scaffolding_over`, is still
+present and still correct. It answers for journal entries written before these keys
+existed.
+
+**One defect this did not fix.** `cli.ideal_edit._restore_gap` picks the revert a
+restore reverses by taking the newest journal event carrying any delta, checking
+neither `kind` nor `verb` nor the target. Revert `bar`, revert `baz`, restore `bar`,
+and it warns that `baz` stays removed and points at `sgt undo`, which would throw away
+the restore that just worked. It predates this change and this change narrows it: the
+same warning fires on the single-revert case before the fix and not after. The fields
+that would fix it now exist on the entry.
+
+**What this leaves open for the study.** Card 4 does not name a verb, and the practice
+sheets teach `undo` alongside `restore`, both because of finding 56. The tool no longer
+requires that workaround, but the protocol is pre-registered and the target was chosen
+under it, so changing either is a study-design decision and not a consequence of this
+fix. Recorded here so it is made deliberately.
