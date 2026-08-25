@@ -1222,6 +1222,7 @@ def commit_materialized(repo: str | Path, ideal: Ideal, message: str) -> str:
 def record_ideal(
     repo: str | Path, ideal: Ideal, witness_sha: str, *, journal: bool = True,
     ref_key: str | None = None, record_exclusions: bool = True,
+    meta: dict | None = None,
 ) -> None:
     """Persist an explicitly-edited `ideal` as the current ref's authoritative committed set and
     advance the ref's witness to `witness_sha` -- the durability an ideal-edit verb (U8's
@@ -1234,7 +1235,13 @@ def record_ideal(
     ref's undo stack, so `sgt undo` (U26) can restore exactly the ideal this edit replaced -- the
     edit history that lets undo be exact set arithmetic. `journal=False` suppresses that push (undo
     itself records with it off, so a second undo reaches the edge before the one just undone rather
-    than toggling)."""
+    than toggling).
+
+    `meta` is merged into that journal entry -- which verb wrote it, the handle it was given, and
+    the op-set the user actually named. The entry used to carry only the before/after op-sets, so
+    nothing durable said *which* revert had produced it and `restore` could not resolve itself
+    against the one edit it is supposed to reverse. Reserved keys (`kind`, `ideal`, `witness`,
+    `result`, `applied`) are not overridable: they are the undo contract."""
     repo = Path(repo)
     # `ref_key` lets `land` (U5) record under the *target* branch's key rather than the checked-out
     # ref -- landing a non-checked-out branch must advance that branch's table/witness, not HEAD's.
@@ -1265,6 +1272,8 @@ def record_ideal(
                 "result": sorted(ideal.op_ids),
                 "applied": False,
             }
+            if meta:
+                entry.update({k: v for k, v in meta.items() if k not in entry})
             jtable.setdefault(key, []).append(entry)
             _save_ideal_journal(repo, jtable)
         # Translate this edit's delta into the exclusion OR-Set (1.1) -- the positive record the

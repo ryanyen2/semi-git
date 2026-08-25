@@ -7,7 +7,9 @@ what `--emit` previews without touching disk; `apply` is the only writer.
 
     revert(X)      = I \\ ↑X                 remove X and everything that builds on it
     pin(sym, v)    = truncate sym's chain at version v (revert the op after v)
-    restore(X)     = I ∪ ↓X                 re-add X and its prerequisites (revert's inverse)
+    restore(X)     = reverse the recorded revert of X where the journal holds one (exact), else
+                     I ∪ ↓X                 re-add X and its prerequisites (an approximation --
+                     see `_plan_restore_via_journal` for why the union alone is not an inverse)
     cherry-pick(X) = I ∪ ↓X, X from another ref; refuses if the union forks a chain (AE2)
     after(a, b)    = record a declared edge a ≤ b (feeds later verbs' closures)
 
@@ -194,6 +196,156 @@ def _with_layout_siblings(added, ops: list[Op], before_ids, source_ids,
     return added
 
 
+# -- the event inverse (restore resolved against the revert it reverses) ---------------------------
+#
+# `I ∪ ↓X` is not `I \ ↑X`'s inverse and cannot be made into one, because the two verbs do not
+# operate in the same direction and revert does not only subtract. Revert removes an *up*-set,
+# which reaches work belonging to other features, while restore unions a *down*-set that by
+# construction reaches only prerequisites -- so a swept dependent stays swept. Revert also *mints*
+# ops (`sgt.core.subtract`'s splices, prunes and layout repairs), and a union can never take one
+# back off, so the exact rewind either refused as a fork or reported success with the call site
+# still spliced out (the gap `cli.ideal_edit._restore_gap` exists to warn about).
+#
+# What closes it is not better algebra but a different source of truth: every applied edit writes a
+# journal entry holding its own before/after op-sets, so the reversal of one revert is a recorded
+# fact rather than something to re-derive. That is what `undo` already uses -- the difference is
+# that undo re-materializes the prior ideal as an absolute snapshot, so it reverses only the tail
+# event and refuses once anything landed on top. Applying the same delta to the *current* ideal
+# instead makes it random-access: address any recorded revert, keep the work that came after.
+
+
+def _matching_revert_event(
+    repo: Path, target_ids: frozenset[str],
+) -> tuple[dict, frozenset[str]] | None:
+    """The newest applied `revert` event whose target op-set is exactly `target_ids`, paired with
+    everything the edits *after* it took back out.
+
+    That second half is what keeps the inverse from reaching through a later decision. A revert's
+    recorded `removed` set describes the ideal as it stood then, and an op in it may since have
+    been removed again deliberately -- re-admitting the set wholesale would undo that newer edit
+    silently, which is the resurrection this pairing exists to prevent.
+
+    Exact equality, not containment. "Reverse that revert" and "re-admit one op that a revert
+    happened to remove" are different questions, and answering the second from this event would
+    re-admit work the caller never named. A subset target simply finds no event and takes the
+    algebraic path, which is the answer it got before.
+
+    Reverse-chronological, so a revert -> restore -> revert cycle resolves against the *second*
+    revert. An `undo` drops the event it inverted, so a reverted-then-undone edit leaves nothing
+    here to match -- there is no stale entry to guard against.
+    """
+    from sgt.core import oplog
+
+    try:
+        key = oplog._ref_key(repo)
+        events = oplog.load(repo).get(key, []) if key else []
+        later_removed: set[str] = set()
+        for event in reversed(events):
+            # Shape-checked, not just read. The journal is a plain JSON file a person can hand-edit
+            # and a half-finished write can truncate, so an entry is not guaranteed to be a dict --
+            # and the scan has to stay inside the try for the same reason the load does.
+            if not isinstance(event, dict):
+                continue
+            if event.get("kind") != "ideal_edit" or event.get("applied") is False:
+                continue
+            if event.get("verb") == "revert" and _event_op_ids(event, "target_ops") == target_ids:
+                return event, frozenset(later_removed)
+            # Newer than the event we are looking for, so what it took out is a later decision.
+            # Every edit counts here, not just reverts: a pin or the undo of a restore removes work
+            # just as deliberately.
+            prior, result = _event_op_ids(event, "ideal"), _event_op_ids(event, "result")
+            if prior is not None and result is not None:
+                later_removed |= prior - result
+    except Exception:  # noqa: BLE001 -- an unreadable journal is a fallback, never a failure
+        return None
+    return None
+
+
+def _event_op_ids(event: dict, field: str) -> frozenset[str] | None:
+    """An op-id set off a journal entry, or None when that field is not shaped like one.
+
+    Rejected by shape rather than trusted, because the failure is silent otherwise:
+    `frozenset("abc")` is three one-character "op-ids", not an error, so a hand-edited or
+    truncated field does not surface here at all -- it surfaces as a `KeyError` from the middle
+    of a planner, which is the one thing this path promises never to do.
+    """
+    value = event.get(field)
+    if value is None:
+        return frozenset()
+    if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+        return None
+    return frozenset(value)
+
+
+def _plan_restore_via_journal(
+    repo: str | Path, tag: str, target_ids, ops: list[Op], ideal: Ideal,
+    declared: frozenset[tuple[str, str]],
+) -> VerbPreview | None:
+    """Reverse a recorded revert exactly, or return None to let the caller fall back.
+
+    The edit is `(I \\ peel) ∪ removed`, computed against the *current* ideal so work committed
+    after the revert survives -- `removed` is what that revert took out, `peel` the ops it minted.
+
+    An op is peeled only while it is still at a frontier tip -- the same predicate the gap report
+    uses to decide a splice is still subtracting. Once later work has built on a splice, that
+    splice grounds the later op, so peeling it would leave the later work hanging. That case is
+    declined outright rather than done by halves: a revert can mint more than one stand-in, and
+    peeling the subset that happens to still be a tip is a *partial* reversal that `_validated`
+    would happily accept, since groundedness and fork-freedom say nothing about completeness.
+
+    Every decline returns None so the caller degrades to the algebraic union, which is the
+    behaviour it had before -- including its refusals. Reversing a revert *through* work layered
+    on top of it needs re-addition as a forward merge at the tip (`core.rewrite.merge_op` is that
+    primitive, already CLI-wired as `sgt resolve` for the sibling fork case), the dual of how
+    `subtract` removes; extending it to a splice one hop down is a different change than this.
+    """
+    target_ids = frozenset(target_ids)
+    if not target_ids:
+        # `revert <lane> --to <commit>` records `target_ops: []` (it names a commit boundary, not
+        # an op-set), so an empty lookup would match it and reverse an edit nobody asked about.
+        return None
+    found = _matching_revert_event(Path(repo), target_ids)
+    if found is None:
+        return None
+    event, later_removed = found
+    prior, result = _event_op_ids(event, "ideal"), _event_op_ids(event, "result")
+    if prior is None or result is None:
+        return None
+    # Narrowed, never widened: an op a later edit took out again is that edit's to speak for, so
+    # this one leaves it alone. Dropping it can only make the result closer to what restore did
+    # before the journal path existed, which is the direction this path is allowed to fail in.
+    removed, introduced = (prior - result) - later_removed, result - prior
+    if not removed and not introduced:
+        return None
+
+    try:
+        current = ideal.op_ids
+        tips = set(order.frontier(current, ops).values())
+        live_mints = introduced & current
+        peel = frozenset(oid for oid in live_mints if oid in tips)
+        if live_mints - peel:
+            # All of them or none. A revert can mint several stand-ins, and peeling only the ones
+            # still at a tip puts `def wl` back while leaving its call site spliced out -- then
+            # reports that as a completed reversal, because groundedness and fork-freedom have
+            # nothing to say about whether a reversal is *complete*. A partial inverse is not one,
+            # and a silent half-edit is worse than the refusal the union path gives here.
+            return None
+        after = (current - peel) | removed
+        already = after == current
+        preview = None if already else _validated("restore", tag, current, after, ops, declared)
+    except Exception:  # noqa: BLE001 -- a journal that no longer describes the store falls back
+        # Well-formed ids can still name ops the store no longer holds (a pruned or rewritten
+        # history), and planning against those raises from inside the planner rather than
+        # returning a refusal. Same contract as an unreadable journal: degrade, never fail.
+        return None
+    if already:
+        # Already reversed (a second `restore` of the same handle), so there is nothing to do and
+        # nothing to fall back to -- the union would say the same. Report it as the no-op it is.
+        return _preview("restore", tag, current, current, ops,
+                        message=f"{tag}: that revert has already been reversed; no change")
+    return preview if preview.ok else None
+
+
 # -- plans (pure) ---------------------------------------------------------------------------------
 
 def _plan_removal(
@@ -289,6 +441,9 @@ def plan_restore(repo: str | Path, target: str) -> VerbPreview:
                 op_id, err, source_ids = matches[0], "", frozenset(ids)
     if err:
         return _preview("restore", target, ideal.op_ids, ideal.op_ids, ops, ok=False, message=err)
+    exact = _plan_restore_via_journal(repo, target, {op_id}, ops, ideal, declared)
+    if exact is not None:
+        return exact
     added = _with_layout_siblings(order.downset_in(op_id, source_ids, ops, declared),
                                   ops, ideal.op_ids, source_ids, declared)
     return _validated("restore", target, ideal.op_ids, ideal.op_ids | added, ops, declared)
@@ -380,8 +535,15 @@ def plan_restore_op_set(repo: str | Path, tag: str, op_ids: frozenset[str]) -> V
     Ops already in the ideal are dropped from X first, so a live checkpoint reports `no change`
     rather than an apply it did not make. `tag` is a human-facing label for the preview only."""
     ops, ideal, declared = _load(repo)
-    source = lens.ideal_for_ref(repo, "HEAD")
     requested = frozenset(op_ids)
+    # Tried before everything below: when the journal holds the revert this reverses, it names the
+    # ops that revert minted outright, so neither the scaffolding heuristic nor the fork-dropping
+    # loop has to infer them from an advisory `intent` string. Ahead of `ideal_for_ref` too --
+    # reconstructing the provenance ideal is real work this path never needs.
+    exact = _plan_restore_via_journal(repo, tag, requested, ops, ideal, declared)
+    if exact is not None:
+        return exact
+    source = lens.ideal_for_ref(repo, "HEAD")
     op_ids = requested - ideal.op_ids
     if not op_ids:
         # Every requested op is still live, and its effect can still be gone. A checkpoint revert
@@ -479,7 +641,14 @@ def apply(repo: str | Path, preview: VerbPreview, message: str | None = None) ->
     # that supplies its own `message` is naming real work, so it is left unmarked.
     sha = lens.put(repo, edited, message=message or f"sgt {preview.verb} {preview.target}",
                    bookkeeping=message is None)
-    lens.record_ideal(repo, edited, sha)
+    # Stamp the journal entry with what this edit *was*, not just what it changed. `restore`
+    # resolves itself against the revert it reverses (`_matching_revert_event`), and a before/after
+    # op-set pair alone cannot say which verb produced it or what the user named.
+    lens.record_ideal(repo, edited, sha, meta={
+        "verb": preview.verb,
+        "target": preview.target,
+        "target_ops": sorted(preview.target_ops),
+    })
     return sha
 
 

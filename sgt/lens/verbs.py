@@ -632,7 +632,6 @@ def plan_restore_feature(repo: str | Path, ref: str) -> core_verbs.VerbPreview:
     ops = opindex.index_ops(repo)  # previews never materialize bytes -- footprints suffice
     ideal = kernel_lens.current_ideal(repo)
     declared = kernel_lens._load_declared(repo)
-    source = kernel_lens.ideal_for_ref(repo, "HEAD")
 
     resolved = resolve_feature(repo, ref)
     if resolved is None:
@@ -643,5 +642,14 @@ def plan_restore_feature(repo: str | Path, ref: str) -> core_verbs.VerbPreview:
         return core_verbs._preview("restore", feature_id, ideal.op_ids, ideal.op_ids, ops,
                                     message=f"feature {label!r} has no ops; no change")
 
+    # When the journal holds the revert of this same feature, reverse it exactly rather than
+    # re-deriving an inverse the downset cannot express (see `core.verbs._plan_restore_via_journal`).
+    exact = core_verbs._plan_restore_via_journal(repo, feature_id, op_ids, ops, ideal, declared)
+    if exact is not None:
+        return exact
+
+    # Ahead of `ideal_for_ref` too -- reconstructing the provenance ideal is real work the exact
+    # path never needs, the same reason `core.verbs.plan_restore_op_set` defers it.
+    source = kernel_lens.ideal_for_ref(repo, "HEAD")
     after = ideal.op_ids | order.downset_in_many(op_ids, source.op_ids, ops, declared)
     return core_verbs._validated("restore", feature_id, ideal.op_ids, after, ops, declared)
