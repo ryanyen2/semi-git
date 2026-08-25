@@ -133,6 +133,10 @@ export interface StatusView {
   staged: { any: boolean; paths: string[] };
   unmanaged: string[];
   backstop_kept: string[];
+  // Files sgt holds no op for at all (`.gitignore` in every repo these tools
+  // build). Kept on disk, but not damage and not repairable, so anything that
+  // renders `backstop_kept` as something to fix must leave these out.
+  never_recorded?: string[];
   forks: { open: number; records: ForkRecord[] };
   sync_status: SyncStatus;
 }
