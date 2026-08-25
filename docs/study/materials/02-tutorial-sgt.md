@@ -10,13 +10,15 @@ Two words are worth learning, because you will type both.
 
 A **feature** is a body of work that grew over time, like "the hourly charts".
 
-A **chapter** is one step inside a feature, like "split it into weekday and weekend". Chapters are what you usually want: a feature can be months of work, a chapter is normally one afternoon.
+A **checkpoint** is one step inside a feature, like "split it into weekday and weekend". Checkpoints are what you usually want: a feature can be months of work, a checkpoint is normally one afternoon. Some screens call these **chapters**. Same thing.
 
 Ten minutes will not make you fluent and we do not expect it to. Every command ends by printing what you might want to run next.
 
 ## The practice project
 
-Run `study-practice`. It puts you in a throwaway copy of a small shopping cart program. Nothing you do to it counts. If anything below shows names you do not recognise, you are in the real project. Run `study-practice` again.
+Run `study-practice`. It prints a `cd` line -- run that line, and you are in a throwaway copy of a small shopping cart program. Nothing you do to it counts.
+
+You are in the right place if `ls` shows `cart.py`, `discount.py`, `receipt.py` and `shipping.py` (plus a test file for each).
 
 ## 1. Open the editor
 
@@ -25,26 +27,28 @@ Run `study-practice`. It puts you in a throwaway copy of a small shopping cart p
 That opens the practice project in VS Code with the **semi-git** extension. Click the semi-git icon in the left bar:
 
 - **Now**, for where things stand.
-- **Features**, the work as a tree. Expand a feature to see its chapters.
+- **Features**, the work as a tree. Expand a feature to see its checkpoints.
 - **Changes**, for what you have edited and not yet saved.
 
-At the bottom, the **workbench** panel draws every feature as a row across time. The chips under each row are its chapters. Right-clicking a feature or a chapter offers the same verbs as the commands below.
+At the bottom, the **workbench** panel draws every feature as a row across time. The chips under each row are its checkpoints. Right-clicking either one offers **Revert** and **Restore**, the two commands section 5 covers.
+
+There are two more views in that sidebar, **Forks** and **Compositions**. Nothing in this session needs them.
 
 ## 2. Read one change
 
-Click a chapter in the Features tree or the workbench. It shows what the chapter covers, in functions rather than lines. The same thing in the terminal:
+Click a checkpoint in the Features tree or the workbench. It shows what it covers, in functions rather than lines. The same thing in the terminal, where `@2` means "the third checkpoint of The Cart":
 
-    sgt show "The Cart@Cart Total"
+    sgt show "The Cart@2"
 
 `sgt log` lists the jobs somebody did, newest first, in their own words, and `sgt log --map` draws one row per feature.
 
 ## 3. Record some work
 
-Make a small edit to `receipt.py` (change any wording in a string). The **Changes** view shows it. Record it:
+Make a small edit to `receipt.py`: change a word in the docstring at the top of the file. (Leave the code alone, so the tests keep passing.) The **Changes** view shows it. Record it, in your own words:
 
-    sgt save
+    sgt save -m "reword the receipt docstring"
 
-It describes what you changed and files it under the feature it belongs to. Read what it printed: that wording is the record. Stage 1 asks you to do exactly this, on changes someone else made.
+It files your change under the feature it belongs to and prints which one. Plain `sgt save` works too and says `no words captured`, because the words are yours to give. Stage 1 asks you to do exactly this, on changes someone else made.
 
 ## 4. Find a piece of work
 
@@ -52,22 +56,22 @@ Describe it in your own words:
 
     sgt find "the bit that works out postage"
 
-It ranks features, chapters and functions against your words. The search box in the workbench toolbar does the same. `sgt intent list` lists every chapter with a handle you can type back.
+It lists the closest matches to what you typed: functions, features, and individual saves. The search box in the workbench toolbar does the same. Some rows are shortened to fit, so to get a handle you can type back, use `sgt intent list` -- it prints every feature and checkpoint with its handle.
 
 ## 5. Take something out, and put it back
 
 Do this whole sequence now. It is the most useful thing on this sheet.
 
-    sgt revert "The Cart@Cart Total"
+    sgt revert "The Cart@2"
 
-Nothing has happened yet. That was a preview. Three things in it are worth reading: which chapter is marked **removed**, which say **kept**, and the line saying how many other features are unchanged. Now do it:
+Nothing has happened yet. That was a preview. Four things in it are worth reading: which checkpoint says **removed**, which say **kept**, any that say something like **2/6 edits removed** (that one shared code with what you are taking out), and the line counting the other features it leaves alone. Now do it:
 
-    sgt revert "The Cart@Cart Total" --yes
+    sgt revert "The Cart@2" --yes
     python -m pytest -q
 
-Then put it back:
+Then put it back. **`--yes` again**. Without it you get another preview and nothing happens:
 
-    sgt restore "The Cart@Cart Total"
+    sgt restore "The Cart@2" --yes
     python -m pytest -q
 
 `restore` is `revert`'s opposite and takes the same words. If you ever lose track of where you are, `sgt undo` reverses whatever you last did, and `sgt now` says where things stand.
@@ -89,6 +93,14 @@ They are removed and restored by name, exactly like a chapter:
 
     sgt --help
     sgt <command> --help
+
+## Back to the real project
+
+When you are done practising, run:
+
+    study-work
+
+That puts you back in the project the stages use. The stages will not find their commands anywhere else.
 
 ## Before we start
 

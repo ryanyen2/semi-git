@@ -156,6 +156,12 @@ _ARTIFACTS: dict[str, _Artifact] = {
     # unchanged tree short-circuits the O(files) dirty mining pass. Derived from this clone's own
     # working state -- never travels, like `witness`/`backfill`.
     "sync_cache": _Artifact(("local", "sync_cache.json"), committed=False),
+    # local, gitignored: the HEAD a `resync` was last run at, so `status` stops advising a resync
+    # that has already happened. The ops a resync cannot drop are ones whose content is live in the
+    # working tree, and a second run changes nothing -- but without this the advice repeated
+    # forever, which is the "remedy that reports success without fixing anything" this module's
+    # `_history_rewritten` warns about.
+    "resynced_at": _Artifact(("local", "resynced_at.json"), committed=False),
     # local, gitignored per-ref UNIFIED operation-event log (`sgt.core.oplog`, U8/KTD6): the single
     # store `sgt undo` walks. It began (U26) as the ideal-edit journal -- `record_ideal` still
     # pushes the outgoing ideal (+ witness) as one `ideal_edit` event before each overwrite -- and

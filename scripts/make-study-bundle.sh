@@ -88,14 +88,29 @@ chmod +x "$staging/work/stage" "$staging/work/check"
 # against each other. A bundle is built one arm at a time and has no view of its
 # twin. Verified rather than assumed, because a bundle missing these is one a
 # participant cannot start a single stage with, and nothing else would say so.
-for tag in study/full study/stage1 study/removed; do
+# The two arms need different things, because they reach stage 4 differently.
+# The git arm checks out a `study/removed` holding its three revert commits. The
+# sgt arm performs the removal live there (a restore has to reverse a removal
+# this repo recorded making), so it has no such tag and must not have one -- a
+# reachable build-time revert is what made restore resolve against the wrong
+# removal.
+needed=(study/full study/stage1)
+[ "$condition" = git ] && needed+=(study/removed)
+for tag in "${needed[@]}"; do
     git -C "$staging/work" rev-parse --verify "$tag" >/dev/null 2>&1 || {
         echo "$source_repo has no $tag -- run scripts/study/prep-stages.sh first" >&2; exit 1; }
 done
 [ -f "$staging/work/.study/stage1.patch" ] || {
     echo "$source_repo has no .study/stage1.patch -- run scripts/study/prep-stages.sh first" >&2; exit 1; }
-if [ "$condition" = sgt ] && [ ! -f "$staging/work/.study/sgt-pristine.tar" ]; then
-    echo "$source_repo has no .study/sgt-pristine.tar -- run scripts/study/prep-stages.sh first" >&2; exit 1
+if [ "$condition" = sgt ]; then
+    [ -f "$staging/work/.study/sgt-pristine.tar" ] || {
+        echo "$source_repo has no .study/sgt-pristine.tar -- run scripts/study/prep-stages.sh first" >&2; exit 1; }
+    if git -C "$staging/work" rev-parse --verify study/removed >/dev/null 2>&1; then
+        echo "$source_repo still has a study/removed tag; an sgt arm must not ship one" >&2; exit 1
+    fi
+    # The rendered pages are the git arm's reference, not the participant's, and
+    # they are several hundred KB of text. They do not travel.
+    rm -rf "$staging/work/.study/removed-pages"
 fi
 # The stage script needs these to survive its own `git clean`; the source repo's
 # `.git/info/exclude` does not travel through `cp -R` of the working tree alone.

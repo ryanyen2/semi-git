@@ -604,7 +604,7 @@ build_index('$dest')
     # exercise the practice sheet calls the most useful ten minutes in it.
     for handle in "The Cart" "Discounts" "Receipts" "Shipping" \
                   "cart.py::total" "shipping.py::shipping_cost" "receipt.py::format_money" \
-                  "The Cart@2" "44da4ad"; do
+                  "The Cart@2" "44da4ad" "7e6e383" "a05fc79"; do
         if ! "$sgt_bin" show "$handle" --json 2>/dev/null | grep -q '"ok": true'; then
             echo "  the practice sheet quotes \`$handle\` and it does not resolve." >&2
             fail=1
@@ -643,5 +643,30 @@ elif [ "$condition" = sgt ]; then
     echo "  once the graph is built and pinned." >&2
     exit 1
 fi
+
+# The git sheet promises one revert that applies cleanly and one that conflicts,
+# and tells the participant to do the conflicting one, because the git arm's
+# stage 3 is a conflicted revert under a clock. That promise is a property of
+# this history, so it is checked rather than trusted: the sheet used to quote
+# `7e6e383` for both, and that one applies cleanly every time, so the single
+# rehearsal for the hardest thing the git arm does was impossible to perform.
+probe="$(mktemp -d)"
+cp -R "$dest/." "$probe/p"
+(
+    cd "$probe/p"
+    git revert --no-edit 7e6e383 >/dev/null 2>&1 || {
+        echo "  the sheet says \`git revert 7e6e383\` applies cleanly, and it does not." >&2
+        exit 1
+    }
+    git reset --hard -q HEAD~1
+    if git revert --no-edit a05fc79 >/dev/null 2>&1; then
+        echo "  the sheet says \`git revert a05fc79\` conflicts, and it applied cleanly." >&2
+        echo "  Nothing in the session would then rehearse a conflicted revert." >&2
+        exit 1
+    fi
+    git revert --abort >/dev/null 2>&1 || true
+) || { rm -rf "$probe"; exit 1; }
+rm -rf "$probe"
+echo "  The sheet's clean revert is clean, and its conflicting one conflicts."
 
 echo "Practice repo at $dest"
