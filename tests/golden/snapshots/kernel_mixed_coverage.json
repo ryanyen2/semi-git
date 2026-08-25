@@ -183,6 +183,7 @@
       "open": 0,
       "records": []
     },
+    "never_recorded": [],
     "oracle": {
       "configured": false,
       "status": "unconfigured"
