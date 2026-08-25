@@ -94,11 +94,21 @@ def main(repo):
         renders = snapshot(copy, snap_dir)
         changed = moved(baseline, snap_dir) if renders else []
 
-        # Restoring with the same string is half the workflow, so it is measured too.
+        # Restoring with the same string is half the workflow, so it is measured too -- and
+        # measured by card 4's own words, "check the dashboard matches what it showed at the
+        # start", rather than by an exit status. Asking only for exit 0 and a running app is the
+        # same mistake this file's docstring is about, one rung down: a restore that leaves the
+        # work missing exits 0 over a dashboard that still renders, so the weak check passed it
+        # green. Measured against the baseline instead, 12 of 18 footfall chapters that used to
+        # pass did not put the pages back at all (findings 56 and 59).
         back = subprocess.run(["sgt", "restore", selector, "--yes"],
                               cwd=copy, capture_output=True, text=True)
-        back_ok = back.returncode == 0 and subprocess.run(
-            [sys.executable, "check.py"], cwd=copy, capture_output=True).returncode == 0
+        back_dir = WORK / f"back-{idx}-{fid[2:8]}"
+        back_renders = snapshot(copy, back_dir)
+        back_moved = moved(baseline, back_dir) if back_renders else ["(does not render)"]
+        back_ok = (back.returncode == 0 and back_renders and not back_moved
+                   and subprocess.run([sys.executable, "check.py"], cwd=copy,
+                                      capture_output=True).returncode == 0)
 
         shutil.rmtree(copy, ignore_errors=True)
 
@@ -111,6 +121,8 @@ def main(repo):
               f"renders {'ok' if renders else 'no'} · "
               f"restore {'ok' if back_ok else 'FAILED'}")
         print(f"   pages changed: {', '.join(changed) or 'none'}")
+        if back_moved:
+            print(f"   restore left wrong: {', '.join(back_moved)}")
         print(f"   => {'CANDIDATE' if good else 'no'}\n")
     return 0
 
