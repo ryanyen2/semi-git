@@ -332,8 +332,14 @@ def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict
         else:
             print(f"  ✓ {preview.verb} applied — {_applied_magnitude(preview)}. "
                   f"(`sgt undo` reverses this.)")
-        for line in _subtraction_report(preview):
-            print(line)
+        # Same rule as `gap_lines` below, which already had it: repeat the report
+        # after the apply only when a confirm prompt scrolled the first copy away.
+        # Under `--yes` nothing intervenes, so the three consequence lines printed
+        # twice with the ✓ sandwiched between them -- which reads as two rounds of
+        # damage rather than one report shown twice.
+        if not yes:
+            for line in _subtraction_report(preview):
+                print(line)
         for line in _oracle_after_apply(repo, preview.verb):
             print(line)
         # Repeated after the apply only when a confirm scrolled the preview away. Under `--yes` there

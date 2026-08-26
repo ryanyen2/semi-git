@@ -1692,13 +1692,13 @@ def render_verb_preview_lines(
             if n["role"] == "foundation":
                 glyph = _paint(ahex, "◈", color=color)
                 badge = ("prerequisite, kept" if delta == 0
-                         else f"gains {delta} edits" if delta > 0
-                         else f"loses {-delta} edits")
+                         else f"gains {plural(delta, 'edit')}" if delta > 0
+                         else f"loses {plural(-delta, 'edit')}")
             else:  # blast (target is drawn as the rail above, never here)
                 glyph = _paint(ahex, "●", color=color)
                 badge = ("unchanged" if delta == 0
-                         else f"gains {delta} edits back" if delta > 0
-                         else f"loses {-delta} edits, re-draft")
+                         else f"gains {plural(delta, 'edit')} back" if delta > 0
+                         else f"loses {plural(-delta, 'edit')}, re-draft")
             note = _dim(badge, color=color)
             lines.append(f"   {glyph} {_ellipsize(albl, 28).ljust(28)}  {bar}  {note}")
         if len(others) > 8:

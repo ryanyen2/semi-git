@@ -58,15 +58,56 @@ def _find(repo: str, query: str, limit: int, refresh: bool, as_json: bool) -> in
 
     kind_width = max(len(h["kind"]) for h in view["hits"])
     for hit in view["hits"]:
-        print(f"  {hit['score']:.2f}  {hit['kind']:<{kind_width}}  {hit['label'][:64]}")
-        print(f"        {hit['id'][:16]}  {hit['detail'][:70]}")
+        print(f"  {hit['score']:.2f}  {hit['kind']:<{kind_width}}  {_clip(hit['label'], 64)}")
+        # A symbol's id IS its label, so a second copy of it says nothing. Only
+        # a feature or a save has a handle worth printing under its name.
+        handle = "" if hit["id"] == hit["label"] else _handle(hit["id"])
+        detail = _clip(hit["detail"], 70)
+        if handle or detail:
+            print(f"        {handle}{'  ' if handle and detail else ''}{detail}")
     if view["mode"] == "lexical":
         # Say so. A word-overlap answer and a meaning answer look identical in a
         # list, and only one of them is worth trusting when it returns nothing.
         print("\n  (matched on words, not meaning — no working key for this repo)")
     print("\n  next:")
-    print(f"    sgt show {view['hits'][0]['id'][:12]}      what it is, and what would come with it")
+    print(f"    sgt show {_handle(view['hits'][0]['id'])}   what it is, and what would come with it")
     return 0
+
+
+# A feature id is 66 characters and nothing prints it whole; `sgt intent list`
+# and the feature tree both show `f-` plus twelve. Everything else -- a save
+# sha, a symbol's path-qualified name -- is already short and is a thing the
+# reader is meant to type, so it goes through unchanged.
+#
+# This used to be `id[:16]` on the listing and `id[:12]` on the `next:` line,
+# which made `bikecount/metrics.py::hourly_averages` print as
+# `bikecount/metric` and suggested `sgt show bikecount/me` -- a command that
+# cannot resolve, printed by the tool as the thing to run next. A handle is
+# either whole or it is not a handle.
+_HASHED = ("f-", "t-", "op-", "theme-")
+
+
+def _handle(ident: str) -> str:
+    if ident.startswith(_HASHED) and len(ident) > 14 and "/" not in ident:
+        head = ident.split("-", 1)[0]
+        return f"{head}-{ident.split('-', 1)[1][:12]}"
+    return f'"{ident}"' if " " in ident else ident
+
+
+def _clip(text: str, width: int) -> str:
+    """Cut to `width`, on a word boundary, marked with an ellipsis.
+
+    Mid-word cuts read as corruption rather than as brevity: a description that
+    ended "separated int" had a reader checking whether the sentence itself was
+    broken."""
+    text = (text or "").strip()
+    if len(text) <= width:
+        return text
+    cut = text[:width - 1]
+    space = cut.rfind(" ")
+    if space > width // 2:
+        cut = cut[:space]
+    return cut.rstrip(" ,.;:") + "…"
 
 
 def _select(repo: str, features: list[str], as_json: bool) -> int:

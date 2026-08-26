@@ -36,6 +36,34 @@ UNWITNESSED = "(unwitnessed)"  # the synthetic atom key for an op none of whose 
 # commits appear in `history()` (mined from a detached/since-rewritten commit). Such an op is
 # bucketed here rather than dropped, so `atoms` stays a *total* partition of the store (KTD2).
 
+# The longest a generated label may be. Labels are handles people read in a list
+# and type back, so they are bounded; but they are bounded with an ellipsis and
+# on a word boundary, because a label cut mid-word reads as a corrupted record
+# rather than as an abbreviated one.
+LABEL_WIDTH = 60
+
+
+def short_sha(key: str) -> str:
+    """A commit sha at display length -- unless it is not a sha.
+
+    `UNWITNESSED` is a synthetic atom key, not a commit, and slicing it as one is
+    where the theme labeled `(unwitne` came from: a row in `sgt intent list`
+    spanning every feature in the repo, named after the first eight characters of
+    a parenthesis. Anything that is not hex passes through whole."""
+    return key[:8] if key and all(c in "0123456789abcdef" for c in key.lower()) else key
+
+
+def clip_label(text: str, width: int = LABEL_WIDTH) -> str:
+    """Bound a label, on a word boundary, marked with an ellipsis."""
+    text = (text or "").strip()
+    if len(text) <= width:
+        return text
+    cut = text[:width - 1]
+    space = cut.rfind(" ")
+    if space > width // 2:
+        cut = cut[:space]
+    return cut.rstrip(" ,.;:-") + "…"
+
 
 @dataclass(frozen=True)
 class IntentAtom:
