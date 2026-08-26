@@ -24,10 +24,6 @@ STUDY_REPOS="${STUDY_REPOS:-$HOME/repos/sgt-study}"
 # bundle and handing out a link, and it fails silently when it is.
 OUT="${OUT:-$SGT_SOURCE/web/public/bundles}"
 BUNDLE_SRC="$SGT_SOURCE/scripts/study-bundle"
-# Pinned, and recorded in study.json. Which GitLens a participant had is a
-# question the paper has to be able to answer, and it ships a new version most
-# weeks.
-GITLENS_VERSION="${GITLENS_VERSION:-19.0.1}"
 
 # Installed into both conditions' editor profiles at setup, pinned.
 #
@@ -301,12 +297,25 @@ fi
 #
 # Both conditions get a graphical way to read history, or the comparison is
 # between a tool and a terminal rather than between two representations. In the
-# sgt condition that is this project's own extension; in the git condition it is
-# GitLens, which is what people actually use to read git history in an editor.
+# sgt condition that is this project's own extension, shipped inside the bundle
+# at a fixed version, because installing from the marketplace during a session
+# would mean participant three and participant nine ran different software with
+# nothing in the data saying so.
 #
-# Both travel inside the bundle at a fixed version. Installing from the
-# marketplace during a session would mean participant three and participant nine
-# ran different software, with nothing in the data saying so.
+# In the git condition it is Visual Studio Code's own Source Control: the view,
+# the Source Control Graph, the Timeline, and blame in the editor gutter. This
+# used to be GitLens 19.0.1, and dropping it was not a simplification for its
+# own sake. GitLens 19 opens on an account: Launchpad wants a GitHub connection
+# from the status bar, and `gitlens.ai.enabled` defaults on, which put an AI
+# panel -- explain changes, generate commit message, review changes -- inside a
+# task block the protocol gives no assistant. Every minute a participant spends
+# dismissing a sign-up is a minute charged to git, and an assistant one arm has
+# and the other does not is not a difference between two ways of recording
+# history.
+#
+# What it costs: GitLens searches history better than the Timeline does, and
+# stage 2 is the locate stage. That is the honest weakness of this arm and
+# section 3 of the protocol says so rather than leaving a reader to find it.
 
 echo "  Packaging the editor extension."
 if [ "$condition" = sgt ]; then
@@ -317,18 +326,11 @@ if [ "$condition" = sgt ]; then
         || { echo "Could not package the extension. Is @vscode/vsce available?" >&2; exit 1; }
     editor_ext="semi-git $(python3 -c 'import json;print(json.load(open("'"$SGT_SOURCE"'/editor/vscode/package.json"))["version"])')"
 else
-    cached="${GITLENS_VSIX_CACHE:-$HOME/.cache/study-bundles}/gitlens-$GITLENS_VERSION.vsix"
-    if [ ! -s "$cached" ]; then
-        mkdir -p "$(dirname "$cached")"
-        echo "  Fetching GitLens $GITLENS_VERSION."
-        curl -sSL -o "$cached.gz" \
-            "https://marketplace.visualstudio.com/_apis/public/gallery/publishers/eamodio/vsextensions/gitlens/$GITLENS_VERSION/vspackage" \
-            || { echo "Could not download GitLens." >&2; exit 1; }
-        # The marketplace serves the package gzipped, whatever the extension says.
-        gunzip -c "$cached.gz" > "$cached" && rm -f "$cached.gz"
-    fi
-    cp "$cached" "$staging/install/gitlens.vsix"
-    editor_ext="gitlens $GITLENS_VERSION"
+    # Nothing to package: it is already in the editor. Recorded all the same,
+    # because "which history view did this participant have" is a question the
+    # paper has to be able to answer for both arms, and for this one the answer
+    # is a version of Visual Studio Code rather than a version of an extension.
+    editor_ext="built-in Source Control"
 fi
 echo "  $editor_ext"
 

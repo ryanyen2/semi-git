@@ -44,15 +44,15 @@ That puts the project back to where it stood just before the changes the first s
 study-code
 ```
 
-That opens the project in VS Code with **GitLens** installed. Find these three now, because the stages will want them:
+That opens the project in VS Code. Find these three now, because the stages will want them:
 
 - **Source Control** in the left bar. It shows what you have changed, and it is where you commit.
-- **Commit Graph.** Click the GitLens icon in the left bar, or run *GitLens: Show Commit Graph* from the command palette. This is the history as a graph you can click through.
-- **File History.** Right-click any file and choose *Open File History*.
+- **Graph**, the lower half of that same view. This is the history as a graph you can click through.
+- **Timeline**, at the foot of the Explorer. Click a file and it lists the commits that touched that file.
 
 ## 1. Read one change
 
-Open the Commit Graph and click a commit. It shows you what that commit changed, file by file. The same thing in the terminal:
+Open the Graph and click a commit. It shows you what that commit changed, file by file. The same thing in the terminal:
 
 ```
 git log --oneline
@@ -80,7 +80,7 @@ Stage 1 asks you to do exactly this, on changes somebody else made.
 git log --oneline -S "average"
 ```
 
-Try to see the same story in the Commit Graph. Also worth knowing: `git log --stat` shows which files each commit touched, `git blame <file>` says which commit last changed each line, and File History does the same thing in the editor.
+Try to see the same story in the Graph. Also worth knowing: `git log --stat` shows which files each commit touched, and `git blame <file>` says which commit last changed each line. The editor does both: the Timeline for a file, and the grey note at the end of the line your cursor is on, which names the commit that last changed it.
 
 Stage 2 asks you to find one particular piece of work this way.
 

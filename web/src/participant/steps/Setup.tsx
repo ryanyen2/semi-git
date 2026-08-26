@@ -90,6 +90,19 @@ export function SetupStep({ step }: { step: Step }) {
       </Callout>
 
       {half === 1 && (
+        <Callout kind="soft" title="Visual Studio Code, not a fork of it">
+          Half of this session happens in the editor, so the setup needs Visual Studio Code itself.
+          Cursor and the other forks install a <code>code</code> command of their own and are not
+          the same editor: they use a different extension marketplace, and they answer with an AI
+          the study is measuring the absence of. If you do not have it, install it from{' '}
+          <a href="https://code.visualstudio.com" target="_blank" rel="noreferrer">
+            code.visualstudio.com
+          </a>{' '}
+          before you start. Having both installed is fine; the setup finds the right one.
+        </Callout>
+      )}
+
+      {half === 1 && (
         <Callout kind="soft" title="If you brought a repository of your own">
           Tell your facilitator now. With the consent line ticked, they start building its history
           view in the background while you work, so it is ready for the interview at the end.

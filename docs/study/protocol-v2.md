@@ -87,13 +87,33 @@ reasoning are unchanged from version 1 (`web/src/study/flow.ts`).
 | | git condition | sgt condition |
 |---|---|---|
 | Terminal | `git` commands | `sgt` commands, with `git` still available underneath |
-| Editor | VS Code with Source Control, Timeline, and GitLens (pinned version) | VS Code with the semi-git extension (pinned version) |
+| Editor | VS Code with Source Control, the Source Control Graph, Timeline, and blame in the gutter | VS Code with the semi-git extension (pinned version) |
 | AI assistant | None during the task block | None during the task block |
 
 The editor is the primary surface. Practice sheets are editor-first, and every
 stage can be completed from the editor alone. The terminal stays available
 because forbidding it would measure compliance rather than preference, and
 which surface a participant reaches for is itself recorded.
+
+The git condition's history view is Visual Studio Code's own, not GitLens. An
+earlier draft pinned GitLens 19.0.1; it is out, for a reason that is a condition
+problem rather than a preference. GitLens 19 opens on an account: its Launchpad
+asks from the status bar for a GitHub connection, and `gitlens.ai.enabled` is on
+by default, which places an AI panel -- explain changes, generate a commit
+message, review changes -- inside a task block this protocol gives no assistant
+in either arm. Time spent dismissing a sign-up would be charged to git, and an
+assistant one arm has and the other does not is not a difference between two
+ways of recording history.
+
+The cost is real, and stating it runs against sgt's interest, so it is stated
+here: GitLens searches history better than the Timeline does, and stage 2 is the
+locate stage. The git condition is therefore weaker at locating than a git user
+with their usual extensions would be, and any stage 2 result should be read with
+that in mind. What it buys is a comparison against what every Visual Studio Code
+has out of the box, with no account and no assistant in either arm. The setup
+check confirms the editor is new enough to have the view (`editor_extension`),
+because unlike an extension it cannot be installed if it turns out to be
+missing.
 
 There is no live assistant in the task block. In version 1 the assistant was
 part of the condition. Here every stage must start from an identical state for

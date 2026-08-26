@@ -190,29 +190,39 @@ fi
 
 say "Setting up the editor"
 
-find_code() {
-    command -v code 2>/dev/null && return 0
-    for candidate in \
-        "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" \
-        "$HOME/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" \
-        "/usr/share/code/bin/code" \
-        "/snap/bin/code"; do
-        [ -x "$candidate" ] && { echo "$candidate"; return 0; }
-    done
-    return 1
-}
-
 # Not `CODE`. That is the participant's code, read from the command line at the
 # top of this file, and overwriting it here sent a path to the study as if it
 # were a person.
-EDITOR_CLI="$(find_code || true)"
+#
+# One line either way: a path when it is Visual Studio Code, and otherwise the
+# sentence to read out. See bin/study-find-editor for why a `code` on the PATH
+# does not settle it.
+if EDITOR_CLI="$("$here/bin/study-find-editor")"; then
+    editor_problem=""
+else
+    editor_problem="$EDITOR_CLI"
+    EDITOR_CLI=""
+fi
 if [ -z "$EDITOR_CLI" ]; then
-    note "Visual Studio Code was not found. Tell your facilitator before your session."
+    note "$editor_problem"
+    note "Tell your facilitator before your session."
     note "Everything can be done from the shell, but half of what we are studying is the editor."
 else
     note "$("$EDITOR_CLI" --version 2>/dev/null | head -1 || echo found)"
     profile="$here/.vscode-study"
+
+    # A profile another editor has already written to is thrown away rather
+    # than added to. The first run of X08 was Cursor, which puts its own Pyright
+    # in here on sight of a .py file; installing over the top would have left it
+    # sitting next to Pylance, and the check reports anything extra for the same
+    # reason it reports anything missing.
+    stamp="$profile/.built-by"
+    if [ -d "$profile" ] && [ "$(cat "$stamp" 2>/dev/null || echo)" != "$EDITOR_CLI" ]; then
+        note "Starting the study profile again from empty."
+        rm -rf "$profile"
+    fi
     mkdir -p "$profile/extensions"
+    printf '%s\n' "$EDITOR_CLI" > "$stamp"
 
     install_ext() {
         "$EDITOR_CLI" --user-data-dir "$profile" --extensions-dir "$profile/extensions" \
