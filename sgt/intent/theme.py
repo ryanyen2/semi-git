@@ -25,7 +25,9 @@ from pydantic import BaseModel
 from sgt import state
 from sgt.config import get_client, get_model
 from sgt.intent._guard import filter_to_shown
-from sgt.intent.group import Bundle, IntentAtom, _atom_sort_key, clip_label, short_sha
+from sgt.intent.group import (
+    LABEL_WIDTH, Bundle, IntentAtom, _atom_sort_key, clip_label, short_sha,
+)
 
 EFFORT = "low"
 MAX_ATOMS = 40  # keeps the scope-less coalescing prompt bounded on a large store
@@ -102,6 +104,30 @@ def _fallback_scopeless_groups(atoms: list[IntentAtom]) -> list[ThemeGroup]:
         ThemeGroup(label=clip_label(atom.subject or short_sha(atom.commit_sha)), rationale="Ungrouped commit (no LLM available).", atom_shas=[atom.commit_sha])
         for atom in atoms
     ]
+
+
+def _uncut(label: str, atom_shas: list[str]) -> str:
+    """A cached label, bounded, and un-sliced if an older rule cut an atom key into it.
+
+    The cache holds whatever a previous build minted and replays it verbatim, so a
+    label the current rules could never produce outlives the fix for it. Two shapes
+    came back this way: a subject cut mid-word at sixty characters, and `(unwitne`
+    -- the synthetic `(unwitnessed)` atom key sliced as though it were a sha, which
+    `clip_label` cannot repair because eight characters is well inside the bound.
+
+    A label that is a strict prefix of its own single atom's key IS a slice of that
+    key, so it is re-derived. A real label never prefixes a sha.
+    """
+    if len(atom_shas) == 1:
+        key = atom_shas[0]
+        if label and label != key and key.startswith(label):
+            return short_sha(key)
+    # Exactly the bound, with no ellipsis, is the signature of the old hard
+    # `[:60]`. The subject it was cut from is not in the cache, so it cannot be
+    # restored -- but it can at least stop claiming to be whole.
+    if len(label) == LABEL_WIDTH and not label.endswith("…"):
+        return clip_label(label, LABEL_WIDTH - 1)
+    return clip_label(label)
 
 
 class IntentThemer:
@@ -204,8 +230,15 @@ class IntentThemer:
         for i, key in enumerate(keys):
             cached = self.cache.get(key)
             if cached is not None and cached.get("source") == "llm":
+                # Bounded here as well as where it is minted. The cache holds
+                # whatever an earlier build wrote, so a label truncated by an
+                # older rule -- `(unwitne`, or a subject cut mid-word at sixty --
+                # came back on every rebuild and outlived the fix for it. A label
+                # is bounded wherever a ThemeGroup is made, not only on the path
+                # that happened to make it first.
                 results[i] = [
-                    ThemeGroup(label=g["label"], rationale=g["rationale"], atom_shas=g["atom_shas"])
+                    ThemeGroup(label=_uncut(g["label"], g["atom_shas"]), rationale=g["rationale"],
+                               atom_shas=g["atom_shas"])
                     for g in cached["groups"]
                 ]
             else:
@@ -256,7 +289,8 @@ class IntentThemer:
                     a.commit_sha for a in chunk if a.commit_sha[:8] in kept and a.commit_sha not in assigned
                 ]
                 if resolved:
-                    groups.append(ThemeGroup(label=g.label, rationale=g.rationale, atom_shas=resolved))
+                    groups.append(ThemeGroup(label=clip_label(g.label), rationale=g.rationale,
+                                             atom_shas=resolved))
                     assigned.update(resolved)
             for atom in chunk:
                 if atom.commit_sha not in assigned:
