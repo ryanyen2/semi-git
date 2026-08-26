@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""That the setup check runs the assistant the way a session runs it.
+"""That the setup check runs the session the way a session runs it.
 
     python3 scripts/study-bundle/tests/test_doctor.py
 
-No emulator, no network, no assistant: this reads the three files that build the
-assistant's environment and checks they agree.
+No emulator, no network, no assistant: this reads the files that build the
+session's environment and checks they agree, on the assistant's key and on which
+editor gets opened.
 
 The property being protected comes from a real setup failure. The session
 launchers unset three variables before starting the assistant, and the doctor's
@@ -18,6 +19,7 @@ is holding it to the one place there is nothing to find.
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -38,7 +40,7 @@ def check(label: str, ok: bool, detail: str = "") -> None:
 
 
 def main() -> int:
-    print("\nthe doctor's assistant ping\n")
+    print("\nthe doctor and the session, on the same environment\n")
 
     doctor = (BUNDLE / "telemetry" / "doctor.py").read_text()
     # Whichever way the names are written -- one pop each, or one loop over a
@@ -81,6 +83,41 @@ def main() -> int:
             "means the key is wrong" not in timeout_msg.group(0),
             timeout_msg.group(0),
         )
+
+    # Which editor. Three files used to answer this separately and all three
+    # answered it with `command -v code`, which on a machine with Cursor
+    # installed is Cursor -- an AI editor, in a task block the protocol gives no
+    # assistant. Nothing said so: the run reported two missing Python extensions
+    # and passed everything else.
+    print()
+    finder = BUNDLE / "bin" / "study-find-editor"
+    check("there is one place that decides which editor", finder.is_file())
+    for caller in ("install/setup.sh", "bin/study-code", "telemetry/doctor.py"):
+        text = (BUNDLE / caller).read_text()
+        check(f"{caller} asks it", "study-find-editor" in text)
+        # A second opinion is the failure being guarded against, not a tidiness
+        # point: the file that keeps its own copy is the one that drifts.
+        own = [
+            pattern
+            for pattern in ('command -v code', 'which("code")', "Visual Studio Code.app")
+            if pattern in text
+        ]
+        check(f"{caller} has no opinion of its own", not own, ", ".join(own))
+
+    # Whatever it names has to be the editor it claims, on whichever machine
+    # this runs. The one thing that must never happen is a path handed back for
+    # a build that is not Visual Studio Code.
+    proc = subprocess.run(["bash", str(finder)], capture_output=True, text=True, timeout=30)
+    answer = (proc.stdout + proc.stderr).strip()
+    if proc.returncode == 0:
+        product = Path(answer).resolve().parent.parent / "product.json"
+        check(
+            "the editor it names is Visual Studio Code",
+            product.is_file() and '"nameLong": "Visual Studio Code"' in product.read_text(),
+            answer,
+        )
+    else:
+        check("it says what to do instead", "code.visualstudio.com" in answer, answer)
 
     print(f"\n{passed} passed, {failed} failed\n")
     return 1 if failed else 0

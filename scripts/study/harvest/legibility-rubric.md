@@ -65,6 +65,6 @@ prints three lines of sgt's own plumbing has not passed. The participant cannot
 tell which lines are theirs.
 
 **Both arms get read the same way.** Every complaint above gets asked of
-`git log`, GitLens's commit graph, and file history too. If a surface in the git
+`git log`, the Source Control Graph, and the Timeline too. If a surface in the git
 arm answers a question that sgt's does not, that is the finding, and it goes in
 the ledger the same as any other.

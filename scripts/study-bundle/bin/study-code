@@ -9,9 +9,9 @@
 # The recording works because the editor never runs git or sgt directly. Both
 # are pointed at the wrappers in bin/shims -- through `git.path` and `sgt.path`
 # in the profile below, and through PATH as a second route in case a setting is
-# ever ignored. The built-in Source Control view, GitLens and the semi-git
-# extension all resolve their binary from those two settings, so a click that
-# reads history lands in the same log as a command typed in the shell.
+# ever ignored. The built-in Source Control view and the semi-git extension both
+# resolve their binary from those two settings, so a click that reads history
+# lands in the same log as a command typed in the shell.
 set -euo pipefail
 
 STUDY_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -21,30 +21,35 @@ STUDY_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 PROFILE="$STUDY_HOME/.vscode-study"
 SHIMS="$STUDY_HOME/bin/shims"
+CONDITION="$(sed -n 's/.*"condition"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+    "$STUDY_HOME/study.json" 2>/dev/null | head -1)"
 
-find_code() {
-    if command -v code >/dev/null 2>&1; then
-        command -v code
-        return
-    fi
-    for candidate in \
-        "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" \
-        "$HOME/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" \
-        "/usr/share/code/bin/code" \
-        "/snap/bin/code"; do
-        [ -x "$candidate" ] && { echo "$candidate"; return; }
-    done
-    return 1
-}
-
-CODE="$(find_code || true)"
-if [ -z "$CODE" ]; then
-    echo "Visual Studio Code is not installed, or its 'code' command is not set up." >&2
+# See bin/study-find-editor: a `code` on the PATH is not on its own the editor
+# this study runs in, and the half where it was not is the half where nobody
+# noticed until afterwards.
+if ! CODE="$("$STUDY_HOME/bin/study-find-editor")"; then
+    echo "$CODE" >&2
     echo "Tell your facilitator. Everything in this study can also be done from the shell." >&2
     exit 1
 fi
 
 mkdir -p "$PROFILE/User"
+
+# Blame in the gutter is the one part of the git condition's history view that
+# Visual Studio Code ships turned off. The Source Control view, the Source
+# Control Graph and the Timeline are all on by default; this is not. It used to
+# arrive with GitLens, and leaving it off when GitLens left would have quietly
+# taken "who last touched this line" out of the git arm without anyone deciding
+# to.
+#
+# The git arm only. Both arms have the built-in Source Control view -- it cannot
+# be uninstalled -- but turning a git history surface *on* in the sgt arm would
+# be adding to a condition rather than describing it.
+if [ "$CONDITION" = git ]; then
+    GIT_ARM_SETTINGS='  "git.blame.editorDecoration.enabled": true,'
+else
+    GIT_ARM_SETTINGS=""
+fi
 
 # Rewritten on every launch rather than once at setup. The paths in it are
 # absolute, and a folder that was moved between halves would otherwise leave
@@ -62,6 +67,7 @@ cat > "$PROFILE/User/settings.json" <<SETTINGS
 
   "git.autofetch": false,
   "git.openRepositoryInParentFolders": "never",
+$GIT_ARM_SETTINGS
 
   "security.workspace.trust.enabled": false,
   "telemetry.telemetryLevel": "off",

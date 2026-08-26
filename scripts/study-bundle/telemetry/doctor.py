@@ -294,27 +294,18 @@ def main() -> int:
                     "this to your facilitator",
                 )
 
-    # 9b. The editor, and the one extension this condition is allowed.
+    # 9b. The editor, and whichever history view this condition is allowed.
     #
     # Checked rather than assumed, because a missing editor is not visible in
     # the shell: the session runs, the participant works entirely in the
     # terminal, and half of what the study set out to compare is simply absent
     # from that participant's data with nothing to mark it.
-    code_cli = shutil.which("code") or next(
-        (
-            p
-            for p in (
-                "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code",
-                str(Path.home() / "Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"),
-                "/usr/share/code/bin/code",
-                "/snap/bin/code",
-            )
-            if os.access(p, os.X_OK)
-        ),
-        None,
-    )
+    # The same answer the launcher gets, from the same script, because a check
+    # that finds an editor the session will not open is worse than no check.
+    rc, editor = run(["bash", str(home / "bin" / "study-find-editor")], timeout=30)
+    code_cli = editor.strip() if rc == 0 else None
     if not code_cli:
-        checks.add("editor", False, "Visual Studio Code not found; tell your facilitator")
+        checks.add("editor", False, f"{editor.strip()}; tell your facilitator")
         checks.add("editor_extension", False, "no editor")
     else:
         rc, out = run([code_cli, "--version"], timeout=60)
@@ -331,13 +322,49 @@ def main() -> int:
             timeout=90,
         )
         installed = [line.strip() for line in out.splitlines() if "." in line and "@" in line]
-        wanted = "semi-git" if meta.get("condition") == "sgt" else "gitlens"
-        found = [x for x in installed if wanted in x.lower()]
-        checks.add(
-            "editor_extension",
-            bool(found),
-            ", ".join(found) if found else f"no {wanted} in the study profile; re-run install/setup.sh",
-        )
+        if meta.get("condition") == "sgt":
+            wanted = "semi-git"
+            found = [x for x in installed if wanted in x.lower()]
+            checks.add(
+                "editor_extension",
+                bool(found),
+                ", ".join(found) if found else "no semi-git in the study profile; re-run install/setup.sh",
+            )
+        else:
+            # Nothing to install in this arm any more, which is exactly why it
+            # needs checking: the git condition's history view is now the
+            # editor's own, so what used to be "did the extension land" is
+            # "is this editor new enough to have the view at all". Under GitLens
+            # an old editor still had a commit graph. Without it, a participant
+            # on a Visual Studio Code from before the Source Control Graph is
+            # handed a practice sheet describing a panel that is not there.
+            #
+            # Blame in the gutter is the last of the four surfaces to have
+            # shipped -- the view, the graph, the Timeline, then blame -- so an
+            # editor whose git extension knows the setting has all four. A
+            # smaller thing to be wrong about than a version number, and it does
+            # not go stale when the numbers move on.
+            wanted = None
+            app = Path(code_cli).resolve().parent.parent
+            blame = next(
+                (
+                    x
+                    for x in (
+                        app / "extensions/git/package.json",
+                        app / "resources/app/extensions/git/package.json",
+                    )
+                    if x.is_file()
+                ),
+                None,
+            )
+            has_view = bool(blame) and "git.blame.editorDecoration.enabled" in blame.read_text()
+            checks.add(
+                "editor_extension",
+                has_view,
+                "built-in Source Control, Graph, Timeline and blame"
+                if has_view
+                else "this Visual Studio Code is too old for the Source Control Graph; update it",
+            )
 
         # The editor has to be the same in both halves, and it does not stay
         # that way on its own: VS Code offers Python support the first time a
@@ -349,7 +376,7 @@ def main() -> int:
             have = {x.split("@")[0].lower() for x in installed}
             missing = [x for x in expected if x not in have]
             extra = sorted(
-                x for x in have if x not in expected and wanted not in x
+                x for x in have if x not in expected and not (wanted and wanted in x)
             )
             checks.add(
                 "editor_toolset",
