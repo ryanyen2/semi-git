@@ -390,6 +390,44 @@ function classifyAffected(result, targetId) {
 }
 // ---- end-closure (test slice boundary) ----
 
+// ---- car-impact (test slice boundary) ----
+// The chunk-grain half of a consequence preview. A verb preview carries the exact op ids it
+// removes/adds; intent segments carry the op ids each chapter (car) owns. Joining the two says
+// WHICH recorded chunks change and by how much -- so the graph draws each affected car as a
+// dashed version of the state it will END in: a revert drains it toward the hollow look a
+// reverted car already has, a restore fills a hollow car back toward solid. Dash = not yet true;
+// the body of the car = what will be true. Dependencies included for free: a removed op in
+// another feature's chapter marks THAT car, which is "the dependencies also come out", in situ.
+// Pure (no DOM); the painter half applies classes.
+function classifyCarImpact(removedIds, addedIds, segments, targetOpIds) {
+  const removed = new Set(removedIds || []);
+  // The op-set the user actually NAMED (emit's `target_ops`) counts as leaving even when the
+  // mechanical edit rewrites some of it in place instead of dropping ops -- `removed` alone can
+  // be a subset (or empty) there, and the asked-about chapter must never preview as untouched.
+  for (const id of targetOpIds || []) removed.add(id);
+  const added = new Set(addedIds || []);
+  if (!removed.size && !added.size) return [];
+  const out = [];
+  for (const seg of segments || []) {
+    const ids = seg.op_ids || [];
+    if (!ids.length) continue;
+    let nOut = 0, nIn = 0;
+    for (const id of ids) {
+      if (removed.has(id)) nOut++;
+      else if (added.has(id)) nIn++;
+    }
+    if (!nOut && !nIn) continue;
+    const dir = nIn > nOut ? "in" : "out"; // a keep-revert can touch both; the dominant move wins
+    const touched = Math.max(nOut, nIn);
+    out.push({
+      checkpoint: seg.checkpoint, featureId: seg.feature_id, dir, touched,
+      coverage: touched >= ids.length ? "full" : "partial",
+    });
+  }
+  return out;
+}
+// ---- end-car-impact
+
 // Lay episodes out as a vertical git-log rail (Stage C): newest episode on top (row 0), each
 // feature a lane column (its episodes a straight vertical line), lanes reused by features whose
 // row-spans don't overlap (greedy interval-graph coloring) -- the compaction that keeps the column
@@ -503,6 +541,14 @@ function episodeRailLayout(epView) {
   let selectionResult = null; // { refs, view } for the current state.multi, or null
   let pendingReveal = null; // an editor->graph reveal target awaiting the graph's next render (task 4)
 
+  // The staged destructive action (the in-graph confirm): a Revert/Restore/Back-to-here click
+  // holds its consequence preview on the field and raises the confirm bar; nothing runs until
+  // Apply. While `applyBusy` is set the bar shows the host's real phases instead of the buttons.
+  let stagedAction = null; // {verb, ref, targetId, label, kind: "feature"|"chapter"|"backto", refs?, res?}
+  let applyBusy = null; // {verb, phase, detail} while the host applies a staged action
+  let pendingSettle = []; // feature ids to flash once the post-apply state lands (the receipt)
+  let semanticState = null; // the meaning rung of find: {query, pending, hits, mode, message}
+
   // Composition-picker hover-preview: while the titlebar's composition QuickPick is open, arrowing
   // over a session/branch item folds it live and takes over the code(I) slot -- "what would
   // switching to this show," seen before committing to the real `sgt switch`.
@@ -566,6 +612,7 @@ function episodeRailLayout(epView) {
   const plansPopover = document.getElementById("plansPopover");
   const driftChip = document.getElementById("driftChip"); // ◇ unplanned / ⑂ unplaced-fork indicator
   const inspectorToggle = document.getElementById("inspectorToggle");
+  const confirmBar = document.getElementById("confirmBar"); // staged-action consequence + Apply/Cancel
 
   const SVG_TAGS = new Set(["svg", "g", "path", "circle", "rect", "text", "line", "title"]);
 
@@ -1134,7 +1181,7 @@ function episodeRailLayout(epView) {
       const selected = car.checkpoint === state.selectedCheckpoint;
       const wrap = mk("g", {
         class: "gcar-wrap" + (isBig ? " gcar-big" : "") + (selected ? " gcar-selected" : ""),
-        "data-first": car.firstIndex,
+        "data-first": car.firstIndex, "data-checkpoint": car.checkpoint,
       });
       // Native tooltip: an SVG element ignores a `title` attribute, so the hover text has to be a
       // `<title>` child of the rect (not attrs.title) to actually show on hover.
@@ -1144,9 +1191,12 @@ function episodeRailLayout(epView) {
         // its commits, up to two. `sgt feature why <sha>` carries the full text + resume handle.
         ((car.words && car.words.length)
           ? "\n" + car.words.slice(0, 2).map((w) => `“${w}”`).join("\n") : "") +
-        (car.reverted
-          ? `\nReverted — restore: sgt restore ${car.checkpoint}`
-          : `\nRewind: sgt revert ${car.checkpoint}`);
+        // No raw `f-<64 hex>@n` here. The ref is unreadable, unmemorable, and nobody retypes it
+        // -- it filled the tooltip with the one string on screen carrying no information. What a
+        // reader wants from a chapter they are pointing at is its size, its state, and the fact
+        // that clicking does something.
+        `\n${car.opCount} edit(s)` +
+        (car.reverted ? " · retired — click to select, then Restore" : " · click to select");
       // A reverted car is drawn hollow in its own identity hue: the edits are still recorded and
       // still addressable (`sgt restore`), they are just no longer in the ideal, so the car has to
       // stay in place and read as emptied rather than vanish or redraw as live. The inline stroke
@@ -1193,8 +1243,22 @@ function episodeRailLayout(epView) {
       // unit), distinct from a row/label click that picks the whole feature. stopPropagation keeps
       // it from bubbling up to the lane's feature-select handler.
       wrap.addEventListener("click", (ev) => selectCar(car, l.id, ev));
+      // Hovering a chapter IDENTIFIES it; it does not preview destroying it. This used to fire a
+      // full revert preview -- so merely running the cursor over the timeline to read what was
+      // there dimmed the field and drained cars, showing the consequence of an action the reader
+      // had not chosen and might never choose. Feedforward belongs to the verb the reader is
+      // pointing at, and pointing at a chapter is not pointing at a verb. Instant and local: no
+      // round-trip, no hover-intent delay, because naming what is already on screen costs nothing.
       wrap.addEventListener("mouseenter", () => {
-        if (!armedVerb) onHoverIntent(() => previewAndBlast("revert", [car.checkpoint]));
+        if (armedVerb || stagedAction) return;
+        wrap.classList.add("gcar-hovered");
+        setPreviewContext(`${car.label} · ${car.opCount} edit(s)`
+          + (car.reverted ? " · retired" : "") + " — click to select", "identity");
+      });
+      wrap.addEventListener("mouseleave", () => {
+        wrap.classList.remove("gcar-hovered");
+        // Only ever retract this hover's own sentence.
+        if (previewContext.classList.contains("identity")) setPreviewContext(null);
       });
       g.appendChild(wrap);
       cursor = x + w + GANTT.carGap;
@@ -1983,6 +2047,9 @@ function episodeRailLayout(epView) {
       // existing unmarked -- the one lane whose fate the choice is about. For `move` this is the same
       // classification its rows already produce, since every op being moved comes from this feature.
       paintClosure({ target: targetId, blast: [feature], foundation: [] });
+      // Both operands are known here, so this is the one hover that can show the whole
+      // transition: the chunks leaving this lane AND arriving in the candidate one.
+      paintMigration(feature, targetId);
       // The sentence goes in the banner, not the bottom-right pill: while the cursor is out on a lane
       // the pill is peripheral, and the answer belongs where the question was asked. One locus, so
       // choosing a target does not mean reading two corners of the pane.
@@ -2000,6 +2067,7 @@ function episodeRailLayout(epView) {
   // "primary" (last-touched) row that drives the per-feature inspector; state.multi is the set the
   // union-closure card + paint read.
   function selectRow(id, additive) {
+    if (stagedAction && !applyBusy) cancelStaged(); // navigating away withdraws the question
     const multi = state.multi || [];
     if (additive) {
       const i = multi.indexOf(id);
@@ -2033,6 +2101,7 @@ function episodeRailLayout(epView) {
   // merge/move still targets the feature (a car is just a point on it), matching lane-click.
   function selectCar(car, laneId, ev) {
     if (ev) ev.stopPropagation();
+    if (stagedAction && !applyBusy) cancelStaged(); // navigating away withdraws the question
     if (armedVerb) { confirmArmed(laneId); return; }
     if (state.selected !== laneId) {
       state.multi = [laneId];
@@ -2054,6 +2123,7 @@ function episodeRailLayout(epView) {
   // selected there). Keeps the gantt car and the inspector row in agreement -- click either, both
   // light up.
   function highlightCheckpoint(ref) {
+    if (stagedAction && !applyBusy) cancelStaged(); // navigating away withdraws the question
     state.selectedCheckpoint = state.selectedCheckpoint === ref ? null : ref;
     saveState();
     renderInspector();
@@ -2162,7 +2232,17 @@ function episodeRailLayout(epView) {
     }
   }
 
+  // A staged confirm suspends hover previews entirely (its consequence paint must not be
+  // repainted under the reader). The gate is injected (`setHoverGate`, below the slice) rather
+  // than read directly so this block stays self-contained for the node harness.
+  let hoverGate = null;
+
+  function setHoverGate(fn) {
+    hoverGate = fn;
+  }
+
   function onHoverIntent(fn) {
+    if (hoverGate && hoverGate()) return;
     cancelHoverIntent();
     hoverTimer = setTimeout(() => {
       hoverTimer = null;
@@ -2170,6 +2250,7 @@ function episodeRailLayout(epView) {
     }, HOVER_INTENT_MS);
   }
   // ---- end-hover-intent
+  setHoverGate(() => !!stagedAction);
 
   // ---- armed-banner
   // "Merge into…" and "Move ops…" arm a mode: the next lane click is a target, not a selection. The
@@ -2187,13 +2268,293 @@ function episodeRailLayout(epView) {
   }
   // ---- end-armed-banner
 
+  // ---- staged-summary (test slice boundary)
+  // The in-graph confirmation's one sentence. A native modal answers "are you sure?" with a wall
+  // of prose in the middle of the screen; the graph behind it already knows how to SHOW the
+  // consequence. So a Revert/Restore click now stages instead: the preview is held on the field
+  // and the confirm bar states the consequence in one line -- confirming is reading the picture,
+  // not re-reading a paragraph. Pure over the staged payload so the node harness can hold it.
+  function stagedSummaryText(staged) {
+    const res = staged.res;
+    if (!res) return "computing consequence…";
+    if (res.ok === false) return humanizeRefusal(res.message) || `sgt refuses this ${staged.verb}.`;
+    const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+    if (staged.kind === "multi") {
+      return staged.summary || "computing union closure…";
+    }
+    if (staged.kind === "split") {
+      return splitPreviewText(res).message;
+    }
+    if (staged.kind === "backto") {
+      const n = (staged.refs || []).length;
+      const head = `removes ${plural(n, "later chapter")} · ${plural(staged.opCount || 0, "edit")}`;
+      const blast = staged.blastCount || 0;
+      const tail = staged.blastDone
+        ? (blast ? `touches ${plural(blast, "other feature")}` : "no other feature touched")
+        : (blast ? `touches ≥${blast} other feature(s) · still checking…` : "checking other features…");
+      return `${head} · ${tail} · this chapter stays`;
+    }
+    // Prefer the backend's own so-what headline -- one vocabulary across CLI, TUI and here.
+    const soWhat = res.so_what || (res.focus && res.focus.so_what);
+    if (soWhat) return soWhat;
+    const removed = (res.removed || []).length;
+    const added = (res.added || []).length;
+    const files = Object.keys(res.files || {}).length;
+    const others = (res.affected || []).filter((r) => r.feature_id !== staged.targetId).length;
+    return [
+      staged.verb === "restore" ? `brings back ${plural(added, "edit")}` : `${plural(removed, "edit")} come out`,
+      files ? `${plural(files, "file")} rewritten` : "no files change",
+      others ? `${plural(others, "other feature")} affected` : "no other feature touched",
+    ].join(" · ");
+  }
+  // ---- end-staged-summary
+
+  // ---- staged-confirm (DOM half)
+  const APPLY_PHASE_LABEL = {
+    checking: "checking consequences",
+    applying: "rewriting + committing",
+    refreshing: "rebuilding the graph",
+  };
+
+  function stageAction(staged) {
+    // Entering a staged confirm replaces any armed merge/move mode and any prior stage.
+    if (armedVerb) {
+      armedVerb = null;
+      rail.classList.remove("arming");
+      renderArmedBanner();
+    }
+    if (stagedAction) { stagedAction = null; clearGhosts(); }
+    setPreviewContext(null); // the confirm bar carries the sentence now, not the hover pill
+    stagedAction = staged;
+    applyBusy = null;
+    renderConfirmBar();
+    if (staged.kind === "backto") {
+      paintBackToCars(staged.targetId, staged.refs);
+      chainBackToPreviews(staged, 0, new Set());
+      return;
+    }
+    if (staged.kind === "multi") {
+      return; // the union closure is already fetched (selectionResult) and painted by the caller
+    }
+    if (staged.kind === "split") {
+      beginPreviewPending(staged.targetId, "previewing split…");
+      const seq = ++previewSeq;
+      vscode.postMessage({ type: "previewSplit", featureId: staged.ref, seq });
+      pendingPreview = {
+        seq,
+        onResult: (res) => {
+          clearPreviewPending();
+          if (stagedAction !== staged) return;
+          staged.res = res;
+          if (res && res.ok) {
+            paintClosure({ target: staged.targetId, blast: [], foundation: [] });
+            paintSplitPreview(staged.targetId, res);
+          }
+          renderConfirmBar();
+        },
+      };
+      return;
+    }
+    // The click usually follows the hover that already computed this preview, so the host answers
+    // from its cache and the paint holds without a visible wait; a cold click shows the pending
+    // shimmer for exactly as long as the subprocess takes.
+    beginPreviewPending(staged.targetId, `previewing ${staged.verb}…`);
+    requestPreview(staged.verb, [staged.ref], (res) => {
+      clearPreviewPending();
+      if (stagedAction !== staged) return;
+      staged.res = res;
+      if (res && res.ok) {
+        // `staged.targetId` is already the feature id; `res.target` for a chapter is the raw
+        // `<f>@<n>` ref, which matches no row.
+        const focus = res.focus;
+        if (focus && focus.nodes && focus.nodes.length) enterPreviewMode(focus, staged.targetId);
+        else paintClosure(classifyAffected(res, staged.targetId));
+        paintCarPreview(classifyCarImpact(res.removed, res.added, segmentsOf(compose), res.target_ops));
+      }
+      renderConfirmBar();
+    });
+  }
+
+  // "Revert to here"'s cross-feature consequence, accumulated progressively: one preview per later
+  // chapter, requested strictly in sequence (the host's latest-wins guard would drop a parallel
+  // burst), the union of their blasts painted and counted as each answer lands. Intermediate
+  // feedback -- the number firms up in front of the reader instead of a spinner until omniscience.
+  function chainBackToPreviews(staged, i, blast) {
+    if (stagedAction !== staged) return;
+    if (i >= staged.refs.length) {
+      staged.blastDone = true;
+      renderConfirmBar();
+      return;
+    }
+    requestPreview("revert", [staged.refs[i]], (res) => {
+      if (stagedAction !== staged) return;
+      if (res && res.ok) {
+        for (const r of res.affected || []) {
+          if (r.direction !== "foundation" && r.feature_id !== staged.targetId) blast.add(r.feature_id);
+        }
+      }
+      staged.blastCount = blast.size;
+      renderConfirmBar();
+      // Each answer adds its dependency cars in other lanes -- the blast firming up chunk by chunk.
+      paintCarPreview(classifyCarImpact(res.removed, res.added, segmentsOf(compose), res.target_ops));
+      for (const f of blast) {
+        const row = findRow(f);
+        if (row) row.classList.add("ghost-blast");
+      }
+      renderOffscreenPills([staged.targetId, ...blast]);
+      chainBackToPreviews(staged, i + 1, blast);
+    });
+  }
+
+  // The instant half of "revert to here": the cars that would come out are exactly this lane's
+  // later chapters, and the layout already owns them -- zero round-trips, painted on the
+  // keystroke, in the same draining-to-hollow grammar every revert preview uses.
+  function paintBackToCars(targetId, refs) {
+    const gone = new Set(refs);
+    const impacts = segmentsOf(compose)
+      .filter((sg) => gone.has(sg.checkpoint))
+      .map((sg) => ({ checkpoint: sg.checkpoint, featureId: sg.feature_id, dir: "out", coverage: "full" }));
+    paintCarPreview(impacts);
+    const row = findRow(targetId);
+    if (row) row.classList.add("ghost-target");
+  }
+
+  function applyStagedAction() {
+    if (!stagedAction || applyBusy) return;
+    const staged = stagedAction;
+    if (staged.res && staged.res.ok === false) return; // refused: nothing to apply
+    applyBusy = { verb: staged.verb, phase: "checking", detail: null };
+    renderConfirmBar();
+    if (staged.kind === "backto" || staged.kind === "multi") {
+      vscode.postMessage({
+        type: "revertSequence",
+        refs: staged.refs.slice(),
+        label: staged.kind === "backto" ? staged.label : undefined,
+        noun: staged.kind === "multi" ? "feature" : "chapter",
+      });
+    } else {
+      vscode.postMessage({ type: "applyStaged", verb: staged.verb, ref: staged.ref });
+    }
+  }
+
+  function cancelStaged() {
+    if (!stagedAction) return;
+    stagedAction = null;
+    applyBusy = null;
+    renderConfirmBar();
+    clearGhosts();
+  }
+
+  // The host's phase reports while a staged action runs: checking → applying → refreshing, then
+  // done / failed / cancelled. Progress paints in the bar -- where the decision was taken -- not
+  // in a corner toast the eye has already left.
+  function onApplyProgress(msg) {
+    if (!stagedAction) return;
+    if (msg.phase === "done") {
+      // Settle only if something actually applied: a flow that ended during "checking" (e.g.
+      // "removes nothing here") changed nothing, and a receipt for it would flash a lie later.
+      const applied = applyBusy && applyBusy.phase !== "checking";
+      pendingSettle = applied && stagedAction.targetId ? [stagedAction.targetId] : [];
+      stagedAction = null;
+      applyBusy = null;
+      renderConfirmBar();
+      clearGhosts();
+      return;
+    }
+    if (msg.phase === "cancelled") {
+      // The host-side flow bailed (a dismissed dependents QuickPick, no target): back to the
+      // staged state, where Apply and Esc are both still live.
+      applyBusy = null;
+      renderConfirmBar();
+      return;
+    }
+    applyBusy = { verb: msg.verb, phase: msg.phase, detail: msg.detail || null };
+    renderConfirmBar();
+  }
+
+  function renderConfirmBar() {
+    if (!confirmBar) return;
+    confirmBar.innerHTML = "";
+    const staged = stagedAction;
+    confirmBar.hidden = !staged;
+    if (!staged) return;
+
+    const head = el("div", "confirm-head");
+    head.appendChild(el("span",
+      "confirm-verb" + (staged.verb === "restore" ? " restore" : staged.verb === "split" ? " split" : ""),
+      staged.kind === "backto" ? "Revert to"
+        : staged.verb === "restore" ? "Restore"
+        : staged.verb === "split" ? "Split" : "Revert"));
+    // (a multi stage reads "Revert · N selected features" through the same two spans)
+    head.appendChild(el("span", "confirm-target", staged.label || staged.ref));
+    confirmBar.appendChild(head);
+
+    if (applyBusy) {
+      if (applyBusy.phase === "failed") {
+        const fail = el("div", "confirm-progress failed");
+        fail.appendChild(el("span", "confirm-fail", applyBusy.detail || "failed"));
+        const dismiss = el("button", "confirm-btn", "Dismiss");
+        dismiss.addEventListener("click", cancelStaged);
+        fail.appendChild(dismiss);
+        confirmBar.appendChild(fail);
+        return;
+      }
+      // The three real stages, named, current one lit. Not a spinner: a spinner says "busy",
+      // this says busy WITH WHAT, and how far along.
+      const prog = el("div", "confirm-progress");
+      const order = ["checking", "applying", "refreshing"];
+      const at = order.indexOf(applyBusy.phase);
+      order.forEach((ph, i) => {
+        prog.appendChild(el("span",
+          "confirm-step" + (i < at ? " done" : i === at ? " live" : ""), APPLY_PHASE_LABEL[ph]));
+      });
+      if (applyBusy.detail) prog.appendChild(el("span", "confirm-detail", applyBusy.detail));
+      confirmBar.appendChild(prog);
+      return;
+    }
+
+    confirmBar.appendChild(el("div", "confirm-summary", stagedSummaryText(staged)));
+
+    const actions = el("div", "confirm-actions");
+    // The diff exists only for the exact ideal edits (one emit-able ref): feature/chapter scope.
+    if (staged.kind === "feature" || staged.kind === "chapter") {
+      const diff = el("button", "confirm-btn subtle", "Open diff");
+      diff.title = "Open the exact before → after in editor tabs";
+      diff.addEventListener("click", () =>
+        vscode.postMessage({ type: "openStagedDiff", verb: staged.verb, ref: staged.ref }));
+      actions.appendChild(diff);
+    }
+    const cancel = el("button", "confirm-btn", "Cancel");
+    cancel.title = "Esc";
+    cancel.addEventListener("click", cancelStaged);
+    actions.appendChild(cancel);
+    const refused = staged.res && staged.res.ok === false;
+    const apply = el("button",
+      "confirm-btn confirm-apply"
+        + (staged.verb === "restore" ? " restore" : staged.verb === "split" ? " split" : ""),
+      staged.verb === "restore" ? "Restore" : staged.verb === "split" ? "Split" : "Revert");
+    // Disabled until the consequence is known (usually instant off the hover's cached preview):
+    // an Apply that runs before the picture exists would be the old blind modal wearing new paint.
+    apply.disabled = !staged.res || !!refused;
+    apply.addEventListener("click", applyStagedAction);
+    actions.appendChild(apply);
+    confirmBar.appendChild(actions);
+  }
+  // ---- end-staged-confirm
+
   function clearGhosts() {
+    // A staged confirm OWNS the current consequence paint: the mouseleave that would normally
+    // clear a hover must not strip the picture the user is being asked to approve. Cancel/Apply
+    // tear it down through cancelStaged/onApplyProgress, which null stagedAction first.
+    if (stagedAction) return;
     rail.querySelectorAll(
       ".glane.ghost-blast, .glane.ghost-target, .glane.ghost-foundation, " +
       ".rail-row.ghost-blast, .rail-row.ghost-target, .rail-row.ghost-foundation").forEach((el) => {
       el.classList.remove("ghost-blast", "ghost-target", "ghost-foundation");
     });
+    clearCarPreview();
     cancelHoverIntent(); // a preview still waiting out the hover delay is abandoned here too
+    clearPreviewPending(); // ...and its pending shimmer/pill, wherever it had got to
     clearOffscreenPills();
     clearPreviewRefusal(); // a refusal overlay clears on the same mouseleave path
     setPreviewContext(null); // ...as does a sentence pill set without a morph behind it (split)
@@ -2206,6 +2567,42 @@ function episodeRailLayout(epView) {
     pendingPreview = { seq, onResult };
   }
 
+  // ---- pending-ack
+  // The instant acknowledgement layer. Every consequence preview shells out and queues behind the
+  // store flock, so the honest answer can be a second or more away -- and a system that paints
+  // nothing in that window reads as one that did not hear the hover. The row under the cursor
+  // takes a quiet shimmer and the pill states what is being computed. Both appear only after a
+  // grace period: feedback for work that finishes inside ~200ms would be flicker, not information.
+  const PENDING_GRACE_MS = 180;
+  let previewPendingTimer = null;
+  let previewPendingRow = null;
+
+  function beginPreviewPending(targetId, say) {
+    clearPreviewPending();
+    previewPendingTimer = setTimeout(() => {
+      previewPendingTimer = null;
+      const row = targetId && findRow(targetId);
+      if (row) {
+        row.classList.add("preview-pending");
+        previewPendingRow = row;
+      }
+      setPreviewContext(say, true);
+    }, PENDING_GRACE_MS);
+  }
+
+  function clearPreviewPending() {
+    if (previewPendingTimer !== null) {
+      clearTimeout(previewPendingTimer);
+      previewPendingTimer = null;
+    }
+    if (previewPendingRow) {
+      previewPendingRow.classList.remove("preview-pending");
+      previewPendingRow = null;
+    }
+    if (previewContext.classList.contains("pending")) setPreviewContext(null);
+  }
+  // ---- end-pending-ack
+
   // Every hover-preview site wants the same thing: show the consequence if the preview came back
   // ok, do nothing otherwise. The target is args[0] (revert/restore take one feature). When the
   // backend hands back a `focus` subgraph (a feature map is built) and we're not mid-arming, use the
@@ -2214,7 +2611,10 @@ function episodeRailLayout(epView) {
   // `previewArmed` passes one, because it is the only caller whose two operands are both known at
   // hover time and therefore the only one that can name the result.
   function previewAndBlast(verb, args, say) {
+    // A checkpoint ref (`f-xxx@n`) shimmers its feature's row -- rows are keyed by feature id.
+    beginPreviewPending(String(args[0]).split("@")[0], `previewing ${verb}…`);
     requestPreview(verb, args, (res) => {
+      clearPreviewPending();
       if (!res || !res.ok) {
         // A blocked restore -- the symbol has a competing live version, so sgt refuses. Surface the
         // two ways out in the preview overlay instead of silently doing nothing.
@@ -2229,11 +2629,17 @@ function episodeRailLayout(epView) {
       // path paints its own two endpoints -- see `previewArmed`.
       if (say) { say(res); return; }
       const focus = res.focus;
+      // Rows are keyed by feature id: a `<f>@<n>` checkpoint ref must paint its feature's row,
+      // never miss every lane and list the acted-on feature among its own collateral.
+      const targetRow = String(res.target || args[0]).split("@")[0];
       if (focus && focus.nodes && focus.nodes.length) {
-        enterPreviewMode(focus, args[0]);
+        enterPreviewMode(focus, targetRow);
       } else {
-        paintClosure(classifyAffected(res, args[0]));
+        paintClosure(classifyAffected(res, targetRow));
       }
+      // The chunk-grain layer over the field treatment: the exact cars this verb changes, drawn
+      // as the state they will end in.
+      paintCarPreview(classifyCarImpact(res.removed, res.added, segmentsOf(compose), res.target_ops));
     });
   }
 
@@ -2245,15 +2651,79 @@ function episodeRailLayout(epView) {
   let findSeq = 0;
   let latestFindSeq = 0;
 
+  // ---- local-find (test slice boundary)
+  // The instant rung of search: substring matching over what the client already holds -- feature
+  // labels and ids, chapter intents, member symbols. Zero round-trips, so results land on the
+  // keystroke; `sgt find`'s meaning rung layers in underneath on Enter. Scoring is deliberately
+  // simple (prefix > word-start > substring; features nudged above symbols on ties) and capped, so
+  // the dropdown stays a glance, not a page.
+  function localFindHits(query, nodes, segsByFeature, cap) {
+    cap = cap || 12;
+    const q = String(query || "").trim().toLowerCase();
+    if (!q) return [];
+    const BOUNDARY = new Set([" ", "-", "_", "/", ".", ":"]);
+    const score = (text) => {
+      const t = String(text || "").toLowerCase();
+      const i = t.indexOf(q);
+      if (i < 0) return -1;
+      if (i === 0) return 3;
+      if (BOUNDARY.has(t[i - 1])) return 2;
+      return 1;
+    };
+    const hits = [];
+    for (const n of nodes || []) {
+      if (n.kind !== "feature") continue;
+      const sf = Math.max(score(n.label), score(n.id));
+      if (sf > 0) {
+        hits.push({ kind: "feature", label: n.label || n.id,
+                    detail: `${n.op_count || 0} op(s)`, feature: n.id, s: sf + 0.2 });
+      }
+      for (const m of n.members || []) {
+        const sym = m.split("::").pop();
+        const ss = score(sym);
+        if (ss > 0) hits.push({ kind: "symbol", label: sym, detail: m.split("::")[0], feature: n.id, s: ss - 0.2 });
+      }
+    }
+    for (const fid in segsByFeature || {}) {
+      for (const seg of segsByFeature[fid]) {
+        const sc = score(seg.intent);
+        if (sc > 0) {
+          hits.push({ kind: "chapter", label: seg.intent, detail: seg.checkpoint,
+                      feature: fid, checkpoint: seg.checkpoint, s: sc });
+        }
+      }
+    }
+    hits.sort((a, b) => b.s - a.s || String(a.label).localeCompare(String(b.label)));
+    const seen = new Set();
+    const out = [];
+    for (const h of hits) {
+      const key = `${h.kind}\u0000${h.label}\u0000${h.feature}`;
+      if (seen.has(key)) continue; // one row per (kind, label, feature)
+      seen.add(key);
+      out.push(h);
+      if (out.length >= cap) break;
+    }
+    return out;
+  }
+  // ---- end-local-find
+
   function initFind() {
     const box = document.getElementById("findBox");
     const results = document.getElementById("findResults");
     if (!box || !results) return;
 
+    // Typing answers instantly from the local rung; Enter adds the meaning rung (a CLI
+    // round-trip). The dropdown never sits blank while something is already known.
+    box.addEventListener("input", () => {
+      semanticState = null; // a changed query orphans any older meaning results
+      renderFind(box.value.trim());
+    });
+
     box.addEventListener("keydown", (ev) => {
       if (ev.key === "Escape") {
         box.value = "";
         results.hidden = true;
+        semanticState = null;
         box.blur();
         return;
       }
@@ -2265,8 +2735,8 @@ function episodeRailLayout(epView) {
       }
       const seq = ++findSeq;
       latestFindSeq = seq;
-      results.hidden = false;
-      results.innerHTML = "<div class='find-note'>searching…</div>";
+      semanticState = { query, pending: true, hits: [], mode: null, message: null };
+      renderFind(query);
       vscode.postMessage({ type: "find", query, seq });
     });
 
@@ -2275,33 +2745,80 @@ function episodeRailLayout(epView) {
     });
   }
 
-  function renderFindResults(msg) {
+  function findHitRow(hit) {
+    const row = el("div", "find-hit");
+    row.appendChild(el("span", "find-kind", hit.kind));
+    row.appendChild(el("span", "find-label", hit.label));
+    row.appendChild(el("span", "find-detail", hit.detail || ""));
+    row.addEventListener("click", () => {
+      const results = document.getElementById("findResults");
+      if (results) results.hidden = true;
+      // Every hit that belongs somewhere takes you there; a save belongs to no single lane, so it
+      // selects nothing rather than guessing. A chapter hit lands on its exact car.
+      if (hit.feature) revealFeature(hit.feature);
+      if (hit.checkpoint) {
+        state.selectedCheckpoint = hit.checkpoint;
+        saveState();
+        render();
+      }
+    });
+    return row;
+  }
+
+  function renderFind(query) {
     const results = document.getElementById("findResults");
-    if (!results || msg.seq !== latestFindSeq) return; // a slower earlier query landing late
+    if (!results) return;
     results.innerHTML = "";
-    const hits = msg.hits || [];
-    if (!hits.length) {
-      results.appendChild(el("div", "find-note", msg.message || "nothing matched"));
+    if (!query) {
+      results.hidden = true;
       return;
     }
-    for (const hit of hits) {
-      const row = el("div", "find-hit");
-      row.appendChild(el("span", "find-kind", hit.kind));
-      row.appendChild(el("span", "find-label", hit.label));
-      row.appendChild(el("span", "find-detail", hit.detail || ""));
-      row.addEventListener("click", () => {
-        results.hidden = true;
-        // Every hit that belongs somewhere takes you there; a save belongs to
-        // no single lane, so it selects nothing rather than guessing.
-        if (hit.feature) revealFeature(hit.feature);
-      });
-      results.appendChild(row);
+    results.hidden = false;
+    const local = localFindHits(query, map.nodes, checkpointsByFeature);
+    if (local.length) {
+      results.appendChild(el("div", "find-section", "in this graph"));
+      for (const h of local) results.appendChild(findHitRow(h));
     }
-    // A word-overlap answer and a meaning answer look identical in a list, and only one of them
-    // means "there is nothing like this here" when it comes back short.
-    if (msg.mode === "lexical") {
-      results.appendChild(el("div", "find-note", "matched on words, not meaning"));
+    if (semanticState && semanticState.query === query) {
+      results.appendChild(el("div", "find-section", "by meaning"));
+      if (semanticState.pending) {
+        results.appendChild(skeletonRows(3, "find"));
+      } else if (!semanticState.hits.length) {
+        results.appendChild(el("div", "find-note", semanticState.message || "nothing matched"));
+      } else {
+        const dupe = new Set(local.map((h) => `${h.kind}\u0000${h.feature}\u0000${h.label}`));
+        let shown = 0;
+        for (const hit of semanticState.hits) {
+          if (dupe.has(`${hit.kind}\u0000${hit.feature}\u0000${hit.label}`)) continue;
+          results.appendChild(findHitRow(hit));
+          shown++;
+        }
+        if (!shown) results.appendChild(el("div", "find-note", "nothing beyond the matches above"));
+        // A word-overlap answer and a meaning answer look identical in a list, and only one of
+        // them means "there is nothing like this here" when it comes back short.
+        if (semanticState.mode === "lexical") {
+          results.appendChild(el("div", "find-note", "matched on words, not meaning"));
+        }
+      }
+    } else if (local.length) {
+      results.appendChild(el("div", "find-note", "⏎ also searches by meaning"));
+    } else {
+      results.appendChild(el("div", "find-note", "nothing here matches — ⏎ searches by meaning"));
     }
+  }
+
+  function renderFindResults(msg) {
+    if (msg.seq !== latestFindSeq || !semanticState) return; // a slower earlier query landing late
+    semanticState.pending = false;
+    semanticState.mode = msg.mode || null;
+    semanticState.message = msg.message || null;
+    semanticState.hits = (msg.hits || []).map((h) => ({
+      kind: h.kind,
+      label: h.label,
+      detail: h.detail || "",
+      feature: h.feature || (h.kind === "feature" ? h.id : null),
+    }));
+    renderFind(semanticState.query);
   }
 
   function el(tag, cls, text) {
@@ -2344,13 +2861,14 @@ function episodeRailLayout(epView) {
     // preview result carries the resolved feature id; paint with that.
     requestPreview(msg.verb, [msg.ref], (res) => {
       if (!res || !res.ok) return;
-      const resolved = res.target || msg.ref;
+      const resolved = String(res.target || msg.ref).split("@")[0];
       const focus = res.focus;
       if (!armedVerb && focus && focus.nodes && focus.nodes.length) {
         enterPreviewMode(focus, resolved);
       } else {
         paintClosure(classifyAffected(res, resolved));
       }
+      paintCarPreview(classifyCarImpact(res.removed, res.added, segmentsOf(compose)));
     });
 
     if (msg.state === "done") {
@@ -2471,6 +2989,7 @@ function episodeRailLayout(epView) {
     const view = selectionResult && selectionResult.view;
     if (!view) {
       wrap.appendChild(statusLine("Resolving closure…", ""));
+      wrap.appendChild(skeletonRows(2, "find"));
     } else if (!view.ok) {
       wrap.appendChild(statusLine(view.message || "Cannot resolve selection.", "fail"));
     } else {
@@ -2530,7 +3049,22 @@ function episodeRailLayout(epView) {
     revert.title = "Revert each selected feature in turn (stops if one refuses)";
     revert.addEventListener("mouseenter", () => paintSelectionClosure());
     revert.addEventListener("mouseleave", () => clearGhosts());
-    revert.addEventListener("click", () => vscode.postMessage({ type: "revertSelection", refs: state.multi.slice() }));
+    revert.addEventListener("click", () => {
+      // Staged like every other destructive verb: the union closure is already painted amber and
+      // counted (selectionResult); the confirm bar takes the decision in-graph, no modal.
+      const view = selectionResult && selectionResult.view;
+      stageAction({
+        verb: "revert", kind: "multi", targetId: state.multi[0],
+        label: `${state.multi.length} selected features`,
+        refs: state.multi.slice(),
+        summary: view && view.ok
+          ? `${view.closure_op_count} edit(s) in closure · ${(view.files || []).length} file(s) rewritten `
+            + "· each feature reverted in turn, stopping if one refuses"
+          : null,
+        res: { ok: true },
+      });
+      paintSelectionClosure();
+    });
     bar.appendChild(revert);
     wrap.appendChild(bar);
     return wrap;
@@ -2876,7 +3410,7 @@ function episodeRailLayout(epView) {
   // `files`/`forked` on success.
   function renderCachedFrontierBody(section, cached, files) {
     if (!cached) {
-      section.appendChild(statusLine("Loading…"));
+      section.appendChild(skeletonRows(6, "code"));
       return;
     }
     if (cached.error) {
@@ -2994,6 +3528,15 @@ function episodeRailLayout(epView) {
     back.addEventListener("click", clearPlayhead);
     section.appendChild(back);
 
+    // The scrub's exit into real editors: this history point as read-only now ⇄ then diffs. The
+    // snippet panel below orients; this is how you actually READ the codebase at c{idx}.
+    const visit = document.createElement("button");
+    visit.className = "code-panel-back code-panel-visit";
+    visit.textContent = `Open files @ c${idx}…`;
+    visit.title = "Open files as they stood at this point — read-only; your working tree is untouched";
+    visit.addEventListener("click", () => vscode.postMessage({ type: "openFoldFiles", commitIndex: idx }));
+    section.appendChild(visit);
+
     // The op-set at this point comes first -- "what IS this history point" before "what does the
     // tree look like folded here." Not `dir`-filtered: the decomposition is the whole point's set.
     renderOpSetDecomposition(section, idx);
@@ -3041,6 +3584,23 @@ function episodeRailLayout(epView) {
     inspector.appendChild(section);
   }
 
+  // ---- skeleton
+  // The waiting shapes. "Loading…" is a word about the system; a skeleton is a promise about the
+  // answer's shape -- lines where code will be, rows where hits will be -- and its shimmer says
+  // "alive", where a static caption after two seconds reads "wedged". Reduced-motion users get
+  // static blocks (CSS kills the animation, keeps the shape).
+  function skeletonRows(n, kind) {
+    const wrap = el("div", "skel" + (kind ? ` skel-${kind}` : ""));
+    const widths = [86, 61, 74, 47, 68, 55];
+    for (let i = 0; i < n; i++) {
+      const line = el("div", "skel-line");
+      line.style.width = widths[i % widths.length] + "%";
+      wrap.appendChild(line);
+    }
+    return wrap;
+  }
+  // ---- end-skeleton
+
   function statusLine(text, kind) {
     const el = document.createElement("div");
     el.className = "code-panel-status" + (kind ? ` ${kind}` : "");
@@ -3065,9 +3625,15 @@ function episodeRailLayout(epView) {
     // A reverted chapter stays on this list -- it is still recorded and still addressable, and a
     // restore needs it named -- so the head says how many are gone rather than quietly shrinking.
     const nGone = segs.filter((s) => s.present_op_count === 0).length;
-    head.textContent = `Checkpoints · ${segs.length}` + (nGone ? ` · ${nGone} reverted` : "") +
+    head.textContent = `Checkpoints · ${segs.length}` + (nGone ? ` · ${nGone} retired` : "") +
       (built ? "" : "  (run sgt intent build to name)");
     wrap.appendChild(head);
+    // Retired work is the half of this list nobody found. Name the way back once, at the top,
+    // where the count already is -- rather than leaving it to a glyph on a faded row.
+    if (nGone) {
+      wrap.appendChild(el("div", "checkpoints-hint",
+        "Faded chapters are retired — click one, then Restore to bring it back."));
+    }
 
     for (const seg of segs) {
       // `present_op_count` is how many of the chapter's ops are still in HEAD's ideal. `null` (an
@@ -3082,7 +3648,7 @@ function episodeRailLayout(epView) {
       row.title = `${seg.rationale} · ${seg.tier}\n` + (gone
         ? `Reverted — restore: sgt restore ${seg.checkpoint}`
         : (partial ? `${seg.op_count - seg.present_op_count} of ${seg.op_count} edit(s) reverted\n` : "") +
-          `Rewind: sgt revert ${seg.checkpoint}`);
+          `Revert this chapter: sgt revert ${seg.checkpoint}`);
       row.addEventListener("click", () => highlightCheckpoint(seg.checkpoint)); // sync with the gantt car
 
       const dot = document.createElement("span");
@@ -3102,44 +3668,194 @@ function episodeRailLayout(epView) {
       const rewind = document.createElement("button");
       rewind.className = "checkpoint-rewind";
       rewind.textContent = gone ? "⤻" : "⤺";
-      rewind.title = gone ? `Restore "${seg.intent}"` : `Rewind "${seg.intent}"`;
+      rewind.title = gone
+        ? `Restore this chapter — bring "${seg.intent}" back`
+        : `Revert this chapter — take out "${seg.intent}"; later chapters stay`;
+      rewind.addEventListener("mouseenter", () =>
+        onHoverIntent(() => previewAndBlast(gone ? "restore" : "revert", [seg.checkpoint])));
+      rewind.addEventListener("mouseleave", () => clearGhosts());
       rewind.addEventListener("click", (e) => {
         e.stopPropagation();
-        vscode.postMessage({
-          type: gone ? "restoreCheckpoint" : "revertCheckpoint", ref: seg.checkpoint, label: seg.intent,
+        // Staged in the graph (consequence held + confirm bar), not the old modal round-trip.
+        stageAction({
+          verb: gone ? "restore" : "revert", ref: seg.checkpoint, targetId: id,
+          label: seg.intent, kind: "chapter",
         });
       });
       row.appendChild(rewind);
 
-      // Hover a checkpoint -> preview the exact ops the available move covers as a blast on the
-      // timeline, reusing the same closure-paint path every other revert/restore hover uses.
-      row.addEventListener("mouseenter", () =>
-        onHoverIntent(() => previewAndBlast(gone ? "restore" : "revert", [seg.checkpoint])));
-      row.addEventListener("mouseleave", () => clearGhosts());
+      // Hovering the ROW identifies its car on the timeline (a cheap, local "this one"); only the
+      // action button below previews the consequence. Same rule as the cars themselves: reading is
+      // not previewing.
+      row.addEventListener("mouseenter", () => {
+        if (armedVerb || stagedAction) return;
+        const wrap = findCar(seg.checkpoint);
+        if (wrap) wrap.classList.add("gcar-hovered");
+      });
+      row.addEventListener("mouseleave", () => {
+        rail.querySelectorAll(".gcar-hovered").forEach((el) => el.classList.remove("gcar-hovered"));
+      });
       wrap.appendChild(row);
     }
     return wrap;
   }
 
+  // ---- retired-work (test slice boundary)
+  // What a feature has RECORDED but no longer has LIVE. `present_op_count` is how many of a
+  // chapter's ops survive in the ideal, so a chapter at 0 is fully retired and one below its
+  // op_count is partly so. Restore's whole affordance was invisible: the action bar offered a
+  // "Restore" that, on a feature with nothing retired, could only fail -- and it failed by
+  // rendering the kernel's raw invalid-ideal exception, a wall of hex. A verb that can only
+  // refuse should not be a live button; a verb that CAN do something should say what.
+  function retiredWork(segs) {
+    let chapters = 0, edits = 0, partial = 0;
+    for (const sg of segs || []) {
+      const present = sg.present_op_count;
+      if (present == null) continue; // no claim (older payload) -- never counted as retired
+      if (present === 0) { chapters++; edits += sg.op_count; }
+      else if (present < sg.op_count) { partial++; edits += sg.op_count - present; }
+    }
+    return { chapters, partial, edits, any: chapters + partial > 0 };
+  }
+  // ---- end-retired-work
+
+  // ---- chapter-scope (test slice boundary)
+  // What the action bar is FOR once a checkpoint is selected. Clicking a chapter and clicking its
+  // feature used to reach the same six feature-scoped buttons, so "Revert" beside a highlighted
+  // chapter removed the WHOLE feature -- the classic mis-scope, and the exact pilot complaint.
+  // This derives the chapter's own affordances from the segment list alone: the one live direction
+  // for THIS chapter (rewind or restore), and "back to here" -- every LIVE chapter after it,
+  // newest first, which is what "revert to this checkpoint" means in an op-set world. Pure, so the
+  // node harness can hold the scoping.
+  function chapterScope(segs, ref) {
+    const i = (segs || []).findIndex((sg) => sg.checkpoint === ref);
+    if (i < 0) return null;
+    const seg = segs[i];
+    const later = segs.slice(i + 1).filter((sg) => sg.present_op_count !== 0);
+    return {
+      seg,
+      gone: seg.present_op_count === 0,
+      // Newest first: each `sgt revert <feature>@<n>` peels the top chapter, so applying in this
+      // order is always removing the current tip, never digging under later work.
+      laterRefs: later.map((sg) => sg.checkpoint).reverse(),
+      laterCount: later.length,
+      laterOps: later.reduce(
+        (n, sg) => n + (sg.present_op_count == null ? sg.op_count : sg.present_op_count), 0),
+    };
+  }
+  // ---- end-chapter-scope
+
+  // The chapter-scoped action bar: drawn instead of the feature bar while a checkpoint is
+  // selected, so the highlighted thing and the acted-on thing are the same thing. The feature-wide
+  // verbs stay one explicit scope-switch away rather than being the loaded default.
+  function renderChapterActionBar(id, scope) {
+    const wrap = document.createElement("div");
+    const node = byId(id);
+    const seg = scope.seg;
+
+    const head = el("div", "chapter-scope-head");
+    const dot = el("span", "chapter-scope-dot");
+    dot.style.background = (node && node.color) || "var(--dim)";
+    head.appendChild(dot);
+    head.appendChild(el("span", "chapter-scope-label", `Chapter · ${seg.intent}`));
+    wrap.appendChild(head);
+
+    const bar = el("div", "action-bar");
+    const one = el("button", "action", scope.gone ? "⤻ Restore this chapter" : "⤺ Revert this chapter");
+    one.title = scope.gone
+      ? `sgt restore ${seg.checkpoint} — bring this chapter's ${seg.op_count} edit(s) back`
+      : `sgt revert ${seg.checkpoint} — take out this chapter's edits only; later chapters stay`;
+    one.addEventListener("mouseenter", () =>
+      onHoverIntent(() => previewAndBlast(scope.gone ? "restore" : "revert", [seg.checkpoint])));
+    one.addEventListener("mouseleave", () => clearGhosts());
+    one.addEventListener("click", () => stageAction({
+      verb: scope.gone ? "restore" : "revert", ref: seg.checkpoint, targetId: id,
+      label: seg.intent, kind: "chapter",
+    }));
+    bar.appendChild(one);
+
+    if (!scope.gone && scope.laterCount) {
+      const back = el("button", "action", "⇤ Revert to here");
+      back.title = `Revert the feature to "${seg.intent}" — removes the ${scope.laterCount} `
+        + `chapter(s) after it; this one stays`;
+      back.addEventListener("mouseenter", () => onHoverIntent(() => {
+        paintBackToCars(id, scope.laterRefs);
+        setPreviewContext(`revert to "${seg.intent}" — the ${scope.laterCount} chapter(s) after `
+          + `it come out · ${scope.laterOps} edit(s)`);
+      }));
+      back.addEventListener("mouseleave", () => clearGhosts());
+      back.addEventListener("click", () => stageAction({
+        verb: "revert", kind: "backto", targetId: id, ref: seg.checkpoint, label: seg.intent,
+        refs: scope.laterRefs.slice(), opCount: scope.laterOps,
+        blastCount: 0, blastDone: false, res: { ok: true },
+      }));
+      bar.appendChild(back);
+    }
+    wrap.appendChild(bar);
+
+    // The scope switch, stated as one: not six duplicate buttons that differ only in blast radius.
+    const featureRow = el("div", "action-bar feature-scope");
+    const whole = el("button", "action subtle", "Whole feature…");
+    whole.title = "Switch to feature scope — rename, merge, split, move, revert every chapter";
+    whole.addEventListener("click", () => {
+      state.selectedCheckpoint = null;
+      saveState();
+      render();
+    });
+    featureRow.appendChild(whole);
+    wrap.appendChild(featureRow);
+    return wrap;
+  }
+
   function renderActionBar(id) {
+    // A selected checkpoint narrows the bar to that chapter (see chapterScope) -- the fix for
+    // "clicked a checkpoint, pressed Revert, lost the whole feature".
+    const scope = state.selectedCheckpoint
+      && chapterScope(checkpointsByFeature[id] || [], state.selectedCheckpoint);
+    if (scope) return renderChapterActionBar(id, scope);
+
     const bar = document.createElement("div");
     bar.className = "action-bar";
 
-    const btn = (label, verb) => {
+    const btn = (label, verb, title) => {
       const b = document.createElement("button");
       b.textContent = label;
       b.className = "action";
+      if (title) b.title = title;
       b.addEventListener("mouseenter", () => onHoverIntent(() => previewAction(verb, id)));
       b.addEventListener("mouseleave", () => clearGhosts());
       b.addEventListener("click", () => triggerAction(verb, id));
       return b;
     };
+    const segs = checkpointsByFeature[id] || [];
+    const chapters = segs.length;
+    const retired = retiredWork(segs);
     bar.appendChild(btn("Rename", "rename"));
     bar.appendChild(btn("Merge into…", "merge"));
     bar.appendChild(btn("Split", "split"));
     bar.appendChild(btn("Move ops…", "move"));
-    bar.appendChild(btn("Revert", "revert"));
-    bar.appendChild(btn("Restore", "restore"));
+    // The whole-feature blast radius, said out loud -- and pointing at the narrower tool, so the
+    // person who meant one chapter learns the distinction BEFORE the click, not from the wreckage.
+    bar.appendChild(btn("Revert", "revert", chapters > 1
+      ? `Removes the whole feature — all ${chapters} chapters. To act on one, click a checkpoint below.`
+      : "Removes this feature's edits."));
+    // Restore only exists when something is actually retired. Offering it otherwise was a button
+    // whose only possible outcome was a refusal -- and the refusal was the hex wall.
+    if (retired.any) {
+      const label = `Restore ${retired.edits} edit(s)`;
+      const r = btn(label, "restore",
+        `Brings back what was reverted here — ${retired.chapters} retired chapter(s)`
+        + (retired.partial ? ` and part of ${retired.partial} more` : "")
+        + ". To bring back one chapter, click it below.");
+      bar.appendChild(r);
+    } else {
+      const inert = document.createElement("button");
+      inert.className = "action";
+      inert.textContent = "Restore";
+      inert.disabled = true;
+      inert.title = "Nothing is retired in this feature — every chapter is already live.";
+      bar.appendChild(inert);
+    }
     return bar;
   }
 
@@ -3188,6 +3904,8 @@ function episodeRailLayout(epView) {
       const say = armPreviewText(verb, byId(id), opIdsFor(id).length);
       paintClosure(say.role === "target" ? { target: id, blast: [], foundation: [] }
                                         : { target: null, blast: [id], foundation: [] });
+      // Merge/move relocate this lane's chapters; rename moves nothing, so nothing nudges.
+      if (verb !== "rename") paintLaneRelocating(id);
       setPreviewContext(say.message);
       return;
     }
@@ -3197,6 +3915,28 @@ function episodeRailLayout(epView) {
     // go through the generic `previewVerb` round-trip the other verbs share.
     if (verb === "split") previewSplit(id);
   }
+
+  // ---- humanize (test slice boundary)
+  // Refusals arrive as raw CLI/kernel strings, and one of them is a dumped op-id set: the kernel's
+  // invalid-ideal ValueError used to print every id in the ideal, which reached the reader as a
+  // full-pane wall of hex with the one useful sentence buried at the top. The producing message is
+  // bounded at the source now, but this surface renders whatever any deployed CLI hands it, so the
+  // guarantee has to hold here too: collapse id runs to a count, cap the length, keep the lead.
+  const HEXISH = /\b[0-9a-f]{12,}\b/g;
+
+  function humanizeRefusal(message) {
+    let text = String(message || "").trim();
+    if (!text) return "sgt refused this — no reason given.";
+    // A bracketed list of long hex ids says only "there were N of them"; say that instead.
+    text = text.replace(/\[[^\]]*\]/g, (list) => {
+      const ids = list.match(HEXISH);
+      return ids && ids.length ? `${ids.length} op(s)` : list;
+    });
+    text = text.replace(HEXISH, (id) => id.slice(0, 8) + "…"); // stray ids: short-form, still traceable
+    text = text.replace(/\s+/g, " ");
+    return text.length > 220 ? text.slice(0, 219) + "…" : text;
+  }
+  // ---- end-humanize
 
   // ---- split-preview
   // What a split preview says. Split exists for one situation: a lane is carrying two pieces of work
@@ -3231,11 +3971,13 @@ function episodeRailLayout(epView) {
   // ---- end-split-preview
 
   function previewSplit(id) {
+    beginPreviewPending(id, "previewing split…");
     const seq = ++previewSeq;
     vscode.postMessage({ type: "previewSplit", featureId: id, seq });
     pendingPreview = {
       seq,
       onResult: (res) => {
+        clearPreviewPending();
         const say = splitPreviewText(res);
         if (say.kind === "refused") {
           showRefusal(say.message);
@@ -3247,8 +3989,125 @@ function episodeRailLayout(epView) {
         // participant, so the target role is the whole truth about which rows change.
         paintClosure({ target: id, blast: [], foundation: [] });
         setPreviewContext(say.message);
+        paintSplitPreview(id, res); // the moving chapters + the ghost of the lane the graph gains
       },
     };
+  }
+
+  // The painter half of the chunk-grain grammar. Additive (does not clear first) so a chained
+  // preview -- revert-to-here accumulating its cross-feature blast one chapter at a time -- can
+  // layer impacts as they land. The dash is drawn in the car's own identity hue: SVG presentation
+  // attributes can't resolve CSS custom properties and the hue is per-lane, the same reason the
+  // hollow reverted car sets its stroke inline at render.
+  function paintCarPreview(impacts, cls) {
+    const byCp = new Map((impacts || []).map((im) => [im.checkpoint, im]));
+    if (!byCp.size) return;
+    rail.querySelectorAll(".gcar-wrap").forEach((wrap) => {
+      const im = byCp.get(wrap.getAttribute("data-checkpoint"));
+      if (!im) return;
+      wrap.classList.add(cls || (im.dir === "in" ? "gcar-preview-in" : "gcar-preview-out"));
+      if (im.coverage === "partial") wrap.classList.add("gcar-preview-partial");
+      const rect = wrap.querySelector(".gcar");
+      if (rect) rect.style.stroke = rect.getAttribute("fill");
+    });
+  }
+
+  function clearCarPreview() {
+    rail.querySelectorAll(".gcar-preview-in, .gcar-preview-out, .gcar-splitting").forEach((wrap) => {
+      wrap.classList.remove("gcar-preview-in", "gcar-preview-out", "gcar-preview-partial", "gcar-splitting");
+      const rect = wrap.querySelector(".gcar");
+      // A hollow (reverted) car's inline identity stroke is part of its resting look -- keep it.
+      if (rect && !rect.classList.contains("gcar-reverted")) rect.style.stroke = "";
+    });
+    rail.querySelectorAll(".split-ghost, .migrate-ghost").forEach((el) => el.remove());
+  }
+
+  // Where a row's car strip sits, read off the DOM rather than recomputed: the row's own hit
+  // rect is drawn at absolute coordinates by renderLane, so this stays correct without depending
+  // on `graphView.geom` (which only exists once the time axis has drawn).
+  function laneBarY(row) {
+    const hit = row.querySelector(".glane-hit");
+    if (hit) return Number(hit.getAttribute("y")) + GANTT.rowH / 2 - GANTT.barH / 2;
+    const car = row.querySelector(".gcar");
+    return car ? Number(car.getAttribute("y")) : null;
+  }
+
+  // ─── Destination ghosts: the graph as it WILL BE ────────────────────────────────────────────
+  // Merge and move RELOCATE recorded work, and a preview that only drains the source answers half
+  // the question -- the reader is choosing a destination, and the destination showed nothing. Each
+  // chunk that would re-home is drawn a second time, dashed, in the receiving lane at the same
+  // point in time, in the SOURCE's identity hue: whose work is arriving, and where it lands. The
+  // same in-situ move a plan ghost makes, run over recorded history instead of predicted work.
+  function paintMigration(sourceId, targetId) {
+    const src = findRow(sourceId);
+    const dst = findRow(targetId);
+    if (!src || !dst || typeof dst.appendChild !== "function") return;
+    const barY = laneBarY(dst);
+    if (barY == null) return;
+    const cars = [...src.querySelectorAll(".gcar-wrap .gcar")];
+    for (const car of cars) {
+      const ghost = mk("rect", {
+        x: car.getAttribute("x"), y: barY,
+        width: car.getAttribute("width"), height: GANTT.barH, rx: 3,
+        class: "migrate-ghost",
+      });
+      // Identity is the source's -- the point of the ghost is that THIS work goes THERE.
+      ghost.style.stroke = car.getAttribute("fill");
+      ghost.style.fill = car.getAttribute("fill");
+      dst.appendChild(ghost);
+    }
+    paintLaneRelocating(sourceId); // ...and the same chunks read as leaving where they are now
+  }
+
+  // Split's destination is a lane that does not exist yet, so it is drawn in the row's own slack:
+  // one ghost segment per moving chapter, on a dashed baseline directly under the cars they leave.
+  // Per-car, not one merged bar -- the question a split answers is WHICH chapters go, and a single
+  // span erases exactly that. Falls back to the sentence alone on a CLI without `moving_op_ids`.
+  function paintSplitPreview(featureId, res) {
+    const moving = (res && res.moving_op_ids) || [];
+    if (!moving.length) return;
+    const segs = segmentsOf(compose).filter((sg) => sg.feature_id === featureId);
+    paintCarPreview(classifyCarImpact(moving, [], segs), "gcar-splitting");
+    const row = findRow(featureId);
+    if (!row || typeof row.appendChild !== "function") return; // the rail view has no car geometry
+    const rects = [...row.querySelectorAll(".gcar-wrap.gcar-splitting .gcar")];
+    if (!rects.length) return;
+    const barY = laneBarY(row);
+    if (barY == null) return;
+    const stripY = barY + GANTT.barH + 2;
+    const newCount = (res.groups && res.groups[1] && res.groups[1].length) || 0;
+    const tip = `the new lane: ${newCount} symbol(s) split off here`
+      + (res.new_id ? ` as ${String(res.new_id).slice(0, 10)}…` : "");
+    let x0 = Infinity, x1 = -Infinity, color = "#888";
+    for (const r of rects) {
+      const x = Number(r.getAttribute("x"));
+      const w = Number(r.getAttribute("width"));
+      x0 = Math.min(x0, x);
+      x1 = Math.max(x1, x + w);
+      color = r.getAttribute("fill") || color;
+      const seg = mk("rect", {
+        x, y: stripY, width: w, height: 4, rx: 2, class: "split-ghost split-ghost-car",
+      }, [mk("title", { text: tip })]);
+      seg.style.fill = color;
+      row.appendChild(seg);
+    }
+    // The baseline ties the segments into one lane rather than leaving three unrelated stubs.
+    const base = mk("line", {
+      x1: x0, x2: x1, y1: stripY + 2, y2: stripY + 2, class: "split-ghost split-ghost-base",
+    }, [mk("title", { text: tip })]);
+    base.style.stroke = color;
+    row.appendChild(base);
+  }
+
+  // Merge/move/split RELOCATE recorded chunks rather than deleting them, so their preview keeps
+  // each car's fill and nudges it out in dashed outline -- visually distinct from revert's
+  // draining and restore's filling.
+  function paintLaneRelocating(featureId) {
+    paintCarPreview(
+      segmentsOf(compose)
+        .filter((sg) => sg.feature_id === featureId)
+        .map((sg) => ({ checkpoint: sg.checkpoint, featureId, dir: "out", coverage: "full" })),
+      "gcar-splitting");
   }
 
   function paintBlast(featureIds) {
@@ -3342,9 +4201,14 @@ function episodeRailLayout(epView) {
   // The one preview-scoped sentence, wherever it comes from. Two writers and one clearer of the same
   // element, and the clearer cannot live in `exitPreviewMode` alone -- that early-returns unless a
   // Focus & Morph overlay is live, so a pill set by the lighter ghost path would stay on screen.
-  function setPreviewContext(text) {
+  // `kind` marks who owns the pill, so a clear can be precise: `true`/"pending" is work in
+  // flight, "identity" is the neutral "this is what you are pointing at" a chapter hover writes.
+  // Without that, moving the cursor off a chapter would wipe an unrelated "applying merge…".
+  function setPreviewContext(text, kind) {
     previewContext.hidden = text === null;
     previewContext.textContent = text || "";
+    previewContext.classList.toggle("pending", kind === true || kind === "pending");
+    previewContext.classList.toggle("identity", kind === "identity");
   }
 
   // A blocked-restore overlay: sgt refuses to restore a symbol that has a competing live version
@@ -3366,7 +4230,7 @@ function episodeRailLayout(epView) {
     previewRefusal.innerHTML = "";
     const head = document.createElement("div");
     head.className = "refusal-head";
-    head.textContent = message;
+    head.textContent = humanizeRefusal(message);
     previewRefusal.appendChild(head);
     for (const text of remedies) {
       const line = document.createElement("div");
@@ -3392,6 +4256,17 @@ function episodeRailLayout(epView) {
     let found = null;
     rail.querySelectorAll(".glane, .rail-row").forEach((el) => {
       if (el.getAttribute("data-id") === id) found = el;
+    });
+    return found;
+  }
+
+  /** The car wrap for a `<feature>@<n>` checkpoint. Attribute equality, not a template-literal
+   * selector, for the same reason findRow uses it: a ref with a quote in it must not break the
+   * query. */
+  function findCar(checkpoint) {
+    let found = null;
+    rail.querySelectorAll(".gcar-wrap").forEach((el) => {
+      if (el.getAttribute("data-checkpoint") === checkpoint) found = el;
     });
     return found;
   }
@@ -3458,8 +4333,18 @@ function episodeRailLayout(epView) {
       renderArmedBanner();
       return;
     }
-    if (verb === "split" || verb === "revert" || verb === "restore") {
-      vscode.postMessage({ type: "applyVerb", verb, args: [id] });
+    if (verb === "split") {
+      // Staged like revert/restore: the cut is held on the graph (moving cars + the ghost of the
+      // new lane) and the confirm bar takes the decision.
+      const node = byId(id);
+      stageAction({ verb: "split", ref: id, targetId: id, label: node && node.label, kind: "split" });
+      return;
+    }
+    if (verb === "revert" || verb === "restore") {
+      // Staged in the graph: the consequence preview is held on the field and the confirm bar
+      // takes the decision -- no modal between the reader and the picture.
+      const node = byId(id);
+      stageAction({ verb, ref: id, targetId: id, label: node && node.label, kind: "feature" });
     }
   }
 
@@ -3470,6 +4355,8 @@ function episodeRailLayout(epView) {
     renderArmedBanner();
     clearGhosts();
     if (targetId === feature) return;
+    // The apply round-trips a subprocess + a full graph rebuild; say so where the eye already is.
+    setPreviewContext(`applying ${verb}…`, true);
     if (verb === "merge") {
       vscode.postMessage({ type: "applyVerb", verb: "merge", args: [targetId, feature] });
     } else if (verb === "move") {
@@ -3570,6 +4457,10 @@ function episodeRailLayout(epView) {
       foldResultCache = {};
       playheadResultCache = {};
       playheadCommitIndex = null; // a new composition means a different commit-index axis
+      // A held (not yet applying) staged confirm is stale the moment the composition changes under
+      // it -- its consequence was computed against a world that no longer exists. Drop it. A BUSY
+      // one stays: this push IS its own mutation landing, and the done phase closes the bar.
+      if (stagedAction && !applyBusy) cancelStaged();
       applyClusterDefaultOnce();
       // Prune a multi-select to lanes that still exist (a revert-all may have removed some), so a
       // stale id can't linger in the selection card after the composition changes under it.
@@ -3580,7 +4471,22 @@ function episodeRailLayout(epView) {
         if (state.multi.length < 2) selectionResult = null;
       }
       render();
+      if (!stagedAction) setPreviewContext(null); // an "applying…" note is answered by this push
       if (pendingReveal) revealFeature(pendingReveal); // deliver a reveal that arrived before its lane existed
+      // The receipt: the lane a staged action just rewrote settles with a one-shot flash, so the
+      // change is visible IN the graph -- the same place the preview promised it.
+      if (pendingSettle.length) {
+        for (const fid of pendingSettle) {
+          const row = findRow(fid);
+          if (row) {
+            row.classList.add("settle-flash");
+            setTimeout(() => row.classList.remove("settle-flash"), 1500);
+          }
+        }
+        pendingSettle = [];
+      }
+    } else if (msg.type === "applyProgress") {
+      onApplyProgress(msg);
     } else if (msg.type === "selectionResult" && pendingSelection && pendingSelection.seq === msg.seq) {
       selectionResult = { refs: pendingSelection.refs, view: msg.result };
       pendingSelection = null;
@@ -3636,6 +4542,10 @@ function episodeRailLayout(epView) {
 
   window.addEventListener("keydown", (ev) => {
     if (ev.key !== "Escape") return;
+    if (stagedAction && !applyBusy) {
+      cancelStaged();
+      return;
+    }
     if (armedVerb) {
       armedVerb = null;
       rail.classList.remove("arming");

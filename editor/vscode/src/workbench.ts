@@ -4,9 +4,10 @@
 // editor tab. Sourced from one `compose_view` call (map+history+status+forks+drift+sessions+
 // proposals+oracle) instead of the old feature-map's separate map()+history() fetches. The
 // webview's message protocol (`ready`/`previewVerb`/`applyVerb`/`renamePrompt`, plus
-// `pickComposition`/`requestFold` for this phase) drives media/workbench.js; every mutation still
-// goes through the real, unmodified `sgt merge`/`split`/`rename`/`move`/`revert` commands -- a
-// preview never writes anything, and a fold never materializes the working tree.
+// `pickComposition`/`requestFold`, and the staged-confirm trio `applyStaged`/`revertSequence`/
+// `openStagedDiff` whose progress flows back as `applyProgress`) drives media/workbench.js; every
+// mutation still goes through the real, unmodified `sgt merge`/`split`/`rename`/`move`/`revert`
+// commands -- a preview never writes anything, and a fold never materializes the working tree.
 //
 // Phase-3 scope: the static 3-pane skeleton, a QuickPick-driven composition selector (HEAD +
 // sessions, by branch ref; proposals are view-only here), and a single-shot `foldAt`-backed code
@@ -27,17 +28,29 @@
 
 import * as vscode from "vscode";
 import { colorForNode } from "./color";
-import { FoldFrontier } from "./sgt";
+import type { IdealEditPhase } from "./commands"; // type-only: keeps the commands↔workbench import cycle out of the emitted JS
+import { PreviewProvider } from "./preview";
+import { FoldFrontier, StaleRequestError } from "./sgt";
 import { Store } from "./store";
-import { SelectionView } from "./types";
 
 export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Disposable {
   private view: vscode.WebviewView | undefined;
   private readonly disposables: vscode.Disposable[] = [];
   private readonly previewCache = new Map<string, unknown>();
   private pendingReveal: string | null = null;
+  // The newest seq per interactive read class. Every `sgt` call is serialized behind the store
+  // flock (see Sgt.run), so a cursor sweep used to queue one subprocess per row crossed and run
+  // them all; each read now checks this when its queue turn arrives and a superseded one is
+  // dropped before it spawns. Sequence numbers already existed for result-ordering -- this reuses
+  // them for cancellation.
+  private readonly latest = { preview: 0, fold: 0, playhead: 0, find: 0 };
 
-  constructor(private readonly context: vscode.ExtensionContext, private store: Store) {
+  constructor(
+    private readonly context: vscode.ExtensionContext,
+    private store: Store,
+    private readonly previewTabs: PreviewProvider,
+    private readonly root: string
+  ) {
     this.disposables.push(
       store.onDidChange(() => void this.pushState()),
       // Identity colors are theme-aware (color.ts's OKLCH lightness shifts light<->dark), so a
@@ -149,6 +162,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     <div id="previewContext" class="preview-context-pill" hidden></div>
     <div id="previewRefusal" class="preview-refusal-pill" hidden></div>
     <div id="armedBanner" class="armed-banner" hidden></div>
+    <div id="confirmBar" class="confirm-bar" hidden></div>
     <div id="inspector"></div>
   </div>
   <div id="presence" title="where you are: composition · view · selection closure · uncommitted work"></div>
@@ -234,17 +248,20 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
       case "selectClosure":
         await this.selectClosure(msg.refs, msg.seq);
         return;
-      case "revertSelection":
-        await this.revertSelection(msg.refs);
-        return;
-      case "revertCheckpoint":
-        await this.revertCheckpoint(msg.ref);
-        return;
-      case "restoreCheckpoint":
-        await this.restoreCheckpoint(msg.ref);
-        return;
       case "applyVerb":
         await this.apply(msg.verb, msg.args);
+        return;
+      case "applyStaged":
+        await this.applyStaged(msg.verb, msg.ref);
+        return;
+      case "revertSequence":
+        await this.revertSequence(msg.refs, msg.label, msg.noun);
+        return;
+      case "openStagedDiff":
+        await this.openStagedDiff(msg.verb, msg.ref);
+        return;
+      case "openFoldFiles":
+        await this.openFoldFiles(msg.commitIndex);
         return;
       case "renamePrompt":
         await this.renamePrompt(msg.feature);
@@ -294,12 +311,26 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
   }
 
   private async preview(verb: string, args: string[], seq: number): Promise<void> {
-    const key = `${verb}:${args.join("")}`;
+    this.latest.preview = seq;
+    // Joined on U+001F (unit separator), not "": a bare join makes ["ab","c"] and ["a","bc"] the same key.
+    const key = `${verb}:${args.join("")}`;
     let result = this.previewCache.get(key);
     if (result === undefined) {
       try {
-        result = await this.store.sgt.previewVerb(verb, args);
+        // Revert/restore of a single selector previews through the emit dry-run (`sgt <verb>
+        // <sel> --emit`), NOT `advanced preview`. Two reasons. Emit's selection ladder resolves
+        // everything the real verb resolves -- feature, label, symbol, `<f>@<n>` checkpoint --
+        // on every deployed CLI (advanced preview's checkpoint branch is newer than some pinned
+        // study builds, which answer "feature ... not found" and left the graph paintless). And
+        // emit's projection carries the full consequence -- `files`, the `focus` subgraph with
+        // per-feature N→M, `so_what` -- where advanced preview's revert branch has none of them,
+        // so the confirm bar would honestly-but-wrongly say "no files change". Same projection
+        // the apply flow itself runs from, so preview and apply can never disagree.
+        result = (verb === "revert" || verb === "restore") && args.length === 1
+          ? await this.store.sgt.emit(args[0], verb, () => this.latest.preview === seq)
+          : await this.store.sgt.previewVerb(verb, args, () => this.latest.preview === seq);
       } catch (e: any) {
+        if (e instanceof StaleRequestError) return; // superseded before it spawned; the newer one answers
         result = { ok: false, message: e.message, affected_features: [] };
       }
       this.previewCache.set(key, result);
@@ -314,10 +345,12 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
   // recompute and, unlike merge/move/revert, has no meaningful memoization key beyond the
   // feature id itself changing, which already busts `previewCache`'s per-composition clear.
   private async previewSplit(featureId: string, seq: number): Promise<void> {
+    this.latest.preview = seq; // shares the preview lane: a newer hover of ANY verb supersedes it
     let result;
     try {
-      result = await this.store.sgt.splitPreview(featureId);
+      result = await this.store.sgt.splitPreview(featureId, () => this.latest.preview === seq);
     } catch (e: any) {
+      if (e instanceof StaleRequestError) return;
       result = { ok: false, message: e.message };
     }
     void this.view?.webview.postMessage({ type: "previewResult", seq, result });
@@ -334,108 +367,6 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
       result = { ok: false, message: e.message };
     }
     void this.view?.webview.postMessage({ type: "selectionResult", seq, result });
-  }
-
-  // Revert a multi-select in turn (Stage C). Mirrors the TUI, whose multi-select applies per
-  // feature rather than as one atomic set-revert: each `sgt revert <feature>` re-resolves against
-  // current state (mine-on-contact), so reverting them sequentially is correct, and we STOP on the
-  // first refusal (e.g. a fork) rather than pressing on into an inconsistent partial. One confirm
-  // up front covers the batch.
-  //
-  // That confirm used to be a bare count of the rows the user had ticked, which is the one number
-  // they already knew. Because there is no set-revert to `--emit`, the honest feedforward for the
-  // batch is the union closure `sgt feature select` reports -- how many edits actually go once
-  // dependencies are pulled in, which files get rewritten, and whose other work is dragged along --
-  // computed before the first mutation, when it is still all true.
-  private async revertSelection(refs: string[]): Promise<void> {
-    if (!refs?.length) {
-      return;
-    }
-    let selection: SelectionView;
-    try {
-      selection = await this.store.sgt.select(refs);
-    } catch (e: any) {
-      vscode.window.showErrorMessage(e.message);
-      return;
-    }
-    if (!selection.ok) {
-      vscode.window.showWarningMessage(selection.message || `Cannot revert ${refs.length} selected feature(s).`);
-      return;
-    }
-    const ok = await vscode.window.showWarningMessage(
-      `Revert ${refs.length} selected feature(s)?`,
-      { modal: true, detail: this.selectionConsequence(refs, selection) },
-      "Revert all"
-    );
-    if (ok !== "Revert all") {
-      return;
-    }
-    let done = 0;
-    for (const ref of refs) {
-      try {
-        await this.store.sgt.mutate(["revert", ref]);
-        done++;
-      } catch (e: any) {
-        this.store.invalidate();
-        vscode.window.showWarningMessage(`Reverted ${done}/${refs.length}; stopped at ${ref}: ${e.message}`);
-        return;
-      }
-    }
-    this.store.invalidate();
-    vscode.window.showInformationMessage(`Reverted ${done} feature(s).`);
-  }
-
-  /**
-   * The consequence block the multi-select revert confirm carries as its `detail`.
-   *
-   * `pulled` is the part a count can never show: a feature the user did not tick whose ops come
-   * out anyway because the ticked ones are built on them. It is also the answer to "which other
-   * features are unaffected" -- everything not named here.
-   */
-  private selectionConsequence(refs: string[], sel: SelectionView): string {
-    const cap = (xs: string[], n = 6) =>
-      xs.slice(0, n).join(", ") + (xs.length > n ? `, +${xs.length - n} more` : "");
-    const pulled = sel.pulled.filter((p) => p.feature_id && !refs.includes(p.feature_id));
-    const pulledOps = pulled.reduce((n, p) => n + p.op_count, 0);
-    return [
-      `${sel.direct_op_count} edit(s) selected; ${sel.closure_op_count} come out once what depends on them is included.`,
-      sel.files.length ? `Rewrites ${sel.files.length} file(s): ${cap(sel.files)}` : "No file changes.",
-      pulled.length
-        ? `Drags in ${pulledOps} edit(s) from ${pulled.length} other feature(s) you did not select.`
-        : "No other feature's work is dragged in.",
-      "Nothing is applied yet. Each feature is then reverted and committed in turn, stopping if one refuses.",
-    ].join("\n");
-  }
-
-  // Rewind a single feature-scoped checkpoint (an intent segment). `ref` is `<feature>@<n>`, which
-  // `sgt revert` resolves to that segment's deterministic op-set -- the same exact ideal-edit path
-  // as any other revert.
-  //
-  // This used to confirm and apply here, with no preview at all: the one destructive verb in the
-  // product where the GUI was weaker than the CLI, which never applies a revert without printing
-  // the before/after first. A pilot participant rewound a checkpoint and could not say what they
-  // had rewound to. `sgt.revert` already emits the dry run, opens the resulting diff, and spells
-  // the consequences in its confirm -- and its selection ladder resolves a checkpoint ref exactly
-  // as it resolves a feature id -- so route to it instead, the same way `apply()` does. The
-  // webview's `label` is dropped on purpose: the emit hands back the checkpoint's own display
-  // label (`Waitlist Priority@2: Promote On Cancel`), which cannot drift from what was reverted.
-  private async revertCheckpoint(ref: string): Promise<void> {
-    if (!ref) {
-      return;
-    }
-    await vscode.commands.executeCommand("sgt.revert", ref);
-  }
-
-  // The inverse, reached from the same row: once a chapter is reverted, the only move it still
-  // affords is coming back, and it is addressable by the same `<feature>@<n>` handle (see
-  // `plan_restore_op_set`). Routed to `sgt.restore` for the same reason the revert is routed to
-  // `sgt.revert` -- that command previews before it applies, so the GUI is never weaker than the
-  // CLI on a verb that moves files.
-  private async restoreCheckpoint(ref: string): Promise<void> {
-    if (!ref) {
-      return;
-    }
-    await vscode.commands.executeCommand("sgt.restore", ref);
   }
 
   private async renamePrompt(feature: string): Promise<void> {
@@ -557,6 +488,125 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
       await vscode.commands.executeCommand(verb === "save" ? "sgt.save" : "sgt.undo");
     } finally {
       void this.view?.webview.postMessage({ type: "loopBusy", verb: null });
+    }
+  }
+
+  // A staged apply from the webview's in-graph confirm bar: the consequence was already painted
+  // on the graph and the user clicked Apply there, so this drives the same `sgt.revert`/
+  // `sgt.restore` flow with `confirmed` (skip the modal that would ask the same question twice),
+  // `openDiff: false` (the bar offers the diff on demand instead of two tabs stealing focus), and
+  // a phase callback the confirm bar renders as live progress -- checking → rewriting →
+  // rebuilding, not a dead gap between click and toast.
+  private async applyStaged(verb: string, ref: string): Promise<void> {
+    if (!ref) return;
+    if (verb === "split") {
+      // Split is metadata-only (no working-tree rewrite), so its staged apply is the direct
+      // `--apply` call with the same phase reporting -- there is no emit/frontier flow to reuse.
+      this.postPhase(verb, ref, "applying");
+      try {
+        const r = await this.store.sgt.splitApply(ref);
+        if (!r.ok) throw new Error(r.message || "split failed");
+        this.postPhase(verb, ref, "refreshing");
+        this.store.invalidate();
+        vscode.window.showInformationMessage(
+          `Split ${r.feature ?? ref} into a new feature ${r.new_feature ?? ""}.`.trim());
+        this.postPhase(verb, ref, "done");
+      } catch (e: any) {
+        this.postPhase(verb, ref, "failed", e.message);
+        vscode.window.showErrorMessage(e.message);
+      }
+      return;
+    }
+    if (verb !== "revert" && verb !== "restore") return;
+    await vscode.commands.executeCommand(verb === "revert" ? "sgt.revert" : "sgt.restore", ref, {
+      confirmed: true,
+      openDiff: false,
+      onPhase: (phase: IdealEditPhase, detail?: string) => this.postPhase(verb, ref, phase, detail),
+    });
+  }
+
+  private postPhase(verb: string, ref: string, phase: IdealEditPhase, detail?: string): void {
+    void this.view?.webview.postMessage({ type: "applyProgress", verb, ref, phase, detail });
+  }
+
+  // "Back to here" (staged in the webview): rewind a feature to one of its checkpoints by
+  // reverting every LATER chapter, newest-first (`refs` arrive in apply order). Sequential like
+  // `revertSelection` -- each `sgt revert` re-resolves against current state -- and STOPS on the
+  // first refusal rather than pressing on into an inconsistent partial. The staged confirm bar
+  // already carried the consequence; the per-ref phase reports are the intermediate feedback a
+  // multi-commit rewind owes the person watching it.
+  private async revertSequence(refs: string[], label?: string, noun = "chapter"): Promise<void> {
+    if (!refs?.length) return;
+    const post = (phase: IdealEditPhase, detail?: string) =>
+      this.postPhase("revert", refs[0], phase, detail);
+    let done = 0;
+    post("applying", refs.length > 1 ? `${noun} 1 of ${refs.length}…` : undefined);
+    for (const ref of refs) {
+      try {
+        await this.store.sgt.mutate(["revert", ref]);
+        done++;
+        if (done < refs.length) post("applying", `${noun} ${done + 1} of ${refs.length}…`);
+      } catch (e: any) {
+        this.store.invalidate();
+        const msg = `Reverted ${done}/${refs.length} ${noun}(s); stopped at ${ref}: ${e.message}`;
+        post("failed", msg);
+        vscode.window.showWarningMessage(msg);
+        return;
+      }
+    }
+    post("refreshing");
+    this.store.invalidate();
+    const doneMsg = label
+      ? `reverted to "${label}" — ${done} later ${noun}(s) removed`
+      : `reverted ${done} ${noun}(s)`;
+    post("done", doneMsg);
+    vscode.window.showInformationMessage(`✓ ${doneMsg}`);
+  }
+
+  // The staged confirm bar's "Open diff": the PREVIEW tabs on demand rather than automatically on
+  // every apply. Same emit projection the apply itself runs from, so the tabs can never disagree
+  // with the consequence the bar states.
+  private async openStagedDiff(verb: string, ref: string): Promise<void> {
+    try {
+      const view = await this.store.sgt.emit(ref, verb === "restore" ? "restore" : "revert");
+      if (!view.ok) {
+        vscode.window.showWarningMessage(view.message || `Cannot preview ${verb} of ${ref}.`);
+        return;
+      }
+      await this.previewTabs.openDiff(view);
+    } catch (e: any) {
+      vscode.window.showErrorMessage(e.message);
+    }
+  }
+
+  // The playhead's "visit this version": pick files from the scrubbed frontier's fold and open
+  // each as a read-only now ⇄ then diff in a real editor -- the codebase at that point, not a
+  // snippet in the inspector. The fold is served from store.foldAt's LRU (the scrub already
+  // fetched it), so the picker opens instantly. Never materializes the working tree.
+  private async openFoldFiles(commitIndex: number): Promise<void> {
+    let fold;
+    try {
+      fold = await this.store.foldAt({ commitIndex });
+    } catch (e: any) {
+      vscode.window.showErrorMessage(e.message);
+      return;
+    }
+    const files = fold.files || {};
+    const paths = Object.keys(files).sort();
+    if (!paths.length) {
+      vscode.window.showInformationMessage(`No files at commit ${commitIndex}.`);
+      return;
+    }
+    const picks = await vscode.window.showQuickPick(
+      paths.map((p) => ({ label: p })),
+      {
+        canPickMany: true,
+        placeHolder: `Files as of c${commitIndex} — opens read-only; your working tree is untouched`,
+      }
+    );
+    if (!picks?.length) return;
+    for (const pick of picks) {
+      await this.previewTabs.openFrontierFile(this.root, pick.label, files[pick.label], `c${commitIndex}`);
     }
   }
 
@@ -723,6 +773,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
   // dirs (e.g. a leaf labeled by its test dir but owning `livehub/conflict.py`), leaving an empty
   // panel; so union the member file-set (`MapNode.members`, `file::qualname`) with the dir prefix.
   private async requestFold(featureId: string, ref: string, seq: number): Promise<void> {
+    this.latest.fold = seq;
     let map;
     try {
       map = await this.store.map();
@@ -733,7 +784,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     const node = map.nodes.find((n) => n.id === featureId);
     const frontier: FoldFrontier = { ref: ref || "HEAD" };
     try {
-      const fold = await this.store.foldAt(frontier);
+      const fold = await this.store.foldAt(frontier, () => this.latest.fold === seq);
       const memberFiles = new Set((node?.members || []).map((m) => m.split("::")[0]));
       const files = node
         ? Object.fromEntries(Object.entries(fold.files || {}).filter(
@@ -749,6 +800,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
         error: fold.error,
       });
     } catch (e: any) {
+      if (e instanceof StaleRequestError) return; // a newer selection's fold answers instead
       void this.view?.webview.postMessage({ type: "foldResult", seq, featureId, error: e.message });
     }
   }
@@ -761,10 +813,12 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
    * the second one must not paint over the third.
    */
   private async find(query: string, seq: number): Promise<void> {
+    this.latest.find = seq;
     try {
-      const view = await this.store.sgt.find(String(query || ""));
+      const view = await this.store.sgt.find(String(query || ""), () => this.latest.find === seq);
       void this.view?.webview.postMessage({ type: "findResult", seq, ...view });
     } catch (e: any) {
+      if (e instanceof StaleRequestError) return; // retyped before this ran; the newer query answers
       void this.view?.webview.postMessage({ type: "findResult", seq, ok: false, hits: [], message: e.message });
     }
   }
@@ -775,8 +829,9 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
   // filtering): the playhead has no feature selection and folds the whole frontier, letting the
   // webview filter by the selected feature's `dir` client-side so dragging never re-requests.
   private async scrubPlayhead(commitIndex: number, seq: number): Promise<void> {
+    this.latest.playhead = seq;
     try {
-      const fold = await this.store.foldAt({ commitIndex });
+      const fold = await this.store.foldAt({ commitIndex }, () => this.latest.playhead === seq);
       void this.view?.webview.postMessage({
         type: "playheadResult",
         seq,
@@ -788,6 +843,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
         error: fold.error,
       });
     } catch (e: any) {
+      if (e instanceof StaleRequestError) return; // the scrub moved on; the newer frontier answers
       void this.view?.webview.postMessage({ type: "playheadResult", seq, commitIndex, error: e.message });
     }
   }

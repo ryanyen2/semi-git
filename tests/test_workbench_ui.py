@@ -431,3 +431,283 @@ def test_the_sentence_survives_a_payload_without_counts():
     render "undefined edits"."""
     say = _armed("merge", {"ok": True})
     assert "undefined" not in say and "Checkout" in say
+
+
+# ── The staged confirm's one sentence ────────────────────────────────────────────────────────────
+def _staged(staged):
+    """The staged summary composes two sibling pure blocks -- it humanizes a refusal string and
+    defers to the split preview's own sentence -- so the harness concatenates all three, the way
+    they sit together in the one IIFE at runtime."""
+    block = (_slice("// ---- humanize", "// ---- end-humanize")
+             + _slice("// ---- split-preview", "// ---- end-split-preview")
+             + _slice("// ---- staged-summary", "// ---- end-staged-summary"))
+    return _node(block, f"console.log(JSON.stringify(stagedSummaryText({json.dumps(staged)})));\n")
+
+
+def test_the_backend_headline_wins_when_it_exists():
+    """`so_what` is the one consequence vocabulary the CLI gate, the TUI pane and this bar share;
+    when the payload carries it, re-deriving a second sentence is how surfaces drift apart."""
+    say = _staged({"verb": "revert", "kind": "feature", "targetId": "f-a",
+                   "res": {"ok": True, "so_what": "Removes west_share_by_year. Clean revert."}})
+    assert say == "Removes west_share_by_year. Clean revert."
+
+
+def test_without_a_headline_the_sentence_carries_the_three_counts():
+    say = _staged({"verb": "revert", "kind": "feature", "targetId": "f-a",
+                   "res": {"ok": True, "removed": ["o1", "o2", "o3"],
+                           "files": {"a.py": {}, "b.py": {}},
+                           "affected": [{"feature_id": "f-a", "direction": "blast"},
+                                        {"feature_id": "f-b", "direction": "blast"}]}})
+    assert "3 edits come out" in say
+    assert "2 files rewritten" in say
+    assert "1 other feature affected" in say  # the target itself is never its own collateral
+
+
+def test_a_restore_counts_what_comes_back_not_what_leaves():
+    say = _staged({"verb": "restore", "kind": "chapter", "targetId": "f-a",
+                   "res": {"ok": True, "added": ["o1", "o2"], "removed": [], "files": {"a.py": {}}}})
+    assert "brings back 2 edits" in say
+
+
+def test_a_refusal_is_the_sentence_not_a_blank_bar():
+    say = _staged({"verb": "revert", "kind": "feature", "targetId": "f-a",
+                   "res": {"ok": False, "message": "open fork on west_share_by_year"}})
+    assert "open fork" in say
+
+
+def test_no_result_yet_reads_as_computing_never_as_safe():
+    assert "computing" in _staged({"verb": "revert", "kind": "feature", "targetId": "f-a"})
+
+
+def test_back_to_here_counts_chapters_and_keeps_checking_honest():
+    """The cross-feature blast accumulates one preview at a time; until the chain finishes the
+    sentence must say the count is still firming up, not present a partial number as the total."""
+    partial = _staged({"verb": "revert", "kind": "backto", "targetId": "f-a",
+                       "refs": ["f-a@2", "f-a@1"], "opCount": 7, "blastCount": 1,
+                       "blastDone": False, "res": {"ok": True}})
+    assert "removes 2 later chapters" in partial and "7 edits" in partial
+    assert "still checking" in partial and "≥1" in partial
+    done = _staged({"verb": "revert", "kind": "backto", "targetId": "f-a",
+                    "refs": ["f-a@2"], "opCount": 3, "blastCount": 0,
+                    "blastDone": True, "res": {"ok": True}})
+    assert "no other feature touched" in done and "this chapter stays" in done
+
+
+# ── Chapter scope: what the action bar is FOR once a checkpoint is selected ──────────────────────
+_SEGS = [
+    {"checkpoint": "f-a@0", "intent": "first cut", "op_count": 4, "present_op_count": 4, "op_ids": []},
+    {"checkpoint": "f-a@1", "intent": "drifting", "op_count": 3, "present_op_count": 3, "op_ids": []},
+    {"checkpoint": "f-a@2", "intent": "polish", "op_count": 2, "present_op_count": 0, "op_ids": []},
+    {"checkpoint": "f-a@3", "intent": "regroup", "op_count": 5, "present_op_count": 2, "op_ids": []},
+]
+
+
+def _scope(segs, ref):
+    return _node(_slice("// ---- chapter-scope", "// ---- end-chapter-scope"),
+                 f"console.log(JSON.stringify(chapterScope({json.dumps(segs)}, {json.dumps(ref)})));\n")
+
+
+def test_back_to_here_is_the_live_later_chapters_newest_first():
+    """"Revert to this checkpoint" means removing what came after, and each `sgt revert <f>@<n>`
+    peels the current tip -- so the apply order has to be newest-first, and an already-reverted
+    later chapter (present_op_count 0) must not be re-reverted on the way down."""
+    scope = _scope(_SEGS, "f-a@0")
+    assert scope["laterRefs"] == ["f-a@3", "f-a@1"]  # @2 is already out; newest first
+    assert scope["laterCount"] == 2
+    assert scope["laterOps"] == 3 + 2  # live edits only: @1 whole, @3's remaining 2
+
+
+def test_a_reverted_chapter_offers_restore_not_rewind():
+    assert _scope(_SEGS, "f-a@2")["gone"] is True
+    assert _scope(_SEGS, "f-a@1")["gone"] is False
+
+
+def test_the_last_chapter_has_no_later_work_to_remove():
+    assert _scope(_SEGS, "f-a@3")["laterCount"] == 0
+
+
+def test_an_unknown_checkpoint_scopes_to_nothing():
+    """A stale selection (the segment list changed under it) must fall back to the feature bar,
+    never to a chapter bar acting on a ref that no longer resolves."""
+    assert _scope(_SEGS, "f-b@9") is None
+
+
+# ── The instant rung of find ─────────────────────────────────────────────────────────────────────
+_NODES = [
+    {"id": "f-date", "kind": "feature", "label": "Date formatting", "op_count": 9,
+     "members": ["util/dates.py::format_date", "util/dates.py::parse_date"]},
+    {"id": "f-cart", "kind": "feature", "label": "Cart pricing", "op_count": 4,
+     "members": ["shop/cart.py::total"]},
+    {"id": "s-root", "kind": "subsystem", "label": "date suite", "members": []},
+]
+_SEGS_BY_FEATURE = {"f-cart": [{"checkpoint": "f-cart@0", "intent": "add date window filter"}]}
+
+
+def _find(query, cap=None):
+    args = f"{json.dumps(query)}, {json.dumps(_NODES)}, {json.dumps(_SEGS_BY_FEATURE)}"
+    if cap is not None:
+        args += f", {cap}"
+    return _node(_slice("// ---- local-find", "// ---- end-local-find"),
+                 f"console.log(JSON.stringify(localFindHits({args})));\n")
+
+
+def test_typing_matches_features_chapters_and_symbols_without_a_round_trip():
+    hits = _find("date")
+    kinds = {(h["kind"], h["label"]) for h in hits}
+    assert ("feature", "Date formatting") in kinds
+    assert ("chapter", "add date window filter") in kinds
+    assert ("symbol", "format_date") in kinds
+    # A subsystem is not a lane and not a target; it never appears as a hit.
+    assert not any(h["label"] == "date suite" for h in hits)
+
+
+def test_a_prefix_match_outranks_a_buried_substring():
+    hits = _find("date")
+    labels = [h["label"] for h in hits]
+    assert labels.index("Date formatting") < labels.index("format_date")
+
+
+def test_every_hit_lands_somewhere():
+    """A hit is a starting point: each carries the feature to reveal, and a chapter carries the
+    exact checkpoint so the click lands on its car, not just the lane."""
+    hits = _find("date")
+    assert all(h["feature"] for h in hits)
+    chapter = next(h for h in hits if h["kind"] == "chapter")
+    assert chapter["checkpoint"] == "f-cart@0"
+
+
+def test_an_empty_query_answers_nothing_and_the_cap_holds():
+    assert _find("") == []
+    assert len(_find("date", cap=2)) == 2
+
+
+def test_staged_messages_reach_a_host_case():
+    """Every message the staged confirm bar can post has a `case` in workbench.ts's switch -- the
+    same wiring guarantee the working-changes card's test holds, for the same silent-click reason."""
+    host = (pathlib.Path(__file__).resolve().parents[1] / "editor/vscode/src/workbench.ts")
+    text = host.read_text(encoding="utf-8")
+    for kind in ("applyStaged", "revertSequence", "openStagedDiff", "openFoldFiles"):
+        assert f'case "{kind}":' in text, f"the webview posts {kind!r}, which workbench.ts does not handle"
+
+
+# ── Chunk-grain feedforward: which cars change, toward which end state ───────────────────────────
+_IMPACT_SEGS = [
+    {"checkpoint": "f-a@0", "feature_id": "f-a", "op_ids": ["o1", "o2"]},
+    {"checkpoint": "f-a@1", "feature_id": "f-a", "op_ids": ["o3", "o4", "o5"]},
+    {"checkpoint": "f-b@0", "feature_id": "f-b", "op_ids": ["o6"]},
+    {"checkpoint": "f-c@0", "feature_id": "f-c", "op_ids": ["o7"]},
+]
+
+
+def _impact(removed, added, segs=None):
+    return _node(_slice("// ---- car-impact", "// ---- end-car-impact"),
+                 f"console.log(JSON.stringify(classifyCarImpact({json.dumps(removed)}, "
+                 f"{json.dumps(added)}, {json.dumps(segs if segs is not None else _IMPACT_SEGS)})));\n")
+
+
+def test_a_revert_marks_the_exact_cars_its_ops_live_in():
+    """The preview payload names op ids; segments own op ids per chapter. The join is what lets the
+    graph draw the consequence at chunk grain -- including a dependency's car in ANOTHER lane
+    (o6 here), which is "the dependencies also come out", in situ."""
+    impacts = _impact(["o1", "o2", "o6"], [])
+    by_cp = {i["checkpoint"]: i for i in impacts}
+    assert set(by_cp) == {"f-a@0", "f-b@0"}  # f-a@1 and f-c@0 untouched -> unmarked
+    assert by_cp["f-a@0"]["dir"] == "out" and by_cp["f-a@0"]["coverage"] == "full"
+    assert by_cp["f-b@0"]["featureId"] == "f-b"
+
+
+def test_a_partial_removal_half_drains_rather_than_lying_hollow():
+    impacts = _impact(["o3"], [])
+    assert impacts == [{"checkpoint": "f-a@1", "featureId": "f-a", "dir": "out",
+                        "touched": 1, "coverage": "partial"}]
+
+
+def test_a_restore_marks_cars_filling_back_in():
+    impacts = _impact([], ["o3", "o4", "o5"])
+    assert impacts[0]["dir"] == "in" and impacts[0]["coverage"] == "full"
+
+
+def test_a_keep_revert_that_mostly_adds_reads_as_arriving():
+    """A revert-with-kept-dependents can remove and add in the same chapter; the dominant move is
+    what the car should look like it is doing."""
+    impacts = _impact(["o3"], ["o4", "o5"])
+    assert impacts[0]["dir"] == "in"
+
+
+def test_a_metadata_only_preview_marks_nothing():
+    """merge/rename previews carry no removed/added ops -- no car may drain over a label change."""
+    assert _impact([], []) == []
+    assert _impact(None, None) == []
+
+
+def test_the_named_chapter_drains_fully_even_when_rewritten_in_place():
+    """emit's `removed` can be a subset of the chapter (some ops are rewritten in place rather
+    than dropped -- that is why `target_ops` exists), and the asked-about chapter must never
+    preview as half-touched or untouched."""
+    segs = [{"checkpoint": "f-a@1", "feature_id": "f-a", "op_ids": ["o3", "o4", "o5"]}]
+    impacts = _node(_slice("// ---- car-impact", "// ---- end-car-impact"),
+                    'console.log(JSON.stringify(classifyCarImpact(["o3"], [], '
+                    + json.dumps(segs) + ', ["o3", "o4", "o5"])));\n')
+    assert impacts[0]["coverage"] == "full" and impacts[0]["dir"] == "out"
+
+
+# ── Refusals a person can read ───────────────────────────────────────────────────────────────────
+def _humanize(message):
+    return _node(_slice("// ---- humanize", "// ---- end-humanize"),
+                 f"console.log(JSON.stringify(humanizeRefusal({json.dumps(message)})));\n")
+
+
+def test_a_dumped_op_id_set_collapses_to_a_count():
+    """The kernel's invalid-ideal error printed every id in the ideal. That reached the workbench's
+    refusal card verbatim and covered the pane in hex, with the one sentence that mattered buried
+    at the top. The count is the diagnostic; the ids never were."""
+    ids = ", ".join(f"'{i:064x}'" for i in range(40))
+    say = _humanize(f"would leave an invalid (forked) ideal, refused: not a valid ideal "
+                    f"(downward-closure or fork-freedom violated): [{ids}]")
+    assert "40 op(s)" in say
+    assert "0000000000" not in say
+    assert say.startswith("would leave an invalid (forked) ideal")
+    assert len(say) <= 220
+
+
+def test_a_stray_id_keeps_a_traceable_prefix():
+    say = _humanize("open fork on 1a44e0447df47c8962f8ead01d3b8abc26522b9e3f67856c9b59704c4619afd1")
+    assert "1a44e044…" in say
+
+
+def test_an_ordinary_refusal_passes_through_untouched():
+    say = _humanize("'f-abc' has too few members to split")
+    assert say == "'f-abc' has too few members to split"
+
+
+def test_an_empty_refusal_still_says_something():
+    assert _humanize("") and _humanize(None)
+
+
+# ── Retired work: what a restore can actually act on ─────────────────────────────────────────────
+def _retired(segs):
+    return _node(_slice("// ---- retired-work", "// ---- end-retired-work"),
+                 f"console.log(JSON.stringify(retiredWork({json.dumps(segs)})));\n")
+
+
+def test_a_feature_with_nothing_reverted_has_nothing_to_restore():
+    """Restore was a permanently-live button whose only outcome, on an untouched feature, was the
+    kernel refusal. A verb with no possible effect must not read as available."""
+    out = _retired([{"op_count": 4, "present_op_count": 4}, {"op_count": 2, "present_op_count": 2}])
+    assert out["any"] is False and out["edits"] == 0
+
+
+def test_fully_and_partly_retired_chapters_both_count_their_edits():
+    out = _retired([
+        {"op_count": 4, "present_op_count": 0},   # fully retired -> 4 edits back
+        {"op_count": 5, "present_op_count": 2},   # partly        -> 3 edits back
+        {"op_count": 3, "present_op_count": 3},   # live          -> nothing
+    ])
+    assert out["chapters"] == 1 and out["partial"] == 1
+    assert out["edits"] == 7 and out["any"] is True
+
+
+def test_a_payload_making_no_claim_is_never_called_retired():
+    """`present_op_count: null` is an unreadable ideal or an older payload -- no claim. Counting it
+    as retired would offer a restore for work that was never gone."""
+    assert _retired([{"op_count": 4, "present_op_count": None}])["any"] is False
