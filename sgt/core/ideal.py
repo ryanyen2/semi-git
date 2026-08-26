@@ -27,7 +27,17 @@ class Ideal:
     def from_ops(op_ids, ops: list[Op], declared: order.Declared = frozenset()) -> Ideal:
         ids = frozenset(op_ids)
         if not order.is_valid_ideal(ops, ids, declared):
-            raise ValueError(f"not a valid ideal (downward-closure or fork-freedom violated): {sorted(ids)}")
+            # Bounded on purpose. This message is not developer-only: it travels up through
+            # `_plan_removal`'s refusal into `--emit`'s `message`, which the TUI and the VS Code
+            # workbench render verbatim to a person. Dumping every id in the ideal produced a wall
+            # of hex a reader could neither read nor act on, and buried the one sentence that
+            # mattered. The count is the diagnostic; a handful of ids keeps it debuggable.
+            shown = sorted(ids)
+            head = ", ".join(shown[:4]) + (f", +{len(shown) - 4} more" if len(shown) > 4 else "")
+            raise ValueError(
+                "not a valid ideal (downward-closure or fork-freedom violated): "
+                f"{len(shown)} op(s) [{head}]"
+            )
         return Ideal(op_ids=ids)
 
     def frontier(self, ops: list[Op]) -> dict[str, str]:

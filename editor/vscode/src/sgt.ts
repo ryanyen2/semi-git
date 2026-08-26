@@ -61,6 +61,19 @@ export function foldAtSpec(frontier: FoldFrontier): string {
 
 const pExecFile = promisify(execFile);
 
+/** A queued interactive read (hover preview, scrub fold, find) that was superseded by a newer one
+ * before its turn on the serialized queue came up. Thrown instead of spawning the subprocess: the
+ * store flock serializes every `sgt` call, so a cursor sweeping ten rows used to run ten previews
+ * back-to-back, nine of them for rows the cursor had already left -- seconds of dead lag per
+ * sweep. Callers that pass `stillWanted` catch this and simply do not reply (the webview's own
+ * seq-guard would have dropped the stale result anyway). */
+export class StaleRequestError extends Error {
+  constructor() {
+    super("superseded by a newer request");
+    this.name = "StaleRequestError";
+  }
+}
+
 /** Is this an existing, executable file? Used to vet each `sgt` candidate before spawning it. */
 function isExecutable(candidate: string): boolean {
   try {
@@ -183,8 +196,14 @@ export class Sgt {
 
   // `sync`/`land`/`push` shell out to real git network I/O and CAS retry loops, well past the
   // default 30s budget for a local read.
-  private async run(args: string[], timeout = 30_000): Promise<string> {
-    const task = this.queue.catch(() => undefined).then(() => this.exec(args, timeout));
+  // `stillWanted` is checked when the request's turn on the queue arrives (not when it was made):
+  // a superseded interactive read throws StaleRequestError instead of spawning, so a burst of
+  // hover previews costs one subprocess -- the one still under the cursor -- not one per row swept.
+  private async run(args: string[], timeout = 30_000, stillWanted?: () => boolean): Promise<string> {
+    const task = this.queue.catch(() => undefined).then(() => {
+      if (stillWanted && !stillWanted()) throw new StaleRequestError();
+      return this.exec(args, timeout);
+    });
     this.queue = task;
     return task;
   }
@@ -220,8 +239,8 @@ export class Sgt {
     }
   }
 
-  private async json<T>(args: string[], timeout = 30_000): Promise<T> {
-    const stdout = await this.run(args, timeout);
+  private async json<T>(args: string[], timeout = 30_000, stillWanted?: () => boolean): Promise<T> {
+    const stdout = await this.run(args, timeout, stillWanted);
     return JSON.parse(stdout) as T;
   }
 
@@ -249,8 +268,8 @@ export class Sgt {
   // edits support it, so the verb is a parameter -- `restore` used to confirm with prose alone
   // ("this rewrites the working tree and commits") while `revert` showed the actual diff, which
   // meant the more reassuring-sounding verb was the one you could not see before running.
-  emit(feature: string, verb: "revert" | "restore" = "revert"): Promise<EmitView> {
-    return this.json<EmitView>([verb, feature, "--emit", "--json"]);
+  emit(feature: string, verb: "revert" | "restore" = "revert", stillWanted?: () => boolean): Promise<EmitView> {
+    return this.json<EmitView>([verb, feature, "--emit", "--json"], 30_000, stillWanted);
   }
 
   // Apply a chosen revert frontier (U3/R4). `keepOpIds` are the toggleable dependents to keep:
@@ -306,15 +325,17 @@ export class Sgt {
   // webview's hover-preview primitive). `args` mirrors the mutating command's own usage, except
   // `move`'s target is passed as the trailing element of `args` rather than after `--to` -- this
   // method reshapes that one case onto the CLI's `--to` flag.
-  previewVerb(verb: string, args: string[]): Promise<FeatureVerbPreview> {
+  previewVerb(verb: string, args: string[], stillWanted?: () => boolean): Promise<FeatureVerbPreview> {
     if (verb === "move") {
       const target = args[args.length - 1];
       const opIds = args.slice(0, -1);
-      return this.json<FeatureVerbPreview>([
-        "advanced", "preview", "move", ...opIds, "--to", target, "--json",
-      ]);
+      return this.json<FeatureVerbPreview>(
+        ["advanced", "preview", "move", ...opIds, "--to", target, "--json"], 30_000, stillWanted,
+      );
     }
-    return this.json<FeatureVerbPreview>(["advanced", "preview", verb, ...args, "--json"]);
+    return this.json<FeatureVerbPreview>(
+      ["advanced", "preview", verb, ...args, "--json"], 30_000, stillWanted,
+    );
   }
 
   // `sgt edit <selection> [--intent ...] --json` (U4/KTD5): chain-extend the target with a hollow
@@ -330,8 +351,10 @@ export class Sgt {
     return this.json<MergeResult>(["feature", "regroup", "merge", "--json", survivorId, absorbedId]);
   }
 
-  splitPreview(featureId: string): Promise<SplitPreviewResult> {
-    return this.json<SplitPreviewResult>(["feature", "regroup", "split", "--json", featureId]);
+  splitPreview(featureId: string, stillWanted?: () => boolean): Promise<SplitPreviewResult> {
+    return this.json<SplitPreviewResult>(
+      ["feature", "regroup", "split", "--json", featureId], 30_000, stillWanted,
+    );
   }
 
   splitApply(featureId: string): Promise<SplitApplyResult> {
@@ -362,8 +385,10 @@ export class Sgt {
 
   // A side-effect-free fold of an arbitrary frontier -- the draggable-playhead primitive (API
   // addition #2). Never materializes the working tree.
-  foldAt(frontier: FoldFrontier): Promise<FoldView> {
-    return this.json<FoldView>(["advanced", "fold", "--at", foldAtSpec(frontier), "--json"]);
+  foldAt(frontier: FoldFrontier, stillWanted?: () => boolean): Promise<FoldView> {
+    return this.json<FoldView>(
+      ["advanced", "fold", "--at", foldAtSpec(frontier), "--json"], 30_000, stillWanted,
+    );
   }
 
   forksView(): Promise<ForksView> {
@@ -484,8 +509,8 @@ export class Sgt {
   }
 
   /** `sgt find "<phrase>" --json`: ranked features/saves/symbols. Report-only. */
-  find(query: string): Promise<FindView> {
-    return this.json<FindView>(["find", query, "--json"], 60_000);
+  find(query: string, stillWanted?: () => boolean): Promise<FindView> {
+    return this.json<FindView>(["find", query, "--json"], 60_000, stillWanted);
   }
 
   // Mutations return the human report; surface it verbatim. `mutationArgs` supplies the `--yes` the

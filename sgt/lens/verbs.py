@@ -67,6 +67,10 @@ class SplitPreview:
     reason: str | None = None
     message: str = ""
     new_id: str = ""  # the content-addressed id the split will mint for the new group (KTD4)
+    # The ops that would follow the new group (majority-footprint rule, `_split_new_group_ops`) --
+    # already computed for the id mint; carried so a preview surface can show WHICH recorded
+    # chunks the cut moves, not just the symbol lists.
+    moving_op_ids: tuple[str, ...] = ()
 
 
 def _leaf(nodes: dict, feature_id: str) -> dict | None:
@@ -409,12 +413,12 @@ def _split_new_group_ops(result: dict, feature_id: str, keep, new, ops) -> list[
     return moving
 
 
-def _mint_split_id(result: dict, feature_id: str, keep, new, ops) -> str:
+def _mint_split_id(result: dict, moving, new) -> str:
     """The content-addressed id a split mints for the new group (KTD4): ``f-<founding-op>`` where
     the founding op is the lexicographically-smallest op reassigned to the new group (a pure
     function of the shared op store). Two replicas splitting the identical members over a byte-
-    identical store mint the identical id -- closing the replica-local ``F<n>`` hazard."""
-    moving = _split_new_group_ops(result, feature_id, keep, new, ops)
+    identical store mint the identical id -- closing the replica-local ``F<n>`` hazard. `moving`
+    is `_split_new_group_ops`'s answer, computed once by the caller and shared with the preview."""
     founding = min(moving) if moving else None
     return tree._content_birth_id(frozenset(new), founding, used=set(result["nodes"]))
 
@@ -450,8 +454,10 @@ def plan_split(repo: str | Path, feature_id: str) -> SplitPreview:
     if len(groups) > 2:  # this verb is always binary: largest community vs. the rest, folded
         groups = [groups[0], [m for g in groups[1:] for m in g]]
     keep, new = (tuple(sorted(groups[0])), tuple(sorted(groups[1])))
-    new_id = _mint_split_id(result, feature_id, keep, new, ops)
-    return SplitPreview(True, feature_id, groups=(keep, new), reason=result_split.reason, new_id=new_id)
+    moving = tuple(sorted(_split_new_group_ops(result, feature_id, keep, new, ops)))
+    new_id = _mint_split_id(result, moving, new)
+    return SplitPreview(True, feature_id, groups=(keep, new), reason=result_split.reason,
+                        new_id=new_id, moving_op_ids=moving)
 
 
 def apply_split(repo: str | Path, preview: SplitPreview, *, confirm: bool = False) -> dict:

@@ -79,6 +79,30 @@ export class PreviewProvider implements vscode.TextDocumentContentProvider, vsco
     return paths.length;
   }
 
+  /** Open one file as it stood at a scrubbed frontier, as a working-tree ⇄ then diff. Left is the
+   * real file on disk (or an empty virtual doc when the file does not exist yet/anymore), right is
+   * the folded content -- so "go back to c12" reads as an honest read-only visit, with the way home
+   * being simply closing the tab. Never materializes anything. */
+  async openFrontierFile(root: string, relPath: string, content: string, label: string): Promise<void> {
+    const token = String(this.seq++);
+    const right = this.uri(token, "frontier", relPath);
+    this.contents.set(right.toString(), content);
+    let left: vscode.Uri = vscode.Uri.joinPath(vscode.Uri.file(root), relPath);
+    try {
+      await vscode.workspace.fs.stat(left);
+    } catch {
+      left = this.uri(token, "absent", relPath);
+      this.contents.set(left.toString(), "");
+    }
+    await vscode.commands.executeCommand(
+      "vscode.diff",
+      left,
+      right,
+      `${relPath} — now ⇄ ${label}`,
+      { preview: true } as vscode.TextDocumentShowOptions
+    );
+  }
+
   dispose(): void {
     this.registration.dispose();
   }

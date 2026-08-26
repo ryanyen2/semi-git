@@ -293,12 +293,15 @@ export class Store {
   // of frontiers as the playhead moves back and forth, so a cache spares a fresh `sgt advanced
   // fold` per revisited frame. Capped so a long scrub can't grow it without bound (an eviction
   // per insert past the cap), and cleared in `invalidate()` with the other caches.
-  async foldAt(frontier: FoldFrontier): Promise<FoldView> {
+  // `stillWanted` (optional) lets an interactive caller -- the scrub playhead, a selection fold --
+  // drop a queued fold that a newer one superseded before it ever spawns (see Sgt.run). A cache
+  // hit ignores it: already-computed data costs nothing to hand back.
+  async foldAt(frontier: FoldFrontier, stillWanted?: () => boolean): Promise<FoldView> {
     // A `ref` frontier ("HEAD", a branch) is a *moving* target: its spec string is stable but the
     // content it resolves to changes as the ref advances, so caching it by spec would serve the
     // pre-advance fold after a checkpoint. Only `commitIndex`/`opIds` frontiers name fixed content
     // and are safe to memoize. Ref folds always shell out.
-    if ("ref" in frontier) return this.sgt.foldAt(frontier);
+    if ("ref" in frontier) return this.sgt.foldAt(frontier, stillWanted);
     const key = foldAtSpec(frontier);
     const cached = this.foldCache.get(key);
     if (cached) {
@@ -307,7 +310,7 @@ export class Store {
       return cached;
     }
     const gen = this.generation;
-    const view = await this.sgt.foldAt(frontier);
+    const view = await this.sgt.foldAt(frontier, stillWanted);
     if (gen !== this.generation) return view; // an invalidate() raced this fetch -- don't repopulate
     this.foldCache.set(key, view);
     if (this.foldCache.size > 32) {

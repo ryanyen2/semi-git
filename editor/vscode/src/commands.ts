@@ -72,28 +72,6 @@ function showMutationReport(report: string): void {
   vscode.window.showInformationMessage(lines[0] || "Done.");
 }
 
-async function applyMutation(
-  store: Store,
-  args: string[],
-  confirmMsg: string,
-  detail?: string
-): Promise<void> {
-  const ok = await vscode.window.showWarningMessage(confirmMsg, { modal: true, detail }, "Apply");
-  if (ok !== "Apply") {
-    return;
-  }
-  try {
-    // The modal above is the confirmation, so the CLI must not go looking for
-    // another one it has no terminal to ask on. `mutate` passes the `--yes` that
-    // says so -- see `mutationArgs` in cliSeam.ts.
-    const report = await store.sgt.mutate(args);
-    store.invalidate();
-    showMutationReport(report);
-  } catch (e: any) {
-    vscode.window.showErrorMessage(e.message);
-  }
-}
-
 /** First `n` of a list, comma-joined, with the remainder counted rather than printed -- a modal
  * that lists forty symbols is the same as a modal that lists none. */
 function cap(xs: string[], n = 6): string {
@@ -150,6 +128,45 @@ function consequenceDetail(view: EmitView): string {
     .join("\n");
 }
 
+/** How a revert/restore flow was entered, and who is listening.
+ *
+ * The workbench's in-graph staged confirm already painted the consequence on the graph and took an
+ * explicit Apply click, so `confirmed` skips the modal that would ask the same question a second
+ * time -- the modal was the confirmation; it is not a second safety layer once a real one ran.
+ * `openDiff: false` keeps the PREVIEW tabs closed (the workbench offers them on demand instead of
+ * stealing focus on every apply). `onPhase` reports the flow's real stages -- checking the
+ * consequence, rewriting+committing, rebuilding the graph -- so a surface can paint intermediate
+ * progress rather than a dead gap between click and toast. Palette/tree entry points pass nothing
+ * and keep the modal-and-diff behavior unchanged. */
+export type IdealEditPhase = "checking" | "applying" | "refreshing" | "done" | "failed" | "cancelled";
+export interface IdealEditFlowOpts {
+  confirmed?: boolean;
+  openDiff?: boolean;
+  onPhase?: (phase: IdealEditPhase, detail?: string) => void;
+}
+
+/** The shared apply tail: mutate → invalidate → toast, with phases. The caller has already taken
+ * a real confirmation (the modal, or the workbench's staged Apply), so the CLI must not go looking
+ * for another one it has no terminal to ask on -- `mutate` passes the `--yes` that says so (see
+ * `mutationArgs` in cliSeam.ts). */
+async function applyIdealEdit(
+  store: Store,
+  run: () => Promise<string>,
+  phase: (p: IdealEditPhase, detail?: string) => void
+): Promise<void> {
+  phase("applying");
+  try {
+    const report = await run();
+    phase("refreshing");
+    store.invalidate();
+    showMutationReport(report);
+    phase("done", report.trim().split("\n")[0]);
+  } catch (e: any) {
+    phase("failed", e.message);
+    vscode.window.showErrorMessage(e.message);
+  }
+}
+
 // The interactive revert frontier (U3/R4): preview the selection, then let the user pick which
 // toggleable dependents to KEEP (rescue) vs. drop with the target. `foundation` prerequisites
 // can't be dropped, so they're surfaced as a count, not offered. Applying with kept dependents
@@ -159,11 +176,19 @@ function consequenceDetail(view: EmitView): string {
 // `--keep` does NOT (cli/ideal_edit.py routes it to `_revert_keep_dependents`, which resolves via
 // `verbs.resolve_target` and never reaches the checkpoint branch). That path is unreachable today
 // only because the frontier above is empty for exactly the targets that would take it.
-async function revertWithFrontier(store: Store, sel: string, preview: PreviewProvider): Promise<void> {
+async function revertWithFrontier(
+  store: Store,
+  sel: string,
+  preview: PreviewProvider,
+  opts: IdealEditFlowOpts = {}
+): Promise<void> {
+  const phase = opts.onPhase ?? (() => undefined);
+  phase("checking");
   let view: EmitView;
   try {
     view = await store.sgt.emit(sel);
   } catch (e: any) {
+    phase("failed", e.message);
     vscode.window.showErrorMessage(e.message);
     return;
   }
@@ -173,6 +198,7 @@ async function revertWithFrontier(store: Store, sel: string, preview: PreviewPro
   const name = view.checkpoint ? `checkpoint "${view.checkpoint}"` : sel;
 
   if (!view.ok) {
+    phase("failed", view.message || `Cannot revert ${name}.`);
     vscode.window.showWarningMessage(view.message || `Cannot revert ${name}.`);
     return;
   }
@@ -181,12 +207,15 @@ async function revertWithFrontier(store: Store, sel: string, preview: PreviewPro
   // this composition. Asking anyway and then reporting success is precisely the "wait, is that
   // done?" the preview exists to prevent. Mirrors `restoreWithPreview`'s already-live guard below.
   if (view.removed.length === 0) {
+    phase("done", `${name} removes nothing here — it is already out of this composition.`);
     vscode.window.showInformationMessage(`${name} removes nothing here — it is already out of this composition.`);
     return;
   }
 
   // Show the resulting diff first -- "where this lands" -- so the confirm isn't a blind op-count.
-  await preview.openDiff(view);
+  // A workbench-staged apply already held the consequence on the graph and offers the diff on
+  // demand, so it opts out rather than having two tabs steal focus on every apply.
+  if (opts.openDiff !== false) await preview.openDiff(view);
   const detail = consequenceDetail(view);
 
   const frontier = view.frontier ?? [];
@@ -195,12 +224,18 @@ async function revertWithFrontier(store: Store, sel: string, preview: PreviewPro
 
   // No dependents to choose among -> the plain confirm path (behavior unchanged from before U3).
   if (toggleable.length === 0) {
-    await applyMutation(
-      store,
-      ["revert", sel],
-      `Revert ${name}? Rewrites the working tree and commits.`,
-      detail
-    );
+    if (!opts.confirmed) {
+      const ok = await vscode.window.showWarningMessage(
+        `Revert ${name}? Rewrites the working tree and commits.`,
+        { modal: true, detail },
+        "Apply"
+      );
+      if (ok !== "Apply") {
+        phase("cancelled");
+        return;
+      }
+    }
+    await applyIdealEdit(store, () => store.sgt.mutate(["revert", sel]), phase);
     return;
   }
 
@@ -220,27 +255,27 @@ async function revertWithFrontier(store: Store, sel: string, preview: PreviewPro
     }
   );
   if (!picks) {
+    phase("cancelled");
     return; // cancelled
   }
   const keep = picks.map((p) => p.op_id);
-  const summary = keep.length
-    ? `keep ${keep.length}/${toggleable.length} dependent(s) — drafts continuation hollows to fulfill`
-    : `remove ${name} and all ${toggleable.length} dependent(s)`;
-  const ok = await vscode.window.showWarningMessage(
-    `Revert ${name} — ${summary}?`,
-    { modal: true, detail },
-    "Apply"
-  );
-  if (ok !== "Apply") {
-    return;
+  // The dependent QuickPick above is a *choice*, not a confirmation -- a staged workbench apply
+  // still gets it, and only the redundant "are you sure" modal after it is skipped.
+  if (!opts.confirmed) {
+    const summary = keep.length
+      ? `keep ${keep.length}/${toggleable.length} dependent(s) — drafts continuation hollows to fulfill`
+      : `remove ${name} and all ${toggleable.length} dependent(s)`;
+    const ok = await vscode.window.showWarningMessage(
+      `Revert ${name} — ${summary}?`,
+      { modal: true, detail },
+      "Apply"
+    );
+    if (ok !== "Apply") {
+      phase("cancelled");
+      return;
+    }
   }
-  try {
-    const report = await store.sgt.revertKeep(sel, keep);
-    store.invalidate();
-    showMutationReport(report);
-  } catch (e: any) {
-    vscode.window.showErrorMessage(e.message);
-  }
+  await applyIdealEdit(store, () => store.sgt.revertKeep(sel, keep), phase);
 }
 
 /** `sgt restore` with the same feedforward `revert` gets: the resulting diff first, then a confirm
@@ -249,15 +284,24 @@ async function revertWithFrontier(store: Store, sel: string, preview: PreviewPro
  * "which files does this rewrite" is exactly as unanswerable from a prose modal here as it is for
  * revert. It also surfaces a refusal (the one-live-version rule) as the CLI's own explanation
  * rather than as a failed mutation after the user already committed to it. */
-async function restoreWithPreview(store: Store, sel: string, preview: PreviewProvider): Promise<void> {
+async function restoreWithPreview(
+  store: Store,
+  sel: string,
+  preview: PreviewProvider,
+  opts: IdealEditFlowOpts = {}
+): Promise<void> {
+  const phase = opts.onPhase ?? (() => undefined);
+  phase("checking");
   let view: EmitView;
   try {
     view = await store.sgt.emit(sel, "restore");
   } catch (e: any) {
+    phase("failed", e.message);
     vscode.window.showErrorMessage(e.message);
     return;
   }
   if (!view.ok) {
+    phase("failed", view.message || `Cannot restore ${sel}.`);
     vscode.window.showWarningMessage(view.message || `Cannot restore ${sel}.`);
     return;
   }
@@ -265,19 +309,29 @@ async function restoreWithPreview(store: Store, sel: string, preview: PreviewPro
   // An `ok` restore that adds nothing is the "already live" case, not a change to confirm. Asking
   // the user to approve a no-op teaches them the confirm means nothing.
   if (view.added.length === 0) {
+    phase("done", `${sel} is already present — nothing to restore.`);
     vscode.window.showInformationMessage(`${sel} is already present — nothing to restore.`);
     return;
   }
 
-  const changedFiles = await preview.openDiff(view);
-  const diffNote = changedFiles ? ` Changes ${changedFiles} file(s) — see the open diff.` : "";
-  const brings = view.added.length > 1 ? ` (with ${view.added.length - 1} it depends on)` : "";
-  await applyMutation(
-    store,
-    ["restore", sel],
-    `Restore ${sel}? Brings back ${view.added.length} op(s)${brings}.${diffNote} ` +
-      `Rewrites the working tree and commits.`
-  );
+  if (!opts.confirmed) {
+    const changedFiles = opts.openDiff !== false ? await preview.openDiff(view) : 0;
+    const diffNote = changedFiles ? ` Changes ${changedFiles} file(s) — see the open diff.` : "";
+    const brings = view.added.length > 1 ? ` (with ${view.added.length - 1} it depends on)` : "";
+    const ok = await vscode.window.showWarningMessage(
+      `Restore ${sel}? Brings back ${view.added.length} op(s)${brings}.${diffNote} ` +
+        `Rewrites the working tree and commits.`,
+      { modal: true },
+      "Apply"
+    );
+    if (ok !== "Apply") {
+      phase("cancelled");
+      return;
+    }
+  } else if (opts.openDiff !== false) {
+    await preview.openDiff(view);
+  }
+  await applyIdealEdit(store, () => store.sgt.mutate(["restore", sel]), phase);
 }
 
 export function registerCommands(
@@ -336,16 +390,25 @@ export function registerCommands(
       void preview.preview(feature);
     }
   });
-  reg("sgt.revert", async (id?: unknown) => {
+  // `opts` (IdealEditFlowOpts) is how the workbench's staged in-graph confirm drives the same
+  // flow: it already showed the consequence and took an explicit Apply, so it passes
+  // `confirmed: true` (skip the modal), `openDiff: false` (diff on demand instead of focus-steal),
+  // and an `onPhase` that paints real progress in the confirm bar. Same-extension executeCommand
+  // passes these through in-process, callbacks included.
+  reg("sgt.revert", async (id?: unknown, opts?: IdealEditFlowOpts) => {
     const feature = await pickFeature(store, id);
     if (feature) {
-      await revertWithFrontier(store, feature, preview);
+      await revertWithFrontier(store, feature, preview, opts ?? {});
+    } else {
+      opts?.onPhase?.("cancelled");
     }
   });
-  reg("sgt.restore", async (id?: unknown) => {
+  reg("sgt.restore", async (id?: unknown, opts?: IdealEditFlowOpts) => {
     const feature = await pickFeature(store, id);
     if (feature) {
-      await restoreWithPreview(store, feature, preview);
+      await restoreWithPreview(store, feature, preview, opts ?? {});
+    } else {
+      opts?.onPhase?.("cancelled");
     }
   });
 

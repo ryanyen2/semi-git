@@ -240,6 +240,10 @@ export interface SplitPreviewResult {
   applied: boolean;
   groups?: string[][];
   message?: string;
+  // Additive (older CLIs omit them): the id the split will mint for the new group, and the
+  // recorded ops that follow it -- what lets the workbench draw the cut at chunk grain.
+  new_id?: string;
+  moving_op_ids?: string[];
 }
 
 // `sgt split <feature> --apply --json`.

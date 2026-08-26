@@ -164,9 +164,14 @@ def _feature_split(repo: str, feature: str | None, do_apply: bool, as_json: bool
 
     if not do_apply:
         if as_json:
+            # `new_id`/`moving_op_ids` are additive: the id the split will mint and the recorded
+            # ops that follow the new group, so a graph surface can draw the cut at chunk grain
+            # (which cars leave, and into which lane) instead of just naming symbols.
             return _emit_json({
                 "ok": True, "feature": preview.feature_id, "applied": False,
                 "groups": [list(g) for g in preview.groups],
+                "new_id": preview.new_id,
+                "moving_op_ids": list(preview.moving_op_ids),
             })
         for i, group in enumerate(preview.groups):
             print(f"  group {i}: {', '.join(group)}")

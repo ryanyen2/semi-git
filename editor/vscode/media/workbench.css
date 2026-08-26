@@ -1363,8 +1363,29 @@ svg.railsvg {
   .gcar-landing,
   .gcar-ghost-enter,
   .preview-leaving .gcar,
-  .preview-arriving .gcar {
+  .preview-arriving .gcar,
+  /* The waiting/receipt layers keep their shapes with no motion: a skeleton stays a static block,
+     a pending row simply holds, a settled lane just is. */
+  .skel-line,
+  .gcar,
+  .gcar-wrap.gcar-preview-in .gcar,
+  .glane.preview-pending,
+  .rail-row.preview-pending,
+  .preview-context-pill.pending,
+  .confirm-step.live,
+  .glane.settle-flash,
+  .rail-row.settle-flash {
     animation: none !important;
+  }
+  .gcar {
+    transition: none !important;
+  }
+  .gcar-wrap.gcar-splitting {
+    transform: none;
+  }
+  .migrate-ghost {
+    animation: none !important;
+    fill-opacity: 0.2;
   }
 }
 
@@ -1639,3 +1660,411 @@ svg.railsvg {
   white-space: nowrap;
 }
 .find-note { padding: 5px 8px; font-size: 10px; opacity: 0.6; }
+
+/* ── Acknowledgement layer: the system heard you ────────────────────────────────────────────────
+   A consequence preview shells out and can be a second away; the row under the cursor breathes
+   quietly and the pill states what is being computed. Status stays hue-free (opacity/motion), per
+   the color=identity contract. Appears only after a grace period (see PENDING_GRACE_MS) so fast,
+   cached answers never flash a wait state. */
+.glane.preview-pending,
+.rail-row.preview-pending {
+  animation: pending-breathe 1.1s ease-in-out infinite;
+}
+
+@keyframes pending-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+.preview-context-pill.pending {
+  color: var(--dim);
+  border-color: var(--accent);
+  animation: pending-breathe 1.1s ease-in-out infinite;
+}
+
+/* ── Skeletons: the waiting shape of the answer ────────────────────────────────────────────────
+   Lines where code will be, rows where hits will be. The shimmer says "alive"; reduced-motion
+   users keep the static shape. */
+.skel {
+  padding: 4px 0;
+}
+
+.skel-line {
+  height: 8px;
+  border-radius: 4px;
+  margin: 7px 0;
+  background: linear-gradient(
+    100deg,
+    color-mix(in srgb, var(--fg) 8%, transparent) 40%,
+    color-mix(in srgb, var(--fg) 16%, transparent) 50%,
+    color-mix(in srgb, var(--fg) 8%, transparent) 60%
+  );
+  background-size: 200% 100%;
+  animation: skel-shimmer 1.3s linear infinite;
+}
+
+.skel-find {
+  padding: 4px 8px;
+}
+
+.skel-find .skel-line {
+  height: 10px;
+  margin: 8px 0;
+}
+
+@keyframes skel-shimmer {
+  from { background-position: 120% 0; }
+  to { background-position: -80% 0; }
+}
+
+/* ── Staged confirm bar: the decision, where the picture is ────────────────────────────────────
+   Replaces the modal for destructive verbs. Bottom-centered over the graph (the consequence it
+   refers to is directly above it), one-line summary, and the two real choices. The Apply button is
+   the only filled control and wears the verb's own status hue -- destructive red for revert, land
+   green for restore -- so the weight of the click is visible before it happens. */
+.confirm-bar {
+  position: absolute;
+  left: 50%;
+  bottom: 34px;
+  transform: translateX(-50%);
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(94%, 720px);
+  background: var(--panel-bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 7px 12px;
+  font-size: 12px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.25);
+}
+
+.confirm-bar[hidden] {
+  display: none;
+}
+
+.confirm-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.confirm-verb {
+  color: var(--fail);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.confirm-verb.restore {
+  color: var(--land);
+}
+
+/* Split relocates rather than destroys, so its confirm wears the accent channel, not the
+   destructive red. */
+.confirm-verb.split {
+  color: var(--accent);
+}
+
+.confirm-target {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 20ch;
+}
+
+.confirm-summary {
+  color: var(--dim);
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.confirm-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.confirm-btn {
+  background: var(--vscode-button-secondaryBackground, transparent);
+  color: var(--vscode-button-secondaryForeground, var(--fg));
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 3px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.confirm-btn:hover {
+  background: var(--vscode-button-secondaryHoverBackground, var(--vscode-list-hoverBackground));
+}
+
+.confirm-btn.subtle {
+  border-color: transparent;
+  color: var(--dim);
+}
+
+.confirm-btn.confirm-apply {
+  background: var(--fail);
+  border-color: var(--fail);
+  color: var(--vscode-button-foreground, #fff);
+  font-weight: 600;
+}
+
+.confirm-btn.confirm-apply.restore {
+  background: var(--land);
+  border-color: var(--land);
+}
+
+.confirm-btn.confirm-apply.split {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.confirm-btn.confirm-apply:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* The apply's real stages, named. `done` steps keep their ✓; the `live` one breathes. A step that
+   has not started yet sits dim -- how far along is readable without a number. */
+.confirm-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--dim);
+}
+
+.confirm-step {
+  white-space: nowrap;
+  opacity: 0.45;
+}
+
+.confirm-step:not(:first-child)::before {
+  content: "→ ";
+  opacity: 0.6;
+}
+
+.confirm-step.done {
+  opacity: 0.8;
+}
+
+.confirm-step.done::after {
+  content: " ✓";
+  color: var(--land);
+}
+
+.confirm-step.live {
+  opacity: 1;
+  color: var(--fg);
+  animation: pending-breathe 1.1s ease-in-out infinite;
+}
+
+.confirm-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+}
+
+.confirm-progress.failed .confirm-fail {
+  color: var(--fail);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Verb feedforward at chunk grain ───────────────────────────────────────────────────────────
+   A preview draws each affected car as a DASHED VERSION OF THE STATE IT WILL END IN -- the same
+   in-situ move as a plan ghost, run backwards over recorded history. Dash = not yet true; the
+   body of the car = what will be true. Hue stays identity (the painter sets each dash's stroke
+   inline to the car's own fill); impact is dash/opacity/motion only, per this file's contract.
+     revert   -> the car DRAINS toward the hollow look a reverted car already has
+     restore  -> a hollow car FILLS back toward solid, with the save-ghost pulse ("will exist")
+     merge/move/split -> the car RELOCATES: keeps its fill, nudges out in dashed outline
+   The fill-opacity transition is what makes the hover read as a morph, not a repaint. */
+.gcar {
+  transition: fill-opacity 240ms ease;
+}
+
+.gcar-wrap.gcar-preview-out .gcar {
+  stroke-dasharray: 3 3;
+  stroke-width: 1.2;
+  fill-opacity: 0.12;
+}
+
+/* Partially-emptied chapter: some of its edits survive this verb, so it half-drains. */
+.gcar-wrap.gcar-preview-out.gcar-preview-partial .gcar {
+  fill-opacity: 0.45;
+}
+
+.gcar-wrap.gcar-preview-out .gcar-cell {
+  fill-opacity: 0.08 !important;
+}
+
+.gcar-wrap.gcar-preview-out .gcar-label,
+.gcar-wrap.gcar-preview-out .gcar-tag {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
+.gcar-wrap.gcar-preview-in .gcar {
+  stroke-dasharray: 3 3;
+  stroke-width: 1.2;
+  fill-opacity: 0.55;
+  animation: gcar-pending-pulse 2.2s ease-in-out infinite;
+}
+
+.gcar-wrap.gcar-preview-in.gcar-preview-partial .gcar {
+  fill-opacity: 0.35;
+}
+
+.gcar-wrap.gcar-splitting {
+  transform: translateY(2px);
+}
+
+.gcar-wrap.gcar-splitting .gcar {
+  stroke-dasharray: 3 3;
+  stroke-width: 1.2;
+}
+
+/* The lane the graph will GAIN (split): one ghost segment per moving chapter on a dashed
+   baseline, in the row's own vertical slack -- so the answer to "what does this split into" is a
+   lane you can see forming under the chapters that leave, not a sentence. */
+.split-ghost-car {
+  fill-opacity: 0.5;
+  opacity: 0.9;
+}
+
+.split-ghost-base {
+  stroke-dasharray: 3 2;
+  stroke-width: 1;
+  opacity: 0.75;
+}
+
+/* Work ARRIVING in a receiving lane (merge/move): the same chunk, at the same point in time, in
+   the source's identity hue -- dashed because it is not there yet. Paired with the source lane's
+   relocating cars, the two halves read as one transition. */
+.migrate-ghost {
+  fill-opacity: 0.16;
+  stroke-dasharray: 3 3;
+  stroke-width: 1.2;
+  animation: migrate-arrive 1.6s ease-in-out infinite;
+}
+
+@keyframes migrate-arrive {
+  0%, 100% { fill-opacity: 0.1; }
+  50% { fill-opacity: 0.3; }
+}
+
+/* Hovering a chapter IDENTIFIES it -- a light outline, nothing that reads as consequence. */
+.gcar-wrap.gcar-hovered .gcar {
+  stroke: var(--fg);
+  stroke-width: 1.4;
+  stroke-opacity: 0.7;
+}
+
+/* The way back to retired work, said once at the top of the checkpoint list. */
+.checkpoints-hint {
+  padding: 2px 0 6px;
+  font-size: 11px;
+  color: var(--dim);
+}
+
+/* A refusal is a paragraph, not a scroll: bounded here as well as at the message source, so no
+   payload from any CLI can cover the pane. */
+.preview-refusal-pill {
+  max-height: 40vh;
+  overflow: hidden;
+}
+
+/* ── The receipt: a lane settling after its staged action landed ───────────────────────────────
+   One-shot, subtle: the rewritten lane re-arrives rather than the graph silently having changed
+   somewhere. */
+.glane.settle-flash,
+.rail-row.settle-flash {
+  animation: settle-arrive 1.4s ease-out 1;
+}
+
+@keyframes settle-arrive {
+  0% { opacity: 0.25; }
+  35% { opacity: 1; }
+  55% { opacity: 0.75; }
+  100% { opacity: 1; }
+}
+
+/* ── Chapter-scoped action bar ─────────────────────────────────────────────────────────────────
+   Drawn while a checkpoint is selected: the scope is stated (identity dot + chapter name) above
+   the chapter's own verbs, and the whole-feature verbs are one explicit, de-emphasized switch
+   away instead of being the loaded default. */
+.chapter-scope-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 2px;
+  font-size: 11px;
+  color: var(--dim);
+  min-width: 0;
+}
+
+.chapter-scope-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.chapter-scope-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.action-bar.feature-scope {
+  margin-top: 2px;
+  opacity: 0.85;
+}
+
+.action-bar .action.subtle {
+  border-color: transparent;
+  color: var(--dim);
+}
+
+.action-bar .action.subtle:hover {
+  color: var(--fg);
+}
+
+/* ── Find: the two rungs, labeled ──────────────────────────────────────────────────────────────
+   "in this graph" answers on the keystroke; "by meaning" arrives under it when asked. */
+.find-section {
+  padding: 5px 8px 2px;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim);
+  opacity: 0.8;
+}
+
+.find-section:not(:first-child) {
+  border-top: 1px solid var(--line);
+  margin-top: 3px;
+}
+
+/* The playhead's exit into real editors, styled as the secondary sibling of "Back to HEAD". */
+.code-panel-visit {
+  border-color: var(--line);
+  color: var(--dim);
+}
+
+.code-panel-visit:hover {
+  color: var(--fg);
+  border-color: var(--accent);
+}
