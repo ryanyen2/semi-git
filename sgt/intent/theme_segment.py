@@ -28,6 +28,7 @@ from pydantic import BaseModel
 from sgt import state
 from sgt.config import get_client, get_model
 from sgt.core.op import is_content_bearing
+from sgt.intent.group import clip_label, short_sha
 from sgt.intent.segment import Run, feature_runs, resolve_feature_spec, segment_runs
 
 EFFORT = "low"
@@ -232,12 +233,12 @@ class SegmentThemer:
         shown = {r.commit_sha[:8]: r.commit_sha for r in runs}
         # deterministic per-run label fallback: the run's own commit subject
         run_label: dict[str, tuple[str, str]] = {
-            r.commit_sha: ((r.subject or r.commit_sha[:8])[:60] or r.commit_sha[:8], "one commit")
+            r.commit_sha: (clip_label(r.subject or short_sha(r.commit_sha)) or short_sha(r.commit_sha), "one commit")
             for r in runs
         }
         assigned: set[str] = set()
         for g in plan.segments:
-            label = (g.label or "").strip()[:60]
+            label = clip_label(g.label or "")
             if not label:
                 continue
             for prefix in g.commit_shas:

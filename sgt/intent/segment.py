@@ -37,6 +37,7 @@ from pathlib import Path
 
 from sgt.core import opindex
 from sgt.core.op import Op, is_behavioral, is_bottom
+from sgt.intent.group import clip_label, short_sha
 from sgt.lens.cluster import commit_scope
 from sgt.store.gitbind import GitBinding
 
@@ -246,7 +247,7 @@ def _segment_label(runs: list[Run]) -> tuple[str, str]:
     from the user's own commit messages, never invented -- KTD2's "a commit subject is already a
     human label"."""
     lead = max(runs, key=lambda r: (r.novelty, -r.commit_index))
-    label = (lead.subject or lead.commit_sha[:8]).strip()[:60] or lead.commit_sha[:8]
+    label = clip_label(lead.subject or short_sha(lead.commit_sha)) or short_sha(lead.commit_sha)
     n = len(runs)
     rationale = (
         f"{n} commit(s), {sum(len(r.op_ids) for r in runs)} op(s)"

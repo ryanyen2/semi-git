@@ -25,7 +25,7 @@ from pydantic import BaseModel
 from sgt import state
 from sgt.config import get_client, get_model
 from sgt.intent._guard import filter_to_shown
-from sgt.intent.group import Bundle, IntentAtom, _atom_sort_key
+from sgt.intent.group import Bundle, IntentAtom, _atom_sort_key, clip_label, short_sha
 
 EFFORT = "low"
 MAX_ATOMS = 40  # keeps the scope-less coalescing prompt bounded on a large store
@@ -99,7 +99,7 @@ def _fallback_scopeless_groups(atoms: list[IntentAtom]) -> list[ThemeGroup]:
     """Zero-network fallback: every scope-less atom stays its own singleton, labeled from its
     commit subject (already a ready-made human label -- KTD2)."""
     return [
-        ThemeGroup(label=(atom.subject or atom.commit_sha[:8])[:60], rationale="Ungrouped commit (no LLM available).", atom_shas=[atom.commit_sha])
+        ThemeGroup(label=clip_label(atom.subject or short_sha(atom.commit_sha)), rationale="Ungrouped commit (no LLM available).", atom_shas=[atom.commit_sha])
         for atom in atoms
     ]
 
@@ -261,7 +261,7 @@ class IntentThemer:
             for atom in chunk:
                 if atom.commit_sha not in assigned:
                     groups.append(ThemeGroup(
-                        label=(atom.subject or atom.commit_sha[:8])[:60],
+                        label=clip_label(atom.subject or short_sha(atom.commit_sha)),
                         rationale="Ungrouped commit.", atom_shas=[atom.commit_sha],
                     ))
                     assigned.add(atom.commit_sha)
