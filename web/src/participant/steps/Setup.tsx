@@ -13,6 +13,10 @@ const CHECK_LABELS: Array<[string, string]> = [
   ['uv', 'Python manager installed'],
   ['python', 'Python 3.12 ready'],
   ['venv', 'Project environment built'],
+  // `tests` is what the pytest-era doctor reported. The protocol v2 testbeds
+  // have no test suite, so the check is now the project's own smoke check; the
+  // old label stays so pilot records still read as words rather than a raw key.
+  ['smoke', 'Project runs and every page renders'],
   ['tests', 'Project test suite passes'],
   ['tool', 'History tool ready'],
   ['warm', 'History view already loaded'],
@@ -162,9 +166,8 @@ export function SetupStep({ step }: { step: Step }) {
           </p>
           <Copyable text="./bin/study-shell" />
           <p className="small muted" style={{ marginTop: '0.75rem', marginBottom: 0 }}>
-            Inside it, <code>study-code</code> opens the project in the editor,
-            <code>study-practice</code> opens the warm-up copy, and the project itself is in{' '}
-            <code>work/</code>.
+            It opens in the project folder, <code>work/</code>. Inside it,{' '}
+            <code>study-code</code> opens the project in the editor.
           </p>
           <p className="small muted" style={{ marginTop: '0.75rem', marginBottom: 0 }}>
             Please open the editor with <code>study-code</code> rather than your own. It uses a

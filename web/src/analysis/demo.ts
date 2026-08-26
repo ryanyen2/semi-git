@@ -232,14 +232,10 @@ export function demoDataset(seed = 4242): Dataset {
         tlxSubscales,
         umux: clamp(64 + (sgt ? 10 : 0) + ability * 4 + gauss() * 9, 10, 100),
         hlac,
-        // Manipulation checks, deliberately flat across conditions: they are
-        // there to show the requests read as realistic and the cap bound the
-        // same way in both arms, so a demo that made them differ would be
-        // rehearsing the finding they exist to rule out.
-        checks: {
-          realistic: clamp(Math.round(4 + gauss() * 0.7), 1, 5),
-          timePressure: clamp(Math.round(3 + gauss() * 0.9), 1, 5),
-        },
+        // Empty since the per-half battery became two published instruments and
+        // nothing else. The bag stays because pilot responses still carry the
+        // two study-written checks, and the dashboard still renders those.
+        checks: {},
       })
     }
 

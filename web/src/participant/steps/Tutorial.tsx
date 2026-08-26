@@ -16,13 +16,13 @@ export function TutorialStep({ step }: { step: Step }) {
         <p className="lede">{TUTORIAL_LEDE}</p>
       </div>
 
-      <Callout kind="accent" title="Practice on the warm-up copy, not the real project">
-        In the study shell, run <code>study-practice</code>. It drops you into a throwaway copy that
-        is not one of the two study projects, so anything you do to it is free.
+      <Callout kind="accent" title="Nothing you do here can go wrong">
+        You practise on the project the stages use, in the state it was in before the first stage.
+        Running <code>./stage 1</code> at the start of the first stage undoes everything you do now.
       </Callout>
 
       <div className="card">
-        <Markdown>{tutorialFor(block.condition)}</Markdown>
+        <Markdown>{tutorialFor(block.condition, block.project)}</Markdown>
       </div>
 
       <div className="sticky-actions">

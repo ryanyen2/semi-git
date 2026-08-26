@@ -62,9 +62,12 @@ function LikertRow({
   const min = item.min ?? 1
   const max = item.max ?? 7
   const points = Array.from({ length: max - min + 1 }, (_, i) => min + i)
+  // Anchors inside the row, at its two ends, rather than a strip underneath.
+  // See the `.likert-opts` rule in styles.css.
   return (
     <div className="likert">
       <div className="likert-opts" role="radiogroup" aria-label={item.label}>
+        {item.anchors && <span className="likert-anchor">{item.anchors[0]}</span>}
         {points.map((p) => (
           <label key={p} className={`likert-opt${value === p ? ' on' : ''}`}>
             <input
@@ -77,8 +80,8 @@ function LikertRow({
             {p}
           </label>
         ))}
+        {item.anchors && <span className="likert-anchor">{item.anchors[1]}</span>}
       </div>
-      <Anchors item={item} />
     </div>
   )
 }
@@ -431,7 +434,12 @@ function Field({
   // under a visible label is what stops a long column of near-identical rows
   // being answered by pattern rather than by reading.
   if (item.type === 'section') {
-    return <h3 className="form-section">{item.label}</h3>
+    return (
+      <div>
+        <h3 className="form-section">{item.label}</h3>
+        {item.help && <p className="small muted" style={{ margin: '0.25rem 0 0' }}>{item.help}</p>}
+      </div>
+    )
   }
 
   const showLabel = item.type !== 'checkbox'

@@ -307,9 +307,9 @@ computed from the same list the timers enforce.
 | 2 | Consent | 2 |
 | 3 | Background questionnaire | 2 |
 | 4 | Setup for the first half: the bundle, the checks, and the start of the participant's own-repository build (section 7) | 6 |
-| 5 | Practice with the first setup, on the throwaway practice project | 5 |
+| 5 | Practice with the first setup, on the study project itself | 5 |
 | 6 | Stages 1 to 4, first half | 20 |
-| 7 | After the half: UMUX-Lite plus the two design checks | 2 |
+| 7 | After the half: UMUX-Lite and raw NASA-TLX | 3 |
 | 8 | Setup for the second half, quick because the tooling is already there | 2 |
 | 9 | Practice with the second setup | 4 |
 | 10 | Stages 1 to 4, second half | 20 |
@@ -326,10 +326,20 @@ Setup is front-loaded: the shared tooling and the first bundle land in the
 first setup step, so the second is only the second project's folder and its
 checks. Practice splits five and four minutes across the halves rather than
 ten up front, so the second tool is taught immediately before it is used.
-The practice project is the same throwaway shopping-cart repository as version
-1 (`scripts/make-practice-repo.sh`), and each sheet teaches exactly the four
-actions the stages need: read a change in the history view, record work, find
-work, remove and restore it.
+Practice happens on the study project itself, at the state `./stage 0` puts it
+in: the history one piece of work short of `study/full`, so the warm-up cannot
+show the change stage 1 then presents as new. Version 1 practised on a
+throwaway shopping-cart repository built by `scripts/make-practice-repo.sh`,
+and that repository is gone. Two reasons. Its sheets quoted ids out of it
+verbatim (`git show 44da4ad`, `sgt show "The Cart@2"`), and a participant who
+typed one while standing in the study project -- which is where the session
+shell opens -- got `unknown revision`. And the ten minutes bought no
+familiarity with the codebase four timed stages are about. The sheets now also
+carry a tour of that codebase, and quote no ids at all: every command either
+needs none, or says to take one from what the previous command printed.
+
+Each sheet teaches exactly the four actions the stages need: read a change in
+the history view, record work, find work, remove and restore it.
 
 There is no project brief step and no memorising. Each stage card carries the
 two sentences of context it needs, which is the point of the design: the
@@ -339,58 +349,67 @@ one stage at a time.
 ## 6. Instruments
 
 Wording is fixed in `web/src/study/instruments.ts` and versioned; the
-per-stage items live with the stages in `web/src/study/tasks.ts`. Batteries
-dropped from version 1: NASA-TLX (a 4-minute stage does not need a six-scale
-workload instrument; the time-pressure check remains) and the 12-item HLAC
-battery, whose items are replaced by the per-stage triplets below, asked in
-the minute after the experience they ask about instead of ten minutes later.
+per-stage items live with the stages in `web/src/study/tasks.ts`. Dropped from version 1: the 12-item HLAC battery, whose items are replaced by
+the per-stage ratings below, asked in the minute after the experience they ask
+about instead of ten minutes later. NASA-TLX was dropped in an earlier draft of
+this version and is back (section 6.2): it is a published instrument with a
+scale behind it, and the two study-written checks that replaced it were not.
 
 ### 6.1 Per-stage ratings
 
-Three statements per stage on the 7-point agree/disagree scale, one of the
-three reverse-keyed as a guard against straight-lining. Answered with the
-quiz, immediately after the stage. Each triplet is one comparison family.
+Statements on the 7-point agree/disagree scale, answered with the quiz,
+immediately after the stage. Each stage's set is one comparison family.
+
+The two reading stages ask two statements each, of the same shape both times:
+did you understand the change, and did you understand what it reaches. The two
+operating stages ask three, the last of them reverse-keyed as the guard
+against straight-lining. An earlier draft of this version asked three
+everywhere, and two of stage 2's asked, in different words, what the
+confidence item directly above them already asked.
 
 Stage 1 (serves C1):
-- "I know what the record I just made contains."
-- "I could tell what the assistant changed without reading every line."
-- (reverse) "Something could be in that record that I did not notice."
+- "I understand the changes the assistant made to this codebase."
+- "I understand the downstream effects of those changes on this codebase."
 
 Stage 2 (serves C2):
-- "I am confident I found the right piece of work."
-- "I could tell why the change had been made."
-- (reverse) "I had to guess at names or ids to find it."
+- "I understand why my colleague made this change."
+- "I understand what else in the project this change affects."
 
 Stage 3 (serves C3):
-- "Before I ran it, I knew what the removal would touch."
-- "The result matches what I intended."
-- (reverse) "I was worried I had broken something else."
+- "Before I ran it, I knew what the removal was going to change."
+- "The result is what I intended."
+- (reverse) "I was worried that I had broken something else."
 
 Stage 4 (serves C3):
 - "The project is back exactly as it was before the removal."
-- "I could tell from the history that the work was back."
-- (reverse) "I would re-check everything by hand before trusting it."
+- "I could tell from the project's history that the work was back."
+- (reverse) "I would want to re-check everything by hand before I trusted it."
 
 The stage 4 reverse item is the honesty valve of this design. If sgt wins the
 scored fidelity measure while losing this item, people got the right result
 without trusting it, and that is a finding about the tool, not noise.
 
-Quizzes with a right answer also carry a 0 to 100 confidence slider, so
-calibration (confidence minus proportion correct) is computable per stage.
+Quizzes with a right answer also carry a confidence rating on the same 7-point
+scale, so calibration (confidence minus proportion correct) is computable per
+stage. It was a 0 to 100 slider until this revision; stored answers carry
+`confidenceScale` so the two are never averaged together.
 
 ### 6.2 Per-half battery
 
-UMUX-Lite, unchanged from version 1 (`umux-lite-v1`), plus the two design
-checks from version 1's HLAC block, now on their own:
+Two published instruments and nothing else, in one step:
 
-- M1, task realism: "These tasks were realistic. I can see this situation
-  happening in real development." 5-point agreement.
-- M2, time pressure: "How much time pressure did you feel?", the five fully
-  labelled options. Every stage is capped, so "the cap bound harder in one
-  condition" stays a live alternative explanation unless it is asked.
+- UMUX-Lite, unchanged from version 1 (`umux-lite-v1`), on its published seven
+  points, reported raw on 0-100.
+- Raw NASA-TLX, six unweighted subscales on the instrument's own 21-point
+  scale, pointed at the four stages just finished.
 
-Both checks are answered per half, are in no outcome tier, and never share an
-axis with a 7-point item.
+The two study-written checks an earlier draft of this version carried -- task
+realism on five points, and a five-option time-pressure select -- are gone.
+Neither had a scale behind it or a corpus to compare a number against, and the
+second asked, less precisely, what TLX's temporal-demand subscale asks. The
+cost is that "the cap bound harder in one condition" is no longer asked
+directly; temporal demand, which is asked per half on a published scale,
+carries it instead.
 
 ### 6.3 Consent, background, preference
 

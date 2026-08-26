@@ -394,6 +394,10 @@ const umuxItem = (id: string, label: string, serves: string): Item => ({
   anchors: ['Strongly disagree', 'Strongly agree'],
 })
 
+const section = (id: string, label: string, help?: string): Item => ({
+  id, type: 'section', label, help, required: false,
+})
+
 export const UMUX_LITE: Instrument = {
   id: 'umux',
   version: 'umux-lite-v1',
@@ -413,27 +417,35 @@ export const UMUX_LITE: Instrument = {
 }
 
 // ---------------------------------------------------------------------------
-// After each half: UMUX-Lite plus the two design checks
+// After each half: UMUX-Lite, then raw NASA-TLX
 // ---------------------------------------------------------------------------
 //
-// Protocol v2's whole per-half battery. The TLX and the twelve-item HLAC
-// block are gone from the flow: a four-minute stage does not need a six-scale
-// workload instrument, and the HLAC items are replaced by the three rating
-// statements each stage ends with, asked in the minute after the experience
-// they ask about instead of ten minutes later. The two manipulation checks
-// survive, riding here instead of on HLAC, and stay flagged `check` for the
-// same reason as before: they are checks on the design, not outcomes, and a
-// five-point check plotted in a block of seven-point items reads as a finding
-// on the wrong axis.
+// Two published instruments and nothing else.
+//
+// It used to carry two items written for this study: "These stages were
+// realistic, I can see this situation happening in real development" and a
+// five-point time-pressure select. Both are gone. A question invented for one
+// study has no scale behind it, nothing to compare a number against, and no
+// reviewer who will accept it as a measure -- and the second one asked, less
+// precisely, what the TLX temporal-demand scale below already asks.
+//
+// The twelve-item HLAC block stays gone. A four-minute stage does not need a
+// twelve-item legibility battery ten minutes after the fact, and the per-stage
+// rating statements ask the same thing in the minute after the experience.
+//
+// The two batteries share one page because they are both about the half that
+// just finished, and asking somebody to press Continue between two short
+// questionnaires is a step that buys nothing.
 
 export const AFTER_HALF: Instrument = {
   id: 'after',
-  version: 'after-half-v1',
+  version: 'after-half-v2',
   title: 'This setup',
   perHalf: true,
-  estimateMin: 2,
+  estimateMin: 3,
   intro:
-    'Four questions about the setup you just used for those stages. Nothing here is timed.',
+    'Two questions about the setup you have just used, then six about how the work felt. ' +
+    'Nothing here is timed, and there is no good or bad score.',
   items: [
     umuxItem(
       'capability',
@@ -441,35 +453,14 @@ export const AFTER_HALF: Instrument = {
       'usability / capability',
     ),
     umuxItem('easy', 'This setup is easy to use.', 'usability / ease'),
-    {
-      id: 'realistic',
-      type: 'likert',
-      required: true,
-      check: true,
-      min: 1,
-      max: 5,
-      shortLabel: 'Stages were realistic',
-      serves: 'manipulation check — task realism',
-      anchors: ['Strongly disagree', 'Strongly agree'],
-      label:
-        'These stages were realistic. I can see this situation happening in real development.',
-    },
-    {
-      id: 'timePressure',
-      type: 'select',
-      required: true,
-      check: true,
-      serves: 'manipulation check — did the cap bind',
-      label: 'How much time pressure did you feel?',
-      help: 'About the clock specifically, not about how hard the work was.',
-      options: [
-        { value: '1', label: 'Too much. I could not cope, regardless of difficulty' },
-        { value: '2', label: 'A fair amount. I could have done better with more time' },
-        { value: '3', label: 'Not much. I had to hurry a bit, but it was fine' },
-        { value: '4', label: 'Very little. I was quite comfortable with the time' },
-        { value: '5', label: 'None at all' },
-      ],
-    },
+
+    section(
+      'workload',
+      'Workload',
+      'These six are about the four stages you have just worked through, and nothing else. ' +
+        'Answer quickly, on first instinct. Mark a position on each line.',
+    ),
+    ...TLX.items,
   ],
 }
 
@@ -496,9 +487,6 @@ const hlacItem = (
   anchors: ['Strongly disagree', 'Strongly agree'],
 })
 
-const section = (id: string, label: string): Item => ({
-  id, type: 'section', label, required: false,
-})
 
 export const HLAC: Instrument = {
   id: 'hlac',

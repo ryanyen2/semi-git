@@ -1536,3 +1536,129 @@ sheets teach `undo` alongside `restore`, both because of finding 56. The tool no
 requires that workaround, but the protocol is pre-registered and the target was chosen
 under it, so changing either is a study-design decision and not a consequence of this
 fix. Recorded here so it is made deliberately.
+
+## Walking the sgt arm end to end before the pilot (2026-08-25)
+
+Every stage run as a participant would run it, in both projects, reading the output
+rather than the exit code. Four defects were fixed; two are recorded and left alone
+because fixing them is not a mid-pilot change.
+
+### Finding 60: `sgt find` printed a command that cannot run
+
+The `next:` line under every search result was `sgt show {id[:12]}`. A symbol's id is
+its path-qualified name, so the top hit `bikecount/metrics.py::hourly_averages` was
+suggested as `sgt show bikecount/me`, which exits non-zero. The listing under each hit
+had the same cut at sixteen characters, printing the file path as `bikecount/metric`
+and a feature's handle in a width nothing else in the tool uses.
+
+An id is either whole or it is not an id. `sgt/cli/select.py` now prints a feature
+handle at the fourteen characters `sgt intent list` uses, leaves every other id alone,
+and omits the id line entirely for a symbol, whose id and label are the same string.
+Descriptions clip on a word boundary with an ellipsis; one had been reading
+`separated int`.
+
+### Finding 61: a cross-feature theme named `(unwitne`
+
+`sgt intent list` — the screen stage 3 sends an sgt-arm participant to — listed a
+theme spanning every feature in the repo whose name was eight characters of a
+parenthesis. `intent.group.UNWITNESSED` is the synthetic atom key `"(unwitnessed)"`
+for an op whose provenance commits are not in `history()`, and the theme labeller
+sliced it with `commit_sha[:8]` as though it were a sha. A second label was cut
+mid-word at exactly sixty characters, the hard bound every label site applied without
+an ellipsis.
+
+`short_sha` now passes any non-hex key through whole and `clip_label` ellipsizes on a
+word boundary; `theme.py`, `theme_segment.py` and `segment.py` mint labels through
+both. The labels are also *stored*, so the four shipped bundles carry the old ones:
+`scripts/` has no repair verb, and the two sgt-arm study repos were repaired in place
+and their `.study/sgt-pristine.tar` rebuilt, which is what `./stage N` restores.
+
+### Finding 62: the consequence report printed twice under `--yes`
+
+`sgt revert <x> --yes` printed the three subtraction lines, then `✓ revert applied`,
+then the same three lines again. `_restore_gap_report` already carried a `if not yes`
+guard with a comment giving exactly this reasoning; `_subtraction_report` did not. A
+warning about work that stays gone reads as two separate problems when it repeats.
+
+### Finding 63: `gains 1 edits`
+
+The verb preview's per-feature badge interpolated a bare count. It now goes through
+`plural`, like the two lines under it always did.
+
+### Finding 64 (open): the broken-reference warning fires on the correct answer
+
+Stage 3's removal, done correctly in one command, ends with
+
+    ⚠ still references removed code (fix or revert separately):
+      bikecount/charts.py::bar_chart, bikecount/pages/monthly.py::render,
+      bikecount/pages/overview.py::render
+
+and then `./check 3` reports that every page renders and the number is right. All
+three are false. `bar_chart` takes a parameter *named* `label`; the two `render`
+functions contain `class="label"` in their html and pass `label=` as a keyword. The
+removed symbol is `bikecount/events.py::label` — which is still in the file. The
+analysis is matching a bare name against a symbol name.
+
+Left open deliberately. It is in `core/subtract.py`, it is correctness-critical, and
+the fix is not a mid-pilot change. What it costs the study is worth stating plainly:
+in a four-minute stage it fires at the moment a participant has just succeeded, and
+stage 3's reverse-keyed item is *"I was worried that I had broken something else."*
+Any effect it has runs against sgt.
+
+### Finding 65 (open): sgt has less to say about uncommitted work than git
+
+Stage 1 replays an eleven-file change (ten modified, one new module) into the working
+copy. `sgt now` reports `unsaved 1 edit(s) in 1 feature`; the dirty miner folds the
+whole replay into a single `rework` op. `sgt status` reports seven files, silently
+omitting `README.md`, `check.py`, `bikecount/server.py` — which sgt already tracks
+symbols in — and the new `bikecount/window.py`. `git status` lists all eleven.
+
+`sgt save` records all eleven correctly, so nothing is lost; the defect is in what the
+two summaries say beforehand, and they disagree with each other by a factor of seven.
+
+This is the RQ1 weakness the rehearsal recorded, in its concrete form. The stage-1
+tips for the sgt arm named `sgt now` and `sgt status` as the way to read the change,
+which pointed the arm at two commands that under-report it. They now name `git diff`
+and the editor's diff view for the reading and `sgt save` for the recording, which is
+the step C1 is actually about. Both arms have git and both stage bodies already said
+"in the editor or in the terminal", so this narrows the comparison to the recording
+step rather than widening it — but it is a change to what the arms are given, and it
+is recorded here so it is made deliberately.
+
+### Finding 66: a bundle built from a rehearsed source repo ships a truncated history
+
+`make-study-bundle.sh` copies the source repo's working tree, so whatever branch it
+was left on is the branch the participant gets. It verified that the three stage tags
+exist and never that `main` was at `study/full`. Walking the stages for the checks
+above left all four source repos elsewhere — `baseline-footfall` on the three revert
+commits of `study/removed` — and a build from that state would have shipped a project
+already one or two pieces of work short of itself, silently. Every stage would still
+"work", because each one resets first; what breaks is the participant reading a
+history missing its own end, and stage 1 replaying a change that is already in it.
+
+The build now refuses unless `HEAD == study/full` and the tree is clean, naming
+`./stage 2` as the fix.
+
+### Finding 67 (open, sgt's own suite): the CLI-surface golden depends on whether a key is configured
+
+`tests/golden/test_cli_golden.py::test_cli_surface_matches_golden` fails on a clean
+checkout of `main`. Regenerating it and diffing against the committed fixture shows
+that every changed line is a feature or checkpoint *label*: the fixture was captured
+with no LLM key present, so it records `"label": "baz qux"` and
+`"why": "Auto-derived from b.py (no LLM label available)."`, and the capture now runs
+the labeller.
+
+Worse than stale: the labeller is not deterministic, and one run produced four
+different names for the same feature across the fixtures it appears in —
+`File Change Detection`, `Unrelated Change Detection`, `Binary File Tracking`,
+`Change Classification`, `Commit Change Analysis`. So the test cannot be made to pass
+by refreshing the snapshot; it would fail again on the next run.
+
+The fix is for the capture to pin the labeller off (the same way the fixture was
+originally recorded) rather than for the snapshot to be updated. Left alone here: it
+is sgt's test infrastructure, not the study, and refreshing the golden would bake
+non-deterministic output into a fixture whose whole purpose is to be stable.
+
+Recorded because a red golden invites exactly that refresh. The four fixes above
+(findings 60 to 63) are golden-neutral — none of their output appears anywhere in
+that diff, which is how they were confirmed not to be the cause.

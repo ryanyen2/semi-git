@@ -36,7 +36,7 @@ Thanks for taking part. Plan for ${PLAN_FOR}, including breaks.
 - Do that twice, with two different setups for reading and changing the project's history, on two different projects.
 - At the end, look at one of your own repositories through one of the setups, and talk with us about it.
 
-Each stage tells you exactly what has happened and what to do. You never have to work out what the project is for, and a script resets the project between stages, so nothing you do in one stage can spoil the next.
+Before the stages start you get a few minutes on the project itself, so that you know what it does and how it is laid out. Each stage then tells you exactly what has happened and what to do, and a script resets the project between stages, so nothing you do in one stage can spoil the next.
 
 We are comparing the two setups. We are not testing you. If something confuses you, that is the most useful thing you can tell us.
 
@@ -58,7 +58,7 @@ There is no AI assistant to chat with during the timed stages. The first stage s
 |---|---|
 | 4 | Consent and a few questions about your background |
 | 6 | Setting up your machine |
-| 5 | Practice with the first setup, on a throwaway project |
+| 5 | Practice with the first setup, on the project itself |
 | ${BLOCK_ESTIMATE_MIN} | Four stages with the first setup, each a few minutes plus a few questions |
 | 2 | Questions about that setup |
 | 6 | Setting up and practising the second setup |
@@ -97,223 +97,300 @@ export const HANDOUT_MD = `# Welcome\n\n${WELCOME_MD}\n`
 // The two practice sheets
 // ---------------------------------------------------------------------------
 //
-// Both are written editor-first. Pilots of the old design read a sheet made
-// entirely of terminal commands, then met the tasks inside an editor they had
-// been given but never shown, and several never opened the history view at
+// The warm-up used to happen on a throwaway shopping-cart repository built by
+// scripts/make-practice-repo.sh. It is gone, and the practice now happens on
+// the project the stages use, for two reasons.
+//
+// The first is that the sheets quoted ids from that repository -- `git show
+// 44da4ad`, `sgt show "The Cart@2"` -- and a participant who typed them got
+// `unknown revision`, because the id was real in a repository they were no
+// longer standing in. Nothing here quotes an id any more. Every command below
+// either needs no id, or says to take one from what the previous command
+// printed, which is what somebody does in their own work anyway.
+//
+// The second is that ten minutes spent learning a shopping cart is ten minutes
+// not spent learning the dashboard four timed stages are about. Practising on
+// the real project means the codebase tour and the tool warm-up are the same
+// ten minutes. `./stage 0` puts the project back to just before the assistant's
+// changes, so the warm-up cannot show them the work stage 1 asks them to read.
+//
+// Both sheets are written editor-first. Pilots of the old design read a sheet
+// made entirely of terminal commands, then met the tasks inside an editor they
+// had been given but never shown, and several never opened the history view at
 // all, which turns "does this representation help" into "did you find the
 // panel".
 //
-// Each sheet teaches exactly the four actions the stages need: read a change
-// in the history view, record work, find a piece of work, and take one out
-// and put it back. Nothing else. Every command, id, and name quoted below is
-// real in the warm-up repository that scripts/make-practice-repo.sh builds,
-// and that script re-checks each of them at the end of a build.
+// Each sheet teaches exactly the four actions the stages need: read a change,
+// record work, find a piece of work, and take one out and put it back.
 
-const TUTORIAL_GIT = `
-You already know git. This is not a lesson. It is a warm-up on the four things the stages will ask you to do, so that nothing on this machine surprises you later.
+/** The project itself, in both conditions. The stages are about this codebase,
+ * so the warm-up is the only place anybody gets told how it is put together. */
+const PROJECT_TOUR: Record<Project, string> = {
+  bikecount: `
+## The project you are looking after
 
-## The practice project
+**bikecount** is a small web dashboard over the bicycle counter on the Fremont Bridge in Seattle. The city has counted people crossing every hour since 2013 and publishes the file. The dashboard reads that file and draws a handful of pages, and its numbers go into the cycling team's quarterly report.
 
-Run \`study-practice\`. It prints a \`cd\` line -- run that line, and you are in a throwaway copy of a small shopping cart program. Nothing you do to it counts.
+Start it and look at it:
 
-It has four pieces: \`cart.py\` (adding and removing things, and the total), \`discount.py\` (a percentage off, or a coupon code), \`receipt.py\` (printing a receipt), and \`shipping.py\` (what postage costs). Sixteen commits, and \`python -m pytest -q\` passes.
+    python3 -m bikecount.server
 
-You are in the right place if \`ls\` shows \`cart.py\`, \`discount.py\`, \`receipt.py\` and \`shipping.py\` (plus a test file for each). If it shows anything about bikes or pedestrians, you are in the real project.
+Then open http://localhost:8000 and click through the five pages: the front page, the hour-of-day page, monthly totals, the by-year table, and the east against west comparison. There is also a csv download at \`/daily.csv\`. Stop the server with Ctrl-C when you have seen them.
 
-## 1. Open the editor
+The code is laid out like this:
+
+- \`bikecount/pages/\` is one file per page. Each one has a \`render()\` that returns the html for that page, and the navigation and the routing are built from whatever is in that folder.
+- \`bikecount/metrics.py\` works out the numbers the pages show: daily totals, the busiest day, the hour-of-day averages, the by-year summary.
+- \`bikecount/data.py\` reads \`data/counts.csv\` and hands the rows to everything else.
+- \`bikecount/charts.py\` draws the bar charts the pages embed.
+- \`check.py\` renders every page and fails if one of them blows up. It is the safety net, and it takes a second:
+
+\`\`\`
+python3 check.py
+\`\`\`
+
+You will not have to write any code in the stages. You will have to read some.
+`,
+  footfall: `
+## The project you are looking after
+
+**footfall** is a small web dashboard over the pedestrian counter on Spencer Street in Melbourne. The city has counted people walking past every hour since 2013 and publishes the file. The dashboard reads that file and draws a handful of pages, and its numbers go into the transport committee's quarterly paper.
+
+Start it and look at it:
+
+    python3 -m footfall.server
+
+Then open http://localhost:8000 and click through the five pages: the front page, the hour-of-day page, monthly totals, the by-year table, and the north against south comparison. There is also a csv download at \`/daily.csv\`. Stop the server with Ctrl-C when you have seen them.
+
+The code is laid out like this:
+
+- \`footfall/pages/\` is one file per page. Each one has a \`render()\` that returns the html for that page, and the navigation and the routing are built from whatever is in that folder.
+- \`footfall/metrics.py\` works out the numbers the pages show: daily totals, the busiest day, the hour-of-day averages, the by-year summary.
+- \`footfall/data.py\` reads \`data/counts.csv\` and hands the rows to everything else.
+- \`footfall/charts.py\` draws the bar charts the pages embed.
+- \`check.py\` renders every page and fails if one of them blows up. It is the safety net, and it takes a second:
+
+\`\`\`
+python3 check.py
+\`\`\`
+
+You will not have to write any code in the stages. You will have to read some.
+`,
+}
+
+/** Where the warm-up starts, in both conditions. */
+const WARM_UP_STATE = `
+## Put the project in its warm-up state
+
+In the session shell, run:
+
+\`\`\`
+./stage 0
+\`\`\`
+
+That puts the project back to where it stood just before the changes the first stage is about, so nothing you see here spoils that stage. Everything you do from now until you run \`./stage 1\` is undone by \`./stage 1\`, so nothing you try can go wrong.
+`
+
+const GIT_OPENING = `
+You already know git. This is not a lesson. It is a warm-up on the four things the stages will ask you to do, on the project the stages use, so that nothing on this machine surprises you later.
+`
+
+const GIT_BODY = `
+## Open the editor
 
 \`\`\`
 study-code
 \`\`\`
 
-That opens the practice project in VS Code with **GitLens** installed. Find these now, because the stages will want them:
+That opens the project in VS Code with **GitLens** installed. Find these three now, because the stages will want them:
 
-- **Source Control** in the left bar, for what has changed and where you commit.
-- **Commit Graph.** The GitLens icon in the left bar, or *GitLens: Show Commit Graph* from the command palette. The history as a graph you can click through.
-- **File History.** Right-click any file, *Open File History*.
+- **Source Control** in the left bar. It shows what you have changed, and it is where you commit.
+- **Commit Graph.** Click the GitLens icon in the left bar, or run *GitLens: Show Commit Graph* from the command palette. This is the history as a graph you can click through.
+- **File History.** Right-click any file and choose *Open File History*.
 
-## 2. Read one change
+## 1. Read one change
 
-Open the Commit Graph and click a commit. You see what it changed, file by file. The same thing in the terminal:
-
-\`\`\`
-git show 44da4ad
-\`\`\`
-
-## 3. Record some work
-
-Make a small edit to \`receipt.py\`: change a word in the docstring at the top of the file. (Leave the code alone, so the tests keep passing.) Then record it the way you normally would: stage it and commit it in Source Control, with a message. Or in the terminal:
+Open the Commit Graph and click a commit. It shows you what that commit changed, file by file. The same thing in the terminal:
 
 \`\`\`
-git add receipt.py
-git commit -m "reword the receipt docstring"
+git log --oneline
+git show <paste a hash from that list>
 \`\`\`
 
-Stage 1 asks you to do exactly this, on changes someone else made.
+Read the commit that added the csv download, and the one that added the by-year table. Between them they will tell you most of how the pages are put together.
 
-## 4. Find a piece of work
+## 2. Record some work
 
-\`git log -S\` finds the commits where some text arrived or went away:
-
-\`\`\`
-git log --oneline -S "FREE_OVER"
-\`\`\`
-
-Three commits come back: free shipping over fifty arrived, then vanished inside a commit about per-item pricing whose message does not mention it, then came back. Try to see the same story in the Commit Graph. Also useful: \`git log --stat\`, \`git blame shipping.py\`, and File History in the editor.
-
-## 5. Take something out, and put it back
+Open \`README.md\` and change a word in it. Then record it the way you normally would: stage it and commit it in Source Control, with a message. Or in the terminal:
 
 \`\`\`
-git revert 7e6e383
+git add README.md
+git commit -m "reword a line in the readme"
 \`\`\`
 
-That makes a new commit undoing an old one. This one applies cleanly.
+Stage 1 asks you to do exactly this, on changes somebody else made.
 
-Now try one that does not. Later commits touched the same lines here, so git stops and leaves conflict markers in the file:
+## 3. Find a piece of work
+
+\`git log -S\` finds the commits where a piece of text arrived or went away. Any word from the code will do:
 
 \`\`\`
-git revert a05fc79
+git log --oneline -S "average"
 \`\`\`
 
-Resolve the markers, \`git add\` the file, then \`git revert --continue\`. Or walk away with \`git revert --abort\`.
+Try to see the same story in the Commit Graph. Also worth knowing: \`git log --stat\` shows which files each commit touched, \`git blame <file>\` says which commit last changed each line, and File History does the same thing in the editor.
 
-To put back what you removed, revert the revert:
+Stage 2 asks you to find one particular piece of work this way.
+
+## 4. Take something out, and put it back
 
 \`\`\`
 git revert HEAD
 \`\`\`
 
-**Do the conflicting one now.** A later task will ask you to remove work that several commits touched, and this is the only place you can practise getting out of it.
+That makes a new commit undoing the most recent one. This one applies cleanly. Put it back by reverting the revert:
 
-## Back to the real project
+\`\`\`
+git revert HEAD
+\`\`\`
 
-When you are done practising, run:
+**Now try one that does not apply cleanly.** Pick a commit from a few pages back in \`git log --oneline\` -- one that later work has built on, such as the commit that first added the hour-of-day page -- and revert it:
 
-    study-work
+\`\`\`
+git revert <that hash>
+\`\`\`
 
-That puts you back in the project the stages use. The stages will not find their commands anywhere else.
+Git will stop and leave conflict markers in the files. Resolve them, \`git add\` the file, then \`git revert --continue\`. Or walk away with \`git revert --abort\`.
+
+Do this now. Stage 3 asks you to remove work that several later commits have landed on, and this is the only place you can practise getting out of it.
 
 ## Before we start
 
-Tell us if any of that behaved differently from what you expected.
-`.trim()
+Run \`python3 check.py\` once more to see the project still works, and tell us if anything above behaved differently from what you expected.
+`
 
-const TUTORIAL_SGT = `
+const SGT_OPENING = `
 ## What it is
 
 \`sgt\` sits on top of an ordinary git repository. Git records which lines in which files changed. \`sgt\` records which functions and classes changed, and groups related work under a name.
 
 Two words are worth learning, because you will type both.
 
-A **feature** is a body of work that grew over time, like "the hourly charts".
+A **feature** is a body of work that grew over time, such as "the hourly charts".
 
-A **checkpoint** is one step inside a feature, like "split it into weekday and weekend". Checkpoints are what you usually want: a feature can be months of work, a checkpoint is normally one afternoon. Some screens call these **chapters**. Same thing.
+A **checkpoint** is one step inside a feature, such as "split it into weekday and weekend". Checkpoints are usually what you want: a feature can be months of work, where a checkpoint is normally one afternoon. Some screens call these **chapters**. They are the same thing.
 
-Ten minutes will not make you fluent and we do not expect it to. Every command ends by printing what you might want to run next.
+Ten minutes will not make you fluent, and we do not expect it to. Every command ends by printing what you might want to run next.
+`
 
-## The practice project
-
-Run \`study-practice\`. It prints a \`cd\` line -- run that line, and you are in a throwaway copy of a small shopping cart program. Nothing you do to it counts.
-
-You are in the right place if \`ls\` shows \`cart.py\`, \`discount.py\`, \`receipt.py\` and \`shipping.py\` (plus a test file for each).
-
-## 1. Open the editor
+const SGT_BODY = `
+## Open the editor
 
     study-code
 
-That opens the practice project in VS Code with the **semi-git** extension. Click the semi-git icon in the left bar:
+That opens the project in VS Code with the **semi-git** extension. Click the semi-git icon in the left bar:
 
 - **Now**, for where things stand.
 - **Features**, the work as a tree. Expand a feature to see its checkpoints.
 - **Changes**, for what you have edited and not yet saved.
 
-At the bottom, the **workbench** panel draws every feature as a row across time. The chips under each row are its checkpoints. Right-clicking either one offers **Revert** and **Restore**, the two commands section 5 covers.
+At the bottom, the **workbench** panel draws every feature as a row across time. The chips under each row are its checkpoints. Right-clicking either one offers **Revert** and **Restore**, which section 4 below covers.
 
 There are two more views in that sidebar, **Forks** and **Compositions**. Nothing in this session needs them.
 
-## 2. Read one change
+## 1. Read one change
 
-Click a checkpoint in the Features tree or the workbench. It shows what it covers, in functions rather than lines. The same thing in the terminal, where \`@2\` means "the third checkpoint of The Cart":
+Click a checkpoint in the Features tree or in the workbench. It shows what that piece of work covers, in functions rather than lines. The same thing in the terminal:
 
-    sgt show "The Cart@2"
+    sgt log
 
-\`sgt log\` lists the jobs somebody did, newest first, in their own words, and \`sgt log --map\` draws one row per feature.
+That lists the jobs somebody did, newest first, in their own words. Each row carries a short id, the seven-character code near the left. Pass one of those to \`sgt show\`:
 
-## 3. Record some work
+    sgt show <a short id from a row>
 
-Make a small edit to \`receipt.py\`: change a word in the docstring at the top of the file. (Leave the code alone, so the tests keep passing.) The **Changes** view shows it. Record it, in your own words:
+\`show\` takes an id or an exact name, never a phrase, so pasting a whole row's description back at it will not work. The feature name on the right of a row works too, in quotes:
 
-    sgt save -m "reword the receipt docstring"
+    sgt show "<a feature name, exactly as it is written>"
 
-It files your change under the feature it belongs to and prints which one. Plain \`sgt save\` works too and says \`no words captured\`, because the words are yours to give. Stage 1 asks you to do exactly this, on changes someone else made.
+Read the work that added the csv download, and the work that added the by-year table. \`sgt log --map\` draws one row per feature.
 
-## 4. Find a piece of work
+## 2. Record some work
+
+Open \`README.md\` and change a word in it. The **Changes** view shows the edit. Record it, in your own words:
+
+    sgt save -m "reword a line in the readme"
+
+It files your change under the piece of work it belongs to and prints which one. Plain \`sgt save\` works too and says \`no words captured\`, because the words are yours to give. Stage 1 asks you to do exactly this, on changes somebody else made.
+
+## 3. Find a piece of work
 
 Describe it in your own words:
 
-    sgt find "the bit that works out postage"
+    sgt find "the bit that works out the averages"
 
-It lists the closest matches to what you typed: functions, features, and individual saves. The search box in the workbench toolbar does the same. Some rows are shortened to fit, so to get a handle you can type back, use \`sgt intent list\` -- it prints every feature and checkpoint with its handle.
+It lists the closest matches to what you typed: functions, features, and individual saves. The search box in the workbench toolbar does the same thing.
 
-## 5. Take something out, and put it back
-
-Do this whole sequence now. It is the most useful thing on this sheet.
-
-    sgt revert "The Cart@2"
-
-Nothing has happened yet. That was a preview. Four things in it are worth reading: which checkpoint says **removed**, which say **kept**, any that say something like **2/6 edits removed** (that one shared code with what you are taking out), and the line counting the other features it leaves alone. Now do it:
-
-    sgt revert "The Cart@2" --yes
-    python -m pytest -q
-
-Then put it back. **\`--yes\` again**. Without it you get another preview and nothing happens:
-
-    sgt restore "The Cart@2" --yes
-    python -m pytest -q
-
-\`restore\` is \`revert\`'s opposite and takes the same words. If you ever lose track of where you are, \`sgt undo\` reverses whatever you last did, and \`sgt now\` says where things stand.
-
-## 6. Some work spans several features
-
-One job done over a few afternoons can end up spread across more than one feature. \`sgt\` groups that too, and lists those groups at the bottom of:
+Some rows are shortened to fit. To get a name you can type back, run:
 
     sgt intent list
 
-They are removed and restored by name, exactly like a chapter:
+That prints every feature and checkpoint with its handle. The groups at the bottom are pieces of work that span several features; **the sidebar does not show those**, so that command is the only place they appear. Stage 3 names one of them.
 
-    sgt revert "<the name it lists>"
-    sgt restore "<the name it lists>"
+## 4. Take something out, and put it back
 
-**These groups are the one thing the sidebar does not show yet**, so this is a terminal command. If a later task names a piece of work you cannot find in the tree, look at the bottom of \`sgt intent list\` and type its name.
+Do this whole sequence now. It is the most useful thing on this sheet.
 
-## 7. Help
+Pick a checkpoint from \`sgt intent list\` -- one from the middle of the list, not the newest -- and preview taking it out:
+
+    sgt revert "<that name>"
+
+Nothing has happened yet. That was a preview, and four things in it are worth reading: which checkpoint says **removed**, which say **kept**, any that say something like **2/6 edits removed** (that one shares code with what you are taking out), and the line counting the other features it leaves alone. Now do it:
+
+    sgt revert "<that name>" --yes
+    python3 check.py
+
+Then put it back. **\`--yes\` again.** Without it you get another preview and nothing happens:
+
+    sgt restore "<that name>" --yes
+    python3 check.py
+
+\`restore\` is \`revert\`'s opposite and takes the same words. If you lose track of where you are, \`sgt undo\` reverses whatever you last did, and \`sgt now\` says where things stand.
+
+## 5. Help
 
     sgt --help
     sgt <command> --help
 
-## Back to the real project
-
-When you are done practising, run:
-
-    study-work
-
-That puts you back in the project the stages use. The stages will not find their commands anywhere else.
-
 ## Before we start
 
-Tell us if anything printed something you could not make sense of.
-`.trim()
+Run \`python3 check.py\` once more to see the project still works, and tell us if anything above printed something you could not make sense of.
+`
 
-export function tutorialFor(condition: Condition): string {
-  return condition === 'git' ? TUTORIAL_GIT : TUTORIAL_SGT
+/**
+ * One practice sheet: what the tool is, then what the project is, then the four
+ * things to try.
+ *
+ * The project comes second rather than last on purpose. Somebody about to run
+ * `sgt find "the bit that works out the averages"` has to know that there are
+ * averages, and roughly where. The old sheet described no codebase at all,
+ * because the practice happened on an unrelated shopping cart.
+ */
+export function tutorialFor(condition: Condition, project: Project): string {
+  const opening = condition === 'git' ? GIT_OPENING : SGT_OPENING
+  const body = condition === 'git' ? GIT_BODY : SGT_BODY
+  return (
+    [opening.trim(), PROJECT_TOUR[project].trim(), WARM_UP_STATE.trim(), body.trim()].join(
+      '\n\n',
+    ) + '\n'
+  )
 }
 
 /**
  * What the practice step says before the sheet itself, on both surfaces.
  */
 export const TUTORIAL_LEDE =
-  'A few minutes on a practice project first. Ask anything now. Once the stages start we ' +
-  'can only answer questions about the stage instructions themselves.'
+  'A few minutes on the project itself before the stages start. Ask us anything now. Once the ' +
+  'stages start we can only answer questions about the stage instructions themselves.'
 
 /**
  * The same practice sheet as a printed page. Generated rather than typed
@@ -321,8 +398,8 @@ export const TUTORIAL_LEDE =
  * that fails on any feature name with a space in it while the website showed
  * the working one.
  */
-export function sheetTutorialMd(condition: Condition): string {
-  return `# Practice: ${condition}\n\n${TUTORIAL_LEDE}\n\n${tutorialFor(condition)}\n`
+export function sheetTutorialMd(condition: Condition, project: Project): string {
+  return `# Practice: ${condition}, ${project}\n\n${TUTORIAL_LEDE}\n\n${tutorialFor(condition, project)}\n`
 }
 
 /** Spells the small counts the prose below quotes. `4 stages` in a sentence
@@ -340,9 +417,11 @@ export const TASK_PREAMBLE = (app: string, maintainer: string, blurb: string) =>
   `
 You are looking after **${app}**, ${blurb}. ${maintainer} built it over six weeks and has left the team. It reads a public csv of hourly sensor counts and renders a handful of pages: a front page, an hour-of-day page, monthly and yearly totals, a comparison of the two sensors, and a csv download. Its numbers go into a quarterly report.
 
-You need to be in the project folder for these. If you have been practising, run \`study-work\` first.
+This is the same project you have just been practising on, and you run these from the same folder.
 
-There are ${spell(STAGE_COUNT)} stages, in order. Each one starts with a command you run yourself, \`./stage 1\` and so on, which puts the project in that stage's starting state. The clock starts once that command has finished printing. The doing part has a visible countdown; the questions after it do not.
+There are ${spell(STAGE_COUNT)} stages, in order. Each one starts with a command you run yourself, \`./stage 1\` and so on, which puts the project into that stage's starting state. The clock starts once that command has finished printing. The doing part has a visible countdown. The questions after it are not timed.
+
+Every stage card carries a short list of the commands you are most likely to want. They are there so that you do not lose a minute to remembering a flag.
 
 Running out of time on a stage is a normal result, and the next stage starts clean either way. Tell us what you are thinking as you go.
 `.trim()
@@ -356,10 +435,10 @@ Running out of time on a stage is a normal result, and the next stage starts cle
  * screen after each stage, and a paper copy would invite someone to fill them
  * in early. The sheet names them and points at the screen.
  */
-export function sheetTasksMd(project: Project): string {
+export function sheetTasksMd(project: Project, condition: Condition): string {
   const { app, maintainer, blurb } = SCENARIO[project]
   const out = [
-    '# Your stages',
+    `# Your stages: ${project}, ${condition}`,
     '',
     TASK_PREAMBLE(app, maintainer, blurb),
     '',
@@ -372,6 +451,8 @@ export function sheetTasksMd(project: Project): string {
     out.push('', r.body[project])
     out.push('', `What \`${r.run.script[project]}\` does:`, '')
     out.push(...r.run.does[project].map((d) => `- ${d}`))
+    out.push('', 'Commands you may want:', '')
+    out.push(...r.tips[condition].map((t) => `- ${t}`))
     if (r.identify) out.push('', `**${r.identify[project]}:** ______________________`)
   }
   return out.join('\n') + '\n'

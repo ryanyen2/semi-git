@@ -45,6 +45,12 @@ function splitRow(line: string): string[] {
     .map((c) => c.trim())
 }
 
+/** One line of markdown, with no block wrapper around it. For list items and
+ * table-like places where a <p> would break the layout. */
+export function MarkdownLine({ children }: { children: string }) {
+  return <>{inline(children ?? '', 'ml')}</>
+}
+
 export function Markdown({ children, className }: { children: string; className?: string }) {
   const lines = (children ?? '').replace(/\r\n/g, '\n').split('\n')
   const blocks: ReactNode[] = []

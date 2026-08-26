@@ -8,7 +8,7 @@ Thanks for taking part. Plan for an hour and a half, including breaks.
 - Do that twice, with two different setups for reading and changing the project's history, on two different projects.
 - At the end, look at one of your own repositories through one of the setups, and talk with us about it.
 
-Each stage tells you exactly what has happened and what to do. You never have to work out what the project is for, and a script resets the project between stages, so nothing you do in one stage can spoil the next.
+Before the stages start you get a few minutes on the project itself, so that you know what it does and how it is laid out. Each stage then tells you exactly what has happened and what to do, and a script resets the project between stages, so nothing you do in one stage can spoil the next.
 
 We are comparing the two setups. We are not testing you. If something confuses you, that is the most useful thing you can tell us.
 
@@ -30,7 +30,7 @@ There is no AI assistant to chat with during the timed stages. The first stage s
 |---|---|
 | 4 | Consent and a few questions about your background |
 | 6 | Setting up your machine |
-| 5 | Practice with the first setup, on a throwaway project |
+| 5 | Practice with the first setup, on the project itself |
 | 20 | Four stages with the first setup, each a few minutes plus a few questions |
 | 2 | Questions about that setup |
 | 6 | Setting up and practising the second setup |

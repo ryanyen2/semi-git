@@ -84,7 +84,7 @@ There are three roles:
 | `participant-materials.md` | The facilitator's script and answer keys |
 | `answer-key.json` | Ground-truth data loaded into the web console for scoring |
 | `remote-setup.md` | How to run sessions on a participant's own laptop |
-| `materials/` | Printed copies of what participants see: welcome, both practice sheets, both project briefs, both task sheets. Generated from `web/src/study/`, so edit the copy there and run `npm run gen:materials` in `web/`; `npm test` fails if a file here has drifted |
+| `materials/` | Printed copies of what participants see: the welcome, and one practice sheet and one task sheet per condition-and-project pair (four of each, because both now quote that project's own files and that arm's own commands). Generated from `web/src/study/`, so edit the copy there and run `npm run gen:materials` in `web/`; `npm test` fails if a file here has drifted |
 | `testbed-spec.md` | How the two study projects were built |
 | `build-log-*.md` | Ground truth for each project's commit history |
 | `pilot-01-findings.md` | Findings from the first pilot (sgt condition) |
@@ -100,7 +100,6 @@ machine) is in `scripts/study-bundle/`. Other scripts:
 | Script | What it does |
 |---|---|
 | `make-study-bundle.sh` | Builds one of the four bundles (2 conditions x 2 projects) |
-| `make-practice-repo.sh` | Builds the throwaway warm-up repository for practice |
 | `setup-study-session.sh` | Prepares one workspace on a machine you control |
 | `score_study_repo.py` | Scores the removal cards (checks removal, collateral damage, and the behavioral probe via `--expect-behaviour`) |
 | `study-bundle/tests/test_telemetry.py` | End-to-end test for the recording pipeline (needs the emulator) |

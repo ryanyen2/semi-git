@@ -15,7 +15,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -26,7 +25,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import client  # noqa: E402
 
-EXPECTED_TESTS = 38
 PING_TIMEOUT = 75
 # The model the study runs on. A tripwire on purpose: changing which model the
 # assistant uses is a change to the condition, so it should require editing a
@@ -103,21 +101,24 @@ def main() -> int:
         checks.add("python", False, "no project environment; re-run install/setup.sh")
         checks.add("venv", False, "no project environment")
 
-    # 4. The suite the participant will lean on as a safety net
+    # 4. The check the participant will lean on as a safety net.
+    #
+    # `check.py`, not pytest. The protocol v2 testbeds are harvested dashboards
+    # and carry no test suite at all, so this ran pytest against a project with
+    # no tests in it and reported `no tests ran in 0.00s` as a hard failure on
+    # every single setup. What the participant actually has as a safety net is
+    # the project's own smoke check, which renders every page and fails if one
+    # blows up, so that is what is checked here.
     if args.skip_tests:
-        checks.add("tests", True, "skipped")
+        checks.add("smoke", True, "skipped")
+    elif not (home / "work" / "check.py").exists():
+        checks.add("smoke", False, "the project has no check.py; re-download the folder")
     elif venv_python.exists():
-        rc, out = run([str(venv_python), "-m", "pytest", "-q"], cwd=home / "work", timeout=420)
+        rc, out = run([str(venv_python), "check.py"], cwd=home / "work", timeout=300)
         tail = out.strip().splitlines()[-1] if out.strip() else ""
-        passed = re.search(r"(\d+) passed", tail)
-        count = int(passed.group(1)) if passed else 0
-        checks.add(
-            "tests",
-            rc == 0 and count == EXPECTED_TESTS,
-            tail or "no output",
-        )
+        checks.add("smoke", rc == 0, tail or "no output")
     else:
-        checks.add("tests", False, "no project environment")
+        checks.add("smoke", False, "no project environment")
 
     # 5, 6 and 7. The history tool, in the condition that has one
     if meta.get("condition") == "sgt":

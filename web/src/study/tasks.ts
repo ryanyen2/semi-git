@@ -1,10 +1,18 @@
 // The four stages, in both projects. Protocol v2 (docs/study/protocol-v2.md).
 //
-// Wording is the participant's handout, verbatim. The footfall text is the
-// bikecount text with the nouns swapped per the isomorphism map in
-// docs/study/testbed-spec.md. Nothing here names a git or an sgt verb: a stage
-// states what happened and what to do in product terms, and the participant
-// chooses the mechanism inside the tool they were given.
+// Wording is the participant's handout, verbatim. The two projects say the same
+// thing about different nouns and different numbers, so a stage body is written
+// once as a template and filled in from PROJECT_WORDS below. It used to be two
+// hand-written strings per stage, and the footfall copies still quoted
+// bikecount's two averages -- the number the whole removal story is about was
+// wrong in half the sessions, and nothing checked it.
+//
+// Nothing in a stage BODY names a git or an sgt verb: a stage states what
+// happened and what to do in product terms, and the participant chooses the
+// mechanism inside the tool they were given. The TIPS are the one exception,
+// and they are deliberate: pilots lost minutes of a four-minute stage to
+// remembering the name of a command, which is not what any of this measures.
+// Both arms get the same number of reminders about their own tool.
 //
 // WHAT THE BLOCK MEASURES, AND WHY IT IS SHAPED THIS WAY
 //
@@ -25,7 +33,7 @@
 // recorded agent session replayed by `./stage 1`, so every participant reads
 // byte-identical changes. See protocol v2 section 3 for what that trades away.
 
-import type { Project, RequestId } from '../lib/types'
+import type { Condition, Project, RequestId } from '../lib/types'
 
 /**
  * One thing a person can see the app do, and the page that shows it.
@@ -177,11 +185,14 @@ export type QuizItem =
     }
 
 /**
- * One of the three rating statements a stage ends with. Protocol v2's
- * replacement for the HLAC battery: the same kind of 7-point item, asked in
- * the minute after the experience it asks about instead of ten minutes later.
- * One of each stage's three is reverse-keyed, as the guard against
- * straight-lining.
+ * One of the rating statements a stage ends with. Protocol v2's replacement for
+ * the HLAC battery: the same kind of 7-point item, asked in the minute after the
+ * experience it asks about instead of ten minutes later.
+ *
+ * The reading stages (1 and 2) ask two statements, both of the same shape: did
+ * you understand the change, and did you understand what it reaches. The
+ * operating stages (3 and 4) ask three, the last of them reverse-keyed as the
+ * guard against straight-lining.
  */
 export interface StageRating {
   id: string
@@ -197,6 +208,15 @@ export interface RequestSpec {
   heading: string
   title: Record<Project, string>
   body: Record<Project, string>
+  /**
+   * Command reminders, shown beside the card for the whole working phase.
+   *
+   * Per condition, because they name that condition's own commands, and the
+   * same number of them in each arm. A participant who cannot remember whether
+   * the flag is `-S` or `--search` is not telling us anything about how history
+   * is represented, and a four-minute stage has no room for it.
+   */
+  tips: Record<Condition, string[]>
   /** Minutes for the work phase. The quiz that follows is untimed. */
   capMin: number
   optional: boolean
@@ -209,12 +229,13 @@ export interface RequestSpec {
    * in the browser (see protocol v2 section 4).
    */
   identify?: Record<Project, string>
-  /** The quiz, in order. Rendered after the work phase, untimed. */
+  /** The quiz, in order. Rendered after the work phase, untimed. Two items at
+   * most: pilots spent longer on a three-item quiz than on the stage. */
   quiz: QuizItem[]
-  /** Whether the quiz ends with a 0-100 confidence slider. Only stages whose
-   * quiz has a right answer carry one; calibration needs both halves. */
+  /** Whether the quiz ends with a confidence rating. Only stages whose quiz has
+   * a right answer carry one; calibration needs both halves. */
   quizConfidence: boolean
-  /** The three rating statements. */
+  /** The rating statements. */
   ratings: StageRating[]
   /** What the stage is testing. Never shown to the participant. */
   archetype: string
@@ -236,18 +257,77 @@ export const SCENARIO: Record<Project, { app: string; maintainer: string; blurb:
   },
 }
 
+/**
+ * The words and the numbers each project's stages are written in.
+ *
+ * `reported` is the average over every day the sensors recorded, which is what
+ * the published report was written against. `dashboard` is what the by-year page
+ * shows while the work under study is in place. Both are measured, not invented:
+ * `scripts/study/task-scripts/check` prints exactly these two numbers, and a
+ * test compares them against the testbeds.
+ *
+ * They exist because the footfall stages used to quote bikecount's 2,882 and
+ * 2,900. Footfall's numbers are 42,436 and 42,545, so every footfall participant
+ * was asked to reach a number the dashboard could not print, and the reset script
+ * printed a different pair beside it.
+ */
+export const PROJECT_WORDS: Record<
+  Project,
+  {
+    reported: string
+    dashboard: string
+    body: string
+    publisher: string
+    document: string
+    unusualDays: string
+    ordinaryDay: string
+    precision: string
+  }
+> = {
+  bikecount: {
+    reported: '2,882',
+    dashboard: '2,900',
+    body: 'crossings',
+    publisher: 'The cycling team',
+    document: 'report',
+    unusualDays: 'the February 2019 snowstorm and Christmas',
+    ordinaryDay:
+      'a snowstorm that shut the city says nothing about how many people cycle to work on an ordinary day',
+    precision: 'one-bike precision',
+  },
+  footfall: {
+    reported: '42,436',
+    dashboard: '42,545',
+    body: 'people walk past',
+    publisher: 'The transport committee',
+    document: 'paper',
+    unusualDays: 'Grand Final Friday and Christmas',
+    ordinaryDay:
+      'a public holiday when the offices are shut says nothing about how many people walk to work on an ordinary day',
+    precision: 'single-person precision',
+  },
+}
+
+/** The same body text in both projects, with that project's words in it. */
+function forEachProject(write: (w: (typeof PROJECT_WORDS)['bikecount']) => string): Record<Project, string> {
+  return {
+    bikecount: write(PROJECT_WORDS.bikecount).trim(),
+    footfall: write(PROJECT_WORDS.footfall).trim(),
+  }
+}
+
 const MECHANISM_REMOVE = [
-  { value: 'clean', label: 'It applied cleanly in one step' },
-  { value: 'conflicts', label: 'I had to resolve conflicts along the way' },
-  { value: 'hand', label: 'I ended up editing files by hand' },
-  { value: 'unfinished', label: 'I did not finish' },
+  { value: 'clean', label: 'It applied cleanly in one step.' },
+  { value: 'conflicts', label: 'I had to resolve conflicts along the way.' },
+  { value: 'hand', label: 'I ended up editing files by hand.' },
+  { value: 'unfinished', label: 'I did not finish.' },
 ]
 
 const MECHANISM_RESTORE = [
-  { value: 'undid', label: 'I undid the removal in one step' },
-  { value: 'history', label: 'I brought it back from the history another way' },
-  { value: 'hand', label: 'I re-made the change by hand' },
-  { value: 'unfinished', label: 'I did not finish' },
+  { value: 'undid', label: 'I undid the removal in one step.' },
+  { value: 'history', label: 'I brought it back from the history another way.' },
+  { value: 'hand', label: 'I re-made the change by hand.' },
+  { value: 'unfinished', label: 'I did not finish.' },
 ]
 
 // NOTE for the testbed build: stage 1's story below must match the recorded
@@ -269,22 +349,54 @@ export const REQUESTS: RequestSpec[] = [
       bikecount: 'Record what the assistant did',
       footfall: 'Record what the assistant did',
     },
-    body: {
-      bikecount:
-        'Start by putting the project in this stage\'s starting state:\n\n    ./stage 1\n\nEarlier today you asked the coding assistant to round the numbers on the dashboard\'s front page to the nearest ten, so they stop implying one-bike precision. The assistant has finished. Its changes are in your working copy, and nothing is recorded in the project\'s history yet.\n\nRead what it changed, in the editor or the terminal, until you could describe it to a colleague. Then record all of it, the way this setup records finished work.',
-      footfall:
-        'Start by putting the project in this stage\'s starting state:\n\n    ./stage 1\n\nEarlier today you asked the coding assistant to round the numbers on the dashboard\'s front page to the nearest ten, so they stop implying single-person precision. The assistant has finished. Its changes are in your working copy, and nothing is recorded in the project\'s history yet.\n\nRead what it changed, in the editor or the terminal, until you could describe it to a colleague. Then record all of it, the way this setup records finished work.',
+    body: forEachProject(
+      (w) => `
+This stage's task is to read a change an AI assistant has already made, and then record it in the project's history.
+
+Start by running the command below. It puts the project into the state this stage begins from.
+
+    ./stage 1
+
+Earlier today you asked the coding assistant to round the numbers on the dashboard's front page to the nearest ten, so that they stop implying ${w.precision}. The assistant has finished. Its changes are sitting in your working copy, and none of them have been recorded in the project's history yet.
+
+Read what it changed, in the editor or in the terminal, until you could describe it to a colleague. Then record all of it, the way this setup records finished work.
+`,
+    ),
+    tips: {
+      git: [
+        '`git status` lists the files that have changed but are not recorded yet.',
+        '`git diff` shows what changed inside them.',
+        '`git add <file>` then `git commit -m "your words"` records the change. `git add -A` stages everything at once.',
+        'In the editor, the Source Control panel shows the same files and commits them.',
+      ],
+      // `git diff` is named in the sgt arm on purpose, and it is not a leak.
+      //
+      // Nothing is recorded yet at this point in the stage, and sgt has very
+      // little to say about an unrecorded change: `sgt now` reports the whole
+      // eleven-file replay as "1 edit(s) in 1 feature", and `sgt status` lists
+      // seven of the eleven files. A participant told to read the change with
+      // those alone is stuck, and being stuck is not the difference this study
+      // is trying to measure -- the difference is what each setup RECORDS, one
+      // line further down. Both arms have git, both stage bodies say "in the
+      // editor or in the terminal", and the git arm's tips name the same two
+      // reading commands.
+      sgt: [
+        '`sgt now` says where things stand.',
+        '`git diff` shows the change line by line, and `git status` lists the files it touches. Nothing is recorded yet, so this is where the detail is.',
+        'In the editor, the Changes view and the diff view show the same edits.',
+        '`sgt save -m "your words"` records the change and prints which piece of work it went under.',
+      ],
     },
     run: {
       script: { bikecount: './stage 1', footfall: './stage 1' },
       does: {
         bikecount: [
-          'resets the project to this stage\'s starting state',
-          'replays the assistant\'s changes into your working copy, unrecorded',
+          "resets the project to this stage's starting state",
+          "replays the assistant's changes into your working copy, unrecorded",
         ],
         footfall: [
-          'resets the project to this stage\'s starting state',
-          'replays the assistant\'s changes into your working copy, unrecorded',
+          "resets the project to this stage's starting state",
+          "replays the assistant's changes into your working copy, unrecorded",
         ],
       },
     },
@@ -292,44 +404,37 @@ export const REQUESTS: RequestSpec[] = [
       {
         kind: 'behaviours',
         id: 'behaviours',
-        prompt: 'Which parts of the dashboard did the assistant\'s work change?',
+        prompt: "Which parts of the dashboard did the assistant's work change?",
         scored: true,
       },
-      // Not "how many separate jobs was this". Both setups answer that from
-      // the diff and neither helps, because a change is only grouped into
-      // pieces of work once it is in the history -- until then sgt files it
-      // against the features the touched code already belongs to. Asking it
-      // would have scored a question the study's own claim does not cover.
+      // Was a free-text box asking what else was in the same piece of work.
+      // Pilots answered it with a shrug or a sentence about the diff, and it
+      // cost a minute of an untimed quiz that people were already tired of. The
+      // same thing as four options is answerable in five seconds and comparable
+      // across participants.
       {
-        kind: 'text',
+        kind: 'choice',
         id: 'joined',
-        prompt:
-          'Your change is now part of the project\'s history. What else is in the same piece of work, if you can tell?',
-        scored: false,
-      },
-      {
-        kind: 'text',
-        id: 'says',
-        prompt: 'In one sentence, what does the history now say happened?',
+        prompt: 'Your record is now part of the project’s history. What did it join?',
+        options: [
+          { value: 'alone', label: 'Nothing. It stands on its own.' },
+          { value: 'same', label: 'Earlier work on the same part of the dashboard.' },
+          { value: 'other', label: 'Earlier work on a different part of the dashboard.' },
+          { value: 'unsure', label: 'I could not tell.' },
+        ],
         scored: false,
       },
     ],
     quizConfidence: true,
     ratings: [
       {
-        id: 'recordKnown',
-        label: 'I know what the record I just made contains.',
+        id: 'understandChange',
+        label: 'I understand the changes the assistant made to this codebase.',
         serves: 'C1',
       },
       {
-        id: 'changesLegible',
-        label: 'I could tell what the assistant changed without reading every line.',
-        serves: 'C1',
-      },
-      {
-        id: 'unnoticed',
-        label: 'Something could be in that record that I did not notice.',
-        reverse: true,
+        id: 'understandEffects',
+        label: 'I understand the downstream effects of those changes on this codebase.',
         serves: 'C1',
       },
     ],
@@ -340,16 +445,39 @@ export const REQUESTS: RequestSpec[] = [
     capMin: 4,
     optional: false,
     archetype: 'locate the piece of work behind a described defect',
-    serves: 'RQ2, claim C2; the reach answer is C3\'s prediction',
+    serves: "RQ2, claim C2; the reach answer is C3's prediction",
     title: {
       bikecount: 'Find the work behind the wrong number',
       footfall: 'Find the work behind the wrong number',
     },
-    body: {
-      bikecount:
-        'Reset first. Anything left over from the last stage is gone after this, which is deliberate:\n\n    ./stage 2\n\nThe cycling team published a report last year. It says the average day in 2018 saw **2,882** crossings. The dashboard\'s by-year page now says **2,900** for the same year. The reset script prints both numbers so you can see them side by side.\n\nHere is what happened. A colleague changed how the dashboard works out an average. Days on the project\'s list of unusual days, like the February 2019 snowstorm and Christmas, are now left out of every average. There was a reason for it, but the report was written when every day still counted, and the committee wants the two to agree again.\n\nYour job in this stage is only to find that work in the project\'s history. Put its name in the box: a commit hash, a named piece of work, an id, whatever this setup calls the thing you found. If you are not certain, write down what you have and say so. That beats a guess.',
-      footfall:
-        'Reset first. Anything left over from the last stage is gone after this, which is deliberate:\n\n    ./stage 2\n\nThe transport committee published a paper last year. It says the average day in 2018 saw **2,882** people walk past. The dashboard\'s by-year page now says **2,900** for the same year. The reset script prints both numbers so you can see them side by side.\n\nHere is what happened. A colleague changed how the dashboard works out an average. Days on the project\'s list of event days, like Grand Final Friday and Christmas, are now left out of every average. There was a reason for it, but the paper was written when every day still counted, and the committee wants the two to agree again.\n\nYour job in this stage is only to find that work in the project\'s history. Put its name in the box: a commit hash, a named piece of work, an id, whatever this setup calls the thing you found. If you are not certain, write down what you have and say so. That beats a guess.',
+    body: forEachProject(
+      (w) => `
+This stage's task is to find one piece of work in the project's history. You do not have to change anything.
+
+Start by running the command below. It puts the project back to its full history and clears anything left over from the last stage.
+
+    ./stage 2
+
+${w.publisher} published a ${w.document} last year. It says that the average day in 2018 saw **${w.reported}** ${w.body}. The dashboard's by-year page now says **${w.dashboard}** for the same year. The command above prints both numbers so that you can see them side by side.
+
+Here is what happened. A colleague changed the way the dashboard works out an average. Days on the project's list of unusual days, such as ${w.unusualDays}, are now left out of every average. The colleague had a reason for doing that, but the ${w.document} was written when every day still counted, and the committee wants the two numbers to agree again.
+
+Find the work in the project's history that made that change, and write down what this setup calls it in the box below. That might be a commit hash, a named piece of work, or an id. If you are not certain, write down what you have and say that you are not certain. That is more useful to us than a guess.
+`,
+    ),
+    tips: {
+      git: [
+        '`git log --oneline` lists the commits, newest first.',
+        '`git show <hash>` shows what one commit changed.',
+        '`git log --oneline -S "average"` finds the commits where a piece of text arrived or went away. Any word from the code works.',
+        '`git log --oneline -- <file>` narrows that to one file, and `git blame <file>` says which commit last touched each line.',
+      ],
+      sgt: [
+        '`sgt log` lists the jobs somebody did, newest first, in their own words.',
+        '`sgt find "the bit that works out the averages"` searches by description. Any wording will do.',
+        '`sgt intent list` prints every feature and checkpoint with the handle you can type back, and the groups that span several features at the bottom.',
+        '`sgt show "<name>"` shows what one piece of work covers.',
+      ],
     },
     run: {
       script: { bikecount: './stage 2', footfall: './stage 2' },
@@ -365,34 +493,53 @@ export const REQUESTS: RequestSpec[] = [
       },
     },
     identify: {
-      bikecount: 'The piece of work that changed the averages',
-      footfall: 'The piece of work that changed the averages',
+      bikecount: 'What this setup calls the work that changed the averages',
+      footfall: 'What this setup calls the work that changed the averages',
     },
     quiz: [
+      // Options as well as the free-text box, not instead of it. The box is the
+      // measurement -- can you produce the name this setup uses -- and it stays
+      // where it was, on the card, during the work. This is the recognition
+      // half, for the participant who found the work but could not write down a
+      // handle for it. Unscored: promoting it means adding
+      // `requestKeys.s2.choices.found` to the answer key.
+      {
+        kind: 'choice',
+        id: 'found',
+        prompt: 'Which of these is the work you found?',
+        options: [
+          { value: 'dateWindow', label: 'The work that made every page respect a picked date range.' },
+          {
+            value: 'eventDays',
+            label: 'The work that started tracking unusual days and left them out of the averages.',
+          },
+          { value: 'yearTable', label: 'The work that added the by-year page the number appears on.' },
+          { value: 'sides', label: 'The work that added the comparison between the two sensors.' },
+          { value: 'notFound', label: 'I did not find it.' },
+        ],
+        scored: false,
+      },
       {
         kind: 'behaviours',
         id: 'behaviours',
         prompt:
-          'Which parts of the dashboard run through the code that work touches? Tick what you would re-check if it were taken out. You have not taken it out yet; answer from what the history shows you.',
+          'Which parts of the dashboard does that work affect? Tick the ones you would check if it were taken out.',
         scored: true,
       },
     ],
     quizConfidence: true,
     ratings: [
+      // "I am confident I found the right piece of work" is gone: it asked the
+      // same thing as the confidence rating directly above it, and pilots said
+      // so.
       {
-        id: 'foundRight',
-        label: 'I am confident I found the right piece of work.',
+        id: 'understandWhy',
+        label: 'I understand why my colleague made this change.',
         serves: 'C2',
       },
       {
-        id: 'why',
-        label: 'I could tell why the change had been made.',
-        serves: 'C2',
-      },
-      {
-        id: 'guessedNames',
-        label: 'I had to guess at names or ids to find it.',
-        reverse: true,
+        id: 'understandEffects',
+        label: 'I understand what else in the project this change affects.',
         serves: 'C2',
       },
     ],
@@ -408,11 +555,38 @@ export const REQUESTS: RequestSpec[] = [
       bikecount: 'Take that work out',
       footfall: 'Take that work out',
     },
-    body: {
-      bikecount:
-        'Reset first:\n\n    ./stage 3\n\nIt names the work to take out, so you have it even if the last stage ran out of time. Finding it was that stage\'s job. This one is about the removal.\n\nThe committee never approved the change. They want the averages to count every day the sensors recorded, including the unusual ones, so the dashboard reads **2,882** for 2018 again. Take that piece of work out. Everything else the dashboard shows has to keep working.\n\nWhen you think you are done:\n\n    ./check 3\n\nIt prints the same words for everyone and tells you what the dashboard shows now. It does not mark you, and a red line in it is information rather than a verdict.',
-      footfall:
-        'Reset first:\n\n    ./stage 3\n\nIt names the work to take out, so you have it even if the last stage ran out of time. Finding it was that stage\'s job. This one is about the removal.\n\nThe committee never approved the change. They want the averages to count every day the sensors recorded, including the unusual ones, so the dashboard reads **2,882** for 2018 again. Take that piece of work out. Everything else the dashboard shows has to keep working.\n\nWhen you think you are done:\n\n    ./check 3\n\nIt prints the same words for everyone and tells you what the dashboard shows now. It does not mark you, and a red line in it is information rather than a verdict.',
+    body: forEachProject(
+      (w) => `
+This stage's task is to take one piece of work back out of the project.
+
+Start by running the command below. It puts the project back to its full history, clears anything left over from the last stage, and names the work you have to take out. You have that name whether or not you found it yourself in the last stage.
+
+    ./stage 3
+
+The committee never approved the change your colleague made. They want the averages to count every day the sensors recorded, including the unusual ones, so that the by-year page reads **${w.reported}** for 2018 again.
+
+Three things have to come out: the list of unusual days the project keeps, the marks that flag those days on the daily and monthly charts, and the rule that leaves those days out of the averages. They were one job, and the project's history has them spread over three commits. Everything else the dashboard shows has to keep working.
+
+When you think you are done, run:
+
+    ./check 3
+
+It tells you whether the program still runs and what the by-year page says now. It prints the same words for everyone, it does not mark you, and a red line in it is information rather than a verdict.
+`,
+    ),
+    tips: {
+      git: [
+        '`git revert <hash>` makes a new commit that undoes an old one. Give it the oldest of the three last.',
+        'If it stops on a conflict, fix the marked lines, `git add` the file, then `git revert --continue`.',
+        '`git revert --abort` walks away from a revert that has gone wrong and leaves nothing behind.',
+        '`git log --oneline` and `git status` say where you are at any point.',
+      ],
+      sgt: [
+        '`sgt revert "<name>"` shows you what the removal would do and changes nothing.',
+        'Add `--yes` to actually do it: `sgt revert "<name>" --yes`.',
+        'The name is the one `./stage 3` printed. `sgt intent list` prints it too, at the bottom, with the groups that span several features.',
+        '`sgt undo` reverses whatever you last did, and `sgt now` says where things stand.',
+      ],
     },
     run: {
       script: { bikecount: './stage 3', footfall: './stage 3' },
@@ -432,7 +606,7 @@ export const REQUESTS: RequestSpec[] = [
         kind: 'behaviours',
         id: 'behaviours',
         prompt:
-          'Which parts of the dashboard changed when the work came out? Tick what you saw change, not what you expected to change.',
+          'Which parts of the dashboard changed when the work came out? Tick the ones you saw change.',
         scored: true,
       },
       {
@@ -447,17 +621,17 @@ export const REQUESTS: RequestSpec[] = [
     ratings: [
       {
         id: 'knewReach',
-        label: 'Before I ran it, I knew what the removal would touch.',
+        label: 'Before I ran it, I knew what the removal was going to change.',
         serves: 'C3',
       },
       {
         id: 'matchedIntent',
-        label: 'The result matches what I intended.',
+        label: 'The result is what I intended.',
         serves: 'C3',
       },
       {
         id: 'worriedBroke',
-        label: 'I was worried I had broken something else.',
+        label: 'I was worried that I had broken something else.',
         reverse: true,
         serves: 'C3',
       },
@@ -474,11 +648,36 @@ export const REQUESTS: RequestSpec[] = [
       bikecount: 'Put it back',
       footfall: 'Put it back',
     },
-    body: {
-      bikecount:
-        'Reset first:\n\n    ./stage 4\n\nThis puts the project in the state where that work has already been taken out. It is the same state for everyone, whether or not your own removal worked, so nothing from the last stage follows you here.\n\nThe committee has changed its mind. Having seen the averages with every day counted, they now agree with your colleague: a snowstorm that shut the city says nothing about how many people cycle to work on an ordinary day, and it should stay out of the averages after all. Put the work back, exactly as it was, so 2018 reads **2,900** again.\n\nWhen you think you are done:\n\n    ./check 4',
-      footfall:
-        'Reset first:\n\n    ./stage 4\n\nThis puts the project in the state where that work has already been taken out. It is the same state for everyone, whether or not your own removal worked, so nothing from the last stage follows you here.\n\nThe committee has changed its mind. Having seen the averages with every day counted, they now agree with your colleague: a public holiday when the offices are shut says nothing about how many people walk to work on an ordinary day, and it should stay out of the averages after all. Put the work back, exactly as it was, so 2018 reads **2,900** again.\n\nWhen you think you are done:\n\n    ./check 4',
+    body: forEachProject(
+      (w) => `
+This stage's task is to put that same work back into the project.
+
+Start by running the command below. It puts the project into the state where the work has already been taken out. That is the same starting state for everyone, whether or not your own removal in the last stage worked, so nothing from the last stage follows you here.
+
+    ./stage 4
+
+The committee has changed its mind. Now that they have seen the averages with every day counted, they agree with your colleague: ${w.ordinaryDay}, so those days should stay out of the averages after all.
+
+Put the work back, exactly as it was, so that the by-year page reads **${w.dashboard}** for 2018 again.
+
+When you think you are done, run:
+
+    ./check 4
+`,
+    ),
+    tips: {
+      git: [
+        'The removal is three commits at the top of the history. `git log --oneline` shows them.',
+        '`git revert <hash>` on a revert commit undoes the undoing.',
+        'If it stops on a conflict, fix the marked lines, `git add` the file, then `git revert --continue`.',
+        '`git show <hash>` reads any one of them if you want to see what it did.',
+      ],
+      sgt: [
+        '`sgt restore "<name>" --yes` puts back what `sgt revert` took out. It takes the same name.',
+        'Without `--yes` you get a preview and nothing happens.',
+        '`sgt log` and `sgt now` say what the history records so far.',
+        '`sgt undo` reverses whatever you last did.',
+      ],
     },
     run: {
       script: { bikecount: './stage 4', footfall: './stage 4' },
@@ -499,11 +698,20 @@ export const REQUESTS: RequestSpec[] = [
         options: MECHANISM_RESTORE,
         scored: false,
       },
+      // Was "how would you convince a colleague, without showing them the
+      // code". A good interview question and a bad quiz question: it asked for
+      // a paragraph at the end of the block, and most pilots wrote one clause.
       {
-        kind: 'text',
-        id: 'convince',
-        prompt:
-          'How would you convince a colleague the work is back, without showing them the code?',
+        kind: 'choice',
+        id: 'evidence',
+        prompt: 'What convinced you that the work is back?',
+        options: [
+          { value: 'check', label: 'The check script said the number matched.' },
+          { value: 'history', label: "The project's history says the work is back." },
+          { value: 'pages', label: 'I opened the dashboard and looked at the pages.' },
+          { value: 'code', label: 'I read the code and the files look right.' },
+          { value: 'unsure', label: 'I am not sure that it is back.' },
+        ],
         scored: false,
       },
     ],
@@ -516,12 +724,12 @@ export const REQUESTS: RequestSpec[] = [
       },
       {
         id: 'historySays',
-        label: 'I could tell from the history that the work was back.',
+        label: "I could tell from the project's history that the work was back.",
         serves: 'C3',
       },
       {
         id: 'recheckByHand',
-        label: 'I would re-check everything by hand before trusting it.',
+        label: 'I would want to re-check everything by hand before I trusted it.',
         reverse: true,
         serves: 'C3',
       },

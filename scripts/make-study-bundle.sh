@@ -102,6 +102,23 @@ for tag in "${needed[@]}"; do
 done
 [ -f "$staging/work/.study/stage1.patch" ] || {
     echo "$source_repo has no .study/stage1.patch -- run scripts/study/prep-stages.sh first" >&2; exit 1; }
+# The `cp -R` above copies the source repo's WORKING TREE, so whatever branch it
+# was left on is the branch the participant gets. Rehearsing the stages in a
+# source repo leaves it wherever the last `./stage N` put it -- `study/stage1`,
+# or the three revert commits of `study/removed` -- and a bundle built from that
+# ships a project already one or two pieces of work short, with nothing saying
+# so. Every stage still "works", because each one resets first; what breaks is
+# the participant reading a history that is missing the end of itself.
+head_sha="$(git -C "$staging/work" rev-parse HEAD)"
+if [ "$head_sha" != "$(git -C "$staging/work" rev-parse study/full)" ]; then
+    echo "$source_repo is not checked out at study/full (HEAD is $(git -C "$staging/work" rev-parse --short HEAD))." >&2
+    echo "Run \`./stage 2\` in it, then build again." >&2
+    exit 1
+fi
+if [ -n "$(git -C "$staging/work" status --porcelain --untracked-files=no)" ]; then
+    echo "$source_repo has uncommitted changes; a bundle would ship them. Run \`./stage 2\` in it." >&2
+    exit 1
+fi
 if [ "$condition" = sgt ]; then
     [ -f "$staging/work/.study/sgt-pristine.tar" ] || {
         echo "$source_repo has no .study/sgt-pristine.tar -- run scripts/study/prep-stages.sh first" >&2; exit 1; }
@@ -315,17 +332,12 @@ else
 fi
 echo "  $editor_ext"
 
-# The practice copy, built with the same key for the same reason as the work
-# copy above -- and NOT silenced, because it pins the feature names the practice
-# sheet quotes literally and says so on stderr when a pin does not stick.
-echo "  Building the practice copy."
-(
-    set -a
-    # shellcheck disable=SC1091
-    [ -f "$SGT_SOURCE/.env" ] && . "$SGT_SOURCE/.env"
-    set +a
-    "$SGT_SOURCE/scripts/make-practice-repo.sh" "$staging/practice" "$condition" "$staging"
-) | sed 's/^/  /'
+# No practice copy any more. The warm-up happens on the project itself, at the
+# state `./stage 0` puts it in, so there is nothing separate to build and
+# nothing separate to keep in step with the practice sheet. What made the old
+# one worth deleting: its sheet quoted ids out of it verbatim, and a
+# participant who ran `git show 44da4ad` from the project folder -- which is
+# where the session shell starts -- got `unknown revision`.
 
 claude_version="$(claude --version 2>/dev/null | awk '{print $1}' || true)"
 
@@ -369,7 +381,6 @@ mkdir -p "$OUT"
 tar czf "$OUT/$name.tgz" -C "$(dirname "$staging")" \
     --exclude="$name/work/.venv" \
     --exclude="$name/toolenv" \
-    --exclude="$name/practice/.venv" \
     --exclude="__pycache__" \
     --exclude=".DS_Store" \
     --exclude=".pytest_cache" \
