@@ -24,7 +24,7 @@ import {
 } from '../../study/tasks'
 import { TASK_PREAMBLE } from '../../study/content'
 import { Callout, Countdown, fmtClock, useCountdown } from '../../ui/bits'
-import { Markdown } from '../../ui/Markdown'
+import { Markdown, MarkdownLine } from '../../ui/Markdown'
 
 const PAUSE_REASONS: Array<[PauseInterval['reason'], string]> = [
   ['break', 'Taking a break'],
@@ -339,6 +339,7 @@ function StageCardView({
           <Markdown>{spec.body[project]}</Markdown>
         </div>
         <PrescribedRun run={spec.run} project={project} />
+        <Tips tips={spec.tips[block.condition]} />
         {spec.identify && (
           <TextAnswer
             pid={pid}
@@ -347,7 +348,7 @@ function StageCardView({
             doc={doc}
             field="locate"
             label={spec.identify[project]}
-            placeholder="a commit hash, a feature name, an id — or what you have and how sure you are"
+            placeholder="a commit hash, a name, an id, or what you have and how sure you are"
           />
         )}
       </div>
@@ -416,6 +417,7 @@ function StageAnswers({
     quiz: Record<string, string | string[] | null>
     ratings: Record<string, number>
     confidence: number | null
+    confidenceScale?: 7
   }
   const key = draftKey(pid, 'answers', `${spec.id}-h${half}`)
   const [a, setA] = useState<Answers>(() => {
@@ -425,6 +427,7 @@ function StageAnswers({
       quiz: doc?.quiz ?? {},
       ratings: doc?.ratings ?? {},
       confidence: doc?.confidence ?? null,
+      confidenceScale: doc?.confidenceScale,
     }
   })
   const [dirty, setDirty] = useState(false)
@@ -459,15 +462,13 @@ function StageAnswers({
   for (const q of spec.quiz) {
     if (q.kind === 'choice' && !a.quiz[q.id]) missing.push('the multiple choice')
   }
-  if (spec.quizConfidence && a.confidence == null) missing.push('the confidence line')
-  if (spec.ratings.some((r) => a.ratings[r.id] == null)) missing.push('the three statements')
+  if (spec.quizConfidence && a.confidence == null) missing.push('how sure you are')
+  if (spec.ratings.some((r) => a.ratings[r.id] == null)) missing.push('the statements')
 
   return (
     <div className="stack tight" style={{ marginTop: '0.75rem' }}>
       <Callout kind="soft" title="The clock has stopped">
-        Answer from what you saw and did, without going back to the project. There are no trick
-        questions, and "I am not sure" is fine to feel: the confidence line below is where to say
-        it.
+        Answer from what you saw and did. You do not need to go back to the project.
       </Callout>
 
       {spec.quiz.map((q) => (
@@ -475,44 +476,29 @@ function StageAnswers({
       ))}
 
       {spec.quizConfidence && (
-        <ConfidenceSlider
+        <LikertRow
+          name={`${spec.id}-confidence`}
           label="How sure are you of those answers?"
+          anchors={['Not at all sure', 'Completely sure']}
           value={a.confidence}
-          onChange={(confidence) => update({ confidence })}
+          onChange={(confidence) => update({ confidence, confidenceScale: 7 })}
         />
       )}
 
       <div className="field-label" style={{ marginTop: '0.75rem' }}>
-        Three statements about this stage. Rate how much you agree.
+        {spec.ratings.length === 2
+          ? 'Two statements about this stage. Rate how much you agree with each.'
+          : `${spec.ratings.length} statements about this stage. Rate how much you agree with each.`}
       </div>
       {spec.ratings.map((r) => (
-        <div key={r.id} style={{ marginBottom: '0.5rem' }}>
-          <div className="small" style={{ marginBottom: '0.25rem' }}>
-            {r.label}
-          </div>
-          <div className="likert">
-            <div className="likert-opts" role="radiogroup" aria-label={r.label}>
-              {[1, 2, 3, 4, 5, 6, 7].map((p) => (
-                <label
-                  key={p}
-                  className={`likert-opt${a.ratings[r.id] === p ? ' on' : ''}`}
-                >
-                  <input
-                    type="radio"
-                    name={`${spec.id}-${r.id}`}
-                    checked={a.ratings[r.id] === p}
-                    onChange={() => update({ ratings: { ...a.ratings, [r.id]: p } })}
-                  />
-                  {p}
-                </label>
-              ))}
-            </div>
-            <div className="anchors">
-              <span>Strongly disagree</span>
-              <span>Strongly agree</span>
-            </div>
-          </div>
-        </div>
+        <LikertRow
+          key={r.id}
+          name={`${spec.id}-${r.id}`}
+          label={r.label}
+          anchors={['Strongly disagree', 'Strongly agree']}
+          value={a.ratings[r.id] ?? null}
+          onChange={(v) => update({ ratings: { ...a.ratings, [r.id]: v } })}
+        />
       ))}
 
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
@@ -564,7 +550,7 @@ function QuizItemView({
           })}
         </div>
         <div className="small muted tabular" style={{ marginTop: '0.25rem' }}>
-          {picks.length} of {BEHAVIOURS.length} ticked. Ticking none is a real answer.
+          {picks.length} of {BEHAVIOURS.length} ticked.
         </div>
       </div>
     )
@@ -712,50 +698,79 @@ function PrescribedRun({ run, project }: { run: PrescribedRunSpec; project: Proj
 }
 
 /**
- * Its own component because of one hazard: touching the thumb where it already
- * sits fires no change event, so a participant who means exactly 50 leaves no
- * answer at all. Confidence is half of the calibration measure, and losing it
- * quietly is worse than losing it loudly, so `onPointerDown` commits the
- * midpoint and an unanswered slider says so in words.
+ * The command reminders for this stage, in this arm.
+ *
+ * Shown for the whole working phase, not tucked behind a disclosure. A
+ * participant four minutes into a stage who cannot remember a flag does not go
+ * looking for a collapsed panel; they guess, or they lose the stage. Both arms
+ * get the same number of lines about their own tool.
  */
-function ConfidenceSlider({
+function Tips({ tips }: { tips: string[] }) {
+  if (!tips.length) return null
+  return (
+    <div className="card soft" style={{ marginTop: '0.75rem' }}>
+      <div className="field-label">Commands you may want</div>
+      <ul className="small" style={{ margin: '0.35rem 0 0', paddingLeft: '1.1rem' }}>
+        {tips.map((t, i) => (
+          <li key={i} style={{ marginBottom: '0.25rem' }}>
+            <MarkdownLine>{t}</MarkdownLine>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+/**
+ * One seven-point agreement row: the statement, seven circles, an anchor at
+ * each end.
+ *
+ * Confidence used to be a 0-100 slider here. Two problems. A slider draws its
+ * thumb somewhere from the moment it renders, so an untouched one looks
+ * answered -- which is why the old component carried a whole apparatus of
+ * dimming and synthetic commit events. And it put a hundred-point judgement
+ * next to seven-point judgements on the same screen, which is two scales to
+ * hold in your head for no gain. Seven discrete targets have no default
+ * position, so an unanswered row is simply empty.
+ *
+ * Stored 1-7. `RequestDoc.confidenceScale` says so, because the pilots' stored
+ * confidences are on the old 0-100 scale and the two are not comparable.
+ */
+function LikertRow({
+  name,
+  label,
+  anchors,
   value,
   onChange,
-  label = 'How sure are you?',
 }: {
+  name: string
+  label: string
+  anchors: [string, string]
   value: number | null
   onChange: (v: number) => void
-  label?: string
 }) {
   return (
-    <div style={{ marginTop: '0.5rem' }}>
-      <div className="field-label">{label}</div>
-      <div className="row" style={{ flexWrap: 'nowrap', gap: '0.75rem' }}>
-        <input
-          type="range"
-          min={0}
-          max={100}
-          step={5}
-          value={value ?? 50}
-          aria-label="Confidence"
-          aria-valuetext={value == null ? 'not answered yet' : String(value)}
-          style={value == null ? { opacity: 0.72 } : undefined}
-          onChange={(e) => onChange(Number(e.target.value))}
-          onPointerDown={() => {
-            if (value == null) onChange(50)
-          }}
-        />
-        <span className="tlx-value" style={value == null ? { color: 'var(--faint)' } : undefined}>
-          {value == null ? '–' : value}
-        </span>
+    <div style={{ marginBottom: '0.65rem' }}>
+      <div className="small" style={{ marginBottom: '0.25rem' }}>
+        {label}
       </div>
-      <div className="anchors">
-        <span>Guessing</span>
-        <span>Certain</span>
+      <div className="likert">
+        <div className="likert-opts" role="radiogroup" aria-label={label}>
+          <span className="likert-anchor">{anchors[0]}</span>
+          {[1, 2, 3, 4, 5, 6, 7].map((p) => (
+            <label key={p} className={`likert-opt${value === p ? ' on' : ''}`}>
+              <input
+                type="radio"
+                name={name}
+                checked={value === p}
+                onChange={() => onChange(p)}
+              />
+              {p}
+            </label>
+          ))}
+          <span className="likert-anchor">{anchors[1]}</span>
+        </div>
       </div>
-      {value == null && (
-        <div className="tiny faint">Not answered yet. Click anywhere on the line.</div>
-      )}
     </div>
   )
 }

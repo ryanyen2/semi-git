@@ -672,26 +672,46 @@ label.check input {
   margin-top: 0.35rem;
 }
 
+/* Seven circles with an anchor at each end, on one line.
+ *
+ * The anchors used to sit under the row as a separate `.anchors` strip, and the
+ * options were full-width boxes. Read left to right, that put four words of
+ * "Strongly disagree" under a box numbered 1 and left the reader to join them
+ * up. Published agreement scales put the words at the ends of the row, which is
+ * also what fits: the circles are fixed-size, so the anchors take the slack
+ * instead of the answers. */
 .likert-opts {
   display: flex;
-  gap: 0.35rem;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.likert-anchor {
+  font-size: 0.8rem;
+  color: var(--faint);
+  flex: 1 1 0;
+  min-width: 5.5rem;
+}
+
+.likert-anchor:last-child {
+  text-align: right;
 }
 
 .likert-opt {
-  flex: 1;
+  flex: 0 0 auto;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 0.25rem;
-  padding: 0.45rem 0.2rem;
+  justify-content: center;
+  width: 2.15rem;
+  height: 2.15rem;
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: 50%;
   cursor: pointer;
   background: var(--bg);
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   color: var(--muted);
   transition: all 0.12s ease;
-  min-width: 2.4rem;
 }
 
 .likert-opt:hover {

@@ -333,7 +333,7 @@ STUDY_HOME="$here" "$PY" "$here/telemetry/provision.py" "$CODE" \
 # ---------------------------------------------------------------------------
 
 say "Checking everything works"
-note "This runs the project's tests and asks the assistant one question. A minute or two."
+note "This runs the project's own check and asks the assistant one question. A minute or two."
 set +e
 STUDY_HOME="$here" STUDY_CODE="$CODE" "$PY" "$here/telemetry/doctor.py" --code "$CODE"
 status=$?

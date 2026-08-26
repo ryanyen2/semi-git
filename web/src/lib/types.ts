@@ -152,8 +152,18 @@ export interface RequestDoc {
    * strict enough to reject `f-8068d4e` for `8068d4e`.
    */
   locate?: string
-  /** 0-100. Asked wherever there is a right answer. */
+  /**
+   * How sure the participant was of the stage's quiz answers. Asked wherever
+   * there is a right answer.
+   *
+   * 1-7 from protocol v2.1 onward, marked by `confidenceScale`. Earlier
+   * documents carry a 0-100 slider reading and no marker, and the two are not
+   * interchangeable -- 5 means "almost certainly wrong" on one scale and
+   * "fairly sure" on the other.
+   */
   confidence: number | null
+  /** The scale `confidence` is on. Absent means the retired 0-100 slider. */
+  confidenceScale?: 7
   /**
    * The reach prediction, on the step that reverts. The same question answered
    * twice: once before the operation runs, once after it has run. `gain` is the

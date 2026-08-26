@@ -16,8 +16,15 @@ import { HANDOUT_MD, sheetTasksMd, sheetTutorialMd } from '../src/study/content'
 // Paths are relative to web/, which is where npm runs vitest from.
 export const SHEETS: Record<string, string> = {
   '../docs/study/materials/00-welcome.md': HANDOUT_MD,
-  '../docs/study/materials/02-tutorial-git.md': sheetTutorialMd('git'),
-  '../docs/study/materials/02-tutorial-sgt.md': sheetTutorialMd('sgt'),
-  '../docs/study/materials/03-tasks-footfall.md': sheetTasksMd('footfall'),
-  '../docs/study/materials/03-tasks-bikecount.md': sheetTasksMd('bikecount'),
+  // Four sheets rather than two, in both cases. The practice sheet quotes the
+  // project's own files and the task sheet quotes that arm's own commands, so
+  // "the git sheet" is not one document any more.
+  '../docs/study/materials/02-tutorial-git-bikecount.md': sheetTutorialMd('git', 'bikecount'),
+  '../docs/study/materials/02-tutorial-git-footfall.md': sheetTutorialMd('git', 'footfall'),
+  '../docs/study/materials/02-tutorial-sgt-bikecount.md': sheetTutorialMd('sgt', 'bikecount'),
+  '../docs/study/materials/02-tutorial-sgt-footfall.md': sheetTutorialMd('sgt', 'footfall'),
+  '../docs/study/materials/03-tasks-bikecount-git.md': sheetTasksMd('bikecount', 'git'),
+  '../docs/study/materials/03-tasks-bikecount-sgt.md': sheetTasksMd('bikecount', 'sgt'),
+  '../docs/study/materials/03-tasks-footfall-git.md': sheetTasksMd('footfall', 'git'),
+  '../docs/study/materials/03-tasks-footfall-sgt.md': sheetTasksMd('footfall', 'sgt'),
 }

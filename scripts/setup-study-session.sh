@@ -147,8 +147,8 @@ cp "$MATERIALS/03-project-$project.md" "$workspace/project.md"
 # The three prescribed steps the task cards name. They live beside the project
 # rather than in the bundle's bin, because every one of them starts with
 # `cd "$(dirname "$0")"` and reads the project's own `pytest.ini` -- and because
-# a participant who wants to know what `./show-the-problem.sh` does can open it
-# where they are already standing.
+# a participant who wants to know what `./stage 2` does can open it where they
+# are already standing.
 #
 # Both arms get identical copies. That is the point of prescribing the step: the
 # two conditions are compared on what they could do about the defect, not on
@@ -159,54 +159,40 @@ cp "$MATERIALS/03-project-$project.md" "$workspace/project.md"
 # files become three symbols carrying an op and belonging to no frontier, which
 # is a degenerate graph. In the git arm nothing breaks, but `git status` opens
 # on three files the participant did not write.
-printf '/show-the-problem.sh\n/check.sh\n/show-the-waitlist.sh\n' \
-    >> "$workspace/work/.git/info/exclude"
-for s in show-the-problem check show-the-waitlist; do
-    cp "$TASK_SCRIPTS/$s.sh" "$workspace/work/$s.sh"
-    chmod +x "$workspace/work/$s.sh"
+#
+# Protocol v2's two, not v1's three. This still copied `show-the-problem.sh`,
+# `check.sh` and `show-the-waitlist.sh`, which belong to the retired task block:
+# a workspace built here had none of the `./stage N` and `./check N` commands
+# every stage now opens and closes with, so a participant set up this way could
+# not start a single stage.
+printf '/.study/\n/stage\n/check\n' >> "$workspace/work/.git/info/exclude"
+for s in stage check; do
+    cp "$TASK_SCRIPTS/$s" "$workspace/work/$s"
+    chmod +x "$workspace/work/$s"
 done
 
-# The practice copy the tutorial sheet is written against. The remote bundle has
-# always built one; this path never did, so the sheet's first instruction
-# (`study-practice`) had nothing to run and every handle it quotes -- "Shipping",
-# `cart.py::total` -- belonged to a repository that did not exist on the machine.
-# A participant then reads those commands as commands for the project in front of
-# them, types `sgt log --focus "Shipping"` at the study project, and gets nothing.
-# That is how the pilot's tutorial went.
-#
-# `make-practice-repo.sh` hard-checks every handle the sheet quotes and exits
-# non-zero if one does not resolve, so a broken practice copy stops setup here
-# rather than surfacing in the first ten minutes of a session.
-echo "Building the practice copy."
-(
-    # The project key, for the practice copy's search index only -- the same
-    # subshell-scoped read the bundle build does. It is not written anywhere
-    # inside the workspace, so the participant's own commands still run without a
-    # credential (see the `rm -f work/.env` above).
-    set -a
-    # shellcheck disable=SC1091
-    [ -f "$SGT_SOURCE/.env" ] && . "$SGT_SOURCE/.env"
-    set +a
-    "$SGT_SOURCE/scripts/make-practice-repo.sh" "$workspace/practice" "$condition" "$workspace"
-) | sed 's/^/  /'
-rm -f "$workspace/practice/.env"
+# No practice copy. The warm-up happens on the project itself now, at the state
+# `./stage 0` puts it in, so there is nothing separate to build here and nothing
+# separate to keep in step with the practice sheet.
 
-# The session shell. `study-practice`, `study-work` and `study-code` are the three
-# commands both sheets open with, and until now they existed only inside the
-# remote bundle's `bin/study-shell`. Starting the half from here also settles the
+# The session shell. `study-work` and `study-code` are the commands both sheets
+# use, and until now they existed only inside the remote bundle's
+# `bin/study-shell`. Starting the half from here also settles the
 # PATH question above for the participant's own terminal, not just for this check.
 cat > "$workspace/bin/session-rc" <<RC
 export PS1='study \W \$ '
-study-practice() { cd "$workspace/practice" && echo "Practice copy. Nothing here counts. Run study-work when you are ready."; }
 study-work() { cd "$workspace/work"; }
 study-code() { code "\${1:-\$PWD}" >/dev/null 2>&1 || echo "no \`code\` command on PATH -- open the folder from VS Code's File menu"; }
 cd "$workspace/work"
 echo
 echo "Session shell. The project is in \$(pwd)."
 echo
-echo "  study-practice    the throwaway warm-up copy the tutorial uses"
-echo "  study-work        back to the real project"
+echo "  study-work        back to the project folder"
 echo "  study-code        open the current folder in VS Code"
+echo
+echo "  ./stage 0         the project as it was before the warm-up"
+echo "  ./stage 1 .. 4    the starting state for one stage"
+echo "  ./check 3 or 4    what the dashboard says now"
 echo
 RC
 cat > "$workspace/session.sh" <<SESSION

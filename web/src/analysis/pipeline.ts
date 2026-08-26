@@ -236,7 +236,18 @@ export function locateMatches(typed: string, accepted: string): boolean {
  */
 function calibrationOf(reach: ReachMetrics | null): number | null {
   if (!reach || reach.blindConfidence == null) return null
-  return reach.blindConfidence / 100 - reach.blind
+  return confidenceFraction(reach.blindConfidence, reach.blindConfidenceScale) - reach.blind
+}
+
+/**
+ * A stated confidence as a proportion, 0 to 1, whichever scale it was given on.
+ *
+ * Protocol v2.1 asks for it on seven points; everything collected before that
+ * used a 0-100 slider. The scale is read from the document rather than guessed
+ * from the value, because 5 is a legal answer on both and means opposite things.
+ */
+export function confidenceFraction(value: number, scale: 7 | undefined): number {
+  return scale === 7 ? (value - 1) / 6 : value / 100
 }
 
 /**
@@ -263,6 +274,8 @@ export interface ReachMetrics {
   gain: number
   blindConfidence: number | null
   checkedConfidence: number | null
+  /** Which scale both confidences above are on. See `confidenceFraction`. */
+  blindConfidenceScale?: 7
   /** Seconds inside the blind stage. Short means read off; long means reasoned out. */
   blindActiveMs: number
   blindPicked: number
@@ -292,6 +305,8 @@ export function reachMetricsFor(req: RequestDoc, key: ReachKey): ReachMetrics | 
     gain: checkedF1 - blindF1,
     blindConfidence: blind.confidence,
     checkedConfidence: checked.confidence,
+    // The retired two-stage reach trial. Its sliders were always 0-100.
+    blindConfidenceScale: undefined,
     blindActiveMs: blind.activeMs,
     blindPicked: blind.picks.length,
     checkedPicked: checked.picks.length,
@@ -685,10 +700,13 @@ function halfSummary(
     }
   }
 
-  // Protocol v2's per-half battery: the two UMUX-Lite items under their
-  // published ids, plus the two design checks. The checks land in the same
-  // `checks` bag the HLAC ones used, under the same ids, so the dashboard's
-  // check view reads both designs.
+  // Protocol v2's per-half battery: the two UMUX-Lite items and the six TLX
+  // subscales, all under their published ids, in one response document.
+  //
+  // Earlier designs put TLX in its own `tlx` document and hung two
+  // study-invented manipulation checks off this one. Both still read, because
+  // pilot responses carry them: a stored `tlx-hN` wins where it exists, and a
+  // stored check keeps landing in the `checks` bag under its own id.
   const afterVals = find('after')
   if (afterVals) {
     const afterCheckIds = new Set(AFTER_HALF.items.filter((i) => i.check).map((i) => i.id))
@@ -698,15 +716,16 @@ function halfSummary(
       if (Number.isFinite(n)) checks[k] = n
     }
   }
+  const tlxVals = find('tlx') ?? afterVals
 
   return {
     half,
     condition,
     project,
-    tlx: find('tlx') ? tlxScore(find('tlx')!) : null,
+    tlx: tlxVals ? tlxScore(tlxVals) : null,
     // Carried beside the aggregate so a per-subscale figure never has to reach
     // into the stored responses, where Performance still runs the other way.
-    tlxSubscales: find('tlx') ? tlxSubscales(find('tlx')!) : null,
+    tlxSubscales: tlxVals ? tlxSubscales(tlxVals) : null,
     umux: find('umux')
       ? umuxLiteScore(find('umux')!)
       : afterVals
@@ -765,6 +784,7 @@ export function analyzeParticipant(
       gain: checked - blind,
       blindConfidence: s2?.confidence ?? null,
       checkedConfidence: s3?.confidence ?? null,
+      blindConfidenceScale: s2?.confidenceScale,
       // The v2 prediction is untimed within its stage (protocol v2 section 4),
       // so there is no blind-stage clock to report.
       blindActiveMs: 0,
@@ -773,7 +793,9 @@ export function analyzeParticipant(
       outOf: wanted.length,
     }
     m.calibration =
-      m.reach.blindConfidence == null ? null : m.reach.blindConfidence / 100 - blind
+      m.reach.blindConfidence == null
+        ? null
+        : confidenceFraction(m.reach.blindConfidence, m.reach.blindConfidenceScale) - blind
   }
 
   const halves = participant.blocks.map((b) =>

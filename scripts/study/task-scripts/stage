@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# ./stage 1|2|3|4 -- put the project where this stage starts.
+# ./stage 0|1|2|3|4 -- put the project where this stage starts.
+#
+# Stage 0 is the warm-up. It is the project as it stood before the assistant's
+# changes, so somebody can poke at the real codebase for ten minutes without
+# reading the work stage 1 is about to ask them to record.
 #
 # Every stage begins with this, and it undoes whatever the last stage left
 # behind. That is deliberate (docs/study/protocol-v2.md §3): a stage that went
@@ -9,18 +13,98 @@
 # It resets to a state built before the session by
 # `scripts/study/build_stages.sh`, so nothing here computes anything under a
 # clock.
+#
+# NOTHING IN HERE MAY NAME ONE PROJECT.
+#
+# The same file ships in all four bundles. It used to import `bikecount` by
+# name, quote bikecount's two averages, and print bikecount's commit subjects,
+# so in the footfall arm stage 2 printed "?" for the number the whole stage is
+# about and stage 3 printed three blank lines where the work to remove should
+# have been. Every project-specific fact below is now read out of the project
+# in front of it.
 set -euo pipefail
 cd "$(dirname "$0")"
 
 stage="${1:-}"
 case "$stage" in
-    1|2|3|4) ;;
-    *) echo "usage: ./stage 1|2|3|4" >&2; exit 2 ;;
+    0|1|2|3|4) ;;
+    *) echo "usage: ./stage 0|1|2|3|4" >&2; exit 2 ;;
 esac
 
 bold=$'\033[1m'; dim=$'\033[2m'; off=$'\033[0m'
 py="$(command -v python3)"; [ -x .venv/bin/python ] && py=.venv/bin/python
 have_sgt() { [ -d .sgt ] && command -v sgt >/dev/null 2>&1; }
+
+# The python package this dashboard lives in -- `bikecount` or `footfall`. It is
+# the one top-level directory holding a metrics module, and reading it here is
+# what lets everything below run against either project.
+pkg() {
+    local m
+    for m in */metrics.py; do
+        [ -f "$m" ] && { dirname "$m"; return 0; }
+    done
+    return 1
+}
+
+# The 2018 average day, worked out two ways.
+#
+#   dashboard  what the by-year page shows right now, through the app's own
+#              summary -- so it moves when the work under study comes out or
+#              goes back in.
+#   reported   the average over every day the sensors recorded, which is what
+#              the published report was written against. A fact about the data
+#              rather than about the code, so it reads the same in every state.
+average_2018() {
+    "$py" - "$(pkg)" "${1:-dashboard}" <<'PY' 2>/dev/null || echo "?"
+import importlib, sys
+sys.path.insert(0, ".")
+pkg, which = sys.argv[1], sys.argv[2]
+data = importlib.import_module(f"{pkg}.data")
+metrics = importlib.import_module(f"{pkg}.metrics")
+server = importlib.import_module(f"{pkg}.server")
+readings = data.load_readings(server.DATA)
+if which == "reported":
+    days = [c for d, c in metrics.daily_totals(readings) if d.year == 2018]
+    print(f"{round(sum(days) / len(days)):,}")
+else:
+    for row in metrics.yearly_summary(readings):
+        if row[0] == 2018:
+            print(f"{row[2]:,}")
+            break
+PY
+}
+
+# What this project calls the work stages 3 and 4 are about. bikecount named its
+# own "Event-Day Handling" and footfall named its own "Event Day Handling", so
+# the name is read out of the project's record rather than written here.
+theme_label() {
+    "$py" - <<'PY' 2>/dev/null || true
+import json, pathlib
+squash = lambda t: "".join(c for c in t.casefold() if c.isalnum())
+p = pathlib.Path(".sgt/intent/themes.json")
+if p.exists():
+    for v in json.loads(p.read_text()).get("data", {}).values():
+        if isinstance(v, dict) and "eventday" in squash(v.get("label", "")):
+            print(v["label"])
+            break
+PY
+}
+
+# The commits that work spans, oldest first, for the arm that has no name for
+# it. They are read back off the revert commits on `study/removed`, which
+# `build_stages.sh` built from the other arm's record, so the two arms are
+# describing the same work by construction.
+removed_commits() {
+    local subject
+    # No --reverse: the reverts were made newest-original-first, so reading
+    # them in log order (newest revert first) yields the originals oldest first,
+    # which is the order the line above promises.
+    git log --format='%s' study/removed ^study/full 2>/dev/null \
+        | sed -n 's/^Revert "\(.*\)"$/\1/p' \
+        | while IFS= read -r subject; do
+            git log --format='%h  %s' --fixed-strings --grep="$subject" -1
+        done
+}
 
 reset_to() {
     # `-B main`, not a plain checkout of the tag. Checking a tag out directly
@@ -43,24 +127,23 @@ reset_to() {
     fi
 }
 
-# The 2018 average the by-year page shows, read from the app the same way the
-# page does. It is the number the whole removal story is about, so the stage
-# that opens the story prints it and the check that closes it prints it again.
-average_2018() {
-    "$py" - <<'PY' 2>/dev/null || echo "?"
-import sys
-sys.path.insert(0, ".")
-from bikecount import data, metrics, server
-for row in metrics.yearly_summary(data.load_readings(server.DATA)):
-    if row[0] == 2018:
-        print(f"{row[2]:,}")
-        break
-PY
-}
-
-echo "${bold}Putting the project where stage $stage starts.${off}"
+if [ "$stage" = 0 ]; then
+    echo "${bold}Putting the project where the warm-up starts.${off}"
+else
+    echo "${bold}Putting the project where stage $stage starts.${off}"
+fi
 
 case "$stage" in
+0)
+    # Deliberately `study/stage1` without its patch: the same starting point as
+    # stage 1, minus the assistant's work. Practising on the full history would
+    # mean reading the change stage 1 then presents as new.
+    reset_to study/stage1
+    echo
+    echo "This is the real project, as it stood before the assistant touched it."
+    echo "Everything you do to it here is undone when you run \`./stage 1\`, so"
+    echo "nothing you try now can go wrong."
+    ;;
 1)
     reset_to study/stage1
     [ -f .study/stage1.patch ] || { echo "this project is missing .study/stage1.patch" >&2; exit 1; }
@@ -76,8 +159,8 @@ case "$stage" in
     echo "The project is back to its full history, with nothing of yours left in it."
     echo
     echo "${bold}The disagreement this stage is about:${off}"
-    echo "    the published report says the 2018 average day was  ${bold}2,882${off}"
-    echo "    the dashboard's by-year page now says               ${bold}$(average_2018)${off}"
+    echo "    the published report says the 2018 average day was  ${bold}$(average_2018 reported)${off}"
+    echo "    the dashboard's by-year page now says               ${bold}$(average_2018 dashboard)${off}"
     ;;
 3)
     reset_to study/full
@@ -86,20 +169,19 @@ case "$stage" in
     echo
     echo "${bold}The work to take out is:${off}"
     if have_sgt; then
-        echo "    Event-Day Handling"
+        label="$(theme_label)"
+        echo "    ${label:-Event-Day Handling}"
         # NOT "in the history view": this is a cross-feature group, and the
         # sidebar does not list those. Saying it was there sent people hunting
         # through the feature tree for a name that is only in `sgt intent list`.
         echo "${dim}    That is a group spanning several features. The sidebar does not"
-        echo "    list those -- \`sgt intent list\` prints them at the bottom, and"
-        echo "    revert and restore take the name as it is written above.${off}"
+        echo "    list those. Run \`sgt intent list\` and read the bottom of what it"
+        echo "    prints, where the groups are. Revert and restore both take that"
+        echo "    name exactly as it is written above.${off}"
     else
         echo "${dim}    three commits, oldest first:${off}"
-        for s in "track known non-normal days like storms and holidays" \
-                 "mark tracked event days on the daily and monthly charts" \
-                 "exclude event days from averages, keep them in totals"; do
-            printf '    %s\n' "$(git log --format='%h  %s' --fixed-strings --grep="$s" -1)"
-        done
+        removed_commits | sed 's/^/    /'
+        echo "${dim}    Each one is an ordinary commit. \`git show <hash>\` reads one.${off}"
     fi
     ;;
 4)
@@ -114,9 +196,16 @@ case "$stage" in
     # performs the removal it records as a removal. Both end on the same
     # dashboard (build_stages.sh refuses to ship them otherwise); what differs
     # is what each one's history says happened, which is the thing under study.
+    #
+    # Both arms pass through `study/full` first, so the number the dashboard
+    # showed BEFORE the removal can be written down. `./check 4` needs it to
+    # say what the page should read again, and it is not recoverable from the
+    # removed state.
+    reset_to study/full
+    average_2018 dashboard > .study/avg-before-removal
     if have_sgt; then
-        reset_to study/full
-        sgt revert "Event-Day Handling" --yes >/dev/null 2>&1 || {
+        label="$(theme_label)"
+        sgt revert "${label:-Event-Day Handling}" --yes >/dev/null 2>&1 || {
             echo "could not set this stage up; tell your facilitator" >&2; exit 1; }
     else
         reset_to study/removed

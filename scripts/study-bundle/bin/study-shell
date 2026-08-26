@@ -72,14 +72,6 @@ export HISTFILE="$STUDY_HOME/telemetry/shell-history"
 export HISTSIZE=10000
 export EDITOR="\${EDITOR:-nano}"
 
-study-practice() {
-    if [ -d "$STUDY_HOME/practice" ]; then
-        cd "$STUDY_HOME/practice" && echo "Practice copy. Nothing here counts. cd \\\$STUDY_HOME/work when you are ready."
-    else
-        echo "No practice copy in this bundle."
-    fi
-}
-
 study-work() { cd "$STUDY_HOME/work"; }
 
 cd "$STUDY_HOME/work"
@@ -89,10 +81,13 @@ echo "Session shell. The project is in \\\$(pwd)."
 echo
 echo "  claude            the assistant, on our key and our profile"
 echo "  study-code        open the project in the editor"
-echo "  study-practice    the throwaway warm-up copy"
-echo "  study-work        back to the real project"
+echo "  study-work        back to the project folder"
 echo "  study-doctor      re-run the setup checks"
 echo "  study-sync        push what has been recorded so far"
+echo
+echo "  ./stage 0         the project as it was before the warm-up"
+echo "  ./stage 1 .. 4    the starting state for one stage"
+echo "  ./check 3 or 4    what the dashboard says now"
 echo
 echo "Leave this shell open for the whole half. Type exit when the half is done."
 echo
