@@ -62,6 +62,20 @@ say() { printf '  %s\n' "$*"; }
 [ -d "$payload/scaffold/tree" ] || { echo "no episode payload at $payload" >&2; exit 1; }
 command -v "$SGT" >/dev/null 2>&1 || { echo "no sgt on PATH; set SGT=<path>" >&2; exit 1; }
 
+# Which sgt built the store is a property OF the store, and it is invisible afterwards. An sgt
+# that does not own imports mines a store in which nothing owns an import line, and beat 6 then
+# deletes `Tray.tsx` while leaving `import { TrayButton } from './Tray'` behind -- with every
+# check in this script passing. So say out loud which install is about to do the mining.
+say "sgt: $(command -v "$SGT")"
+sgt_py="$(sed -n '1s/^#!//p' "$(command -v "$SGT")" 2>/dev/null)"
+if [ -x "${sgt_py:-}" ] && ! "$sgt_py" -c "
+import sgt.core.op as op, sys
+sys.exit(0 if op._symbol_kind('a.ts::__import__::./b') == 'import' else 1)
+" 2>/dev/null; then
+    say "NOTE: this sgt does not own imports -- a revert will leave dangling import lines."
+    say "      For the seedbank demo, build with the install that does."
+fi
+
 if [ -e "$target" ]; then
     [ "${FORCE:-0}" = 1 ] || { echo "$target exists; FORCE=1 to replace it" >&2; exit 1; }
     rm -rf "$target"
