@@ -154,12 +154,18 @@ def register(subs, parent) -> None:
     r.add_argument("--intent")
     r.add_argument("--session")
     r.add_argument("--yes", action="store_true", help=argparse.SUPPRESS)
+    r.add_argument("--out", default=None, metavar="DIR",
+                   help="with --emit: materialize the previewed result onto DIR as raw "
+                        "bytes -- the render overlay's counterfactual sync")
     r.add_argument("ref", nargs="*")
     r.set_defaults(func=_cmd_revert)
 
     s = subs.add_parser("restore", parents=[parent])
     s.add_argument("--emit", action="store_true", help=argparse.SUPPRESS)
     s.add_argument("--yes", action="store_true", help=argparse.SUPPRESS)
+    s.add_argument("--out", default=None, metavar="DIR",
+                   help="with --emit: materialize the previewed result onto DIR as raw "
+                        "bytes -- the render overlay's counterfactual sync")
     s.add_argument("ref", nargs="*")
     s.set_defaults(func=_cmd_restore)
 
@@ -241,15 +247,17 @@ def _cmd_revert(args) -> int:
             return 2
         return _revert_keep_dependents(".", args.ref, args.intent, args.repair, args.as_json, keep=keep)
     return _kernel_edit_verb(".", "revert", args.ref, args.emit, args.as_json, args.yes,
-                             take_dependents=args.take_dependents)
+                             take_dependents=args.take_dependents, out=args.out)
 
 
 def _cmd_restore(args) -> int:
-    return _kernel_edit_verb(".", "restore", args.ref, args.emit, args.as_json, args.yes)
+    return _kernel_edit_verb(".", "restore", args.ref, args.emit, args.as_json, args.yes,
+                             out=args.out)
 
 
 def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict | None = None,
-                      *, yes: bool = False, focus_fid: str | None = None) -> int:
+                      *, yes: bool = False, focus_fid: str | None = None,
+                      out: str | None = None) -> int:
     """Shared tail for the ideal-edit verbs: `--emit` renders the preview projection; otherwise
     apply the edit (when the preview is ok) and render the plain result view. Identical on both
     the revert/restore and the `--session` paths. `extra` (e.g. the intent overlay's `tier`) is
@@ -281,6 +289,16 @@ def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict
         # mutation, and a dry run named neither. Same four keys as the apply view below, off the same
         # preview object, so the two formats of the preview and the result all agree.
         view = {**view, **_subtraction_fields(preview)}
+        # `--emit --out <dir>` materializes the counterfactual this preview describes. It has to
+        # go through the preview object rather than `fold --at op:<result_op_ids>`, because a safe
+        # revert's forward-subtraction ops live only on the preview until `apply` stores them and
+        # the fold would (correctly) refuse the id set as ungrounded. Guarded on `ok`: a refused
+        # preview has `after_ids == before_ids`, so writing it would silently materialize the
+        # *current* state and read as a successful counterfactual.
+        if out is not None and preview.ok:
+            from sgt.api import verb_result_out_view
+
+            view = {**view, "out": verb_result_out_view(repo, preview, out)}
         if as_json:
             return _emit_json(view)
         rc = _print_verb_view(view)
@@ -590,7 +608,7 @@ def _revert_lane_to_commit(
 
 def _kernel_edit_verb(
     repo: str, cmd: str, ref_tokens: list[str], emit: bool, as_json: bool, yes: bool = False,
-    take_dependents: bool = False,
+    take_dependents: bool = False, out: str | None = None,
 ) -> int:
     """revert/restore (plan U8, flipped onto the kernel in U10): exact ideal edits (`I \\ ↑X` /
     `I ∪ ↓X`) with `--emit` previews and chain-fork surfacing (AE2). Both verbs' targets
@@ -640,7 +658,7 @@ def _kernel_edit_verb(
                        verbs.plan_restore_op_set(repo, label, op_ids))
             # `yes` is keyword-only; passing it positionally lands it in `extra` and the apply
             # silently degrades to a preview that says "re-run with --yes" when --yes was given.
-            return _emit_verb_result(repo, preview, emit, as_json, yes=yes)
+            return _emit_verb_result(repo, preview, emit, as_json, yes=yes, out=out)
 
     if select_resolve.is_checkpoint_shaped(target):
         from sgt.intent.segment import resolve_checkpoint
@@ -671,7 +689,7 @@ def _kernel_edit_verb(
             op_leaf = (load_tree(repo) or {}).get("op_leaf", {})
             focus_fid = next((op_leaf[o] for o in op_ids if o in op_leaf), None)
             return _emit_verb_result(repo, preview, emit, as_json, extra={"checkpoint": label},
-                                     yes=yes, focus_fid=focus_fid)
+                                     yes=yes, focus_fid=focus_fid, out=out)
 
     from functools import partial
 
@@ -753,7 +771,7 @@ def _kernel_edit_verb(
         tally = Counter(op_leaf[o] for o in touched if o in op_leaf)
         focus_fid = tally.most_common(1)[0][0] if tally else None
 
-    return _emit_verb_result(repo, preview, emit, as_json, yes=yes, focus_fid=focus_fid)
+    return _emit_verb_result(repo, preview, emit, as_json, yes=yes, focus_fid=focus_fid, out=out)
 
 
 def _save_named_by(repo: str, target: str) -> tuple[str, str, list[tuple[str, str]]] | None:

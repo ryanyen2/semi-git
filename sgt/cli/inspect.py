@@ -90,7 +90,9 @@ def register(subs, parent) -> None:
     p.add_argument("b")
     p.set_defaults(func=_cmd_diff)
     p = subs.add_parser("blame", parents=[parent])
-    p.add_argument("file")
+    p.add_argument("file", nargs="?", default=None)
+    p.add_argument("--all", action="store_true", dest="all_files",
+                    help="every covered file at once, in one fold (the repo-wide provenance map)")
     p.set_defaults(func=_cmd_blame)
     p = subs.add_parser("preview", parents=[parent])
     p.add_argument("--to")
@@ -98,8 +100,12 @@ def register(subs, parent) -> None:
     p.set_defaults(func=_cmd_preview)
     p = subs.add_parser("fold", parents=[parent])
     p.add_argument("--at", required=True,
-                    help="a commit-index (int), an explicit op-id set (op:<id>,<id>,...), "
+                    help="`now` (the current ideal — what the tree holds right now), a "
+                         "commit-index (int), an explicit op-id set (op:<id>,<id>,...), "
                          "or a ref name")
+    p.add_argument("--out", default=None, metavar="DIR",
+                    help="also materialize the fold onto DIR as raw bytes -- a sync (files that "
+                         "left the fold are removed), never a wipe")
     p.set_defaults(func=_cmd_fold)
 
 
@@ -161,7 +167,7 @@ def _cmd_now(args) -> int:
 
 
 def _cmd_fold(args) -> int:
-    return _fold(".", args.at, args.as_json)
+    return _fold(".", args.at, args.as_json, args.out)
 
 
 def _cmd_fsck(args) -> int:
@@ -175,6 +181,11 @@ def _cmd_diff(args) -> int:
 
 
 def _cmd_blame(args) -> int:
+    if args.all_files:
+        return _blame_all(".", args.as_json)
+    if args.file is None:
+        print("usage: sgt advanced blame [--json] (<file> | --all)")
+        return 2
     return _blame(".", args.file, args.as_json)
 
 
@@ -702,6 +713,25 @@ def _blame(repo: str, file: str, as_json: bool = False) -> int:
     return 0
 
 
+def _blame_all(repo: str, as_json: bool = False) -> int:
+    """`sgt advanced blame --all`: the same attribution for every covered file, off one fold
+    (`api.blame_all_view`) rather than one fold -- and one subprocess -- per file."""
+    from sgt.api import blame_all_view
+    from sgt.core.lens import get
+
+    get(repo)
+    view = blame_all_view(repo)
+    if as_json:
+        return _emit_json(view)
+    for file in sorted(view["files"]):
+        spans = view["files"][file]["spans"]
+        print(f"{file}  ({len(spans)} span(s))")
+        for span in spans:
+            print(f"  {span['start_line']:>5}-{span['end_line']:<5}  {span['symbol']}"
+                  f"  [{span['label']} ({span['feature_id']})]")
+    return 0
+
+
 def _status(repo: str, as_json: bool = False, full: bool = False, *, color: bool = False) -> int:
     """`sgt log --summary` (formerly `sgt status`, plan U13/U14): file/symbol/feature counts,
     coverage, oracle status, drift. Path lists are capped at 5 (`--full` for all of them) --
@@ -939,9 +969,22 @@ def _now(repo: str, as_json: bool = False, *, color: bool = False) -> int:
 
 
 def _parse_at(spec: str) -> dict:
-    """Parse `sgt fold --at <spec>` into one of `fold_view`'s three keyword-only frontier args: an
-    all-digit spec is a commit-index position on `history_view`'s axis; an `op:<id>,<id>,...` spec
-    is an explicit op-id set; anything else is a ref name."""
+    """Parse `sgt fold --at <spec>` into one of `fold_view`'s keyword-only frontier args: `now` is
+    the current ideal (the present); an all-digit spec is a commit-index position on
+    `history_view`'s axis; an `op:<id>,<id>,...` spec is an explicit op-id set; anything else is a
+    ref name.
+
+    `now` is spelled the way `sgt now` already spells the same idea -- "where am I", the present
+    state -- so the grammar gains a word the tool has, not a new one. It is not a synonym for
+    `HEAD`: a ref folds the ops whose provenance sits in that ref's commit ancestry, which cannot
+    see a locally-applied revert (its compensating ops are minted with empty provenance), so after
+    `sgt revert <f> --yes` only `now` agrees with the working tree. Anything asking "what does the
+    tree look like right now" -- the workbench panel, the render overlay -- wants `now`.
+
+    A branch literally named `now` is shadowed by this, the same way one named `5` is already
+    shadowed by the commit-index rung; spell it `refs/heads/now` to reach it."""
+    if spec == "now":
+        return {"current": True}
     if spec.isdigit():
         return {"at_commit_index": int(spec)}
     if spec.startswith("op:"):
@@ -949,14 +992,20 @@ def _parse_at(spec: str) -> dict:
     return {"ref": spec}
 
 
-def _fold(repo: str, at: str, as_json: bool = False) -> int:
-    """`sgt fold --at <spec> [--json]`: a side-effect-free fold of an arbitrary frontier
+def _fold(repo: str, at: str, as_json: bool = False, out: str | None = None) -> int:
+    """`sgt fold --at <spec> [--out <dir>] [--json]`: a fold of an arbitrary frontier
     (`api.fold_view`) -- the composition workbench's draggable-playhead primitive. Never checks
-    anything out."""
+    anything out.
+
+    Bare, it is side-effect-free and prints the file list. `--out <dir>` additionally materializes
+    the fold onto `dir` as raw bytes (`api.fold_out_view`) -- the render overlay's sync step, which
+    also removes the files that left the fold. Same `--at` grammar either way."""
     from sgt.api import fold_view
     from sgt.core.lens import get
 
     get(repo)  # mine-on-contact so the fold reflects current reality (R9)
+    if out is not None:
+        return _fold_out(repo, at, out, as_json)
     view = fold_view(repo, **_parse_at(at))
     if as_json:
         return _emit_json(view)
@@ -971,6 +1020,24 @@ def _fold(repo: str, at: str, as_json: bool = False) -> int:
     for path in sorted(view["files"]):
         print(f"  {path}")
     print(f"  oracle verdict: {overall_status(view['oracle_verdict'])}")
+    return 0
+
+
+def _fold_out(repo: str, at: str, out: str, as_json: bool) -> int:
+    """The `--out <dir>` half of `_fold`: materialize rather than list. Rendered separately from
+    the listing branch because it reports what it *did* (wrote/removed), not what exists."""
+    from sgt.api import fold_out_view
+
+    view = fold_out_view(repo, out, **_parse_at(at))
+    if as_json:
+        return _emit_json(view)
+    if view.get("forked"):
+        print(f"✗ fold --at {at}: {view['message']}")
+        return 1
+    if "error" in view:
+        return _fail(view["error"])
+    print(f"code(I) at {at} → {view['path']}: {view['op_count']} op(s), "
+          f"{view['written']} file(s) written, {view['deleted']} removed")
     return 0
 
 
