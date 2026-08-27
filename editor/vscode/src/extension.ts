@@ -12,6 +12,7 @@ import { SymbolHoverProvider } from "./hover";
 import { FeatureInlayHintsProvider } from "./inlayHints";
 import { PlanCodeLensProvider, PlanDiffProvider, PlanStatusBar } from "./plan";
 import { PreviewProvider } from "./preview";
+import { RenderPanel } from "./renderPanel";
 import { findSgtRoot, Sgt } from "./sgt";
 import { GitStatusBar } from "./statusBar";
 import { Store } from "./store";
@@ -78,7 +79,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.languages.registerInlayHintsProvider({ scheme: "file" }, inlayHints)
   );
 
-  const workbenchProvider = new WorkbenchProvider(context, store, preview, root);
+  const renderPanel = new RenderPanel(context, store, () => root);
+  context.subscriptions.push(
+    renderPanel,
+    vscode.commands.registerCommand("sgt.openRenderPanel", () => renderPanel.open()),
+  );
+
+  const workbenchProvider = new WorkbenchProvider(context, store, preview, root, renderPanel);
   registerCommands(context, store, preview, () => void blame.render(), planDiff, root, workbenchProvider);
   registerGitBridgeCommands(context, store);
 
