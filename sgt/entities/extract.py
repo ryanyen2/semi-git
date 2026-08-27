@@ -166,6 +166,95 @@ _WRAPPER_PARENT = {"python": "decorated_definition", "typescript": "export_state
 
 _DECLARATION_TYPES = {"lexical_declaration", "variable_declaration"}
 
+# Top-level import statements are promoted to entities (design 2026-08-27, import ownership).
+# Before this they lived inside the anonymous `_RESIDUE_HEAD` blob and were individually
+# unaddressable, so no revert could remove one -- every feature revert left dangling imports and
+# a tree that fails to compile. Promoting them keeps the fold a pure verbatim partition (an
+# import is module-level and cannot overlap a definition's span; verified across 131 files /
+# 680 imports in two languages) while making a single import removable.
+#
+# Only *root* children count. An import nested inside `if TYPE_CHECKING:` stays residue --
+# conservative in the safe direction, since a binding we fail to promote is merely one we cannot
+# collect, never one we wrongly delete.
+_IMPORT_TYPES: dict[str, set[str]] = {
+    "python": {"import_statement", "import_from_statement", "future_import_statement"},
+    "typescript": {"import_statement", "export_statement"},
+    "tsx": {"import_statement", "export_statement"},
+}
+
+
+def _import_specifier(node: Node, src: bytes, lang: str) -> str | None:
+    """The module an import statement names, or None if the node is not a sourced import.
+
+    The specifier -- not the bound names -- keys the entity, because one statement is one
+    contiguous span and may bind many names (`import { rank, weight } from './rank'`). A
+    TypeScript `export_statement` only qualifies when it re-exports (`export { x } from './m'`);
+    a plain `export const x = 1` is a declaration and is already an entity via `_climb_declaration`."""
+    source = node.child_by_field_name("source")  # TS import/re-export
+    if source is not None:
+        return src[source.start_byte : source.end_byte].decode("utf-8", "replace").strip("\"'")
+    if node.type == "export_statement":
+        return None  # `export const ...` / `export default ...` -- not a re-export
+    if lang == "python":
+        if node.type == "future_import_statement":
+            return "__future__"
+        module = node.child_by_field_name("module_name")  # `from X import ...`
+        if module is not None:
+            return src[module.start_byte : module.end_byte].decode("utf-8", "replace")
+        names = [  # `import X, Y` -- no single source; the dotted names *are* the specifier
+            src[c.start_byte : c.end_byte].decode("utf-8", "replace")
+            for c in node.children
+            if c.type in ("dotted_name", "aliased_import")
+        ]
+        return ", ".join(names) if names else None
+    return None
+
+
+def _import_entities(root: Node, src: bytes, path: str, lang: str) -> list[Entity]:
+    """One entity per top-level import statement, named by module specifier.
+
+    Two statements may legally share a specifier (`import X from './m'` beside
+    `import { y } from './m'`), so a repeat gets a `#n` suffix in document order -- stable as long
+    as their relative order is, which is the same guarantee every other positional fact here has."""
+    types = _IMPORT_TYPES.get(lang, set())
+    out: list[Entity] = []
+    seen: dict[str, int] = {}
+    for node in root.children:
+        if node.type not in types:
+            continue
+        spec = _import_specifier(node, src, lang)
+        if spec is None:
+            continue
+        # Swallow the statement's own line terminator. Without it, removing an import leaves its
+        # trailing gap anchored to a symbol that is no longer live, and `_fold_file` relocates
+        # orphaned residue to the end of the file -- so dropping one import silently moved a
+        # newline to the bottom. Owning the terminator makes the gap empty, and an empty gap is
+        # skipped rather than orphaned.
+        end = node.end_byte
+        if end < len(src) and src[end : end + 1] == b"\n":
+            end += 1
+        seen[spec] = seen.get(spec, 0) + 1
+        # `__import__::` marker, not a bare `import:` prefix: `_symbol_kind` splits entity from
+        # nested on "does the name contain a dot", and specifiers are full of dots.
+        name = f"__import__::{spec}" if seen[spec] == 1 else f"__import__::{spec}#{seen[spec]}"
+        out.append(
+            Entity(
+                id=f"{path}::{name}",
+                name=name,
+                file=path,
+                kind="import",
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                container=None,  # top level: this is what makes the residue partition split here
+                content_hash=hashlib.sha1(src[node.start_byte : end]).hexdigest(),
+                structural_hash=_structural_hash_range(node, node, src),
+                start_byte=node.start_byte,
+                end_byte=end,
+            )
+        )
+    return out
+
+
 
 def _language_for(path: str) -> str | None:
     for ext, lang in _EXT_LANG.items():
@@ -359,6 +448,13 @@ _EXTRACT_CACHE_MAX = 4096
 # re-parses; an entry nothing touches anymore falls out at the next flush. The owning verbs
 # (`mine()`, the clustering signal build) attach and flush -- `extract_file` itself stays
 # repo-free.
+# Discriminates the *shape* of a cached entity list, not its inputs. The cache key is
+# (path, lang, sha256(source)) -- content-addressed, so it cannot notice that the extractor now
+# returns import entities for bytes it already parsed. Without this, promoting imports would read
+# stale pre-import lists straight off disk and the change would look like it did nothing.
+# Bump on any change to what extract_file returns for unchanged input.
+_EXTRACT_WALK = 2
+
 _PERSIST_REPO = None
 _PERSIST_SEEN: set[tuple] = set()  # keys touched since the last flush
 _PERSIST_MISSES = 0  # fresh parses since the last flush
@@ -378,7 +474,9 @@ def attach_persistent_cache(repo) -> None:
     from sgt import state
 
     body = state.load_json(repo, "extract_cache", default=None)
-    entries = body.get("entries") if isinstance(body, dict) else None
+    if not isinstance(body, dict) or body.get("walk") != _EXTRACT_WALK:
+        return  # extractor shape changed: every persisted list is stale, re-parse from source
+    entries = body.get("entries")
     if not isinstance(entries, dict):
         return
     for skey, rows in entries.items():
@@ -415,7 +513,7 @@ def flush_persistent_cache() -> None:
             [getattr(e, f) for f in _ENTITY_FIELDS] for e in ents
         ]
     _PERSIST_SEEN.clear()
-    state.save_json(_PERSIST_REPO, "extract_cache", {"entries": entries})
+    state.save_json(_PERSIST_REPO, "extract_cache", {"walk": _EXTRACT_WALK, "entries": entries})
 
 
 def extract_file(path: str, source: bytes | str, *, language: str | None = None) -> list[Entity]:
@@ -483,6 +581,7 @@ def extract_file(path: str, source: bytes | str, *, language: str | None = None)
                     end_byte=h.end_node.end_byte,
                 )
             )
+    out.extend(_import_entities(tree.root_node, src, path, lang))
     _EXTRACT_CACHE[cache_key] = out
     if len(_EXTRACT_CACHE) > _EXTRACT_CACHE_MAX:
         _EXTRACT_CACHE.popitem(last=False)

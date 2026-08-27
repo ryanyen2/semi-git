@@ -87,7 +87,13 @@ def _symbol_kind(sym: str) -> str:
 
     `residue` is positional (kernel byte-fidelity fold, 2026-07-08): one pseudo-symbol per gap
     between top-level entities, named `__residue__::{anchor}` where `anchor` is the name of the
-    preceding top-level entity (or a HEAD sentinel) -- not one blob per file."""
+    preceding top-level entity (or a HEAD sentinel) -- not one blob per file.
+
+    `import` is a top-level import statement (design 2026-08-27). It needs its own marker rather
+    than riding as a plain entity because the entity/nested split is "does the name contain a
+    dot", and a module specifier is full of them: `import:./App` would classify as *nested* and
+    silently emit no bytes, while `import:react` classified as *entity* and folded fine. Relative
+    imports would vanish and package imports would not."""
     if "::" not in sym:
         return "whole_file"
     _, _, rest = sym.partition("::")
@@ -95,6 +101,8 @@ def _symbol_kind(sym: str) -> str:
         return "residue"
     if rest.startswith("__anchor__::"):
         return "anchor"
+    if rest.startswith("__import__::"):
+        return "import"
     return "nested" if "." in rest else "entity"
 
 
@@ -102,7 +110,7 @@ def _symbol_kind(sym: str) -> str:
 # top-level entity's image, or a file's residue. `anchor` (pure ordering metadata, never revised
 # to BOTTOM) and `nested` (already subsumed by its containing top-level entity's image) emit
 # nothing standalone.
-CONTENT_BEARING_KINDS = frozenset({"whole_file", "residue", "entity"})
+CONTENT_BEARING_KINDS = frozenset({"whole_file", "residue", "entity", "import"})
 
 
 def is_content_bearing(sym: str) -> bool:
@@ -118,6 +126,9 @@ def is_content_bearing(sym: str) -> bool:
 # `residue`: residue is positional gap-bytes that shift merely because an entity was inserted
 # before/after them (appending `sub` after `mul` "modifies" `__residue__::mul`), so counting it
 # would attribute new behavior to a neighbour that did not change. Anchors/nested emit no bytes.
+# `import` is excluded for the same reason as residue: an import line is a mechanical consequence
+# of writing a reference, not work anyone would name. Counting it as behavioral would inflate every
+# change by its import churn and let a file's import block cluster into a feature of its own.
 BEHAVIORAL_KINDS = frozenset({"whole_file", "entity"})
 
 
