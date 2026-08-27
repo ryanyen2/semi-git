@@ -1,0 +1,332 @@
+:root {
+  --paper: #faf7f0;
+  --card: #ffffff;
+  --ink: #2c2a26;
+  --muted: #7c766c;
+  --line: #e5ded0;
+  --accent: #4a6b3d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 15px/1.5 "Iowan Old Style", Georgia, serif;
+}
+
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 40px 24px 64px;
+}
+
+.head h1 {
+  margin: 0;
+  font-size: 34px;
+  letter-spacing: -0.01em;
+}
+
+.tag {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 16px;
+  margin-top: 28px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+}
+
+.mark {
+  width: 56px;
+  height: 56px;
+  display: block;
+}
+
+.card-name {
+  margin: 12px 0 2px;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.card-species {
+  margin: 0;
+  font-style: italic;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.card-meta {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.sortbar {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.bar-label {
+  font-size: 13px;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.opt {
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 12px;
+  cursor: pointer;
+}
+
+.opt:hover {
+  border-color: var(--accent);
+}
+
+.opt.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--paper);
+}
+
+.searchbox {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.search-input {
+  font: inherit;
+  font-size: 15px;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 12px;
+  width: 260px;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.search-count {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.sowdots {
+  display: flex;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--line);
+}
+
+.dot.is-sow {
+  background: var(--accent);
+}
+
+.card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.badge {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+.badge.is-in {
+  background: #e6f0e0;
+  color: #3d5c31;
+}
+
+.badge.is-low {
+  background: #fbeeda;
+  color: #8a5f1b;
+}
+
+.badge.is-out {
+  background: #f2ecec;
+  color: #8b6b6b;
+}
+
+.card {
+  cursor: pointer;
+}
+
+.card:hover,
+.card:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.card-open {
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: var(--accent);
+}
+
+.detail {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 320px;
+  overflow-y: auto;
+  background: var(--card);
+  border-left: 1px solid var(--line);
+  padding: 24px;
+}
+
+.detail-close {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  font: inherit;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.detail-name {
+  margin: 14px 0 2px;
+  font-size: 22px;
+}
+
+.detail-facts {
+  margin: 20px 0 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 16px;
+  font-size: 14px;
+}
+
+.detail-facts dt {
+  color: var(--muted);
+}
+
+.detail-facts dd {
+  margin: 0;
+}
+
+.detail-label {
+  margin: 22px 0 8px;
+  font-size: 13px;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chip {
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+.traitbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.traitbar .chips {
+  margin: 0;
+}
+
+.chip {
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.chip:hover {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+.chip.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--paper);
+}
+
+.seasonbar {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.card.is-off-season {
+  opacity: 0.44;
+  background: #f6f3ec;
+}
+
+.dot.is-season {
+  box-shadow: 0 0 0 2px var(--paper), 0 0 0 3px #c9b98f;
+}
+
+.detail-note {
+  margin: 18px 0 0;
+  font-size: 13px;
+  color: #8a5f1b;
+  background: #fbeeda;
+  border-radius: 6px;
+  padding: 8px 10px;
+}

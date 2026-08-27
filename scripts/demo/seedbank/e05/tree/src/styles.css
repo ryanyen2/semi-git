@@ -1,0 +1,158 @@
+:root {
+  --paper: #faf7f0;
+  --card: #ffffff;
+  --ink: #2c2a26;
+  --muted: #7c766c;
+  --line: #e5ded0;
+  --accent: #4a6b3d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 15px/1.5 "Iowan Old Style", Georgia, serif;
+}
+
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 40px 24px 64px;
+}
+
+.head h1 {
+  margin: 0;
+  font-size: 34px;
+  letter-spacing: -0.01em;
+}
+
+.tag {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 16px;
+  margin-top: 28px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+}
+
+.mark {
+  width: 56px;
+  height: 56px;
+  display: block;
+}
+
+.card-name {
+  margin: 12px 0 2px;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.card-species {
+  margin: 0;
+  font-style: italic;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.card-meta {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.sortbar {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.bar-label {
+  font-size: 13px;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.opt {
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 12px;
+  cursor: pointer;
+}
+
+.opt:hover {
+  border-color: var(--accent);
+}
+
+.opt.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--paper);
+}
+
+.searchbox {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.search-input {
+  font: inherit;
+  font-size: 15px;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 12px;
+  width: 260px;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.search-count {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.sowdots {
+  display: flex;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--line);
+}
+
+.dot.is-sow {
+  background: var(--accent);
+}
