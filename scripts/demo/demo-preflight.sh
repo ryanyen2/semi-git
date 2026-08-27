@@ -44,6 +44,34 @@ echo "state"
 if [ -z "$(git -C "$repo" status --porcelain)" ]; then ok "working tree is clean"
 else bad "working tree is DIRTY -- run \`sgt undo\` or rebuild before filming"; fi
 
+# --- the sgt that BUILT the repo must be the sgt that is about to revert in it ----
+#
+# This is the failure that cost an afternoon, so it is checked first and named plainly.
+# `build-seedbank.sh` defaults to whatever `sgt` is on PATH, and PATH here points at the
+# main-tree editable install -- which does not own imports. A store mined by that sgt has
+# no `__import__` symbol in any op, so nothing owns `import { TrayButton } from './Tray'`
+# and beat 6 deletes Tray.tsx while leaving the two lines that import from it. The build
+# succeeds, every property check passes, the app still runs, and the ONLY visible symptom
+# is two tsc errors at the end of the headline beat.
+#
+# So: ask the kernel whether it owns imports, ask the store whether it recorded any, and
+# fail loudly when they disagree. Both halves matter -- a matching pair of old ones is a
+# legitimate (if less capable) demo, and only the mismatch is a broken one.
+kernel_imports=$("$PY" -c "
+import sgt.core.op as op
+print('yes' if op._symbol_kind('a.ts::__import__::./b') == 'import' else 'no')
+" 2>/dev/null || echo "unknown")
+store_imports=$(grep -rl "__import__" "$repo/.sgt/ops" 2>/dev/null | head -1)
+if [ "$kernel_imports" = "yes" ] && [ -z "$store_imports" ]; then
+  bad "this sgt owns imports but the store has none -- the repo was built by a DIFFERENT sgt.
+      Rebuild it:  SGT=\"$SGT\" FORCE=1 $here/build-seedbank.sh \"$repo\"
+      Otherwise beat 6 deletes Tray.tsx and leaves the imports of it behind (2 tsc errors)."
+elif [ "$kernel_imports" = "unknown" ]; then
+  bad "could not ask $PY whether this sgt owns imports -- check PY/SGT point at the same install"
+else
+  ok "the sgt in use and the store agree about imports"
+fi
+
 # --- beat 2: the history reads in English, not in hashes -------------------------
 echo
 echo "beat 2 — the history is legible"
