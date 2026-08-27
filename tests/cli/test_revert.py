@@ -633,6 +633,54 @@ def test_reverting_the_last_entity_keeps_the_files_header_comment(tmp_path, caps
     compile(back, "headed.py", "exec")
 
 
+def _referenced_solo_module_repo(root):
+    """`mod.py` holds exactly one entity and a *surviving* module calls it. The reference is the
+    whole point: something outside the removal chains through `mod.py::only`, so the op that wrote
+    it cannot be excluded and the plan mints a forward `prune` for it instead."""
+    repo = root / "referenced"
+    corpus._init(repo)
+    corpus._write(repo, "keep.py", "def keep():\n    return 1\n")
+    corpus._write(repo, "mod.py", "def only():\n    return 2\n")
+    corpus._commit(repo, "two modules", 1)
+    corpus._write(repo, "report.py", "from mod import only\n\n\ndef show():\n    return only()\n")
+    corpus._commit(repo, "report calls only", 2)
+    return repo
+
+
+def test_reverting_a_referenced_last_entity_removes_the_file_not_just_the_ideal(tmp_path, capsys):
+    """The silent success `test_reverting_the_last_entity_keeps_the_files_header_comment` describes,
+    reached by the other door. `_prune_emptied_paths` bottoms the leading gap so the ideal genuinely
+    stops covering the path, and `_write_working_tree` is then supposed to delete it -- but the
+    forward subtraction also minted a `prune` for `mod.py::only`, and `verbs.apply` stores that op
+    *before* `put` runs. R4's backstop asks whether any valid ideal over the store can regenerate the
+    live bytes, and `_reproducible_content`'s maximal ideal takes every chain to its tip -- including
+    the prune this very edit just minted. So the answer is no by construction, the delete is refused,
+    `git commit` records an empty commit, and `sgt revert` prints `✓ revert applied` over a file it
+    did not touch. Seen on the study repo: `sgt revert 01f4dcde` reported 7 edits removed and left
+    `bikecount/events.py` byte-identical."""
+    repo = _referenced_solo_module_repo(tmp_path)
+    get(repo)
+    op_id = _op_writing(repo, "mod.py::only")
+
+    assert _in(repo, ["revert", op_id, "--yes"]) == 0
+    out = capsys.readouterr().out
+    assert "still references removed code" in out, out  # the shape under test
+
+    assert not (repo / "mod.py").exists(), (
+        "revert reported success over an untouched file: "
+        + repr((repo / "mod.py").read_bytes()))
+    assert (repo / "report.py").exists(), "the surviving reference was not the removal's business"
+    # The empty commit is how this reaches a user who reads git rather than the working tree.
+    assert corpus._run(repo, "diff", "--name-only", "HEAD~1", "HEAD").stdout.strip(), \
+        "the revert commit changed nothing"
+
+    # And the delete has to be recoverable -- that is the whole reason overriding the backstop here
+    # is safe rather than the data loss R4 exists to prevent.
+    assert _in(repo, ["undo"]) == 0
+    capsys.readouterr()
+    assert (repo / "mod.py").read_text() == "def only():\n    return 2\n"
+
+
 def _reborn_symbol_repo(root):
     """`mod.py::only` edited, deleted, and re-added twice. F39: each removal makes
     `subtract._repair_layout` mint a `before=None` repair for the layout symbols, so the store
