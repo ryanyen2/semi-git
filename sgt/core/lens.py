@@ -1196,14 +1196,15 @@ def put(repo: str | Path, ideal: Ideal, message: str = "sgt: materialize ideal",
     # back -- a local merge/cherry-pick the miner mis-attributed (F7/F9), or a foreign edit. Refuse
     # and name it rather than overwrite it; `_dirty_conflicts` cannot catch this because the drift
     # is committed (on-disk == HEAD), not an uncommitted change.
-    delta_files = _delta_paths(current_ideal(repo).op_ids ^ ideal.op_ids, all_ops)
+    before_ideal = current_ideal(repo)
+    delta_files = _delta_paths(before_ideal.op_ids ^ ideal.op_ids, all_ops)
     drift = _outside_delta_drift(repo, materialized, delta_files)
     if drift:
         raise DirtyWorkingTreeError(
             "put() would roll back files outside this edit's scope, whose committed content "
             f"differs from sgt's recorded ideal: {sorted(drift)}"
         )
-    _write_working_tree(repo, materialized, all_ops)
+    _write_working_tree(repo, materialized, all_ops, prior_ideal=before_ideal)
     # Phase 1.2: the op store and its tables no longer live in the branch tree, so the in-tree
     # `.sgt/ideal.json` recovery record (C5) is gone -- `sync`'s recovery ladder is log -> trailers
     # -> mine (the witness SHA still carries `Sgt-Op:` trailers, and a squash sgt never ran on
@@ -1582,7 +1583,8 @@ def fsck_tree(repo: str | Path) -> dict[str, list[str]]:
 
 
 def _write_working_tree(
-    repo: Path, materialized: dict[str, bytes], all_ops: list | None = None
+    repo: Path, materialized: dict[str, bytes], all_ops: list | None = None,
+    *, prior_ideal: Ideal | None = None,
 ) -> dict[str, list[str]]:
     """Write every materialized path; delete any git-tracked path the ideal no longer covers --
     the fold is total, so an absent path means the ideal genuinely doesn't include it. Two safety
@@ -1590,7 +1592,17 @@ def _write_working_tree(
     or ancestor), and never delete a tracked path whose live bytes no valid ideal can regenerate
     (the backstop -- an add/delete/re-add fork drops a path from `code(I)` though its content is
     genuinely live, and a silent delete there is unrecoverable). Returns the skipped paths
-    (`unmanaged`, `backstop_kept`) so the caller can surface them instead of losing them silently."""
+    (`unmanaged`, `backstop_kept`) so the caller can surface them instead of losing them silently.
+
+    `prior_ideal` is the ideal this write is editing *away from* (`put` passes it; nobody else has
+    one). It counts as a second regenerating ideal for the backstop, and it has to: an edit that
+    removes a path mints the ops that express the removal, `verbs.apply` stores them before `put`
+    runs, and `_reproducible_content`'s maximal ideal then takes every chain to its tip -- this
+    edit's own prunes included. The one ideal the backstop consults is therefore the one ideal that
+    can no longer produce the bytes being deleted, so a revert that empties a file whose entity was
+    forward-pruned rather than excluded refused its own delete, committed nothing, and reported
+    success. Bytes the prior ideal folds are recoverable by construction: `record_ideal` journals
+    that exact op-set, so `sgt undo` restores them."""
     tracked = _tracked_paths(repo)
 
     unmanaged: list[str] = []
@@ -1610,14 +1622,18 @@ def _write_working_tree(
     ]
     backstop_kept: list[str] = []
     reproducible: dict[str, bytes] | None = None
+    prior: dict[str, bytes] = {}
     for path in to_delete:
         if _writes_through_symlink(repo, path):
             unmanaged.append(path)
             continue
         if reproducible is None:
             reproducible = _reproducible_content(repo, all_ops, only_paths=set(to_delete))
+            if prior_ideal is not None and all_ops is not None:
+                prior = code(prior_ideal, all_ops, only_paths=set(to_delete))
         full = repo / path
-        if full.read_bytes() != reproducible.get(path):
+        live = full.read_bytes()
+        if live != reproducible.get(path) and live != prior.get(path):
             backstop_kept.append(path)  # live bytes no valid ideal can regenerate -- keep (R4)
             continue
         full.unlink()
