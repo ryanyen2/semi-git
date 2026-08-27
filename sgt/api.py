@@ -738,6 +738,19 @@ def _project_verb_preview(repo, preview) -> dict:
         "target": preview.target,
         "removed": sorted(preview.removed),
         "added": sorted(preview.added),
+        # The op-set of the ideal this edit *lands on*. Identifying, NOT addressable -- it names
+        # the resulting state, and `fold --at op:<these ids>` will refuse it. Both halves matter.
+        #
+        # It cannot be re-derived client-side: a safe revert mints forward-subtraction ops
+        # (`preview.new_ops`) rather than dropping the target, so `before_ids - removed` folds to a
+        # materially different tree than the apply produces. That is why the field exists at all.
+        #
+        # It cannot be folded either: those same minted ops live only on this preview object until
+        # `apply` stores them, so the set is not downward-closed against `Store.all_ops()` and
+        # `Ideal.from_ops` rejects it. A dry run cannot address its own result over the current
+        # store. To *render* this state, use `revert|restore --emit --out <dir>`
+        # (`verb_result_out_view`), which folds the preview object directly.
+        "result_op_ids": sorted(preview.after_ids),
         "affected_symbols": list(preview.affected_symbols),
         # The ops the user actually named, as opposed to what the removal's closure swept up.
         # `removed` is empty whenever the edit rewrites symbols in place instead of dropping ops,
@@ -1780,6 +1793,33 @@ def _spans_for_symbols(repo, symbols) -> dict[str, list[dict]]:
     return out
 
 
+def _attributed_spans(line_spans, frontier, op_leaf, nodes, by_id) -> tuple[list[dict], dict[str, dict]]:
+    """`(spans, features)` for one file's `(symbol, start_line, end_line)` triples: resolve each
+    `sym -> max-op-in-I -> feature` through the frontier and the feature tree's `op_leaf`. An
+    entity whose tip op has no feature assignment yet (tree stale, or `sgt map` never run) is
+    omitted rather than guessed at.
+
+    Shared by `blame_view` (one file, its own fold) and `blame_all_view` (every file, one fold) so
+    a span means the same thing and carries the same keys on both surfaces -- the whole point of
+    the repo-wide mode is that a client parses one shape either way."""
+    spans: list[dict] = []
+    features: dict[str, dict] = {}
+    for sym, start_line, end_line in line_spans:
+        tip = frontier.get(sym)
+        feature_id = op_leaf.get(tip) if tip else None
+        if feature_id is None:
+            continue
+        label = nodes.get(feature_id, {}).get("label", feature_id)
+        tip_op = by_id.get(tip)
+        sessions = sorted({a.session for a in tip_op.attribution if a.session is not None}) if tip_op else []
+        spans.append({
+            "symbol": sym, "start_line": start_line, "end_line": end_line,
+            "feature_id": feature_id, "label": label, "sessions": sessions,
+        })
+        features[feature_id] = {"label": label}
+    return spans, features
+
+
 def blame_view(repo, file: str) -> dict:
     """Per-symbol feature attribution for one file (plan U13): for each of `file`'s live entities
     (`_entity_line_spans`), resolve `sym -> max-op-in-I -> feature` via the frontier and the
@@ -1811,22 +1851,47 @@ def blame_view(repo, file: str) -> dict:
     by_id = {op.id: op for op in ops}
     frontier = current_ideal(repo).frontier(ops)
 
-    spans = []
-    features: dict[str, dict] = {}
-    for sym, start_line, end_line in line_spans:
-        tip = frontier.get(sym)
-        feature_id = op_leaf.get(tip) if tip else None
-        if feature_id is None:
-            continue
-        label = nodes.get(feature_id, {}).get("label", feature_id)
-        tip_op = by_id.get(tip)
-        sessions = sorted({a.session for a in tip_op.attribution if a.session is not None}) if tip_op else []
-        spans.append({
-            "symbol": sym, "start_line": start_line, "end_line": end_line,
-            "feature_id": feature_id, "label": label, "sessions": sessions,
-        })
-        features[feature_id] = {"label": label}
+    spans, features = _attributed_spans(line_spans, frontier, op_leaf, nodes, by_id)
     return {"file": file, "spans": spans, "features": features, "covered": True}
+
+
+def blame_all_view(repo) -> dict:
+    """Every covered file's blame at once -- `sgt advanced blame --all --json`. Returns
+    `{"files": {<path>: {"spans": [...]}}, "features": {<fid>: {"label": ...}}}`, the same span
+    shape `blame_view` emits per file (`_attributed_spans`), with the `features` map merged across
+    the repo so one parser reads either surface.
+
+    It exists for cost, not convenience. `_entity_line_spans` folds the *whole* ideal to answer
+    about one file, so a caller that wants the repo-wide symbol -> feature map -- the provenance
+    join behind "hover a feature, see its pixels" -- pays N full folds looping `blame_view`, and
+    N subprocesses on top if it loops the CLI. This folds once and extracts every path out of that
+    single materialization."""
+    from sgt.core.fold import code
+    from sgt.core.lens import current_ideal
+    from sgt.core.store import Store
+    from sgt.entities.extract import extract_file
+    from sgt.lens.tree import load as load_tree
+
+    tree_result = load_tree(repo)
+    op_leaf = tree_result["op_leaf"] if tree_result else {}
+    nodes = tree_result["nodes"] if tree_result else {}
+    ops = Store(repo).all_ops()
+    by_id = {op.id: op for op in ops}
+    ideal = current_ideal(repo)
+    materialized = code(ideal, ops)
+    frontier = ideal.frontier(ops)
+
+    files: dict[str, dict] = {}
+    features: dict[str, dict] = {}
+    for file, source in sorted(materialized.items()):
+        line_spans = [
+            (e.id, e.start_line, e.end_line)
+            for e in sorted(extract_file(file, source), key=lambda e: (e.start_line, e.id))
+        ]
+        spans, file_features = _attributed_spans(line_spans, frontier, op_leaf, nodes, by_id)
+        files[file] = {"spans": spans}
+        features.update(file_features)
+    return {"files": files, "features": features}
 
 
 def plan_view(repo, *, full: bool = False) -> dict:
@@ -2238,41 +2303,68 @@ def fork_detail_view(repo, symbol: str) -> dict:
     return {"symbol": symbol, "tips": tips, "remedy": record["remedy"]}
 
 
-def fold_view(repo, *, ref=None, at_commit_index=None, op_ids=None) -> dict:
-    """A side-effect-free fold of an arbitrary frontier -- a ref's ideal, every op at or before a
-    commit-index position on `history_view`'s axis, or an explicit op-id set -- without checking
-    anything out. Powers the composition workbench's draggable playhead and fork-tip diffs. Exactly
-    one of `ref`/`at_commit_index`/`op_ids` must be given. Returns `code(I)` (UTF-8 text, replacing
-    undecodable bytes -- this is a preview, not a byte-exact export) plus that exact op-set's
-    oracle verdict (`verdict_for`). A candidate that isn't a valid ideal (forked, or not downward-
-    closed) is never raised through the API: it's reported as `{"forked": True, "message": ...}`,
-    the same conversion `sgt.core.verbs._validated` already does for verb previews."""
-    from sgt.core.fold import code
+def _fold_ideal(repo, *, ref, at_commit_index, op_ids, current=False):
+    """Resolve one of `fold_view`'s frontier args to `(ideal, ops)`, or refuse with
+    `(None, None, {...})`. Shared by `fold_view` (which decodes to text) and `fold_out_view`
+    (which writes raw bytes) so the two can never drift about what a frontier spec means.
+
+    `current=True` is the *present* -- `lens.current_ideal`, the ideal the working tree actually
+    holds. It is deliberately not the same frontier as `ref="HEAD"`, and the difference is not a
+    nicety: `ideal_for_ref` selects ops whose provenance intersects the ref's commit ancestry
+    (documented, and what `sync`/ref-to-ref `diff` need), but an ideal edit applied locally mints
+    forward-subtraction ops in `apply` with **empty provenance**, so no ref can ever select them,
+    while the ops they compensate for still carry provenance inside HEAD and stay selected. After
+    `sgt revert <f> --yes` on bikecount that made `--at HEAD` report the pre-revert ideal exactly
+    -- 111 ops against the current ideal's 113, disagreeing with the working tree on 7 of 16 files
+    -- because a revert is local ideal state, not commit history. Anything asking "what does the
+    tree look like right now" wants this, not a ref."""
     from sgt.core.ideal import Ideal
-    from sgt.core.lens import _load_declared, ideal_for_ref
-    from sgt.core.oracle import verdict_for
+    from sgt.core.lens import _load_declared, current_ideal, ideal_for_ref
     from sgt.core.store import Store
 
-    given = [x for x in (ref, at_commit_index, op_ids) if x is not None]
+    given = [x for x in (ref, at_commit_index, op_ids, current or None) if x is not None]
     if len(given) != 1:
-        return {"error": "fold requires exactly one of ref, at_commit_index, op_ids"}
+        return None, None, {
+            "error": "fold requires exactly one of ref, at_commit_index, op_ids, current"
+        }
 
     store = Store(repo)
     ops = store.all_ops()
     declared = _load_declared(repo)
 
+    if current:
+        return current_ideal(repo), ops, None
     if ref is not None:
-        ideal = ideal_for_ref(repo, ref, store)
+        return ideal_for_ref(repo, ref, store), ops, None
+    if at_commit_index is not None:
+        hist = history_view(repo, full=True)  # needs the unpaged per-op commit_index axis
+        frontier_ids = frozenset(o["id"] for o in hist["ops"] if o["commit_index"] <= at_commit_index)
     else:
-        if at_commit_index is not None:
-            hist = history_view(repo, full=True)  # needs the unpaged per-op commit_index axis
-            frontier_ids = frozenset(o["id"] for o in hist["ops"] if o["commit_index"] <= at_commit_index)
-        else:
-            frontier_ids = frozenset(op_ids)
-        try:
-            ideal = Ideal.from_ops(frontier_ids, ops, declared)
-        except ValueError as e:
-            return {"forked": True, "message": str(e)}
+        frontier_ids = frozenset(op_ids)
+    try:
+        return Ideal.from_ops(frontier_ids, ops, declared), ops, None
+    except ValueError as e:
+        return None, None, {"forked": True, "message": str(e)}
+
+
+def fold_view(repo, *, ref=None, at_commit_index=None, op_ids=None, current=False) -> dict:
+    """A side-effect-free fold of an arbitrary frontier -- a ref's ideal, every op at or before a
+    commit-index position on `history_view`'s axis, or an explicit op-id set -- without checking
+    anything out. Powers the composition workbench's draggable playhead and fork-tip diffs. Exactly
+    one of `ref`/`at_commit_index`/`op_ids` must be given. Returns `code(I)` (UTF-8 text, replacing
+    undecodable bytes -- this is a preview, not a byte-exact export; `fold_out_view` is the
+    byte-exact one) plus that exact op-set's oracle verdict (`verdict_for`). A candidate that isn't
+    a valid ideal (forked, or not downward-closed) is never raised through the API: it's reported
+    as `{"forked": True, "message": ...}`, the same conversion `sgt.core.verbs._validated` already
+    does for verb previews."""
+    from sgt.core.fold import code
+    from sgt.core.oracle import verdict_for
+
+    ideal, ops, refusal = _fold_ideal(
+        repo, ref=ref, at_commit_index=at_commit_index, op_ids=op_ids, current=current
+    )
+    if refusal is not None:
+        return refusal
 
     materialized = code(ideal, ops)
     return {
@@ -2280,6 +2372,166 @@ def fold_view(repo, *, ref=None, at_commit_index=None, op_ids=None) -> dict:
         "files": {path: content.decode("utf-8", "replace") for path, content in materialized.items()},
         "oracle_verdict": verdict_for(repo, ideal),
     }
+
+
+FOLD_MANIFEST = ".sgt-fold-manifest.json"
+
+
+def _read_fold_manifest(out) -> set[str]:
+    """The relative paths the previous `fold_out_view` run wrote into `out`. Missing, unreadable,
+    or malformed reads as "no previous run", which makes the next run write-only."""
+    import json
+
+    try:
+        data = json.loads((out / FOLD_MANIFEST).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    return {p for p in data.get("paths", []) if isinstance(p, str)}
+
+
+def _prune_fold_leftovers(out, stale: set[str]) -> list[str]:
+    """Delete exactly the manifest-listed paths this fold no longer contains, then remove the
+    directories that deletion emptied. Two containment guards, because the manifest is a file on
+    disk that something else could have edited: never follow a symlink, and never touch anything
+    that doesn't resolve inside `out`. A directory that still holds anything at all survives."""
+    deleted: list[str] = []
+    for rel in sorted(stale):
+        full = out / rel
+        try:
+            full.resolve().relative_to(out.resolve())
+        except (OSError, ValueError):
+            continue  # escapes the overlay -- not ours to delete
+        if full.is_symlink() or not full.is_file():
+            continue
+        full.unlink()
+        deleted.append(rel)
+    # Deepest first, so a directory emptied by removing its own subdirectory is itself collected.
+    for rel in sorted(deleted, key=lambda p: p.count("/"), reverse=True):
+        parent = (out / rel).parent
+        while parent != out and parent.is_dir():
+            try:
+                parent.rmdir()  # only ever succeeds on a genuinely empty directory
+            except OSError:
+                break
+            parent = parent.parent
+    return deleted
+
+
+def fold_out_view(repo, out_dir, *, ref=None, at_commit_index=None, op_ids=None,
+                  current=False) -> dict:
+    """Materialize `code(I)` onto `out_dir` -- the writing half of `fold_view`, behind
+    `sgt advanced fold --at <spec> --out <dir>`. Same frontier grammar (`_fold_ideal`), same
+    refusals; returns `{"ok", "path", "written", "deleted", "op_count"}`.
+
+    It writes `fold.code`'s raw `dict[path, bytes]` and never `fold_view`'s strings: that view
+    decodes `utf-8, "replace"`, which is right for a preview pane and lossy for a file -- any
+    binary asset round-tripped through it comes out corrupted.
+
+    A **sync**, not a dump. The target is a long-lived overlay that also holds what the fold cannot
+    contain: everything `.gitignore` matches is `ignored` tier (`sgt/core/tiers.py`), so
+    `node_modules`, a dev-server cache and a virtualenv are all correctly absent from `code(I)` and
+    a materialized fold is not by itself runnable. Scrubbing to an earlier frontier therefore has
+    to *remove* the files that left the fold, and must remove nothing else -- so the delete
+    authority is a manifest this function owns (`.sgt-fold-manifest.json`, the paths the last run
+    wrote), never the directory listing, and the directory is never cleared wholesale. A first run
+    into a directory with no manifest deletes nothing at all: an unrecognized directory gets
+    written into and inventoried, not scrubbed."""
+    from sgt.core.fold import code
+
+    ideal, ops, refusal = _fold_ideal(
+        repo, ref=ref, at_commit_index=at_commit_index, op_ids=op_ids, current=current
+    )
+    if refusal is not None:
+        return refusal
+
+    return _sync_fold_dir(out_dir, code(ideal, ops), len(ideal.op_ids))
+
+
+def _sync_fold_dir(out_dir, materialized: dict[str, bytes], op_count: int) -> dict:
+    """Write `materialized`'s raw bytes into `out_dir`, remove the manifest-listed paths this fold
+    no longer contains, and re-write the manifest. The overlay-sync half of `fold_out_view`, split
+    out so `verb_result_out_view` renders a preview's own counterfactual through exactly the same
+    write/prune/inventory rules rather than a second copy of them."""
+    import json
+    from pathlib import Path
+
+    out = Path(out_dir)
+    previous = _read_fold_manifest(out)
+
+    out.mkdir(parents=True, exist_ok=True)
+    for path, data in sorted(materialized.items()):
+        full = out / path
+        full.parent.mkdir(parents=True, exist_ok=True)
+        full.write_bytes(data)
+
+    deleted = _prune_fold_leftovers(out, previous - set(materialized))
+    (out / FOLD_MANIFEST).write_text(
+        json.dumps({"paths": sorted(materialized)}, indent=2) + "\n", encoding="utf-8"
+    )
+    return {
+        "ok": True,
+        "path": str(out),
+        "written": len(materialized),
+        "deleted": len(deleted),
+        "op_count": op_count,
+    }
+
+
+def verb_result_out_view(repo, preview, out_dir) -> dict:
+    """Materialize the ideal an already-computed `VerbPreview` lands on -- the state its `--emit`
+    projection *describes* -- onto `out_dir`, through `_sync_fold_dir`'s same overlay rules.
+
+    This exists because `result_op_ids` names that state but cannot on its own address it. A safe
+    revert mints forward-subtraction ops (`preview.new_ops`) that live only on the preview object
+    until `apply` stores them, so `fold --at op:<result_op_ids>` refuses the set as ungrounded --
+    correctly, since those ops genuinely are not in the store yet. The preview is the only place
+    they exist, so rendering the counterfactual has to go through it rather than through an op-id
+    round trip. Same `ops + new_ops` basis `_project_verb_preview` folds its `after` from, so the
+    bytes written here are the bytes that projection reports.
+
+    What it writes is **the tree the apply would leave on disk**, not the ideal's strict `code(I)`.
+    The two differ: `apply` writes `code(I)` and then deletes the tracked paths the ideal dropped
+    *except* the ones whose live bytes no valid ideal can regenerate, which R4's backstop keeps
+    (`lens._write_working_tree`). Those kept files are still there, and still imported, after the
+    revert. Predicting them is not optional for a renderer -- bikecount routes its nav from
+    `pages.discover()`, i.e. from the files that exist, so dropping one backstop-kept page made the
+    preview show a four-tab nav where the applied app shows five. A preview that disagrees with the
+    apply about which files exist is worse than no preview.
+
+    The prediction reuses `lens.materialization_skips`, which exists precisely to answer "what
+    would `_write_working_tree` refuse to touch", computed without writing -- rather than a second
+    copy of that rule here, which would drift from the apply the first time R4 changed. A
+    backstop-kept path carries its current on-disk bytes, because the apply keeps it by *not*
+    touching it.
+
+    Deliberately not included: `never_recorded` (a tracked path the store has no op for -- a
+    `.gitignore`) and anything `ignored` tier. The apply leaves those alone too, but sgt has no
+    opinion on their content, `fold --out` never writes them, and the render overlay is by
+    construction the thing that supplies them (G2). Including them here would make the two `--out`
+    surfaces disagree about the same tree."""
+    from pathlib import Path
+
+    from sgt.core.fold import code
+    from sgt.core.ideal import Ideal
+    from sgt.core.lens import materialization_skips
+    from sgt.core.store import Store
+
+    ops = Store(repo).all_ops() + list(getattr(preview, "new_ops", ()))
+    after = code(Ideal.from_ops(preview.after_ids, ops), ops)
+
+    # `prior_ideal` is the ideal this edit moves *away from*, which is exactly what `put` hands
+    # `_write_working_tree` as `before_ideal`. It has to be passed: the edit's own minted prunes
+    # take `_reproducible_content`'s maximal ideal to its tip, so that one ideal is the one that can
+    # no longer produce the bytes being deleted, and the backstop would keep files the apply
+    # deletes. Omitting it is not a smaller prediction, it is a wrong one.
+    prior = Ideal.from_ops(preview.before_ids, ops)
+
+    tree = dict(after)
+    for path in materialization_skips(repo, after, ops, prior_ideal=prior)["backstop_kept"]:
+        full = Path(repo) / path
+        if full.is_file():
+            tree[path] = full.read_bytes()
+    return _sync_fold_dir(out_dir, tree, len(preview.after_ids))
 
 
 def show_at_view(repo, at: str, path: str | None = None) -> dict:
@@ -2318,8 +2570,15 @@ def show_at_view(repo, at: str, path: str | None = None) -> dict:
 
 
 def _parse_show_spec(spec: str) -> dict:
-    """`sgt show`/`sgt fold --at`'s frontier grammar: an all-digit spec is a commit-index position,
-    `op:<id>,...` an explicit op-id set, anything else a ref name."""
+    """`sgt show`'s frontier grammar: `now` is the current ideal (the present), an all-digit spec is
+    a commit-index position, `op:<id>,...` an explicit op-id set, anything else a ref name.
+
+    Kept rung-for-rung identical to `sgt.cli.inspect._parse_at`, the same grammar behind
+    `sgt fold --at`. They are separate functions only because they sit either side of the api/cli
+    line: add a rung to one and you must add it to the other, or `sgt show <path> --at <spec>` and
+    `sgt fold --at <spec>` start disagreeing about what a spec means."""
+    if spec == "now":
+        return {"current": True}
     if spec.isdigit():
         return {"at_commit_index": int(spec)}
     if spec.startswith("op:"):
