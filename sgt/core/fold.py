@@ -14,6 +14,10 @@ round-tripping):
       the class always gets its own fresh touch too), so nested (dotted-name) entities exist
       for identity/reference/blame, not for independent materialization -- splicing both would
       duplicate content.
+    - imports: top-level import statements, spliced exactly like entities and ordered by the
+      same anchor facts (design 2026-08-27). Promoting them out of residue is what makes a single
+      import removable; it adds no synthesized bytes, because a module-level statement cannot
+      overlap a definition's span, so the partition stays verbatim.
     - residue: **positional**, not one blob per file. One segment per gap between top-level
       entities, keyed by the name of the entity immediately preceding it (a HEAD sentinel for
       the gap before the first entity, or the whole file when it has none). Concatenating every
@@ -103,7 +107,7 @@ def _fold_file(path: str, symbols: dict[str, str], by_id: dict[str, Op]) -> byte
             name = _anchor_target(sym)
             marker = (by_id[op_id].images[sym] or b"").decode("utf-8")
             anchor_of[name] = None if marker == _ANCHOR_FIRST else marker
-        elif kind == "entity":
+        elif kind in ("entity", "import"):
             _, _, name = sym.partition("::")
             entity_names.add(name)
             entity_images[name] = by_id[op_id].images[sym] or b""

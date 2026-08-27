@@ -35,7 +35,7 @@ from pathlib import Path
 
 from sgt.core import order
 from sgt.core.mine import _ANCHOR_FIRST, _content_version, _positional_version
-from sgt.core.op import BOTTOM, Op, is_behavioral, is_bottom, make_op
+from sgt.core.op import BOTTOM, Op, _symbol_kind, is_behavioral, is_bottom, make_op
 from sgt.core.patch import merge3
 from sgt.core.store import Store
 
@@ -170,10 +170,21 @@ def _repair_layout(
     either; only the anchor's predecessor marker (pure metadata, never file content) is rewritten.
     """
     def _entities(frontier) -> set[str]:
+        """Every symbol in `path` that occupies a slot in the document order -- top-level
+        entities and imports alike.
+
+        This asks `_symbol_kind` rather than testing the id by hand. The hand-rolled form
+        (`"::__" in sym or "." in name`) excluded imports twice over: once for the `__import__::`
+        marker and again because a module specifier is full of dots. Every import then fell out
+        of `kept`, the repair loop skipped it, and the first surviving *function* was re-anchored
+        as FIRST -- so reverting anything moved the whole import block below the code. It still
+        compiled, because ES imports hoist, which is exactly what made it hard to see."""
         out = set()
         for sym in frontier:
             head, sep, name = sym.partition("::")
-            if head != path or not sep or "::__" in sym or "." in name or not name:
+            if head != path or not sep or not name:
+                continue
+            if _symbol_kind(sym) not in ("entity", "import"):
                 continue
             op = by_id[frontier[sym]]
             if not is_bottom(op.footprint[sym][1]):
