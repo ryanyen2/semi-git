@@ -46,14 +46,23 @@ import {
   UndoResult,
 } from "./types";
 
-// A frontier spec for `sgt fold --at <spec>` (inspect.py's `_parse_at`): a commit-index position
-// on `history_view`'s axis, an explicit op-id set, or a ref name (branch, HEAD, tag, ...).
+// A frontier spec for `sgt fold --at <spec>` (inspect.py's `_parse_at`): the current ideal, a
+// commit-index position on `history_view`'s axis, an explicit op-id set, or a ref name (branch,
+// HEAD, tag, ...).
+//
+// `{ current: true }` is the present, and is NOT interchangeable with `{ ref: "HEAD" }`. A ref
+// folds the ops whose provenance sits in that ref's commit ancestry, which structurally cannot
+// see a locally-applied revert -- `apply` mints its compensating ops with empty provenance -- so
+// after `sgt revert <f> --yes` a HEAD fold returns the pre-revert tree. A panel showing "the code
+// as it is now" must ask for `current`.
 export type FoldFrontier =
+  | { current: true }
   | { commitIndex: number }
   | { opIds: string[] }
   | { ref: string };
 
 export function foldAtSpec(frontier: FoldFrontier): string {
+  if ("current" in frontier) return "now";
   if ("commitIndex" in frontier) return String(frontier.commitIndex);
   if ("opIds" in frontier) return `op:${frontier.opIds.join(",")}`;
   return frontier.ref;
@@ -388,6 +397,21 @@ export class Sgt {
   foldAt(frontier: FoldFrontier, stillWanted?: () => boolean): Promise<FoldView> {
     return this.json<FoldView>(
       ["advanced", "fold", "--at", foldAtSpec(frontier), "--json"], 30_000, stillWanted,
+    );
+  }
+
+  // The same fold, additionally materialized onto `outDir` -- the render panel's primitive.
+  // `--out` is a *sync*, not a wipe: files that left the frontier are deleted, and anything the
+  // fold does not own (a `node_modules` symlink, a dev-server cache) is left alone. That is what
+  // lets a running dev server be pointed at the directory and simply re-render, instead of being
+  // torn down and restarted on every scrub step.
+  //
+  // Routed through the same serialized queue as every other call: a scrub fires faster than a
+  // fold completes, and two `sgt` processes writing the same directory would interleave.
+  foldTo(frontier: FoldFrontier, outDir: string, stillWanted?: () => boolean): Promise<FoldView> {
+    return this.json<FoldView>(
+      ["advanced", "fold", "--at", foldAtSpec(frontier), "--out", outDir, "--json"],
+      60_000, stillWanted,
     );
   }
 
