@@ -530,7 +530,7 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"feature\": \"f-004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d\",\n  \"applied\": false,\n  \"groups\": [\n    [\n      \"README.md\",\n      \"a.py::__residue__::\\u0000HEAD\\u0000\",\n      \"c.py::__residue__::\\u0000HEAD\\u0000\",\n      \"c.py::__residue__::qux\",\n      \"config.yaml\",\n      \"logo.bin\"\n    ],\n    [\n      \"b.py::__residue__::\\u0000HEAD\\u0000\",\n      \"b.py::__residue__::baz\",\n      \"b.py::baz\",\n      \"c.py::qux\"\n    ]\n  ]\n}\n"
+      "out": "{\n  \"ok\": true,\n  \"feature\": \"f-004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d\",\n  \"applied\": false,\n  \"groups\": [\n    [\n      \"README.md\",\n      \"a.py::__residue__::\\u0000HEAD\\u0000\",\n      \"c.py::__residue__::\\u0000HEAD\\u0000\",\n      \"c.py::__residue__::qux\",\n      \"config.yaml\",\n      \"logo.bin\"\n    ],\n    [\n      \"b.py::__residue__::\\u0000HEAD\\u0000\",\n      \"b.py::__residue__::baz\",\n      \"b.py::baz\",\n      \"c.py::qux\"\n    ]\n  ],\n  \"new_id\": \"f-ma644e313a2834319e6ac50f3818f1427d6e6248e5afb54382f63ccd1919dc34e\",\n  \"moving_op_ids\": [\n    \"004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d\",\n    \"439ab3afbd2b481ebb8c3be8db9ba80489596af338433f6eeb89f6cc444b8e04\",\n    \"87f82580ba5b83f33d2f00e6456409e359949e92a2b36221f1d1148a0beef612\",\n    \"91cb13541de9b137ac548bfb4f2bbb13941510c1c8bb687c6e22365a6c0f8984\",\n    \"f5eb13272206e7c80b1b91b2e6298297d19305bbb11e74c7732d452bf5ba4b19\"\n  ]\n}\n"
     },
     "text": {
       "argv": [
