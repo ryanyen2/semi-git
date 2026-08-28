@@ -16,7 +16,7 @@
 # that is where `.sgt` lives.
 set -euo pipefail
 
-repo="${1:-$HOME/repos/sgt-demo/seedbank-v2}"
+repo="${1:-$HOME/repos/sgt-demo/seedbank-v3}"
 port="${2:-5174}"
 here="$(cd "$(dirname "$0")" && pwd)"
 SGT="${SGT:-$here/../../.venv/bin/sgt}"

@@ -113,3 +113,33 @@ def test_unrelated_residuals_are_not_a_split():
     ]
     splits, merges = detect_splits_merges(removed, added)
     assert splits == [] and merges == [], (splits, merges)
+
+
+def test_imports_of_different_modules_do_not_link():
+    """Swapping which module a file imports is a prune and an add, not a rename.
+
+    The two lines sit in the same place and read almost the same, which is enough for the
+    structural and fuzzy tiers to pair them without this guard.
+    """
+    before = [_snap("__import__::./run", "x.ts", "import", _BODY.format(name="foo"))]
+    after = [_snap("__import__::./probe", "x.ts", "import", _BODY.format(name="foo"))]
+    m = match_pair(before, after)
+    assert m.links == [], m.links
+    assert [s.ent.id for s in m.removed] == ["x.ts::__import__::./run"]
+    assert [s.ent.id for s in m.added] == ["x.ts::__import__::./probe"]
+
+
+def test_same_import_in_two_files_is_not_a_move():
+    """Two files importing the same module are two imports, not one that moved.
+
+    Extracting a module and importing it where the old import used to be produced exactly this
+    shape: `./run` leaves one file while a new file that imports `./run` arrives in the same
+    commit. Linking them minted a `move` op that reduction dropped, taking the rest of the
+    commit's ops for both files with it, and `sgt save` refused the edit outright.
+    """
+    body = _BODY.format(name="layout")
+    removed = [_snap("__import__::./run", "OutputPane.tsx", "import", body)]
+    added = [_snap("__import__::./run", "history.ts", "import", body)]
+    links, mr, ma = link_residual(removed, added)
+    assert links == [], links
+    assert mr == set() and ma == set()

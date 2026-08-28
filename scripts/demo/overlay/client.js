@@ -48,8 +48,8 @@ function boot() {
   .sgt-rail { position: fixed; left: 0; top: 0; bottom: 0; width: 10px; overflow-y: auto; z-index: 2147483000;
     display: flex; flex-direction: column; gap: 2px; padding: 10px 0;
     transition: width 160ms cubic-bezier(.2,.7,.3,1), background 160ms ease; }
-  .sgt-rail:hover, .sgt-rail.sgt-open { width: 216px; background: #fffdf7;
-    box-shadow: 0 0 0 1px rgba(0,0,0,.06), 6px 0 24px rgba(0,0,0,.07); }
+  .sgt-rail:hover, .sgt-rail.sgt-open { width: 216px; background: #ffffff;
+    box-shadow: 0 0 0 1px rgba(20,24,28,.08), 6px 0 24px rgba(20,24,28,.07); }
   /* Push the page over instead of covering it: a lit region must never sit under the rail. */
   body { transition: padding-left 160ms cubic-bezier(.2,.7,.3,1); }
   body.sgt-shift { padding-left: 216px; }
@@ -61,13 +61,13 @@ function boot() {
   .sgt-rail:hover .sgt-swatch, .sgt-rail.sgt-open .sgt-swatch { width: 6px; }
   .sgt-row:hover .sgt-swatch { transform: scaleX(1.6); }
   .sgt-label { display: flex; flex-direction: column; gap: 1px; min-width: 0;
-    font: 500 11px/1.15 ui-sans-serif,-apple-system,system-ui,sans-serif; color: #2f2b24;
+    font: 500 11px/1.15 "Avenir Next",Avenir,ui-sans-serif,-apple-system,sans-serif; color: #14181c;
     white-space: nowrap; overflow: hidden; opacity: 0; transition: opacity 130ms ease 40ms; }
   .sgt-label b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
-  .sgt-feat { font-weight: 400; font-size: 9.5px; color: #9a9284;
+  .sgt-feat { font-weight: 400; font-size: 9.5px; color: #5d6b78;
     overflow: hidden; text-overflow: ellipsis; }
   .sgt-rail:hover .sgt-label, .sgt-rail.sgt-open .sgt-label { opacity: 1; }
-  .sgt-count { font: 400 10px/1 ui-monospace,SFMono-Regular,monospace; color: #9a9284;
+  .sgt-count { font: 400 10px/1 ui-monospace,SFMono-Regular,monospace; color: #5d6b78;
     margin-left: auto; padding-right: 12px; opacity: 0; transition: opacity 130ms ease 40ms; }
   .sgt-rail:hover .sgt-count, .sgt-rail.sgt-open .sgt-count { opacity: 1; }
 
@@ -79,12 +79,12 @@ function boot() {
     transition: outline-color 140ms ease, box-shadow 140ms ease; }
 
   .sgt-chip { position: fixed; z-index: 2147483001; pointer-events: none;
-    font: 500 11px/1.35 ui-sans-serif,-apple-system,system-ui,sans-serif;
-    background: rgba(28,26,22,.94); color: #f6f2e8; padding: 6px 9px; border-radius: 6px;
+    font: 500 11px/1.35 "Avenir Next",Avenir,ui-sans-serif,-apple-system,sans-serif;
+    background: rgba(20,24,28,.94); color: #f2f6f9; padding: 6px 9px; border-radius: 6px;
     box-shadow: 0 4px 14px rgba(0,0,0,.22); max-width: 320px;
     opacity: 0; transform: translateY(3px); transition: opacity 110ms ease, transform 110ms ease; }
   .sgt-chip.on { opacity: 1; transform: translateY(0); }
-  .sgt-chip .k { color: #b9b0a0; font-weight: 400; }
+  .sgt-chip .k { color: #a6b3bf; font-weight: 400; }
   .sgt-chip .s { font-family: ui-monospace,SFMono-Regular,monospace; font-size: 10.5px; }
   .sgt-hidden { display: none !important; }`;
   document.head.appendChild(style);
@@ -148,7 +148,7 @@ function boot() {
     const leaf = symbol.includes("::") ? symbol.split("::").pop() : symbol;
     const row = document.createElement("div");
     row.className = "sgt-row";
-    row.title = `${symbol} — ${f.label}`;
+    row.title = `${symbol} - ${f.label}`;
     row.innerHTML =
       `<span class="sgt-swatch" style="background:${f.color}"></span>` +
       `<span class="sgt-label"><b>${esc(leaf)}</b><span class="sgt-feat">${esc(f.label)}</span></span>` +
@@ -193,7 +193,9 @@ function boot() {
     });
   });
 
-  // `#sgt=<text>` opens the rail and lights the first feature whose label contains <text>.
+  // `#sgt=<text>` opens the rail and lights the first SYMBOL whose name contains <text>, which
+  // is what the rail lists. `#sgt=TrayButton` lights the 24 stars; `#sgt=Chips` lights 25 regions,
+  // the 24 on the cards and the filter row in the header.
   // A figure for the paper has to be reproducible without a hand on the mouse, and a recording
   // can deep-link straight to the state it wants to show.
   function applyHash() {
