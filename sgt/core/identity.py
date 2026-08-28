@@ -96,6 +96,40 @@ def _forced_links(
     return links
 
 
+_IMPORT_MARKER = "::__import__::"
+
+
+def _is_import(entity_id: str) -> bool:
+    """Whether an entity id names an import statement.
+
+    An import's identity is the file it sits in and the module it names, and both halves are
+    already in the id. Two imports are the same import when both halves match, which the exact
+    surface id tier has already handled by the time the rename and move tiers run. So an import
+    reaching those tiers can only be a different import, and linking it to one is wrong in both
+    directions.
+
+    Same file, different module: `import { Run } from './run'` becoming
+    `import { Wrapped } from './probe2'` reads almost the same and sits on the same line, which
+    is enough for the structural and fuzzy tiers to call the second a rename of the first. It is
+    a prune and an add.
+
+    Different file, same module: an import of `./run` leaving one file while another file that
+    imports `./run` is added in the same commit is not one import moving between them. Both
+    files import that module on their own account. This one is worse than a cosmetic
+    mislabelling: the resulting `move` op is dropped when the ideal is reduced, taking the rest
+    of the commit's ops for both files with it, and `sgt save` then refuses the whole edit with
+    `put() would overwrite uncommitted changes`. Extracting a module and importing it where the
+    old import used to be is the most ordinary refactor there is, and it could not be saved."""
+    return "::__import__::" in entity_id
+
+
+def _may_link(before_id: str, after_id: str) -> bool:
+    """Whether two entities are allowed to be the same thing across a commit."""
+    if _is_import(before_id) or _is_import(after_id):
+        return before_id == after_id
+    return True
+
+
 def _link_pass(
     before: list[Snap],
     after: list[Snap],
@@ -137,7 +171,13 @@ def _link_pass(
             if not bucket:
                 continue
             idx = next(
-                (i for i, b in enumerate(bucket) if _pair(b.ent.id, a.ent.id) not in never_link), None
+                (
+                    i
+                    for i, b in enumerate(bucket)
+                    if _pair(b.ent.id, a.ent.id) not in never_link
+                    and _may_link(b.ent.id, a.ent.id)
+                ),
+                None,
             )
             if idx is None:
                 continue
@@ -161,6 +201,8 @@ def _link_pass(
         best_score = 0.0
         for b in cands:
             if b.ent.id in matched_b or _pair(b.ent.id, a.ent.id) in never_link:
+                continue
+            if not _may_link(b.ent.id, a.ent.id):
                 continue
             lo, hi = sorted((a.ntok, b.ntok))
             if hi and lo / hi < _SIZE_RATIO:

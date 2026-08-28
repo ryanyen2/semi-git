@@ -1662,3 +1662,839 @@ non-deterministic output into a fixture whose whole purpose is to be stable.
 Recorded because a red golden invites exactly that refresh. The four fixes above
 (findings 60 to 63) are golden-neutral — none of their output appears anywhere in
 that diff, which is how they were confirmed not to be the cause.
+
+---
+
+## Found while building the Variolite demo
+
+Started 2026-08-27. Unlike the coursecraft testbed, this repo is not a replayed payload. It
+is a real application (`~/repos/sgt-demo/variolite`) written feature by feature with a
+`sgt save` after each one, so these findings come from sgt being used on code it was not
+built around. Design doc: `docs/design/2026-08-27-variolite-demo.md`.
+
+### Finding 68 (open): `sgt log --tree` and `sgt status` report different feature counts
+
+At the same moment, on the same repo, with nothing between the two calls:
+
+```
+$ sgt log --tree | tail -1
+7 features
+$ sgt status | head -1
+18 files, 193 symbols, 9 features, 50% entity coverage
+```
+
+`_history_header` in `sgt/tui/graph.py` already documents this class of problem for the save
+list and fixes it there, by naming the denominator out loud ("N of M saves with tracked
+work · N main feature(s)"). The tree and `status` were not brought along: both still print a
+bare count, and the two counts disagree by two.
+
+Reproduce: any repo with husk features. Five saves into the Variolite build was enough.
+
+Confirmed again on 2026-08-27, on the demo repo the recording script films:
+
+```
+$ sgt log --tree | tail -1
+13 features
+$ sgt status | head -1
+31 files, 316 symbols, 14 features, 71% entity coverage
+```
+
+That moves this out of "a wart in a scratch repo" and into the demo itself. Beat 2 puts
+`sgt log --tree` on camera and reads "13 features" out loud, and anyone who types `sgt status`
+in the same session sees 14. Until it is fixed, the recording script must not put both
+commands in one take.
+
+The fix is the one `_history_header` already chose. Either both surfaces say what they are
+counting, or they count the same thing. A reader who runs both commands in one session
+currently learns that sgt's numbers cannot be trusted, which is the exact failure that
+docstring was written to prevent.
+
+### Finding 69 (open): two features from one save take the same name, told apart only by a file suffix
+
+Six saves into the build, `sgt log --tree --rebuild` reads:
+
+```
+variolite
+  Document Editing and Versioning
+    Structured Document Editing
+      wrap a selection in a variant box: the file becomes a… · doc.ts (0199a47f) · 28 symbols
+      editor shell: open similarity.js in a codemirror pane · Editor.tsx (023fe18a) · 14 symbols
+  Variant Box Editor (0033be46) · 3 symbols
+  editor shell: open similarity.js in a codemirror pane · theme.ts (0678615e) · 3 symbols
+  vite + react + codemirror scaffold (1d5b70ef) · 12 symbols
+  Nested Version Boxes (381dab7a) · 1 symbol
+  run the file in a worker, and print the command and… (401dc12d) · 8 symbols
+```
+
+Two rows are the same sentence. `editor shell: open similarity.js in a codemirror pane`
+names one feature under `Structured Document Editing` and another at the top level, and the
+only thing separating them is `· Editor.tsx` versus `· theme.ts`. `Editor.tsx` imports
+`theme.ts`, they arrived in the same save, and a reader has no way to tell what distinguishes
+the two features, because the names do not distinguish them.
+
+The cause is not a missing credential. The labeller works here: `Nested Version Boxes` and
+`Variant Box Editor` are LLM names from the same run. It is `subject_label` in
+`sgt/lens/label.py`, and the rule it implements is a good one. When one save's subject carries
+most of a cluster's mass, that subject becomes the name verbatim, so the developer gets their
+own words back instead of a paraphrase. The docstring makes the case well.
+
+What the rule lacks is any awareness of the other clusters. Each is named on its own, so when
+one save dominates two clusters, both take the same words, and the tree falls back to
+appending a file name to keep the rows apart. A file name is not what separates two features.
+
+The fix follows from `subject_label`'s own docstring, which already says a synthesized name is
+the right tool when the developer's words do not identify the cluster. When two clusters would
+claim the same subject, at most one can keep it. The rest should return `None` and be named by
+the LLM, which is what happened to every row in the listing above that reads like a feature.
+
+Not fixed here. Feature labelling is shared with the seedbank demo, whose labels the recording
+script depends on, so it is a change to make deliberately with a test rather than mid-build.
+
+**Re-checked at twelve saves**, after a full `--rebuild` recluster, as promised above. The
+graph did get better. `Versioned Variant Boxes` now holds 43 symbols, and `Code Workspace`,
+`Run Provenance` and `Sample Document Viewer` are all real names. The duplicate pair survived
+unchanged:
+
+```
+  Code Workspace
+    Versioned Variant Boxes (0199a47f) · 43 symbols
+    editor shell: open similarity.js in a codemirror pane · Editor.tsx (me5cb85c) · 13 symbols
+  ...
+  editor shell: open similarity.js in a codemirror pane · theme.ts (0678615e) · 3 symbols
+```
+
+So it is not an artifact of a sparse graph. One save dominating two clusters produces two rows
+with the same name at five saves and at twelve, and a denser entity graph does not dissolve it.
+
+One more thing the twelve-save tree shows: three of the nine features carry miner-minted ids
+(`af-m2ea5`, `me5cb85c`, `m30a73ea`). `demo-preflight.sh` fails a demo repo when
+`sgt log --tree` contains `af-m[0-9a-f]`, on the grounds that an unnamed auto-feature in the
+tree is a demo that cannot be filmed. A repo built by using sgt normally, twelve saves in,
+fails that gate.
+
+Two smaller things from the same session, recorded so they are not rediscovered:
+
+First, labels are not recomputed by `sgt log --tree --refresh`. Only `--rebuild` renames
+anything, and it took 14 seconds against 4 for a refresh. Anyone reading a tree with bad labels
+will reach for `--refresh` first and conclude the labeller is broken.
+
+Second, `oracle: unconfigured` in `sgt status` means no verification command is configured. It
+has nothing to do with the label credential, but on a repo whose labels have visibly fallen
+back to the developer's raw save messages, it reads exactly like the explanation for them.
+
+
+### Finding 70 (FIXED): replacing one import with another refused the save
+
+`sgt save` refuses ordinary work. Extract a module and import it where the old import used to
+be, which is what every extract-a-module refactor looks like, and the save stops with:
+
+```
+✗ put() would overwrite uncommitted changes: ['src/OutputPane.tsx', 'src/probe2.ts']
+  (if you just rewrote git history -- reset/amend/branch -f -- run `sgt advanced resync`)
+```
+
+No git history was rewritten. The advice in the message is wrong for this case, and
+`sgt advanced resync` is not the remedy.
+
+**Reproduction**, three lines, on the Variolite build at `nest a box inside a box`:
+
+```
+$ cat > src/probe2.ts <<'TS'
+import type { Run } from './run'
+
+export type Wrapped = { run: Run }
+TS
+$ # in src/OutputPane.tsx, replace the line
+$ #   import type { Run } from './run'
+$ # with
+$ #   import type { Wrapped } from './probe2'
+$ sgt save -m "probe"
+✗ put() would overwrite uncommitted changes: [...]
+```
+
+Each half alone is fine. Adding `probe2.ts` with no edit to `OutputPane.tsx` saves. Editing
+`OutputPane.tsx` with no new file saves. Adding a new file that imports nothing and importing
+it from an edited file saves. What fails is an import leaving one file while a new file that
+imports the same module arrives in the same save.
+
+**What is happening.** The guard in `put` (`sgt/core/lens.py:1245`) is correct: it is refusing
+to clobber uncommitted work. The failure is upstream, in what `get()` absorbs.
+
+The miner does emit ops for both files. Twenty of them, and ten never reach the ideal:
+
+```
+rework 409f04f7 ['src/OutputPane.tsx::OutputPane']
+move   ab7e0208 ['src/OutputPane.tsx::__import__::./run']
+add    0a8e95ab ['src/OutputPane.tsx::__import__::./probe2']
+add    4b2e82f0 ['src/probe2.ts::__residue__::\x00HEAD\x00']
+add    de700ae0 ['src/probe2.ts::__anchor__::__import__::./run']
+... (10 total, both files)
+```
+
+None of them declare `requires`, so they are not dropped for an unsatisfied dependency. The
+ideal keeps the pre-edit `OutputPane.tsx`, has never heard of `probe2.ts`, and `code()` then
+materializes the old file over the new one, which is what the guard catches.
+
+The `move` op is the thing to look at. Its footprint is one symbol:
+
+```
+{'src/OutputPane.tsx::__import__::./run': ('63887937…', '003449b6…')}
+```
+
+`src/OutputPane.tsx::__import__::./run` does not exist after the edit. The line at that
+position is now an import of `./probe2`, which is a different module and a different symbol.
+Pairing them by position and calling it a `move` says one import became another. A file
+swapping which module it imports is not a move, and two files importing the same module are
+not the same symbol.
+
+This lands on `feat/live-render-timeline`, the branch that made imports first-class symbols so
+that reverting a feature also removes its import line. The ownership half works, and the demo
+depends on it. What it did not come with is a matching rule for imports that says identity is
+the module specifier, not the line.
+
+**The link, found by tracing it.** `_link_pass` in `sgt/core/identity.py` matches leftover
+removals against leftover additions to find renames and moves. Two candidate pairs were offered
+for the import of `./run`:
+
+```
+src/OutputPane.tsx::__import__::./run -> src/OutputPane.tsx::__import__::./probe2
+src/OutputPane.tsx::__import__::./run -> src/probe2.ts::__import__::./run
+```
+
+The second one linked. The cross-file residual pass saw an import of `./run` leave one file
+while a new file that imports `./run` arrived in the same commit, and called it one import
+moving between them. It is not. Both files import that module on their own account.
+
+**Fix:** an import's identity is the file it sits in and the module it names, and both halves
+are already in the entity id. Two imports are the same import when both halves match, which the
+exact-surface-id tier has already handled before the rename and move tiers run. So an import
+reaching those tiers can only be a different import, and `_may_link` now refuses to link it in
+either direction: same file with a different module, and different file with the same module.
+
+**Tests:** `tests/core/test_identity.py::test_imports_of_different_modules_do_not_link` and
+`::test_same_import_in_two_files_is_not_a_move`. `tests/core/test_identity.py` and
+`tests/core/test_mine.py` pass, 33 tests before the two additions.
+
+Verified against the original reproduction: the save that refused now succeeds.
+
+Before the fix the Variolite build worked around it by splitting the edit into two saves, the
+new file on its own and then the edit that imports it. That workaround is no longer needed,
+though the resulting history is arguably better anyway, since the module and the surface that
+uses it are separate pieces of work.
+
+### Finding 71 (open, the demo overlay): the rail prints a number the viewer cannot count
+
+The provenance overlay's rail lists each symbol with a count, and for half the rows the count
+does not match what the highlight draws.
+
+| rail row | the number the rail prints | outlines drawn when it is lit |
+|---|---|---|
+| SowDots | 312 | 24 |
+| Mark | 164 | 24 |
+| Chips | 159 | 25 |
+| Card | 144 | 24 |
+| SearchBox | 9 | 1 |
+
+Both numbers are correct and they count different things. `counts` in
+`scripts/demo/overlay/client.js` counts every `[data-sgt-loc]` element attributed to the
+symbol, while `elementsFor` drops any element contained by another element of the same symbol,
+so the highlight outlines the outermost element of each region. A chip row and each chip inside
+it are all stamped `Chips`, so 159 elements are 25 regions.
+
+The rail number also sets the rail's order, and the order is the useful part: the symbols that
+drew the most page come first. Changing the count to the outline count would reorder the rail,
+which is a demo design decision rather than a bug fix, so this is recorded rather than changed.
+
+For recording, `2026-08-27-video-cuts.md` says to read the outline count out loud and not the
+rail number. That is a workaround. The real options are to print both numbers in the row, or to
+order by element count while displaying the region count.
+
+### Finding 72 (open, explains 68): nine features exist that no command will show you
+
+After the sixteenth Variolite save, `sgt log --tree` and `sgt status` disagree by nine:
+
+```
+$ sgt log --tree | tail -1
+13 features
+$ sgt status | head -1
+20 files, 283 symbols, 22 features, 60% entity coverage
+```
+
+`sgt log --tree --json` settles it. The graph holds 25 nodes, 22 of them features, and
+`feature_count` is 22, which is the number `status` prints. The `roots` array holds 13 entries,
+which is the number the tree prints. One root is the repo node `N0`. The other twelve are
+features with `parent: null`, so they hang off nothing.
+
+```
+size=1  App.onWrap              af-m07bd5b35
+size=1  App.statesFor           af-m07f755b7
+size=1  App.onRun               af-m0ec8154d
+size=1  ContextMenu.dismiss     af-m1a60d8be
+size=1  sgtLoc.transform.visit  af-m3c780e41
+size=1  App.onHit               af-m44b771a5
+size=1  runScript.finish        af-m463ec686
+size=1  search.has              af-m5d2467a7
+size=1  Editor.contextmenu      af-m5d77afb4
+size=1  sgtLoc.transform        af-m68661714
+size=1  eachBox                 af-m8ce5d969
+size=1  search                  af-ma22a4fd8
+```
+
+Every one holds exactly one symbol and is labelled with that symbol's name, which is the miner
+minting a feature because no save message claimed the symbol. The tree prints three of the
+twelve, unindented below the repo node, and drops the other nine without saying so. So the
+disagreement in finding 68 is not two counters counting differently. There are 22 features, 13
+are printed, and 9 cannot be reached from any surface a reader has.
+
+Reproduce: `sgt save` any change that adds a module and edits callers in the same commit. The
+sixteenth save added `src/search.ts` and wired it into `App.tsx` and `OutputPane.tsx`, and the
+save itself reported the split as it happened:
+
+```
+├─ ○ new feature (af-m8ce5d96) — unnamed; name it: sgt feature rename af-m8ce5d96 "<label>"
+├─ ○ new feature (af-ma22a4fd) — unnamed
+└─ ○ new feature (af-m44b771a) — unnamed
+⚠ one save touched 5 features — deliberate?
+```
+
+Two problems, and they want separate fixes. The tree's footer counts roots and calls them
+features, which is a one-line lie that a reader checks against `status` and catches. And a
+parentless feature is unreachable, which is the real one: `sgt feature rename` needs an id the
+reader can only get from `--json`.
+
+Not fixed here because the tree is rendered by `sgt/tui/graph.py`, which has uncommitted work in
+it from another line of change. Fixing the footer and adopting orphans into the repo node both
+belong there and would collide.
+
+### Finding 73 (open): an edit inside a nested callback is invisible to the miner
+
+Changing one character inside an arrow function that is an argument to another call
+produces no ops at all. `sgt status` and `sgt save` then contradict each other about the same
+file at the same moment:
+
+```
+$ sgt status
+ ⚠ 1 file differ from the recorded state                     sgt save
+     src/constrain.ts
+
+$ sgt save -m "probe nested"
+✓ nothing to save -- no uncommitted ops
+```
+
+`git diff --stat` says `src/constrain.ts | 2 +-`.
+
+The edit was one character, `2 * NUDGE` to `3 * NUDGE`, inside the callback passed to `.map()`
+in this function:
+
+```ts
+function gradients(drawing, constraint, id) {
+  ...
+  return here.map((e, i) => ({
+    g: [(right[i] - left[i]) / (2 * NUDGE), (down[i] - up[i]) / (2 * NUDGE)] as [number, number],
+    e,
+  }))
+}
+```
+
+Edits elsewhere in the same file save normally. Two controls, both on the same file at the same
+commit: changing a value in a top-level object literal (`T: [0, 1, 2]` to `T: [0, 1]`) saves,
+and rewriting a five line comment saves. Only the body of the nested callback is invisible.
+
+The second symptom is worse than the silence, because it does not announce itself. When the
+same file carries an invisible edit alongside a visible one, `sgt save` refuses outright:
+
+```
+✗ put() would overwrite uncommitted changes: ['src/constrain.ts']
+  (if you just rewrote git history -- reset/amend/branch -f -- run `sgt advanced resync`)
+```
+
+That message sends the reader to `sgt advanced resync`, which is the wrong tree entirely: no
+history was rewritten. The real cause is that the ideal cannot reproduce the working tree,
+because the miner never saw part of the edit, so `_dirty_conflicts` in `sgt/core/lens.py` finds
+a difference it can only explain as a foreign change.
+
+Reproduced on the Sketchpad demo repo at commit 707c755, ten commits in, with the branch's own
+sgt. Confirmed deterministic across seven runs: the file alone fails, the file paired with any
+one of three other changed files fails, and each of the two visible edits alone succeeds.
+
+Two fixes, and they are separable. The miner needs to descend into function expressions passed
+as arguments, or to fall back to a whole-symbol text hash when it cannot. And `_dirty_conflicts`
+should not blame rewritten history for a difference it has not established was committed; when
+the working tree differs from an ideal that HEAD itself reproduces, the honest message is that
+the save did not capture the edit.
+
+### Correction, same session
+
+Two claims above were narrowed after more probes, and the second one matters.
+
+The nested callback is not the whole story. Three separate edits were live in that file: a ratio
+added to one error subroutine, the balancing rewrite inside the callback, and a value plus a
+comment in a lookup table. Each one alone saves. Any two together fail. So "invisible edit"
+describes the one character probe exactly, and the refusal on the full change is a second
+problem about combining edits in one file, not the same one seen twice.
+
+`sgt advanced resync` does fix it, on a dirty tree, with no history rewritten. Running it and
+then saving landed all four files in one save. So the remedy the message names is the right
+remedy and its stated reason is wrong, which is worse than an unhelpful message: a reader who
+knows they did not rewrite history will not try the thing that works. The message should offer
+resync for what it actually does here, which is to re-derive the op table so the miner can see
+the edit.
+
+The one character repro stands on its own and is the cleaner bug to fix first.
+
+### Finding 74 (open): a revert's preview undercounts what it removes, by an order of magnitude
+
+On the Sketchpad demo repo, twelve saves in, `sgt revert "Nested Instances"` previews as a
+contained subtraction and lands as a demolition.
+
+The preview:
+
+```
+ also affected
+   ◈ Drawing Renderer              gains 2 edits
+   ◈ draw each constraint as a…    gains 1 edit
+   ◈ Pen Snapping                  gains 1 edit
+ · 7 other features unchanged
+ removes 54 edits across 11 symbols · 2 files: src/Scope.tsx, src/drawing.ts
+```
+
+Nothing loses a chapter. Seven features are untouched. Two files, eleven symbols. Read that and
+you expect a small, reversible change.
+
+What it actually did, applied on a clone:
+
+```
+src/drawing.ts   663 lines -> 244 lines      419 removed, 63% of the file
+tsc --noEmit     0 errors  -> 116 errors
+```
+
+The removed 419 lines include every type declaration in the file: `Drawing`, `Point`,
+`Segment`, `Master`. Functions that use them survived, so the counterfactual has
+`masterOf(drawing: Drawing, ...)` sitting in a file where `Drawing` no longer exists. That is
+why eleven symbols becomes a hundred and sixteen errors.
+
+The undercount looks like a unit mismatch rather than an arithmetic mistake. A type declaration
+is one symbol and one edit, and removing it invalidates every symbol that names it, in that file
+and in the three files that import from it. The preview counts what it removes. It does not
+count what stops making sense.
+
+This is the same class as the S2 revert-demolition blocker recorded during the seedbank testbed
+build, and it is worse here because Sketchpad's files are more interconnected: every feature
+touches `drawing.ts`, so every feature's revert reaches into the document model.
+
+For the demo this is the blocking one. The Sketchpad storyboard's headline beat is
+`sgt revert "<a constraint type>"` producing a lopsided figure and nothing else moving, and the
+whole argument rests on the preview being trustworthy. Right now a reader who ran the preview
+and then applied it would have their program deleted out from under them.
+
+Two things would help independently. The preview should report the symbols that reference what
+is being removed, not only the ones being removed. And `sgt revert` should refuse, or warn hard,
+when the counterfactual does not typecheck, which is a check the seedbank preflight already runs
+after the fact and which belongs in the preview.
+
+### Finding 75 (open): `sgt save --as LABEL` accepts the label and throws it away
+
+`sgt save --help` says:
+
+```
+--as LABEL   name the feature this save's work lands in -- a permanent,
+             user-authored label that wins over any auto-generated one
+```
+
+The Sketchpad demo's twelve saves were replayed, each one with its own `--as` label: `the
+scope`, `draw a line`, `the pseudo pen location`, `circle arcs`, `move and delete`, `the
+relaxation solver`, `the constraint display`, `equal length`, `masters and instances`,
+`instances inside instances`, `change the master`, `horizontal or vertical`. Every save
+succeeded and printed no warning.
+
+Not one label survives.
+
+```
+$ grep -ro "equal length" .sgt/ | wc -l
+0
+```
+
+Zero occurrences anywhere in the store. `sgt log --tree` shows twelve features carrying
+LLM-generated cluster names (`Drawing Canvas`, `Pen Snapping`, `Constraint Gradients`) or raw
+save messages, and none of the authored ones. Resolving by the authored name fails and falls
+into the disambiguation menu:
+
+```
+$ sgt revert "equal length"
+? [revert] 'equal length' did not resolve; did you mean:
+  1. src/drawing.ts::equalLength (symbol)
+     re-invoke: sgt revert src/drawing.ts::equalLength
+```
+
+Which ends in a symbol path, the other thing the demo argues against having to type.
+
+This is the flag that exists precisely to fix finding 69 and the naming half of finding 74, and
+it is the first thing anyone reaching for stable feature names will try. Silently dropping it is
+worse than not having it: `sgt feature rename` at least tells you it did something.
+
+The nearby question, unanswered here: whether the label was meant to be stored on the feature or
+on the save, and whether `--as` on a save that lands in several features is even well defined.
+On this repo every save reported touching four to six features, so there may be no single
+feature for the label to land on, in which case the flag needs to say so rather than accept the
+argument and discard it.
+
+### Finding 76 (open, explains 74): the broken-reference check reports nothing, on every revert
+
+`sgt/core/subtract.py` carries a check built for exactly this: `_broken_references`, whose
+docstring says "Surviving symbols whose bytes still name a removed entity: never swept, always
+reported." It runs on both of `plan_subtraction`'s returns.
+
+On the Sketchpad demo it reports nothing, for a revert that breaks the build in six files.
+
+```
+$ sgt revert "instances inside instances: ..." --json
+broken_references: []
+pruned_symbols:    []
+```
+
+Applied, the same revert deletes 319 lines and `tsc` gives 116 errors:
+
+```
+64 src/drawing.ts
+16 src/Scope.tsx
+14 src/constrain.ts
+11 src/Constraints.tsx
+ 7 src/App.tsx
+ 4 src/pen.ts
+```
+
+`pruned_symbols` being empty alongside `broken_references` is the tell. `_broken_references`
+opens by building `removed_names` from `born` and returns `()` immediately when that set is
+empty, so with no symbols reported as removed the sweep never runs. That is the same shape as
+the unreachability the function's own docstring records and fixes for a different case (F123,
+"the reason `still references removed code` never fired in the WP-V4 sweep"). The guard is
+back, by a different route.
+
+Whether `born` is genuinely empty here or is being computed and then dropped before the JSON is
+assembled, this was not established. Both are worth checking, and the empty `pruned_symbols` is
+reproducible in one command.
+
+### The audit behind findings 74, 75 and 76
+
+**Corrected.** The first run of this audit was invalid and its numbers should not be used. It
+cloned from a repo rebuilt by replaying the twelve saves, and that replayed repo had already
+diverged from the original in two files and carried 116 type errors before any revert ran. Every
+row therefore measured a broken baseline plus the revert, not the revert. The audit also used
+`tsc -b`, which is incremental and replays errors from a stale `tsconfig.tsbuildinfo`, so some
+counts were cache echoes rather than measurements.
+
+Re-run against the real demo repo, whose baseline is 0 errors, with `tsconfig.tsbuildinfo`
+removed and `tsc --noEmit`:
+
+```
+FEATURE                                            PREVIEW    DELETED   TSC ERRORS
+Constraint Solver                                   66 edits  414 ln      8
+Nested Instances                                    54 edits  437 ln    116
+Drawing Renderer                                   153 edits  944 ln     45
+draw each constraint as a lettered circle with a    21 edits  116 ln      6
+Pen Snapping                                        92 edits  423 ln     23
+Drawing Interface                                   16 edits    4 ln     17
+Constrained Drawing                                 16 edits   33 ln      0
+constraints and the relaxation solver, with a po     4 edits    1 ln      8
+Drawing State                                       15 edits   20 ln     23
+the pseudo pen location: a bright dot that locks     4 edits   11 ln      1
+vite + react scaffold                               43 edits   10 ln      0
+```
+
+Two of eleven revert to a program that still compiles: `Constrained Drawing` and
+`vite + react scaffold`. Both were then checked in a browser, and neither changes the running
+program at all. After reverting `Constrained Drawing` the app draws the same 294 lines, offers
+the same seven push buttons and the same three toggle switches, pixel for pixel. Its 33 deleted
+lines are reordering and comments; every function named in its diff still exists in the file
+afterwards.
+
+So the accurate statement is narrower than either of my earlier ones. Reverting **by feature**
+splits in two with nothing in between: every one that removes something breaks the build, and
+the two that compile remove nothing observable.
+
+Reverting **by op id** does work, and that is the difference that matters. Given the two ops one
+save introduced, `sgt revert <op>` removed exactly one edit
+(`src/drawing.ts::buildPattern`), left the program at 0 type errors, and changed the picture:
+the six placed groups went from four distinct edge angles to eight, because the constraint that
+stood them up is no longer applied. `sgt undo` then restored `src/` byte for byte.
+
+The unit is the problem, not the operation. An op is a recorded change and its boundary is real.
+A feature is a Leiden cluster wearing an LLM-written name, and its boundary is not, which is why
+subtracting one takes type declarations that half the program still needs. The demo should
+subtract a recorded change and say so, until features can be authored (findings 75 and the
+`regroup move --to` note below).
+
+`sgt feature regroup move <ops> --to <name>` cannot create the target: it answers
+`'stand a group up' is not a leaf feature`. Combined with `--as` being discarded, there is
+currently no way to author a feature, which is what would make revert-by-name honest.
+
+What survives the correction is the mismatch between the preview and the result, which is what
+findings 74 and 76 are about. `Drawing Interface` previews as 16 edits, deletes four lines, and
+produces seventeen errors. `constraints and the relaxation solver` previews as four edits,
+deletes one line, and produces eight. Neither reports a broken reference. The edit count carries
+no information about whether the result holds together, and the check built to say so
+(`_broken_references`) returns nothing in every case.
+
+### Finding 77 (open): replaying a history through `sgt save` silently loses content
+
+The rebuild in finding 75 replayed all twelve commits by laying down each commit's tree with
+`git archive` and then running `sgt save`. Every save reported success. The result diverged from
+the original in `src/Scope.tsx` and `src/drawing.ts` and would not compile: 116 errors against
+the original's 0.
+
+Nothing warned. `git status` was clean, `sgt status` said in sync, and each save printed its ✓.
+The likely mechanism is finding 73: an edit the miner cannot see is not saved, and in a replay
+`sgt save` is the only thing writing commits, so whatever it cannot see is gone rather than left
+in the working tree to be noticed later.
+
+This is the data-loss shape of finding 73 and is the reason to treat that one as urgent rather
+than as a curiosity about arrow functions.
+
+### Finding 78 (open): `resync` cannot repair a fork that a fresh `init` repairs, and fsck does not see it
+
+After twelve saves and a session of debugging (a few `git reset --hard` to abandoned probe
+commits, each followed by `sgt advanced resync` as the error message instructs), the Sketchpad
+demo repo reached a state where eleven of its thirteen frontiers could not be folded at all:
+
+```
+$ sgt advanced fold --at 2 --json
+{ "forked": true,
+  "message": "not a valid ideal (downward-closure or fork-freedom violated): 92 op(s) [...]" }
+```
+
+Frontiers 0 and 1 fold. Frontiers 2 through 12 do not. That is the scrub, which is the whole
+point of the rendered timeline, dead on the repo it is meant to demonstrate.
+
+Both diagnostics say the store is healthy:
+
+```
+$ sgt advanced forks
+✓ no open forks
+$ sgt advanced fsck
+✓ fsck — 320 op(s) checked
+```
+
+`resync` does not repair it, and reports a third op count:
+
+```
+$ sgt advanced resync
+✓ resync refs/heads/main — re-derived from current history: 305 → 305 op(s) (unchanged)
+```
+
+320 from fsck, 305 from resync, and neither notices that most of the history cannot be
+materialized.
+
+What does repair it, completely, is throwing the store away and letting `init` derive it again
+from the same untouched git history:
+
+```
+$ rm -rf .sgt && sgt init
+$ for i in 0 2 6 9 12; do sgt advanced fold --at $i --json; done
+all OK
+```
+
+So the ops can be derived correctly from this history. `resync`, whose stated job is to
+"re-derive from current history", does not arrive at the same answer, and its "(unchanged)"
+suggests it decided there was nothing to do.
+
+Three things follow, in order of how much they cost a user. `fsck` should fail on a store whose
+frontiers cannot be folded, because that is the property anyone actually depends on. `resync`
+should either reach what `init` reaches or say it cannot. And the three op counts should agree.
+
+Until then, `rm -rf .sgt && sgt init` is the working repair for a repo whose scrub has died, and
+it is safe when git holds all the content, which is the normal case.
+
+### Correction to finding 75, 2026-08-28
+
+Finding 75 says `--as` throws the label away. That is wrong, and the four saves made today show
+it: each printed `✓ named "..."` and each label is still there.
+
+```
+$ sgt save -m "..." --as "solve an instance whole"
+✓ save 13f97d4 "an instance moves as one thing, so a fastened lattice stops flying apart"
+  └─ ● solve an instance whole (02004cfc)  src/constrain.ts::balanced, +8 more
+  ✓ named "solve an instance whole"
+```
+
+What actually goes wrong is which feature gets named. `_apply_save_label` picks a lane the save
+minted, and failing that `features[0]`, which is sorted by descending edit count:
+
+```python
+target = next((f for f in features if f["new"]), features[0] if features else None)
+```
+
+A save that mints no new lane therefore names the **largest** feature it happened to touch. The
+seventeen-edit overlay save named a hundred-and-twelve-edit feature spanning eight files, and
+the save before it renamed a lane a previous `--as` had just named, so the earlier label was
+gone with no warning. Both times the printed confirmation was `✓ named "..."`, which is true and
+useless, because it never says what got the name.
+
+Two changes would fix it. Print the label's target, so `✓ named "..."` becomes `✓ named
+02004cfc "..." (61 edits, 4 files)` and a wrong target is visible immediately. And when no lane
+is new, prefer the smallest touched lane over the largest, or refuse and say which lanes were
+touched: naming the biggest thing you brushed against is the worst available guess.
+
+The original finding stands only in its weakest form. It was written against a replay done with
+`scripts/`-driven saves, and finding 77 later showed that replay path loses content, so the
+labels probably died with the replay rather than in `--as`.
+
+### Finding 79 (open): `sgt log --refresh` silently rewrites an authored feature's membership
+
+An authored feature is a user-owned selection, and the docstring for `sgt.lens.authored` is
+explicit that it is "the feature object itself", carried and protected rather than derived. It
+does not survive a refresh.
+
+The demo needs one feature that is exactly one save's work, so `sgt revert "<label>"` removes
+that and nothing else. Built with `regroup split` + `regroup move` + `rename`, it was exact:
+
+```
+$ sgt feature select "show the solving order"
+f-0ffcd781...: 17 direct op(s), 59 in closure, 10 file(s)
+$ sgt revert "show the solving order" --yes
+  removes 17 edits across 5 symbols · 6 files
+$ tsc --noEmit   # 0 errors
+```
+
+One `sgt log --refresh` later, with no other command in between:
+
+```
+$ sgt feature select "show the solving order"
+f-0ffcd781...: 35 direct op(s), 49 in closure, 10 file(s)
+$ sgt revert "show the solving order" --yes
+  removes 195 edits across 60 symbols · 10 files
+$ tsc --noEmit   # 50 errors
+```
+
+Seventeen ops became a hundred and ninety-five, and a revert that was surgical became one that
+breaks the build. The refresh reports nothing. A user who authored a feature, checked it, and
+then ran the command the tool itself suggests in half its output footers now has a different
+feature under the same name.
+
+The membership is an OR-Set. Re-attribution should be adding to the *clustered* lane it came
+from, never to the authored set, which is by construction the one thing the user said.
+
+### Finding 80 (open): `sgt log --rebuild` deletes authored features outright
+
+Worse than 79 and one flag away from it. After `--rebuild`, eleven features became six and the
+authored one was gone, not merely widened:
+
+```
+$ sgt log --rebuild --map
+ 6 features · 18 saves
+$ sgt feature select "show the solving order"
+✗ feature 'show the solving order' not found; run `sgt log --refresh`
+```
+
+The authored labels that had been applied to *clustered* lanes did survive, so the label
+register is doing its job. What is lost is the authored feature's membership, which is the part
+that cannot be recomputed because nothing else in the system knows the user drew that boundary.
+
+The suggestion in the failure message is also wrong: `sgt log --refresh` cannot bring back a
+deleted authored feature, and running it is how a user would discover that. There is no undo for
+this, and no confirmation before it. The only recovery today is a filesystem copy of `.sgt`.
+
+### Finding 81 (open): the feature map hides features, including the newest one
+
+With no `--focus`, the map folds every leaf subsystem to one lane. On the Sketchpad demo that
+put three of eleven features behind a single row:
+
+```
+   └─ ▾ Canvas Composition  ·  4 features
+      ├─ ▸ Canvas Authoring  (3)   ▃▃▃▅▅▅▆▆▆ ...   167
+```
+
+One of the three was the feature the reader had just made, named a minute earlier. `--full` does
+not expand it, and the two names doing the hiding are generated, so neither can be renamed
+through `sgt feature rename`, which answers `feature 'Canvas Authoring' not found`.
+
+The rule has a good reason and the comment above it argues the case well. The problem is what it
+costs on a small repo: eleven features is not too many to show, and the newest work is exactly
+what a reader is looking for. Folding by row budget rather than by tree shape would keep the
+benefit and lose the failure, and a subsystem name should be renameable like any other label.
+
+Flattening the tree by hand in `.sgt/tree/tree.json` gives the map this demo records:
+
+```
+   ├─ ● the constraint solver     ▅▅▅▁▁▁▂▂▂▃▃▃▃▃▃   ▁▁▁▂▂▂▁▁▁▅▅▅▅▅▅   61
+   ├─ ● the constraint marks          ▅▅▅                             13
+   └─ ● show the solving order                              ▅▅▅       17
+```
+
+### Finding 82 (open): there is no way to author a feature, only to repair one
+
+`sgt.lens.authored` describes user-authored features as first-class merged state, and the
+resolver puts them ahead of clustered features. No command creates one from a selection. What
+works is a three-step detour:
+
+```
+$ sgt feature regroup split <big-feature> --apply     # mints a leaf id, contents arbitrary
+$ sgt feature regroup move <op>... --to <that id>     # put the real work in it
+$ sgt feature rename <that id> "<label>"              # name it
+```
+
+The split is the load-bearing step and it is being used for something it does not mean: it is
+there to cut a feature in two, and it is the only way to get an id that `--to` accepts, because
+`--to` refuses a name that is not already a leaf. The split's own proposal is ignored.
+
+`sgt feature regroup new "<label>" <op>...` would replace all three, and would let `--as` mean
+what its help text says when a save's work does not happen to land in a lane of its own.
+
+### Finding 83 (open): a feature that owns nothing is still offered for revert
+
+`0410a268` carried fourteen edits and no symbols at all:
+
+```
+feature 0410a268  "Geometry Construction"
+  14 edits · 0 symbols in 0 files · last touched 15m ago
+  next:
+    sgt revert 0410a268   removes 14 edits
+```
+
+This is finding 72's husk again, in a repo built after the fix for it, so the fix does not cover
+this path. The row occupies the map, `sgt show` offers a revert for it, and there is nothing it
+can revert: reverting it produced four `tsc` errors and removed nothing a reader would name.
+
+Merging it into a real feature absorbed it and the map lost the row, which is the workaround. A
+feature with no live symbols should not be built, and failing that should not be offered a
+revert it cannot perform.
+
+### Finding 84 (open): the wrong `sgt` fails a revert with a message about the wrong files
+
+The demo runbook has warned since 2026-08-27 that the `sgt` on PATH is probably not the one the
+demo needs, because import ownership changed. What it did not say is how that failure looks, and
+the failure is the reason a preflight script took an hour to write.
+
+With the wrong build, `sgt revert "<label>"` computes the right preview:
+
+```
+ removes 17 edits across 5 symbols · 6 files: src/App.tsx, src/Freedoms.tsx, ...
+```
+
+and then refuses to apply:
+
+```
+✗ put() would roll back files outside this edit's scope, whose committed content
+  differs from sgt's recorded ideal:
+  ['src/Constraints.tsx', 'src/main.tsx', 'src/pen.ts', 'vite.config.ts']
+```
+
+None of those four files is in the revert. Nothing in the message mentions the binary, the store,
+or a version. Every cheaper check still passes: the tree is clean, the feature resolves, the
+preview is right, and `sgt undo` afterwards restores the tree exactly. The natural reading is that
+the repo is corrupt, and the next thing a user does is `resync` or `rm -rf .sgt`, both of which
+destroy authored features (findings 79, 80) and neither of which was the problem.
+
+The check that identifies it in one line is already written down:
+
+```
+$ .venv/bin/python -c "import sgt.core.op as o; print(o._symbol_kind('a.ts::__import__::./b'))"
+import      # right build
+nested      # wrong build
+```
+
+`put()` should run that comparison itself and say so. Something like "this store was mined by a
+build that does not own import lines" turns an hour into a minute. Failing that, the rollback
+message should at least say why those specific files differ, since the user's first question is
+what four files they never touched have to do with the edit.
+
+`scripts/demo/check-revert.sh` now refuses to run against a build that fails the check.

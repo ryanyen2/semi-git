@@ -1,217 +1,218 @@
-# Seedbank demo — the operator's runbook
+# Sketchpad demo runbook
 
-The recording *script* (`docs/design/2026-08-27-demo-recording-script.md`) says what the demo
-argues. This says which commands to type, in which window, in what order, and what you should
-see when each one lands. Every command here has been run.
+Setup, checks, and the two ways this can break. `STORYBOARD.md` is the take itself.
+
+The demo repo is `~/repos/sgt-demo/sketchpad`, a reimplementation of Sutherland's 1963 Sketchpad
+built in nineteen saves. It is a good subject for sgt because the drawing is stored as conditions
+rather than as lines, so an older version of the program reads the same file and draws a different
+picture. Eighteen of the nineteen frontiers change what is on screen.
+
+For the seedbank demo, read `RUNBOOK-seedbank.md`. It is a different repo and a different take.
 
 ---
 
-## 0. Set two paths, once per terminal
-
-Everything below uses these. Set them in **every** terminal you open.
+## 1. Set the paths, once per terminal
 
 ```bash
-export SGT_SRC=~/repos/semi-git          # the sgt source tree — see the note below
-export DEMO=~/repos/sgt-demo/seedbank-v3
-export SGT=$SGT_SRC/.venv/bin/sgt        # NOT the `sgt` on your PATH
+export SGT_SRC=~/repos/semi-git
+export DEMO=~/repos/sgt-demo/sketchpad
+export SGT=$SGT_SRC/.venv/bin/sgt        # not the `sgt` on your PATH
 ```
 
-### The one trap, named up front
-
-**`sgt` on your PATH is not necessarily the `sgt` this demo needs.** The demo depends on
-import ownership (a feature can own an `import` line, so reverting it removes the import).
-An sgt without that mines a store in which *nothing* owns an import line — and beat 6 then
-deletes `Tray.tsx` while leaving `import { TrayButton } from './Tray'` sitting above it. The
-app breaks with two `tsc` errors, and every other check still passes.
-
-Check, don't assume:
+The `sgt` on your PATH is probably not the one this demo needs. Check rather than assume:
 
 ```bash
 $SGT_SRC/.venv/bin/python -c "import sgt.core.op as o; print(o._symbol_kind('a.ts::__import__::./b'))"
-# must print: import        (if it prints `nested`, this tree is on the wrong branch)
+# must print: import
 ```
 
-`SGT_SRC` must be a tree with `feat/live-render-timeline` checked out. If it is
-`~/repos/semi-git` and that prints `nested`, that tree is still on `main` — either check the
-branch out there, or point `SGT_SRC` at `~/repos/semi-git-render`.
+If it prints `nested`, that tree is on `main`. Check out `feat/live-render-timeline` there.
 
 ---
 
-## 1. Preflight — run this immediately before recording
+## 2. The one rule
 
-```bash
-bash $SGT_SRC/scripts/demo/demo-preflight.sh $DEMO
-```
+**Do not run `sgt log --refresh`, `sgt log --rebuild`, or `sgt save` in the demo repo.**
 
-Rehearses every beat against a throwaway copy and leaves the demo repo untouched. **16 passed,
-0 failed** or do not start recording. It catches the wrong-sgt trap, a dirty tree, a label that
-moved on a rebuild, and a revert that no longer compiles.
+`show the solving order` is an authored feature, built by hand so that reverting it removes one
+save's work and nothing else. Every mining pass rewrites it. Measured:
+
+| after | direct ops | what the revert removes | tsc errors |
+|---|---|---|---|
+| authoring it | 17 | 17 edits, 6 files | 0 |
+| one `sgt log --refresh` | 35 | 195 edits, 10 files | 50 |
+| one `sgt save` | 38 | 208 edits, 10 files | 49 |
+
+Nothing warns you. Findings 79 and 80 in `docs/study/sgt-findings.md` have the detail.
+
+If it does get rewritten, section 6 rebuilds it.
 
 ---
 
-## 2. Window layout
+## 3. Window layout
 
 | where | what |
 |---|---|
-| **Terminal A** | the app — `npm run dev`, stays up the whole take |
-| **Terminal B** | the sgt commands you type on camera (beats 2 and 6) |
-| **Terminal C** | the overlay — only for beat 4 |
-| **VS Code** | the workbench + render panel — beats 3 and 5 |
-| **Browser** | `localhost:5173` (app), `localhost:5174` (overlay) |
+| Browser tab 1 | the app, `http://localhost:5174/`, up the whole take |
+| Browser tab 2 | the timeline page, `file:///tmp/sketchpad-timeline.html` |
+| Terminal A | `npm run dev` in `$DEMO`, never on camera |
+| Terminal B | the sgt commands you type on camera, beats 2 and 5 |
+| Terminal C | the scratch clone, for beat 4 only |
 
-Terminal B is the only one on camera. Make its font large.
+Start the app:
+
+```bash
+cd $DEMO && npm run dev      # serves on 5174
+```
 
 ---
 
-## 3. The beats, in order
+## 4. Preflight, immediately before recording
 
-### Beat 1 — the present
+Run these five and read every answer. They take about a minute together.
 
-**Terminal A:**
-```bash
-cd $DEMO && npm run dev
-```
-Open **http://localhost:5173**. Seed catalog, 24 varieties, stars on every card, "tray empty"
-pill in the header. Leave this running for the whole session.
-
-Say nothing. The viewer just sees a real app.
-
-### Beat 2 — the history is not a list of commits
-
-**Terminal B:**
 ```bash
 cd $DEMO
-$SGT log --tree
-$SGT intent list
+
+# 1. the tree is clean, so `sgt undo` has something exact to return to
+git status --short                       # must be empty
+
+# 2. the program compiles
+rm -f tsconfig.tsbuildinfo && npx tsc --noEmit && echo "0 errors"
+
+# 3. the map is the one the storyboard points at
+$SGT log --map                           # 11 features, 19 saves, no ▸ collapsed rows
+
+# 4. the authored feature is still exact
+$SGT feature select "show the solving order" | head -1
+# must say: 17 direct op(s)
+
+# 5. the revert still lands, on a throwaway copy
+bash $SGT_SRC/scripts/demo/check-revert.sh
 ```
-First shows 13 features under named themes. Second names each feature's chapters in English.
-This is the vocabulary the rest of the demo speaks in — no hashes appear on camera.
 
-### Beat 3 — the silent gap
+The preflight clones, reverts, compiles, undoes, and compares, and prints nine lines. You want
+nine passed. It also refuses to run against the wrong `sgt` build: with the wrong one the revert
+previews correctly and then refuses to apply, naming four files it never touches (finding 84).
 
-In **VS Code** (see §4 for how to launch it), open the **SGT Workbench** panel and drag the
-playhead: **episode 3 → 4 → 5**.
-
-- at 3 and 4 the page does **not** move — the whole search engine lands invisibly
-- at 5 the search box appears
-
-The measured evidence, if you want it as a figure rather than a scrub:
-```bash
-bash $SGT_SRC/scripts/demo/render-frontiers.sh $DEMO
-```
-It renders every frontier and reports which ones changed pixels. 3 and 4 are byte-identical.
-
-### Beat 4 — hover a symbol, see its pixels
-
-**Terminal C:**
-```bash
-bash $SGT_SRC/scripts/demo/with-overlay.sh $DEMO
-```
-Then open **http://localhost:5174** — a *second* port, deliberately. The overlay runs from a
-scratch copy so it never lands in the demo repo's own history.
-
-- hairline rail on the **left edge** — approach it and it widens into a list of symbols
-- hover a symbol → its regions light, everything else dims
-- hover the page → a chip names the symbol and the feature that last changed it
-- **backtick** hides the instrument for a clean take
-
-Two shots worth filming:
-- `TrayButton` → exactly the 24 stars, nothing else
-- `Chips` → the TRAITS row **in the header** *and* the chips on **every card**. One symbol,
-  two distant regions — the many-to-many claim, in one gesture.
-
-`#sgt=<text>` in the URL deep-links to a lit state, so a figure is reproducible without a mouse.
-
-### Beat 5 — drag the playhead, the app becomes that frontier
-
-In VS Code, **Cmd+Shift+P → `sgt: Open Running App (render panel)`**.
-
-> The panel does **not** open by itself, and no button in the workbench opens it. If you drag
-> the playhead without opening it first, nothing happens — that is the expected behaviour, not
-> a bug.
-
-It opens beside the graph, boots its own dev server against a scratch fold, then drag the
-playhead: **1 → 4 → 5**. At 4 the ranking engine is in the tree and the page does not move; at
-5 the search box appears. Beat 3 asserted that from screenshots; here you watch it happen.
-
-~320–377 ms per step, one server, never restarted. The bar above the frame always names the
-frontier it is showing and dims the picture while the next one folds.
-
-### Beat 6 — subtract from the present — **the headline**
-
-**Terminal B:**
-```bash
-$SGT revert "seed tray"
-```
-By name. No hash, no symbol path. The preview names what goes and what stays; confirm.
-
-Cut to the browser on **5173**: every star is gone, the "tray empty" pill is gone, **nothing
-else moved**. Not the app at a past commit — today's app minus one idea.
+If check 4 says anything but 17, stop and go to section 6.
 
 ---
 
-## 4. Launching VS Code with the render panel
+## 5. Beat 4 runs on a clone, never on the demo repo
 
-The render panel lives in the extension built from `$SGT_SRC`. Build it once:
+The revert is reversible and `sgt undo` restores the tree byte for byte, which is verified. It is
+still not what you want to be doing live on the repo the app is serving from. Make the clone
+before you start recording:
 
 ```bash
-cd $SGT_SRC/editor/vscode && npm run compile
-grep -c sgtRender dist/extension.js     # must print 1, not 0
+rm -rf /tmp/sketchpad-live && git clone -q $DEMO /tmp/sketchpad-live
+cp -r $DEMO/.sgt /tmp/sketchpad-live/.sgt
+ln -s $DEMO/node_modules /tmp/sketchpad-live/node_modules
+cd /tmp/sketchpad-live && npx vite --port 5175
 ```
 
-Then:
-```bash
-code $SGT_SRC/editor/vscode
-```
-Press **F5**. A second VS Code window opens (`[Extension Development Host]`). In **that**
-window, open `$DEMO` as the folder.
+Do not run `sgt advanced resync` in that clone. It is finding 73's documented workaround, it is not
+needed here, and it re-derives the op set: on this repo it moved the authored feature from
+seventeen direct ops to fifteen, which is the drift section 2 is about.
 
-**If `grep` printed 0, you built the wrong tree** — that is exactly the state where the
-workbench appears normally and the render-panel command does not exist at all.
+Beat 4 then types in `/tmp/sketchpad-live` and shows `http://localhost:5175/`.
 
-Point the extension at the same sgt as everything else, in the dev host's settings:
-```json
-{ "sgt.path": "<the value of $SGT>" }
-```
-Otherwise the extension shells out to PATH's sgt and re-derives the store with it.
+The two ports look identical on camera, which is the point: the audience sees one app.
 
 ---
 
-## 5. Between takes — reset
+## 6. Rebuilding the authored feature
 
-`sgt revert` is reversible, and `restore` is its exact inverse:
+Needed only if `sgt feature select "show the solving order"` stops saying 17.
+
+There is no verb that creates an authored feature from a selection, so this goes the long way
+round. `<save>` is the commit that introduced the overlay, `3acfbe7`, and `<prev>` is the one
+before it, `cfbd0fb`.
 
 ```bash
-cd $DEMO && $SGT restore "seed tray"
-git -C $DEMO status --porcelain    # must print nothing
-```
-`sgt undo` also works. The preflight verifies this round-trips byte-identically — if `git
-status` shows anything, do not start the next take.
+cd $DEMO
 
-Full rebuild, if a take corrupts the repo beyond a restore:
-```bash
-SGT=$SGT $SGT_SRC/scripts/demo/build-seedbank.sh $DEMO   # FORCE=1 to replace
+# the ops that save introduced, which is the whole membership
+comm -13 <(git log -1 --format=%B <prev> | grep -i "^Sgt-Op:" | awk '{print $2}' | sort) \
+         <(git log -1 --format=%B <save> | grep -i "^Sgt-Op:" | awk '{print $2}' | sort) > /tmp/newops.txt
+wc -l < /tmp/newops.txt          # 17
+
+# whatever else drifted into the lane
+$SGT log --map --json | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+ops=set()
+for c in d['cells']:
+    if c['feature_id'].endswith('0ffcd7814db6ea54f6c1672e2ec81e202848a66de579a61829a423aa3290546a'):
+        ops.update(c['op_ids'])
+want=set(l.strip() for l in open('/tmp/newops.txt') if l.strip())
+open('/tmp/intruders.txt','w').write('\n'.join(sorted(ops-want)))
+print(len(ops-want), 'to move out')"
+
+$SGT feature regroup move $(tr '\n' ' ' < /tmp/intruders.txt) --to 002b21d3 --json >/dev/null
+$SGT feature regroup move $(tr '\n' ' ' < /tmp/newops.txt) --to 0ffcd781 --json >/dev/null
+$SGT feature select "show the solving order" | head -1     # 17 direct op(s)
 ```
-Takes a few minutes. The feature *labels* come from the episode messages, so `"seed tray"`
-survives a rebuild — but feature **ids** do not. Never paste an id from an old run.
+
+If the lane `0ffcd781` no longer exists at all, mint one with
+`$SGT feature regroup split 002b21d3 --apply`, take the new id from the output, move the ops into
+it, and `$SGT feature rename <new id> "show the solving order"`.
+
+A copy of a known-good store lives in `/tmp/sgt-golden` for as long as that machine stays up.
+`rm -rf .sgt && cp -r /tmp/sgt-golden .sgt` is faster than any of the above when it is there.
 
 ---
 
-## 6. Do not improvise these on camera
+## 7. Rebuilding the timeline page
 
-- **Reverting a feature other than `seed tray`.** Six of the seven original features break the
-  build when reverted, because later work legitimately builds on them
-  (`2026-08-27-import-ownership.md` §7). Only a leaf reverts clean.
-- **`sgt revert <loose natural language>`** falls into a disambiguation menu that ends in
-  `re-invoke: sgt revert 9df47906` — a hash, the exact thing this demo argues against. Use the
-  exact label.
-- **Hover-to-highlight is a browser overlay, not an editor feature.** Beat 4 is in the page,
-  not in the gutter. Don't claim otherwise.
+Only needed after a new save. Takes about four minutes.
 
-## 7. Rough edges that are visible but survivable
+```bash
+cd $SGT_SRC
+SGT=$SGT_SRC/.venv/bin/sgt bash scripts/demo/render-frontiers.sh $DEMO /tmp/sketchpad-frontiers
 
-- The CLI echoes a full 64-character feature id on the rewind line. Ugly, not wrong.
-- `styles.css` keeps its `.tray-*` rules after the revert — CSS is opaque-tier (one symbol per
-  file) and that edit belongs to another feature. Unused rules render nothing, so it is
-  invisible on camera, but the tree is not perfectly clean.
-- The "tray empty" pill sits between the `<h1>` and the tagline and reads slightly oddly.
+TIMELINE_TITLE="sketchpad, built one feature at a time" \
+TIMELINE_SUB="every frame is that commit folded onto disk, served, and photographed. drag to watch the drawing arrive." \
+bash scripts/demo/build-timeline-page.sh /tmp/sketchpad-frontiers /tmp/sketchpad-timeline.html $DEMO
+```
+
+The sweep prints a table of which frontiers moved the picture. Eighteen of nineteen should say
+`changed`. The one that says `IDENTICAL` is the constraint-type-table save, and it is meant to.
+
+`render-frontiers.sh` reads the store and writes only to its output directory, so it is safe to
+run against the demo repo. It does not refresh anything.
+
+---
+
+## 8. When the page does not change
+
+Symptoms and causes, in the order they actually happen.
+
+**The app shows a stale picture after a revert.** Vite has cached the old module. Hard reload the
+tab. If that fails, restart `vite` in that clone.
+
+**`sgt advanced fold --at N` says "fork-freedom violated".** The store has drifted. `fsck` and
+`forks` will both say the repo is healthy and both are wrong; `resync` will say "unchanged" and do
+nothing. The working repair is `rm -rf .sgt && sgt init`, which is safe because git holds all the
+content. It also destroys every authored feature, so section 6 has to run afterwards. Finding 78.
+
+**`sgt revert "<name>"` says the feature is not found.** Something rebuilt. `sgt log --map` will
+show a different set of names. Restore `/tmp/sgt-golden` or go to section 6.
+
+**The revert preview looks right but `tsc` fails afterwards.** The authored feature has drifted
+even though its name still resolves. Check `sgt feature select` first; it is the cheap test.
+
+---
+
+## 9. What has not been checked from a terminal
+
+The VS Code workbench renders in a webview and cannot be screenshotted from here. The headless
+smoke test over the real render path passes:
+
+```bash
+cd $SGT_SRC/editor/vscode && node dev/smoke.js      # SMOKE OK
+```
+
+That covers the graph render path on real data. It is not a visual pass. If the workbench is going
+on camera, open it in VS Code against `$DEMO` and look at it yourself first.
