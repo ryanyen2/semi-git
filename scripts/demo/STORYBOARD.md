@@ -31,7 +31,7 @@ One window: the app in a browser at `http://localhost:5174/`. No terminal.
 
 | # | Do | On screen | Say |
 |---|---|---|---|
-| 1 | Nothing. Hold three seconds. | Hexagon lattice. Bottom line reads `RELAXATION . 12 PASSES`. | "Seven groups of seven hexagons, fastened at their corners." |
+| 1 | Nothing. Hold three seconds. | Hexagon lattice. Bottom line reads `RELAXATION . 11 PASSES`. | "Seven groups of seven hexagons, fastened at their corners." |
 | 2 | Click `SEMICIRCLE`. | Every hexagon becomes a semicircle. Fish scales. | "One switch changes the master. Every copy of it changes, at every depth." |
 | 3 | Click `SEMICIRCLE` again. | Back to hexagons. | Nothing. |
 | 4 | Click `ZIGZAG`. | A row of nine zigs. Bottom line changes to `ONE PASS . 16 VARIABLES ORDERED`. | "Same solver. This drawing it can solve outright, in one pass." |
@@ -97,8 +97,8 @@ Drag the slider from the far left to the far right, slowly, once. Then stop at t
 
 Then point at the ticks under the slider, which are darker where the picture moved.
 
-- "Every one of these is that commit, folded onto disk, served, and photographed. Eighteen of
-  nineteen changed the picture."
+- "Every one of these is that commit, folded onto disk, served, and photographed. Every save but
+  one moved the picture."
 - Point at the one pale tick. "That one did not. It is the save that turned constraint types into
   table entries. The program got easier to extend and the drawing did not move. Both are true and
   the timeline says so."
@@ -163,8 +163,8 @@ Stop recording.
 | Claim | Command that proves it |
 |---|---|
 | 19 saves, 11 features | `sgt log --map` |
-| 18 of 19 frontiers changed the picture | `scripts/demo/render-frontiers.sh` output table |
+| every save but one moved the picture (17 of 18 comparisons) | `scripts/demo/render-frontiers.sh` output table |
 | the revert removes 17 edits in 6 files | `sgt revert "show the solving order"` preview |
 | the counterfactual compiles | `npx tsc --noEmit` after the revert, 0 errors |
 | undo is exact | `diff -rq src <pristine>/src` after `sgt undo` |
-| one pass beats relaxation here | the plate line, `ONE PASS . 16 VARIABLES ORDERED` against `RELAXATION . 12 PASSES` |
+| one pass beats relaxation here | the plate line, `ONE PASS . 16 VARIABLES ORDERED` against `RELAXATION . 11 PASSES` |
