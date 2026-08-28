@@ -5,7 +5,7 @@ Setup, checks, and the two ways this can break. `STORYBOARD.md` is the take itse
 The demo repo is `~/repos/sgt-demo/sketchpad`, a reimplementation of Sutherland's 1963 Sketchpad
 built in nineteen saves. It is a good subject for sgt because the drawing is stored as conditions
 rather than as lines, so an older version of the program reads the same file and draws a different
-picture. Eighteen of the nineteen frontiers change what is on screen.
+picture. Of the eighteen frontier-to-frontier comparisons, seventeen change what is on screen.
 
 For the seedbank demo, read `RUNBOOK-seedbank.md`. It is a different repo and a different take.
 
@@ -177,7 +177,8 @@ TIMELINE_SUB="every frame is that commit folded onto disk, served, and photograp
 bash scripts/demo/build-timeline-page.sh /tmp/sketchpad-frontiers /tmp/sketchpad-timeline.html $DEMO
 ```
 
-The sweep prints a table of which frontiers moved the picture. Eighteen of nineteen should say
+The sweep prints a table of which frontiers moved the picture. Seventeen of the eighteen
+comparisons should say
 `changed`. The one that says `IDENTICAL` is the constraint-type-table save, and it is meant to.
 
 `render-frontiers.sh` reads the store and writes only to its output directory, so it is safe to
