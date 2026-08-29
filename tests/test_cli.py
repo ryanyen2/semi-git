@@ -82,7 +82,12 @@ def test_log_human_rail_and_map_wire_state_projections(tmp_path, capsys):
     assert _in(tmp_path, ["log"]) == 0
     assert "save" in capsys.readouterr().out
     assert _in(tmp_path, ["log", "--map"]) == 0
-    assert "1 feature  ·  3 saves" in capsys.readouterr().out   # inflected, both nouns
+    # The header's counts are styled per-field (the count bold, the separator dim), so the assertion
+    # is on the WORDS, with the escapes stripped -- pinning them together in one run would pin the
+    # styling rather than the content.
+    import re as _re
+    plain = _re.sub(r"\x1b\[[0-9;]*m", "", capsys.readouterr().out)
+    assert "1 feature  ·  3 saves" in plain   # inflected, both nouns
 
 
 def _seed_resolvable_fork(tmp_path, symbol="a.py::foo"):

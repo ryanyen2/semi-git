@@ -29,6 +29,11 @@ dependencies = [
     "tree-sitter-typescript>=0.23",
     "igraph>=0.11",
     "leidenalg>=0.10",
+    # `sgt log` -- the daily command, and every one of its six render modes -- lays its columns out
+    # with rich (`sgt.tui.theme`). It used to sit in the `tui` extra alongside textual, which was
+    # fine while only the optional consequence pane imported it; a stock `pip install semi-git`
+    # would now crash on the first `sgt log`. Pure Python, no transitive dependencies of its own.
+    "rich>=13",
 ]
 
 [project.urls]
@@ -41,9 +46,10 @@ sgt = "sgt.cli:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "hypothesis>=6.100"]
-# `sgt.tui.consequence` imports both, and the CLI imports that module lazily so the pane stays
-# optional. `rich` is listed even though `textual` pulls it in, because the code imports it by name.
-tui = ["textual>=0.60", "rich>=13"]
+# `sgt.tui.consequence` imports textual, and the CLI imports that module lazily so the pane stays
+# optional. `rich` moved to the core dependencies (every `sgt log` mode draws with it), so this
+# extra is now just textual.
+tui = ["textual>=0.60"]
 
 [build-system]
 requires = ["setuptools>=77"]

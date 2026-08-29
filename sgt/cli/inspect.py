@@ -122,7 +122,8 @@ def _cmd_log(args) -> int:
     if args.ops:  # compat alias; the listed home is `sgt advanced ops`
         return _log_ops(".", args.as_json, args.full, args.limit, args.offset)
     if args.tree:
-        return _log_tree(".", args.as_json, args.refresh, args.rebuild)
+        return _log_tree(".", args.as_json, args.refresh, args.rebuild,
+                         color=not args.no_color)
     if args.summary:
         return _status(".", args.as_json, full=args.full, color=not args.no_color)
     if args.saves:
@@ -453,19 +454,24 @@ def state_lines(view: dict, *, color: bool = False, indent: str = "") -> list[st
     return lines
 
 
-def _log_tree(repo: str, as_json: bool = False, refresh: bool = False, rebuild: bool = False) -> int:
+def _log_tree(repo: str, as_json: bool = False, refresh: bool = False, rebuild: bool = False,
+              color: bool = True) -> int:
     """`sgt log --tree` (the feature tree, no time axis — what `sgt map` shows): a read of the
     last-built tree (`--refresh` rebuilds it first). `--json` returns `map_view`. `--rebuild` is the
     former `sgt map --rebuild`: a full from-scratch recluster (delegates to `_map`)."""
     from sgt.api import map_view
 
     if rebuild:
-        return _map(repo, as_json, rebuild=True)
+        return _map(repo, as_json, rebuild=True, color=color)
     _map_for_view(repo, refresh, not as_json)
     view = map_view(repo)
     if as_json:
         return _emit_json(view)
-    _print_map_tree(view)
+    # The same `├─ └─ │` guides the map draws, so the two views of one hierarchy read as one view.
+    from sgt.tui.views import tree_lines
+
+    for line in tree_lines(view, color=color):
+        print(line)
     return 0
 
 
@@ -599,7 +605,8 @@ def _print_map_tree(view: dict) -> None:
     print(plural(shown, "feature"))
 
 
-def _map(repo: str, as_json: bool = False, rebuild: bool = False) -> int:
+def _map(repo: str, as_json: bool = False, rebuild: bool = False, *,
+         color: bool = True) -> int:
     """`sgt log --tree` (formerly `sgt map`, plan U13/U14): (re)build the feature tree from the live
     op store -- clustering, Greene identity, pins, labeling -- then print the kernel-backed
     projection (`api.map_view`). `--rebuild` forces a full from-scratch recluster, bypassing
@@ -613,7 +620,11 @@ def _map(repo: str, as_json: bool = False, rebuild: bool = False) -> int:
     view = map_view(repo)
     if as_json:
         return _emit_json(view)
-    _print_map_tree(view)
+    # The same `├─ └─ │` guides the map draws, so the two views of one hierarchy read as one view.
+    from sgt.tui.views import tree_lines
+
+    for line in tree_lines(view, color=color):
+        print(line)
     return 0
 
 
@@ -746,58 +757,15 @@ def _status(repo: str, as_json: bool = False, full: bool = False, *, color: bool
     if as_json:
         return _emit_json(view)
 
-    def clip(paths, head: int = 5) -> str:
-        paths = list(paths)
-        if full or len(paths) <= head:
-            return ", ".join(paths)
-        return ", ".join(paths[:head]) + f"  (+{len(paths) - head} more — --full lists them)"
+    # The block is `views.summary_lines`: a scalar header, then WHAT NEEDS YOU, then FOR
+    # INFORMATION. The split is the point -- 826 untracked files and one symlink used to print under
+    # the same `⚠` as a staged rewrite that blocks every materializing verb.
+    from sgt.tui.views import summary_lines
 
-    print(f"{plural(view['files'], 'file')}, {plural(view['symbols'], 'symbol')}, "
-          f"{plural(view['features'], 'feature')}, "
-          f"{view['coverage_fraction'] * 100:.0f}% entity coverage")
-    print(f"  oracle: {view['oracle']['status']}")
     for line in _state_banner({"forks": view["forks"]["records"]}, color=color):
         print(line)
-    rewritten = view.get("sync_status", {}).get("history_rewritten")
-    if rewritten:
-        # A backward/sideways git move (`reset --hard`, `amend`, `branch -f`) leaves the recorded
-        # ideal naming ops from commits that are gone, so the counts above over-report and the
-        # difference is NOT ordinary working-tree drift. Said before the drift line, and pointing at
-        # the verb that actually fixes it: the generic "`sgt save` absorbs them" advice below finds
-        # nothing new here, prints "nothing to save", and exits 0 -- success with the problem intact.
-        print("  ⚠ git history moved backward since sgt last recorded this branch — the counts above "
-              "still include dropped commits")
-        print("      run `sgt advanced resync` to re-derive the current state from git history")
-    if view["drift"]["any"] and not rewritten:
-        n = len(view["drift"]["paths"])
-        print(f"  ⚠ {n} file(s) on disk differ from the recorded state — `sgt save` absorbs them")
-        print(f"      {clip(view['drift']['paths'])}")
-    if view["staged"]["any"]:
-        # These paths used to be counted in the drift line above, whose remedy is `sgt save` -- and
-        # `save` refuses while a stage is live, so the summary's one piece of advice was a dead end.
-        # Classifying them `staged` fixed the wrong word and left silence in its place ("✓ in sync"
-        # over a tree where every materializing verb refuses), which is worse. Named with both exits
-        # because this line is where a terminal reader finds out the state exists.
-        print(f"  ⧗ {len(view['staged']['paths'])} file(s) hold a staged rewrite candidate — not "
-              f"recorded yet, and edits are blocked until it is resolved")
-        print(f"      {clip(view['staged']['paths'])}")
-        print("      `sgt advanced commit` lands it · `sgt advanced unstage` abandons it")
-    if view.get("backstop_kept"):
-        print(f"  ⚠ kept {len(view['backstop_kept'])} unreproducible file(s) — left on disk (not "
-              f"deleted); repair the chain (`sgt advanced fsck --tree`) to materialize them")
-        print(f"      {clip(view['backstop_kept'])}")
-    # Not a warning, and no command offered: these are files sgt has never recorded an entity for
-    # (`.gitignore`, most config), so nothing can materialize them and there is nothing to repair.
-    # They used to print as damage above, pointing at an `fsck --tree` that answers "0 drifted
-    # path(s)" and leaves the line exactly where it was.
-    if view.get("never_recorded"):
-        print(f"  · {len(view['never_recorded'])} file(s) sgt does not track, left alone: "
-              f"{clip(view['never_recorded'])}")
-    if view.get("unmanaged"):
-        print(f"  ⚠ {len(view['unmanaged'])} unmanaged path(s) (symlinks, untouched): "
-              f"{clip(view['unmanaged'])}")
-    if not view["drift"]["any"] and not view["staged"]["any"] and not view["forks"]["open"]:
-        print("  ✓ in sync")
+    for line in summary_lines(view, color=color, full=full):
+        print(line)
     _print_residual(repo, full)
     return 0
 

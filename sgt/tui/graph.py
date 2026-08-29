@@ -254,6 +254,23 @@ def graph_layout(
     def sort_key(node_id: str) -> tuple[float, str]:
         return (subtree_first(node_id), node_id)
 
+    def ordered_children(node_id: str | None) -> list[str]:
+        """One parent's rows, in reading order: its own feature lanes first, then its sub-groups --
+        each half in first-appearance order. (`node_id=None` asks for the roots.)
+
+        Ordering the whole level by first-commit alone interleaved the two kinds, and a subsystem is
+        not one row but a block: a feature that started after a subsystem did was emitted *below*
+        that subsystem's entire subtree, where the indent then read as membership. On seedbank-v3
+        that put four of the root's own features (`seed catalog`, `sort the grid`, `show what is on
+        the shelf`, `seed tray`) under the `Plant Discovery` header, which announces 6 features
+        above 9 rows -- so the one number the reader can check against the rows disagrees with them.
+        Grouping is what lets the indent mean containment; within a group, time still orders."""
+        kids = (map_view.get("roots") or []) if node_id is None else children_of(node_id)
+        present = [c for c in kids if is_present(c)]
+        leaves = sorted((c for c in present if c in lane_by_id), key=sort_key)
+        groups = sorted((c for c in present if c not in lane_by_id), key=sort_key)
+        return leaves + groups
+
     row = 0
     headers = []
     emitted: set[str] = set()
@@ -283,10 +300,10 @@ def graph_layout(
             "last_commit": last_commit, "op_count": op_count, "lane_count": lane_count,
         })
         row += 1
-        for c in sorted((c for c in children_of(node_id) if is_present(c)), key=sort_key):
+        for c in ordered_children(node_id):
             emit(c, depth + 1)
 
-    for r in sorted((r for r in (map_view.get("roots") or []) if is_present(r)), key=sort_key):
+    for r in ordered_children(None):
         emit(r, 0)
 
     return {
@@ -447,7 +464,7 @@ def episodes(map_view: dict, grid_view: dict) -> dict:
     return {"episodes": episodes_out, "groups": groups_out}
 
 
-def episode_rail_layout(ep_view: dict) -> dict:
+def episode_rail_layout(ep_view: dict, *, max_lanes: int | None = None) -> dict:
     """Lay episodes out as a vertical git-log rail: the newest episode on top (row 0). A RECURRING
     feature -- one touched by two or more saves -- gets its own dedicated lane so its saves read as
     a single unbroken vertical line, traceable end to end (the connection the flat op stream loses,
@@ -460,6 +477,14 @@ def episode_rail_layout(ep_view: dict) -> dict:
     feature stays connected straight through a save that some other feature happened to dominate. As
     before, only features that dominate at least one save get a lane at all; a purely incidental brush
     stays a chip, off the rail.
+
+    `max_lanes` bounds the rail's width. Without it the pool grows to the interval chromatic number
+    -- the most features live at any one row -- which is fine at 15 and is 60 columns of `│` on a
+    repository large enough to need this view. Past the cap, features share one OVERFLOW lane drawn
+    as a neutral `┆`: their dots still land (only one feature dominates a save, so a dot is never
+    ambiguous), but the carried connector stops claiming to trace a single feature, because on a
+    shared lane it no longer does. Unbounded stays the default so every existing caller is
+    unchanged.
 
     Input is `episodes()`'s output; each rail row carries what a rewind decision needs (subject,
     op_count, sha, per-feature op counts, dominant feature). The VS Code counterpart is
@@ -495,17 +520,37 @@ def episode_rail_layout(ep_view: dict) -> dict:
     # chromatic number (the max number of features live at any one row) instead of one lane per
     # feature. Interval coloring guarantees no two features on a lane ever overlap, so a pooled lane's
     # `│` connectors never collide even though several features share it over disjoint spans.
-    lane_of: dict = {}
-    lane_bot: list = []  # pool lane -> bottom row of the feature currently occupying it
-    for fid in sorted(span, key=lambda f: (span[f][0], str(f))):
-        top, bot = span[fid]
-        lane = next((L for L in range(len(lane_bot)) if lane_bot[L] < top), None)
-        if lane is None:
-            lane = len(lane_bot)
-            lane_bot.append(bot)
-        else:
-            lane_bot[lane] = bot
-        lane_of[fid] = lane
+    def color_lanes(order, cap):
+        """Greedy interval coloring over `order`, spilling past `cap` into a shared overflow lane."""
+        lane_of: dict = {}
+        lane_bot: list = []  # pool lane -> bottom row of the feature currently occupying it
+        overflow: set = set()
+        for fid in order:
+            top, bot = span[fid]
+            lane = next((L for L in range(len(lane_bot)) if lane_bot[L] < top), None)
+            if lane is None:
+                if cap is not None and len(lane_bot) >= cap:
+                    overflow.add(fid)
+                    lane_of[fid] = cap - 1
+                    continue
+                lane = len(lane_bot)
+                lane_bot.append(bot)
+            else:
+                lane_bot[lane] = bot
+            lane_of[fid] = lane
+        return lane_of, lane_bot, overflow
+
+    # First-row order draws the staircase a reader expects -- the newest feature on the left, each
+    # older one stepping right -- so it is what runs whenever the rail fits. Only when the pool would
+    # overrun the cap is it re-colored longest-span-first, which spends the scarce lanes on the long
+    # unbroken lines that are the whole point of the view and spills the rest into one shared lane.
+    # Sorting that way unconditionally would rearrange a gutter that had no need to change.
+    by_first = sorted(span, key=lambda f: (span[f][0], str(f)))
+    cap = None if max_lanes is None else max(1, max_lanes)
+    lane_of, lane_bot, overflow = color_lanes(by_first, None)
+    if cap is not None and len(lane_bot) > cap:
+        by_span = sorted(span, key=lambda f: (-(span[f][1] - span[f][0]), span[f][0], str(f)))
+        lane_of, lane_bot, overflow = color_lanes(by_span, cap)
 
     # A pooled lane can hold several one-off features over disjoint row-spans, so a lane maps to a
     # LIST of (top, bot, fid) intervals -- not one feature. A cell resolves which feature occupies the
@@ -513,7 +558,10 @@ def episode_rail_layout(ep_view: dict) -> dict:
     # every pooled feature but the last (a save with no node on its own dominant lane).
     lane_intervals: dict = {}
     for fid, L in lane_of.items():
+        if fid in overflow:
+            continue  # a shared lane has no single occupant, so it has no interval to resolve
         lane_intervals.setdefault(L, []).append((span[fid][0], span[fid][1], fid))
+    overflow_rows = {r for fid in overflow for r in range(span[fid][0], span[fid][1] + 1)}
     rows = [
         {"index": e["index"], "row": row_of[e["index"]], "feature": e["dominant_feature"],
          "lane": lane_of.get(e["dominant_feature"], 0), "subject": e["subject"],
@@ -523,6 +571,8 @@ def episode_rail_layout(ep_view: dict) -> dict:
     return {"rows": rows, "lane_of": lane_of, "lane_intervals": lane_intervals,
             "feature_touched": {f: sorted(rs) for f, rs in touched.items()},
             "feature_span": span, "recurring": sorted(str(f) for f in recurring),
+            "overflow": sorted(str(f) for f in overflow), "overflow_rows": sorted(overflow_rows),
+            "overflow_lane": (cap - 1) if overflow else None,
             "lane_count": max(1, len(lane_bot)), "row_count": len(ordered)}
 
 
@@ -732,26 +782,43 @@ _SPARK = "▁▂▃▄▅▆▇█"
 # a single feature's life nicely but makes the map as a whole unreadable -- every row was a private
 # clock, and nothing could be compared downward. A column a lane never touched is left blank, so
 # quiet stretches show as real gaps rather than being squeezed away.
-_GAP_THRESHOLD = 8   # kept for the rail renderer; the map no longer collapses gaps
-_CAR_CAP = 24        # cap a single checkpoint's block width so one long run can't hog the whole strip
-_COLLAPSE = "┄"      # marks a long gap the lane skipped (a plain dim `·` marks a short one)
 
-# Checkpoint chips sit in fixed-width cells so they line up as columns down the page. 30 fits three
-# cells plus separators in an 80-column terminal, which is the width the chips are ellipsized to.
-_CHIP_TEXT = 20      # label text inside a chip, before the `@n ` handle
-_CHIP_CELL = 30      # the whole cell, so chips in different rows start at the same column
-_HANDLE_W = 8        # the copy-paste handle column: 8-char hex, or a short `N9` padded out to match
+# Checkpoint chips are a LIST, packed at their natural width right under the label they belong to.
+# They used to sit in fixed 30-column cells, which spread three of them evenly across the same
+# x-range the density bar occupies -- so `@5 Seed Tray` landed under a commit column and read as
+# "this checkpoint happened *there*", in a view whose legend promises that a column is a time. The
+# chips carry no time; only the bar above them does. Packed tight and separated by `·` they read as
+# what they are, and the axis keeps its meaning.
+
+# How the row's width is split between the feature's NAME and its density bar. The title column used
+# to be a flat 32 columns, so on a 170-column terminal every label was ellipsized while ~90 columns
+# of bar sat empty -- the budget was backwards. Now the title takes what its longest label actually
+# needs, bounded by a share of the terminal and by a floor under the bar, and the bar takes the rest.
+
+_WORD_RE = re.compile(r"[a-z0-9]+")
+
+
+def _echoes(chip: str, lane: str) -> bool:
+    """True when a checkpoint's name only repeats words from the lane it sits under -- `@0 Chips
+    Filters` printed below `make the chips filters: pick traits in the header…`.
+
+    Those chips were most of the ink on the map and none of the information: every other line said,
+    in title case, what the line above it had just said. Only the echo is dropped; the `@n` handle
+    stays, because it is the token `sgt revert` takes and the map is where a reader finds it.
+    Compared on the first few words, since the two strings are ellipsized independently and a tail
+    cut at a different place would otherwise read as new content."""
+    lane_words = set(_WORD_RE.findall(lane.lower()))
+    if not lane_words:
+        return False
+    chip_words = _WORD_RE.findall(chip.lower())[:6]
+    return bool(chip_words) and all(w in lane_words for w in chip_words)
+
 
 # The FORECAST BAND, the terminal twin of the webview's band right of the `now` rule: anticipated work
 # (a pending plan step) drawn on the lane's own row, past a `┊` rule, in the same left→right reading
 # order as history. It replaces a `◇ planned: …` chip that used to sit on the checkpoint line below --
 # which put "what is coming" in a different place, and a different grammar, from every other unit of
 # work in the view. `_NOW_RULE` is the boundary: left of it happened, right of it has not.
-_NOW_RULE = "┊"
-_CARD_W = 17         # one forecast card: `◇ ` + a 14-column name + a trailing space
-_CARD_NAME_W = 14
-
-
 def _ellipsize(s: str, width: int) -> str:
     """Truncate a checkpoint label to `width` columns, cutting on a word boundary where one is near
     the limit (so `add foo, qux, config, binary` becomes `add foo, qux, config…`, not `…config, bi`)
@@ -770,37 +837,6 @@ def _ellipsize(s: str, width: int) -> str:
     return cut + "…"
 
 
-def _forecast_band(titles: list[str], width: int, hexc: str, *, color: bool) -> str:
-    """One lane's forecast, drawn to exactly `width` columns: a dim `┊` now-rule, then a `◇ name` card
-    per pending plan step. When more steps exist than cards fit, the last card collapses to `◇+N` --
-    but only once at least one step is already NAMED. A single surviving card is always named, never a
-    bare count: a reader should not be told "one more thing" without being told which thing, which is
-    the failure of the count-only badge this replaces. Mirrors the webview's `renderForecastCars`."""
-    if width <= 0:
-        return ""
-    if not titles:
-        return " " * width
-    body_w = max(0, width - 2)  # the `┊ ` rule and its space
-    slots = max(1, body_w // _CARD_W)
-    overflow = len(titles) > slots
-    named = titles[:slots - 1] if overflow else titles
-    rest = titles[len(named):]
-    cards = [f"{_GHOST} {_ellipsize(t, _CARD_NAME_W)}" for t in named]
-    if rest and named:
-        cards.append(f"{_GHOST}+{len(rest)}")
-    elif rest:
-        # Only one card fits and more exist. A terminal has no tooltip to fall back on, so the count
-        # cannot be deferred to hover the way the webview's stack card defers it -- it rides ON the
-        # named card (`◇ name… +2`). Name first so the reader learns WHAT is next, count second so
-        # they know it isn't the whole story; dropping either would hide something recoverable nowhere.
-        extra = len(rest) - 1
-        suffix = f" +{extra}" if extra > 0 else ""
-        cards.append(f"{_GHOST} {_ellipsize(rest[0], max(4, body_w - 2 - len(suffix)))}{suffix}")
-    raw = " ".join(cards)[:body_w]
-    painted = _dim(_paint(hexc, raw, color=color), color=color)
-    return _dim(_NOW_RULE, color=color) + " " + painted + " " * max(0, body_w - len(raw))
-
-
 def _paint(hex_str: str, s: str, *, color: bool) -> str:
     return _fg(hex_str, s) if color else s
 
@@ -813,57 +849,6 @@ def _bold(s: str, *, color: bool) -> str:
     return f"{_BOLD}{s}{_RESET}" if color else s
 
 
-def _chips(r: dict, labels: dict, *, color: bool, chip_width: int = 22, budget: int = 60) -> str:
-    """A save's feature attribution: each touched feature's label in its own hue, main feature first
-    then densest-first, the run capped at `budget` visible columns with the rest collapsing into a dim
-    `+N` -- without that cap a save touching many features overruns the terminal and wraps (the
-    Phase-4 wrapping fix). Shared by the lane rail and the lane-less save list so both bound
-    identically.
-
-    A label is admitted only if it fits *whole*. Ellipsizing every chip to `chip_width` instead spent
-    the same budget on names the reader cannot identify -- on a real repo this column read `Semantic
-    Versioning… · Operation Match… · +13`, three half-names and no way to tell which features those
-    were. `+N` was going to be on the row regardless, so the choice is only ever between one name a
-    reader recognizes and several they don't.
-
-    `budget` is a hard bound, and the `+N` collapse is inside it: each candidate must leave room for
-    the counter the labels it displaces will need, or the counter pushes the row past the terminal it
-    was fitted to (measured: a 12-column budget returning 26 columns, and a row that wrapped anyway).
-
-    When not even the first name fits whole, the main feature is ellipsized and the rest counted --
-    `Semantic Versioning… +14` rather than a bare `+15`, which names nothing at all and is the same
-    cell for fifteen different states. That is not a retreat from the whole-name rule: the rule is
-    "name a thing or count it, never half-name *several*", and one hint plus a count is one name. It
-    applies only while the hint is long enough to identify something (12 columns); below that the
-    count alone is the honest cell."""
-    feats = r.get("features") or {}
-    order_ = sorted(feats, key=lambda f: (f != r["feature"], -feats[f], f))
-    parts: list[str] = []
-    used = 0
-    for i, f in enumerate(order_):
-        label = labels.get(f, f or "(unattributed)")
-        w = len(label) + (3 if parts else 0)  # 3 = visible width of the " · " separator
-        rest = len(order_) - i - 1
-        tail = 3 + len(f"+{rest}") if rest else 0  # what the collapse of everything after f will cost
-        if used + w + tail > budget:
-            break
-        parts.append(_paint(color_for(f or ""), label, color=color))
-        used += w
-    extra = len(order_) - len(parts)
-    if not parts:
-        if not order_:
-            return _dim("(unattributed)", color=color)
-        f = order_[0]
-        tail = f"+{extra - 1}" if extra > 1 else ""
-        room = min(chip_width, budget - (3 + len(tail) if tail else 0))
-        if room < 12 and tail:  # too short to identify a feature -- count them and say nothing else
-            return _dim(f"+{extra}", color=color)
-        first = _paint(color_for(f or ""), _ellipsize(labels.get(f, f or "(unattributed)"),
-                                                      max(4, room)), color=color)
-        return _dim(" · ", color=color).join([first, _dim(tail, color=color)]) if tail else first
-    if extra > 0:
-        parts.append(_dim(f"+{extra}", color=color))
-    return _dim(" · ", color=color).join(parts)
 
 
 def _wrap_parts(parts: list[str], width: int, *, sep: str = "; ", prefix: str = " ") -> list[str]:
@@ -925,19 +910,6 @@ def _reverted_gap_note(gap: dict | None, width: int = 10 ** 6) -> list[str]:
     return [head + ":", *_wrap_parts(parts, width, sep=", ", prefix="   "), *how]
 
 
-def _history_header(n_saves: int, n_feat: int, total_saves: int) -> str:
-    """The one phrasing every history-listing surface uses for its own totals.
-
-    These headers used to each name their own denominator with the SAME words, so one repo read as
-    "145 save(s) · 44 feature(s)" from `sgt log`, "332 save(s) · 84 feature(s)" from `sgt log --map`,
-    and "154 feature(s)" from `sgt status` -- three contradictory sizes for one repo, which teaches a
-    reader that sgt's numbers cannot be trusted. A save list shows only the saves that carried tracked
-    work and counts only the features that LED one, so it says both things out loud instead of
-    implying it is showing everything. When the two save counts agree there is no subset to disclose
-    and the shorter phrasing is used."""
-    saves = (f"{n_saves} of {total_saves} saves with tracked work"
-             if total_saves > n_saves else plural(n_saves, "save"))
-    return f" {saves}  ·  {plural(n_feat, 'main feature')}"
 
 
 def _row_headline(subject: str, feature: str | None, labels: dict) -> str:
@@ -955,41 +927,9 @@ def _row_headline(subject: str, feature: str | None, labels: dict) -> str:
 # save that landed on a side branch (○ — off the trunk), and the trunk connector (│).
 _SPINE_NODE = "●"
 _SPINE_MERGE = "◆"
-_SPINE_OFF = "○"
 _SPINE_TRUNK = "│"
 
 
-def _spine_prefixes(rows: list[dict], topology: dict, *, color: bool) -> tuple[list[str], str | None]:
-    """A narrow git-log-style spine drawn to the left of each save row, from git topology (not the
-    feature lanes). Two columns: col 0 is the first-parent TRUNK -- a continuous `│` connector with
-    a `●` where a save landed directly on it and a `◆` at a merge (where a side branch folded in);
-    col 1 marks a save that landed on a SIDE BRANCH with a `●`, the trunk still running as `│` in
-    col 0 beside it. No diagonal connectors are drawn: the save list shows only the commits that
-    carried edits, so the rows between two shown saves are hidden and a slanted merge line between
-    them would claim an adjacency that isn't there. Returns `(prefix_per_row, legend_or_None)`; the
-    legend names only the glyphs that actually appear."""
-    mainline = topology.get("mainline") or set()
-    merges = topology.get("merges") or set()
-    prefixes: list[str] = []
-    saw_merge = saw_branch = False
-    for r in rows:
-        sha = r.get("sha") or ""
-        trunk = _dim(_SPINE_TRUNK, color=color)
-        if sha in merges:
-            saw_merge = True
-            prefixes.append(f"{_bold(_SPINE_MERGE, color=color)} ")  # merge sits on the trunk
-        elif sha in mainline or not sha:
-            prefixes.append(f"{_SPINE_NODE} ")  # save landed on the trunk
-        else:
-            saw_branch = True
-            prefixes.append(f"{trunk}{_SPINE_NODE}")  # trunk continues; save is one column right
-    legend_bits = [f"{_SPINE_NODE} on trunk"]
-    if saw_merge:
-        legend_bits.append(f"{_SPINE_MERGE} merge")
-    if saw_branch:
-        legend_bits.append(f"{_SPINE_TRUNK}{_SPINE_NODE} on a side branch")
-    legend = _dim("   " + "    ".join(legend_bits), color=color) if len(legend_bits) > 1 else None
-    return prefixes, legend
 
 
 def render_save_list_lines(
@@ -1018,55 +958,29 @@ def render_save_list_lines(
     at all when no feature name would survive in it. Measured on a real repo at 80 columns, 39 of 44
     rows overran here -- the same defect the rail had, on the screen next to it, because each renderer
     bounded its chips against a constant instead of against the terminal."""
+    # The save list is the rail without its lane gutter -- same rows, same columns, same rules --
+    # so it is the same renderer with `lane_count=0` rather than a second one that drifts. It used
+    # to be a near-copy: its own header, its own legend, its own chip budget, and the same
+    # width-overrun bug fixed twice, once on each screen.
+    from .views import rail_lines
+
     ep = episodes(map_view, grid_view)
     layout = episode_rail_layout(ep)
     labels = {n["id"]: n.get("label", n["id"]) for n in map_view.get("nodes", [])}
     rows = layout["rows"]
-
-    n_ep = len(rows)
-    n_feat = len({r["feature"] for r in rows if r["feature"] is not None})
-    shown = rows[:max_rows]
-    pos_w = max((len(f"c{r['index']}") for r in shown), default=2)
-    term_cols = width if width is not None else shutil.get_terminal_size(fallback=(0, 0)).columns
-    fit = term_cols >= 40
-    chip_budget = 60
-    if fit:
-        # 3 = the two spine columns plus their trailing space; 2 = the gap before the chips column.
-        fixed = 1 + (3 if topology else 0) + pos_w + 1 + 7 + 2
-        avail = max(24, term_cols - fixed)
-        label_width = max(12, min(label_width, avail))
-        chip_budget = min(60, avail - label_width - 2)
-        # This screen has no lane gutter, so the chips are its ONLY attribution -- the one thing that
-        # says which feature a save belongs to. Where the rail drops its chips to lengthen the subject
-        # (its gutter still carries the feature), this one takes columns back from the subject to keep
-        # the chips readable, down to 24: at the widths that fall out of an 80-column terminal the
-        # unfloored split left 15, and every row read `+15` -- one cell for fifteen different states.
-        if chip_budget < 24 and avail >= 24 + 12 + 2:
-            chip_budget = 24
-            label_width = avail - chip_budget - 2
-    head_parts = _history_header(n_ep, n_feat, grid_view.get("save_count", n_ep)).strip().split("  ·  ")
-    head_parts.append("(newest on top)")
-    lines = [_bold(l, color=color)
-             for l in _wrap_parts(head_parts, term_cols if fit else 10 ** 6, sep="  ·  ")]
-    spine, legend = _spine_prefixes(shown, topology, color=color) if topology else ([None] * len(shown), None)
-    if legend:
-        lines.append(legend)
-    lines.append("")
-    for r, sp in zip(shown, spine):
-        pos = _dim(f"c{r['index']}".rjust(pos_w), color=color)
-        sha = _dim((r["sha"] or "")[:7], color=color)
-        head = _row_headline(r["subject"], r["feature"], labels)
-        subj = _ellipsize((head or "").replace("\n", " "), label_width)
-        padded = subj.ljust(label_width) if chip_budget else subj
-        subj_s = _bold(padded, color=color) if r["feature"] == selected else padded
-        prefix = f"{sp} " if sp is not None else ""
-        chips = f"  {_chips(r, labels, color=color, budget=chip_budget)}" if chip_budget else ""
-        lines.append(f" {prefix}{pos} {sha}  {subj_s}{chips}")
-    if n_ep > len(shown):
-        lines.append("")
-        lines.append(_dim(f" {plural(n_ep - len(shown), 'older save')} folded (newest {len(shown)} shown)",
-                          color=color))
-    return lines
+    view_rows = [{**r, "subject": _row_headline(r["subject"], r["feature"], labels),
+                  "feature_names": [labels.get(f, f) for f in
+                                    sorted((r.get("features") or {}),
+                                           key=lambda f: (-(r["features"][f]), f))]}
+                 for r in rows]
+    return rail_lines(
+        view_rows, labels=labels, lane_count=0, lane_intervals={}, feature_touched={},
+        n_saves=len(rows), n_features=len({r["feature"] for r in rows if r["feature"] is not None}),
+        total_saves=grid_view.get("save_count", len(rows)), topology=topology, selected=selected,
+        color=color, max_rows=None if max_rows == 40 else max_rows, width=width,
+        notes=_reverted_gap_note(grid_view.get("reverted_unaccounted"),
+                                 width or shutil.get_terminal_size(fallback=(10 ** 6, 0)).columns),
+    )
 
 
 def _render_car(car: dict, width: int, hexc: str, *, color: bool, is_big: bool = False) -> str:
@@ -1234,9 +1148,16 @@ def render_graph_lines(
 
     def time_bar(cars: list[dict], hexc: str, width: int) -> str:
         """This lane's edit density on the shared commit axis, as `▁▂▃▄▅▆▇█` blocks. Taller = busier,
-        scaled against the busiest column in the whole map. A column the lane never touched is a
+        scaled against the busiest commit in the whole map. A commit the lane never touched is a
         space, so the gaps are real gaps rather than squeezed-away ones. Future cars (past the
         frontier) render dim. Padded to `width` so the columns after the bar stay aligned.
+
+        A commit fills its WHOLE cell -- every column in `[ci*width/axis, (ci+1)*width/axis)` -- so
+        the bar reads as a bar. It used to mark only the one column a commit's index mapped to,
+        which is fine when there are more commits than columns and confetti when there aren't: 14
+        commits across 123 columns drew 14 lonely glyphs with eight blanks between each pair, and a
+        density profile you have to reassemble in your head isn't one. Widening the terminal made it
+        worse, which is the tell that the encoding, not the size, was wrong.
 
         One pass over this lane's bins plus one over the columns, so the whole map costs O(total
         bins + lanes*width)."""
@@ -1244,17 +1165,25 @@ def render_graph_lines(
             return ""
         if not cars:
             return " " * width
-        buckets = [0] * width
-        future = [False] * width
+        per_commit: dict[int, int] = {}
+        future_at: set[int] = set()
         for c in cars:
             is_future = bool(c.get("is_future"))
             bins = c.get("sub_bins") or ()
             if not bins:  # a car with no per-commit detail still occupies its own span
                 bins = [(i, 1) for i in range(c["first_index"], c["last_index"] + 1)]
             for ci, cnt in bins:
-                col = min(width - 1, max(0, ci * width // axis_len))
-                buckets[col] += cnt
+                per_commit[ci] = per_commit.get(ci, 0) + cnt
                 if is_future:
+                    future_at.add(ci)
+        buckets = [0] * width
+        future = [False] * width
+        for ci, cnt in per_commit.items():
+            lo = min(width - 1, max(0, ci * width // axis_len))
+            hi = min(width, max(lo + 1, (ci + 1) * width // axis_len))
+            for col in range(lo, hi):
+                buckets[col] += cnt
+                if ci in future_at:
                     future[col] = True
         gmax = _global_max or max(buckets) or 1
         out = []
@@ -1328,204 +1257,33 @@ def render_graph_lines(
         # header of a view whose subject is named right beside it, and nothing a reader does with
         # this line needs more than the prefix -- every verb that takes a feature resolves a unique
         # prefix, or the name itself.
-        lines.append(f" {paint(hexc, '●')} {bold(raw)}  {dim(handle)}"
-                     f"  ·  {plural(n_ckpt, 'checkpoint')}"
-                     + (dim(f"  ·  {n_gone} reverted") if n_gone else ""))
-        lines.append("")
-        if not lane["cars"]:
-            lines.append(dim("   no checkpoints yet -- run `sgt log --refresh` to name them"))
-        example_slug = None
-        for car in lane["cars"]:
-            head = render_car(car, 6, hexc)
-            future = dim(" (not yet reached)") if car["is_future"] else ""
-            # What a revert did to this chapter, on the row that names it. Without this the screen
-            # that prints the `@n` handles redrew a just-rewound chapter exactly as before, so the
-            # one confirmation a user goes looking for after a revert said nothing happened. A
-            # partial removal (a dependent up-set clipped only some of the chapter's ops) reports
-            # the fraction rather than rounding to either extreme.
-            gone_n = (car["op_count"] - car["present_op_count"]
-                      if car.get("present_op_count") is not None else 0)
-            if car.get("reverted"):
-                state = dim(f"  reverted — `sgt restore {handle}@{car['seg_index']}` brings it back")
-            elif gone_n:
-                state = dim(f"  ({gone_n} of {plural(car['op_count'], 'edit')} reverted)")
-            else:
-                state = ""
-            slug = checkpoint_slug(car["label"])
-            if example_slug is None and not car["is_future"] and not car.get("reverted"):
-                example_slug = slug
-            lines.append(f"   {head}  {handle}@{car['seg_index']}  {dim(':' + slug)}  {car['label']}"
-                         f"{future}{state}")
-            # The chapter in the user's own words (intent-ledger P1 zoom): the words captured for the
-            # commits this chapter covers, so "the history answers in my own words" is literally on
-            # screen. Up to three, ellipsized; `sgt why <sha>` shows the full text + the
-            # `claude --resume` handle. Silent when nothing was captured (never a guessed reason).
-            words = car.get("words", [])
-            for w in words[:3]:
-                lines.append("       " + dim(f"“{_ellipsize(w, 66)}”"))
-            if len(words) > 3:
-                lines.append("       " + dim(f"… +{len(words) - 3} more"))
-        lines.append("")
-        slug_hint = example_slug or "<slug>"
-        lines.append(dim(f" operate:  sgt revert {handle}:{slug_hint}  (one checkpoint, by name)   ·   "
-                         f"sgt revert {handle}  (whole feature)   ·   sgt revert {handle}@<n>  (by index)"))
-        return lines
+        # The chapter table is `views.focus_lines`: three columns that repeated on every row
+        # (the handle, the label-derived `:slug`, and a full `sgt restore` incantation) collapse
+        # into a header stated once and a footer naming the two commands worth copying.
+        from .views import focus_lines
+        return lines + focus_lines(focus, raw, lane["cars"], color=color)
 
-    lanes_by_row = {l["row"]: l for l in layout["lanes"]}
-    headers_by_row = {h["row"]: h for h in layout["headers"]}
+    # The non-focus map is drawn by the redesigned renderer in `views.py`: one line per lane, three
+    # columns, a `c0 … cN` ruler over the bars. Layout stays this module's job; presentation does not.
+    from .views import map_lines
+    _cols = shutil.get_terminal_size(fallback=(0, 0)).columns
+    link_note = {}
+    if show_links:
+        for l in layout["lanes"]:
+            picked = nbrs.get(l["id"], [])[:2]
+            if picked:
+                extra = len(nbrs.get(l["id"], [])) - len(picked)
+                link_note[l["id"]] = (", ".join(labels.get(x, x) for x in picked)
+                                      + (f" +{extra}" if extra > 0 else ""))
+    return map_lines(
+        layout, labels, selected=selected, frontier=frontier, color=color,
+        bar_width=bar_width, max_rows=None if max_rows == 40 else max_rows,
+        ghost_by_lane=ghost_by_lane, unplaced_ghosts=unplaced_ghosts,
+        notes=_reverted_gap_note(layout.get("reverted_unaccounted"),
+                                 _cols if _cols >= 40 else 10 ** 6),
+        links=link_note,
+    )
 
-    # Title column: pad every lane label to the widest label so the density bars line up, but cap the
-    # column at 32 cols and ellipsize a longer label -- one very long feature name mustn't shove the
-    # bar off-screen.
-    def lane_label(l: dict) -> str:
-        raw = labels.get(l["id"], l["id"])
-        return f"{raw} ({len(l['leaves'])})" if l["is_meta"] else raw
-
-    # Nesting is drawn as an indent *inside* the title column, never ahead of it: everything from the
-    # marker to the density bar keeps its column, so the shared commit axis stays a straight line down
-    # the page. A lane sitting directly under a root header (depth 1) is flush, and each further
-    # subsystem level steps in two columns.
-    def lane_indent(l: dict) -> int:
-        # One step per level of nesting, counted from the root -- so a feature filed under no
-        # subsystem at all sits flush left and a subsystem's own features step in under it. The old
-        # `depth - 1` collapsed those two cases onto one column, and a fresh save (which is filed
-        # nowhere yet) then printed inside the band of whichever subsystem happened to precede it.
-        # `sgt log --tree` and the workbench both indent from the root, so only this view disagreed.
-        return 2 * max(0, l.get("depth", 0))
-
-    title_w = min(32, max((lane_indent(l) + len(lane_label(l)) for l in layout["lanes"]), default=10))
-    # Columns before the density bar: indent(3) + marker(1) + glyph(1) + space + handle(8) + space +
-    # title + space. The ruler and the header meta both align to this so the c-ticks sit over the bar.
-    bar_prefix = 3 + 1 + 1 + 1 + 8 + 1 + title_w + 1
-
-    # Terminal-fit bar width: fill the space left after the fixed prefix so rows don't hard-wrap on a
-    # narrow terminal (which would break lane alignment). Fall back to the proven 38 when the size is
-    # unavailable or absurdly small; an explicit caller/test override is honoured untouched.
-    term_cols = shutil.get_terminal_size(fallback=(0, 0)).columns
-    if bar_width is None:
-        bar_width = 38 if term_cols < 40 else max(12, term_cols - bar_prefix)
-    # Carve the forecast band out of the density bar's columns, capped at 40% so anticipated work can
-    # never crowd out the measured history it hangs off. Zero when nothing is planned, so an ordinary
-    # repo's rows stay byte-identical (and every existing golden/bar_width caller with it).
-    forecast_w = 0
-    if ghost_by_lane:
-        want = 2 + _CARD_W * max(len(v) for v in ghost_by_lane.values())
-        forecast_w = max(0, min(want, int(bar_width * 0.4)))
-        bar_width = max(12, bar_width - forecast_w)
-    # The checkpoints ride on their own indented sub-line (below the bar) so a long feature label plus
-    # its `@n` chips can never wrap the density bar. Align that line under the label; ellipsize its
-    # content to what's left of the terminal so it stays one row.
-    chip_indent = 3 + 1 + 1 + 1 + _HANDLE_W + 1  # indent+marker+glyph+space+handle+space -> under the label
-    chip_avail = max(20, (term_cols or (bar_prefix + bar_width + 60)) - chip_indent)
-
-    lanes_shown = 0
-    drew_meta = False
-    total_lanes = len(layout["lanes"])
-    for row in range(layout["row_count"]):
-        if lanes_shown >= max_rows:
-            break  # a huge history dumps thousands of lanes -- cap, like the save list does
-        if row in headers_by_row:
-            hd = headers_by_row[row]
-            if lines and lines[-1] != "":
-                lines.append("")  # breathing room between subsystems
-            label = ("  " * hd.get("depth", 0) + "▾ " + hd["label"]).ljust(bar_prefix - 1)
-            meta = plural(hd['lane_count'], "feature")
-            lines.append(dim(f" {label} {meta}"))
-        elif row in lanes_by_row:
-            l = lanes_by_row[row]
-            fid = l["id"]
-            hexc = color_for(fid)
-            is_sel = fid == selected
-            glyph = "◈" if l["is_meta"] else "●"  # ◈ / ●
-            marker = "▸" if is_sel else " "
-            raw = lane_label(l)
-            # Pad the handle to a fixed width by its *visible* length -- it carries colour escapes,
-            # so `ljust` would count those and under-pad. Leaving that unpadded shifted the label, the
-            # bar, and the chip line by up to six columns per row. That was the misalignment: not the
-            # bars themselves, but everything ahead of them starting in a different place on each row.
-            #
-            # A meta lane gets `▾` instead of its id, because its id is not a handle. A collapsed
-            # subsystem is `N<k>`, the DFS counter `tree._register` mints -- positional, so it moves
-            # whenever the tree reshapes -- and `resolve_feature` matches leaves only, so `sgt show N2`
-            # answered "not a known feature, checkpoint, op, or symbol" for a token this column had
-            # just offered as copy-paste. The row is a fold, not a feature; it is reached by name
-            # (`--focus`, in the legend), so the column shows the fold and stops claiming an id.
-            if l["is_meta"]:
-                drew_meta = True
-                handle = dim("folded".ljust(_HANDLE_W))
-            else:
-                handle = brighten_prefix(fid, hexc)  # copy-paste token; bright = minimal unique prefix
-                handle += " " * max(0, _HANDLE_W - min(_HANDLE_W,
-                                                       len(fid[2:] if fid.startswith("f-") else fid)))
-            # `title_w` already counts the indent, and `row_s` already puts a space after the title, so
-            # the label gets the full remaining width. (It used to ellipsize at `title_w - 1`, which
-            # double-reserved that space and clipped the single widest label by one character.)
-            ind = min(lane_indent(l), max(0, title_w - 2))  # room for a stub + ellipsis at any depth
-            label = (" " * ind) + _ellipsize(raw, title_w - ind).ljust(title_w - ind)
-            bar = time_bar(l["cars"], hexc, bar_width)
-            row_s = (f"   {marker}{paint(hexc, glyph)} {handle} "
-                     f"{bold(label) if is_sel else label} {bar}")
-            # This lane's forecast, on the lane's own row past the `┊` now-rule -- so "what is coming
-            # here" reads in the same place, and the same order, as what already happened. A lane with
-            # nothing planned only reserves the columns when something trails them (`show_links`);
-            # otherwise the row ends at its bar rather than in a run of trailing spaces.
-            lane_ghosts = ghost_by_lane.get(fid, [])
-            if forecast_w and (lane_ghosts or show_links):
-                row_s += _forecast_band(lane_ghosts, forecast_w, hexc, color=color)
-            row_s += links_note(fid)
-            lines.append(row_s)
-            # Checkpoints spelled out as `@n label` on their own indented sub-line: the `@n` is the
-            # `sgt revert` handle, the label its human name. Only the last 3 (most recent) are named --
-            # the rest fold into a `+N earlier` head -- and the whole line is ellipsized to the
-            # terminal so a busy lane can't wrap. The density bar above still shows every checkpoint's
-            # position, so nothing is lost, just unlabelled.
-            cars = l["cars"]
-            recent = cars[-3:]
-            # Fixed-width cells, so the chips form columns down the page instead of landing wherever
-            # the previous label happened to end. Ragged chips were most of why the map read as
-            # noise: three rows of `@n text · @n text` with different break points give the eye no
-            # line to follow.
-            chips = [f"@{c['seg_index']} {_ellipsize(c['label'], _CHIP_TEXT)}".ljust(_CHIP_CELL)
-                     for c in recent]
-            hidden = len(cars) - len(recent)
-            if hidden > 0:
-                chips.insert(0, f"+{hidden} earlier".ljust(_CHIP_CELL))
-            # Plan steps are NOT chips here: they are cards in the lane's forecast band above. Keeping
-            # them in both places gave "what is coming" two encodings in one view, which is the same
-            # split the webview had between its plan underline and its ghost car.
-            chip_parts = chips
-            if chip_parts:
-                lines.append(" " * chip_indent + dim(_ellipsize("  ·  ".join(chip_parts), chip_avail)))
-            lanes_shown += 1
-    if total_lanes > lanes_shown:
-        lines.append("")
-        # "row(s)", not "feature(s)": a row can be a folded subsystem standing for many features, and
-        # the header above now states the feature total -- two different numbers needing two words.
-        lines.append(dim(f" …{plural(total_lanes - lanes_shown, 'more row')} "
-                         f"({lanes_shown} of {total_lanes} shown)"))
-    for g in unplaced_ghosts:
-        lines.append(" " + dim(f"{_GHOST} planned (no lane yet): {_ellipsize(g.get('title', ''), 40)}"))
-    lines.append("")
-
-    # Legend: the view explains its own encoding -- and only the parts of it that are on screen. The
-    # forecast clause appears only when a lane actually has one, for the same reason the rail's legend
-    # names only the topology glyphs it drew: a legend that describes absent marks teaches the reader
-    # that the header is not about what they are looking at, and they stop reading it.
-    legend = ["▁▂▃▄▅▆▇█ = edit density (taller = busier)",
-              "one shared commit axis: the same column is the same time in every row",
-              "blank = that feature was quiet then",
-              "@n chips (line below each bar) = the checkpoints (rewind by @n)"]
-    if forecast_w:
-        legend.append(f"past {_NOW_RULE} = planned, not built yet")
-    if drew_meta:
-        legend.append('◈ folded = a group of features; open it with `sgt log --focus "<its name>"`')
-    # Four to six clauses on one line measured 230 columns and wrapped wherever the terminal chose,
-    # mid-clause -- so the legend broke the alignment its own rows are read by. Wrapped on its own
-    # separators, each clause stays whole on one line.
-    lines.extend(dim(l) for l in _wrap_parts(legend, term_cols if term_cols >= 40 else 10 ** 6,
-                                             sep="   ·   "))
-    lines.extend(_state_banner(states, color=color))
-    return lines
 
 
 def render_verb_preview_lines(
@@ -1948,7 +1706,13 @@ def render_rail_lines(
             dom = max(feats, key=lambda f: (feats[f], f))
             filtered.append({**e, "features": feats, "dominant_feature": dom})
         ep = {"episodes": filtered, "groups": []}
-    layout = episode_rail_layout(ep)
+    # The gutter is capped at a share of the terminal: it is scaffolding for reading the subject
+    # column, and scaffolding that crowds out what it scaffolds has stopped being useful. Without a
+    # terminal (a pipe, a test) there is nothing to divide, so the rail stays uncapped and every
+    # existing golden renders byte-identically.
+    _rail_cols = width if width is not None else shutil.get_terminal_size(fallback=(0, 0)).columns
+    layout = episode_rail_layout(ep, max_lanes=(max(4, int(_rail_cols * 0.18))
+                                                if _rail_cols >= 40 else None))
     labels = {n["id"]: n.get("label", n["id"]) for n in map_view.get("nodes", [])}
     rows = layout["rows"]
     lane_count = layout["lane_count"]
@@ -1976,156 +1740,33 @@ def render_rail_lines(
         if chip_budget < 12:
             chip_budget = 0
 
-    def paint(hex_str: str, s: str) -> str:
-        return _fg(hex_str, s) if color else s
-
-    def dim(s: str) -> str:
-        return f"{_DIM}{s}{_RESET}" if color else s
-
-    def bold(s: str) -> str:
-        return f"{_BOLD}{s}{_RESET}" if color else s
-
-    def cell(lane: int, r_idx: int, is_dom: bool) -> str:
-        """One rail cell. ● where the lane's feature touched this save (bold = the save's dominant
-        feature, its main work); │ where the feature is carried across a save it didn't touch (the
-        connector that keeps a recurring feature one traceable line); blank where the lane is idle."""
-        fid = next((f for top, bot, f in lane_intervals.get(lane, ()) if top <= r_idx <= bot), None)
-        if fid is None:
-            return " "
-        hexc = color_for(fid or "")
-        if r_idx in feature_touched.get(fid, ()):  # noqa: SIM118 -- membership, not iteration
-            dot = paint(hexc, "●")
-            return bold(dot) if is_dom else dot
-        return paint(hexc, "│")
-
-    mainline = set((topology or {}).get("mainline", ()))
-    merges = set((topology or {}).get("merges", ()))
-
-    def topo_col(sha: str | None) -> str:
-        """Left-margin git-topology glyph tying each rail save back to the commit graph: ◆ a merge
-        where a side branch folded in, ● a save on the first-parent trunk, ○ a save off the trunk.
-        Empty (no column) when topology wasn't supplied."""
-        if topology is None:
-            return ""
-        s = sha or ""
-        if s in merges:
-            return bold(_SPINE_MERGE) + " "
-        if s in mainline:
-            return dim(_SPINE_NODE) + " "
-        return dim(_SPINE_OFF) + " "
-
-    topo_pad = "  " if topology is not None else ""
-
-    lines: list[str] = []
-    n_ep = len(rows)
-    n_feat = len({r["feature"] for r in rows if r["feature"] is not None})
-    # `N recurring` is gone from this header. It read `44 main feature(s)  ·  43 recurring` on a real
-    # repo -- a near-total subset, which is a number that distinguishes nothing and cost the header the
-    # columns that pushed it past the terminal. The lanes below *are* the recurrence, drawn; a count of
-    # them is nothing a reader can act on.
-    if group_label:
-        head = [f"focus: {group_label}", plural(n_feat, "feature"), plural(n_ep, "save"),
-                "(newest on top)"]
-    else:
-        head = _history_header(n_ep, n_feat, grid_view.get("save_count", n_ep)).strip().split("  ·  ")
-        head.append("(newest on top)")
-    lines.extend(bold(l) for l in _wrap_parts(head, term_cols if term_cols >= 40 else 10 ** 6,
-                                              sep="  ·  "))
-    # This is the screen a reader lands on, and it is a lane view like the map -- so it carries the
-    # same disclosure. Saying it on only the second screen leaves the first one reading as a whole
-    # codebase, which is the false-green this note exists to prevent.
-    lines.extend(dim(s) for s in _reverted_gap_note(grid_view.get("reverted_unaccounted"),
-                                                     term_cols if term_cols >= 40 else 10 ** 6))
-    # Explain only what is actually on screen. This legend used to name every glyph the renderer
-    # can draw, on every run -- two dense lines about merges, off-trunk saves and carried lanes
-    # above a six-row linear history that has none of them. A developer reads it once, learns it
-    # does not describe what they are looking at, and stops reading the header entirely, which is
-    # the opposite of what a legend is for.
-    shown = rows[:max_rows]
-    _shas = {r["sha"] for r in shown}
-    # Two clauses of this legend describe distinctions that only EXIST in colour -- the row's hue and
-    # the bold dot. Printed without it (a pipe, a capture, `--no-color`) they name marks the reader
-    # cannot see, which is how a legend teaches that the header is not about this screen.
-    hue = ", colored by its main feature" if color and n_feat > 1 else ""
-    parts = ["each row = one save", f"cN = its commit position{hue}"]
-    if topology is not None:
-        topo_bits = []
-        if _shas & merges:
-            topo_bits.append("◆ merge")
-        if _shas - mainline - merges:
-            topo_bits.append("○ off-trunk")
-        if topo_bits:
-            parts.append(" / ".join(topo_bits) + " save")
-    if lane_count > 1:
-        parts.append("● = touched here (bold ● = the save's main feature)" if color
-                     else "● = touched here")
-        parts.append("│ = carried across")
-    lines.extend(dim(l) for l in _wrap_parts(parts, term_cols if term_cols >= 40 else 10 ** 6))
-    lines.append("")
-
-    # Plan ghosts (pending steps, no code yet): a ◇ row above the newest save on its predicted
-    # lane; a prediction whose feature has no rail lane (it dominates no save) drops to an
-    # "unplaced" gutter after the rail. Read straight off `grid_view.ghosts` -- no new input.
+    n_feat_hdr = len({r["feature"] for r in rows if r["feature"] is not None})
+    # Presentation moves to `views.rail_lines`; the episode/lane computation above stays here.
+    from .views import rail_lines
     all_ghosts = grid_view.get("ghosts", [])
-    if only_features is not None:  # a group focus shows only that group's plan steps, not every plan's
+    if only_features is not None:  # a group focus shows only that group's steps, not every plan's
         all_ghosts = [g for g in all_ghosts if g["feature_id"] in only_features]
-    placed_ghosts = [g for g in all_ghosts if g["feature_id"] in layout["lane_of"]]
-    unplaced_ghosts = [g for g in all_ghosts if g["feature_id"] not in layout["lane_of"]]
-    pos_w = max((len(f"c{r['index']}") for r in shown), default=2)
-    if placed_ghosts:
-        pos_w = max(pos_w, len("plan"))
-    for g in placed_ghosts:
-        lane = layout["lane_of"][g["feature_id"]]
-        fid = g["feature_id"]
-        hexc = color_for(fid or "")
-        rail = "".join(dim(paint(hexc, _GHOST)) if L == lane else " " for L in range(lane_count))
-        pos = dim("plan".rjust(pos_w))
-        subj = _ellipsize(g.get("title", "") or "planned", label_width).ljust(label_width)
-        lines.append(f" {topo_pad}{rail} {pos} {' ' * 7}  {dim(subj)}  {_paint(hexc, labels.get(fid, fid), color=color)}")
-    for r in shown:
-        rail = "".join(cell(L, r["row"], L == r["lane"]) for L in range(lane_count))
-        pos = dim(f"c{r['index']}".rjust(pos_w))
-        sha7 = (r["sha"] or "")[:7]
-        sha = _paint(color_for(r["feature"] or ""), sha7, color=color) if r["feature"] else dim(sha7)
-        head = _row_headline(r["subject"], r["feature"], labels)
-        subj = _ellipsize((head or "").replace("\n", " "), label_width)
-        padded = subj.ljust(label_width) if chip_budget else subj
-        subj_s = bold(padded) if r["feature"] == selected else padded
-        chips = f"  {_chips(r, labels, color=color, budget=chip_budget)}" if chip_budget else ""
-        lines.append(f" {topo_col(r['sha'])}{rail} {pos} {sha}  {subj_s}{chips}")
+    placed = [{**g, "lane": layout["lane_of"][g["feature_id"]]}
+              for g in all_ghosts if g["feature_id"] in layout["lane_of"]]
+    unplaced = [g for g in all_ghosts if g["feature_id"] not in layout["lane_of"]]
+    # The feature column takes NAMES, resolved here where `labels` lives, so the renderer never has
+    # to know how a feature id maps to a word.
+    view_rows = [{**r, "subject": _row_headline(r["subject"], r["feature"], labels),
+                  "feature_names": [labels.get(f, f) for f in
+                                    sorted((r.get("features") or {}),
+                                           key=lambda f: (-(r["features"][f]), f))]}
+                 for r in rows]
+    out = rail_lines(
+        view_rows, labels=labels, lane_count=lane_count, lane_intervals=lane_intervals,
+        feature_touched=feature_touched, n_saves=len(rows), n_features=n_feat_hdr,
+        total_saves=grid_view.get("save_count", len(rows)), topology=topology, selected=selected,
+        group_label=group_label, ghosts=(placed, unplaced), color=color,
+        max_rows=None if max_rows == 40 else max_rows, width=width,
+        overflow_rows=set(layout.get("overflow_rows") or ()),
+        overflow_lane=layout.get("overflow_lane"),
+        notes=_reverted_gap_note(grid_view.get("reverted_unaccounted"),
+                                 term_cols if term_cols >= 40 else 10 ** 6),
+    )
+    out.extend(_state_banner(states, color=color))
+    return out
 
-    if n_ep > len(shown):
-        lines.append("")
-        lines.append(dim(f" {plural(n_ep - len(shown), 'older save')} folded (newest {len(shown)} shown)"))
-    for g in unplaced_ghosts:
-        lines.append(" " + dim(f"{_GHOST} planned (no lane yet): {_ellipsize(g.get('title', ''), label_width)}"))
-    lines.append("")
-    example = next((r["feature"] for r in shown if r["feature"]), None)
-    # Address the example feature by its NAME when it has one. `resolve_feature` accepts an exact
-    # label, so `sgt revert "Task Tracking CLI"` is a command the reader can act on without first
-    # working out which feature `08ccdb12` is -- and the name is right there in the rows above,
-    # where the hex handle appears nowhere. The handle stays the fallback for an unlabeled feature
-    # and for a label with a quote in it, which would not survive being pasted into a shell.
-    handle = (example[2:10] if example and example.startswith("f-")
-              else (example or "<feature>")[:8])
-    label = labels.get(example) if example else None
-    target = f'"{label}"' if label and '"' not in label and label != example else handle
-
-    # `show` is offered before `revert` deliberately: the next thing a reader wants is usually "what
-    # *is* that?" rather than "remove it". Naming the safe reader beside the destructive one is what
-    # makes the consequence (how much a revert takes, including work built on top) reachable before
-    # the revert is typed.
-    def suggestions(t: str) -> list[str]:
-        return ["sgt log --map  (the feature map)", f"sgt show {t}  (what is it)",
-                f"sgt log --focus {t}  (its checkpoints)", f"sgt revert {t}  (remove it)"]
-
-    # A name only stays easier to act on than a handle while it fits: a label long enough to push a
-    # suggested command past the terminal wraps the very command the line is teaching, and a wrapped
-    # command is one a reader mis-copies. The handle `sgt revert` equally accepts survives that.
-    if term_cols >= 40 and max(len(x) for x in suggestions(target)) + 8 > term_cols:
-        target = handle
-    lines.extend(dim(l) for l in _wrap_parts(suggestions(target),
-                                             term_cols if term_cols >= 40 else 10 ** 6,
-                                             sep="   ·   ", prefix=" next:  "))
-    lines.extend(_state_banner(states, color=color))
-    return lines

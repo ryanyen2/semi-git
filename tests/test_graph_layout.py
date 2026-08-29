@@ -121,16 +121,38 @@ def test_nested_subsystems_indent_by_depth_in_tree_order():
                    _node("S", "R", ["F1", "F2"], kind="subsystem"),
                    _node("F1", "S", []), _node("F2", "S", []), _node("F0", "R", [])],
          "edges": []}
-    # F1 born first (0) so S sorts before the later-born F0 (5) within R.
+    # F1 is born first (0) and F0 later (5), so a level ordered by time alone would put S's whole
+    # block ahead of F0 -- see the grouping test below for why it must not.
     out = _run(m, _grid(("F1", 0), ("F2", 10), ("F0", 5)))
     headers = {h["collapsedId"]: h for h in out["headers"]}
     assert headers["R"]["depth"] == 0 and headers["S"]["depth"] == 1  # S nests under R
     lanes = out["laneById"]
     assert lanes["F1"]["depth"] == 2 and lanes["F2"]["depth"] == 2  # features under the nested S
     assert lanes["F0"]["depth"] == 1  # a direct feature of R
-    # Tree order: R header, then S (earlier first-appearance) and its lanes, then F0.
-    assert headers["R"]["row"] < headers["S"]["row"] < lanes["F1"]["row"] < lanes["F0"]["row"]
+    # Tree order: a header opens its own block, and the block stays contiguous under it.
+    assert headers["R"]["row"] < headers["S"]["row"] < lanes["F1"]["row"] < lanes["F2"]["row"]
     assert headers["R"]["opCount"] == 3 and headers["R"]["laneCount"] == 3  # rolls up all 3 features
+
+
+def test_a_parents_own_lanes_come_before_its_subsystem_blocks():
+    """The webview half of `test_a_features_own_rows_come_before_its_subsystem_blocks` in
+    tests/tui/test_graph.py -- the two layouts are behaviour-parallel by construction, and this is
+    exactly the kind of ordering rule that silently drifts apart between them.
+
+    A parent's own feature lanes are emitted before its sub-groups, so the swimlane indent means
+    containment. Ordering a level by first appearance alone put F0 -- a direct feature of R, born
+    after F1 -- below S's entire subtree, where it renders inside a swimlane it is not a member of,
+    under a header whose "N feat" count then disagrees with the rows beneath it."""
+    m = {"roots": ["R"],
+         "nodes": [_node("R", None, ["S", "F0"], kind="subsystem"),
+                   _node("S", "R", ["F1", "F2"], kind="subsystem"),
+                   _node("F1", "S", []), _node("F2", "S", []), _node("F0", "R", [])],
+         "edges": []}
+    out = _run(m, _grid(("F1", 0), ("F2", 10), ("F0", 5)))
+    headers = {h["collapsedId"]: h for h in out["headers"]}
+    lanes = out["laneById"]
+    assert lanes["F0"]["row"] < headers["S"]["row"], "R's own feature sits above R's sub-group"
+    assert headers["S"]["row"] < lanes["F1"]["row"] < lanes["F2"]["row"], "S's block stays contiguous"
 
 
 def test_feature_with_no_own_symbols_is_dropped_like_the_terminal_drops_it():

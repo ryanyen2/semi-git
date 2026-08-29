@@ -162,6 +162,38 @@ def test_fold_out_never_deletes_anything_it_did_not_write(tmp_path):
     assert (out / "NOTES.txt").read_text() == "hand-written\n"
 
 
+def test_fold_out_leaves_an_unchanged_file_untouched(tmp_path):
+    """A sync must not rewrite what already matches. The overlay is served by a running dev
+    server, and a dev server watches mtimes, not contents: Vite restarts the whole server when
+    `vite.config.ts` is touched and clears its TypeScript cache when `tsconfig.json` is, so a
+    rewrite-everything sync turns each scrub step into a server restart. Most files are identical
+    between two adjacent frontiers, and touching them is what the render panel cannot afford."""
+    repo = _mined(tmp_path, "removed_paths")
+    out = tmp_path / "overlay"
+
+    fold_out_view(repo, out, at_commit_index=0)
+    before = {p: (out / p).stat().st_mtime_ns for p in _tree(out)}
+
+    fold_out_view(repo, out, at_commit_index=0)
+
+    assert {p: (out / p).stat().st_mtime_ns for p in _tree(out)} == before
+
+
+def test_fold_out_still_writes_a_file_whose_content_changed(tmp_path):
+    """The other half of the same rule. Skipping unchanged bytes must not skip changed ones, or
+    the panel serves a stale frontier and reports a fresh one."""
+    repo = _mined(tmp_path, "removed_paths")
+    out = tmp_path / "overlay"
+
+    fold_out_view(repo, out, at_commit_index=1)
+    victim = sorted(_tree(out))[0]
+    (out / victim).write_text("clobbered\n")
+
+    fold_out_view(repo, out, at_commit_index=1)
+
+    assert (out / victim).read_text() != "clobbered\n"
+
+
 def test_fold_out_into_a_populated_directory_with_no_manifest_deletes_nothing(tmp_path):
     """Pointed at a directory it has never written to, `--out` inventories rather than scrubs.
     Without this the first scrub into someone's existing project directory is a data-loss bug,

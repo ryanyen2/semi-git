@@ -148,6 +148,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
         <button class="seg-btn" data-view="gantt" title="Feature timeline (Gantt)">▤ Timeline</button>
         <button class="seg-btn" data-view="rail" title="Episode rail (what I did, in order)">◫ Rail</button>
       </div>
+      <button id="groupBtn" class="group-btn" title="Group rows by subsystem, or list features by what you touched last">Features</button>
       <button id="compositionBtn" class="composition-btn">HEAD</button>
     </div>
     <div class="tb-divider"></div>
