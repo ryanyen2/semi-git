@@ -184,7 +184,8 @@ export class RenderPanel implements vscode.Disposable {
       const view = await this.store.foldTo(frontier, this.foldDir, () => this.seq === seq);
       if (this.seq !== seq) return; // the drag moved on; the newer frontier answers
       this.lastLabel = label;
-      this.post({ type: "folded", label, files: Object.keys(view.files ?? {}).length, ops: view.op_count });
+      const files = view.written ?? Object.keys(view.files ?? {}).length;
+      this.post({ type: "folded", label, files, ops: view.op_count });
     } catch (e: any) {
       if (e instanceof StaleRequestError) return;
       if (this.seq !== seq) return;

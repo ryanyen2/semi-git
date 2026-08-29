@@ -372,6 +372,10 @@ export interface ForkDetailView {
 export interface FoldView {
   op_count?: number;
   files?: Record<string, string>;
+  // `--out` syncs a directory instead of returning the tree, so it reports a count (`written`)
+  // where the bare form returns `files`. A reader that only knows `files` shows "0 files" for
+  // every materialized fold.
+  written?: number;
   oracle_verdict?: OracleVerdict;
   forked?: boolean;
   message?: string;

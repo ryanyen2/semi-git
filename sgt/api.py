@@ -2462,6 +2462,15 @@ def _sync_fold_dir(out_dir, materialized: dict[str, bytes], op_count: int) -> di
     for path, data in sorted(materialized.items()):
         full = out / path
         full.parent.mkdir(parents=True, exist_ok=True)
+        # Skip the write when the bytes already match. A dev server watching this directory sees
+        # mtimes, not contents: Vite restarts the whole server when `vite.config.ts` is touched
+        # and clears its TypeScript cache when `tsconfig.json` is, so rewriting every file turns
+        # each scrub step into a restart instead of a hot replace of the few files that differ.
+        try:
+            if full.read_bytes() == data:
+                continue
+        except OSError:
+            pass  # absent, unreadable, or a directory -- let the write decide
         full.write_bytes(data)
 
     deleted = _prune_fold_leftovers(out, previous - set(materialized))

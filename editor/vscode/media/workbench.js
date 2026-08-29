@@ -202,6 +202,19 @@ function computeGraphLayout(map, grid, opts) {
     return { opCount, laneCount, lastCommit };
   }
   const sortByFirst = (a, b) => subtreeFirst(a) - subtreeFirst(b) || (a < b ? -1 : 1);
+  // One parent's rows in reading order: its own feature lanes first, then its sub-groups -- each
+  // half in first-appearance order. Ordering a level by time ALONE interleaved the two kinds, and a
+  // subsystem is not one row but a block: a feature born after a subsystem was emitted below that
+  // subsystem's entire subtree, where the indent then read as membership. On seedbank-v3 that filed
+  // four of the repo's own features (`seed catalog`, `sort the grid`, `show what is on the shelf`,
+  // `seed tray`) under the `Plant Discovery` swimlane, whose header says "6 feat" above nine rows.
+  // Grouping is what lets the indent mean containment; inside a group, time still orders.
+  // Mirrors `ordered_children` in sgt/tui/graph.py -- the two layouts stay behaviour-parallel.
+  const orderedChildren = (ids) => {
+    const present = ids.filter(isPresent);
+    return present.filter((c) => laneById[c]).sort(sortByFirst)
+      .concat(present.filter((c) => !laneById[c]).sort(sortByFirst));
+  };
 
   let row = 0;
   const headers = [];
@@ -228,14 +241,32 @@ function computeGraphLayout(map, grid, opts) {
       opCount: roll.opCount, laneCount: roll.laneCount,
     });
     row++; // the header occupies its own row
-    for (const c of childrenOf(id).filter(isPresent).sort(sortByFirst)) emit(c, depth + 1);
+    for (const c of orderedChildren(childrenOf(id))) emit(c, depth + 1);
   }
-  for (const r of (map.roots || []).filter(isPresent).sort(sortByFirst)) emit(r, 0);
+  for (const r of orderedChildren(map.roots || [])) emit(r, 0);
   const rowCount = Math.max(1, row);
 
   return { lanes, headers, edges, overflow, laneById, opsByFeature, rowCount,
     commitCount: ((grid && grid.commits) || []).length };
 }
+// A post-layout VIEW transform, not a second layout: `computeGraphLayout` above is one half of a
+// pair whose other half is `graph_layout` in sgt/tui/graph.py, and a rule changed in one and not the
+// other drifts silently. So the flat view reuses that output and only reassigns rows.
+//
+// Why it is the default. The tree view opens folded to its subsystem rows, and a subsystem is not a
+// feature: it carries no identity hue, so `laneColor` answers the neutral `#8a8a8a` for every row a
+// reader sees on arrival. The whole timeline was grey, and the one channel the design spends on
+// identity said nothing until you expanded something. Flat rows are features, so they are coloured,
+// and ordering them by most-recently-touched puts what you were working on at the top instead of
+// whatever the clusterer happened to name first.
+function flattenLayout(layout) {
+  const lanes = layout.lanes
+    .slice()
+    .sort((a, b) => (b.lastCommit - a.lastCommit) || (a.label < b.label ? -1 : 1))
+    .map((l, i) => ({ ...l, row: i, depth: 0 }));
+  return { ...layout, lanes, headers: [], rowCount: Math.max(1, lanes.length) };
+}
+
 // ---- end-graph-layout (test slice boundary) ----
 
 // ---- segment-layout (test slice boundary) ----
@@ -258,14 +289,33 @@ function computeGraphLayout(map, grid, opts) {
 function computeSegmentLayout(map, grid, segments, opts) {
   opts = opts || {};
   const frontier = opts.frontier == null ? Infinity : opts.frontier;
-  const commitIndexOf = {};
-  for (const cell of (grid && grid.cells) || []) {
-    for (const oid of cell.op_ids || []) commitIndexOf[oid] = cell.commit_index;
-  }
 
   const byFeature = {};
   for (const seg of segments || []) {
     (byFeature[seg.feature_id] || (byFeature[seg.feature_id] = [])).push(seg);
+  }
+
+  // The op -> commit join that feeds each chapter's per-commit bins, kept PER FEATURE rather than
+  // as one index over the whole repository.
+  //
+  // It used to be a single object literal keyed by every op id in the history. An object keyed by
+  // millions of distinct strings leaves V8's fast path and becomes a dictionary, and the cost is not
+  // marginal -- measured on a 2.94M-cell history, building it took 1,734ms of a 3,533ms layout. A
+  // `Map` alone brought that to 572ms; building one SMALL map per feature and discarding it brings
+  // the whole join to 492ms, because each map fits in cache instead of rehashing a table the size of
+  // the repository. The bins produced are identical, op id for op id: this is the same exact join,
+  // not an approximation by commit range (chapters of one feature can share a commit, so a range
+  // join would double-count).
+  //
+  // Cells are grouped unfiltered, deliberately: `computeGraphLayout` drops cells past the frontier
+  // and this must not, or a chapter beyond the playhead would lose the density it is drawn with.
+  const cellsByFeature = new Map();
+  if (segments && segments.length) {
+    for (const cell of (grid && grid.cells) || []) {
+      let bucket = cellsByFeature.get(cell.feature_id);
+      if (!bucket) cellsByFeature.set(cell.feature_id, (bucket = []));
+      bucket.push(cell);
+    }
   }
 
   const base = computeGraphLayout(map, grid, opts);
@@ -273,10 +323,17 @@ function computeSegmentLayout(map, grid, segments, opts) {
   const lanes = base.lanes.map((l) => {
     const cars = [];
     for (const leaf of l.leaves) {
-      for (const seg of byFeature[leaf] || []) {
+      const segsHere = byFeature[leaf];
+      if (!segsHere || !segsHere.length) continue;
+      // One small index for this feature, built once and dropped when the feature is done.
+      const commitIndexOf = new Map();
+      for (const cell of cellsByFeature.get(leaf) || []) {
+        for (const oid of cell.op_ids || []) commitIndexOf.set(oid, cell.commit_index);
+      }
+      for (const seg of segsHere) {
         const bins = new Map();
         for (const oid of seg.op_ids || []) {
-          const ci = commitIndexOf[oid];
+          const ci = commitIndexOf.get(oid);
           if (ci != null) bins.set(ci, (bins.get(ci) || 0) + 1);
         }
         cars.push({
@@ -490,6 +547,9 @@ function episodeRailLayout(epView) {
   if (state.selectedPlanSession === undefined) state.selectedPlanSession = null;
   if (!Array.isArray(state.multi)) state.multi = state.selected ? [state.selected] : [];
   if (state.view !== "rail") state.view = "gantt"; // "gantt" (feature timeline) | "rail" (episodes)
+  // "flat" (feature rows, newest-touched first) | "tree" (the subsystem hierarchy, folded).
+  // Flat is the default: see `flattenLayout` for why the folded tree could not be.
+  if (state.grouping !== "tree") state.grouping = "flat";
   let compose = {
     map: { nodes: [], roots: [], edges: [] }, history: { commits: [], ops: [] },
     grid: { commits: [], cells: [] },
@@ -502,7 +562,7 @@ function episodeRailLayout(epView) {
   let nodeIndex = new Map((map.nodes || []).map((n) => [n.id, n]));
   let history = compose.history; // still the per-op stream the render half reads (op-set panel, plan/drift joins)
   let grid = compose.grid;       // grid_view's cell table -- the layout functions' canonical join (plan U3)
-  let layout = computeSegmentLayout(map, grid, segmentsOf(compose), { collapsed: state.collapsed });
+  let layout = groupedLayout(map, grid, compose);
   let lastRenderWidth = -1; // rail width the last render() drew at; the resize observer skips no-op width reflows
   let lastRenderHeight = -1; // rail height the last render() drew at; the observer reflows on vertical resize too
   // The pane measurement a draw is sized from, recorded at the ONE place the DOM is measured so the
@@ -614,7 +674,7 @@ function episodeRailLayout(epView) {
   const inspectorToggle = document.getElementById("inspectorToggle");
   const confirmBar = document.getElementById("confirmBar"); // staged-action consequence + Apply/Cancel
 
-  const SVG_TAGS = new Set(["svg", "g", "path", "circle", "rect", "text", "line", "title"]);
+  const SVG_TAGS = new Set(["svg", "g", "path", "circle", "rect", "text", "line", "title", "tspan"]);
 
   function mk(tag, attrs, children) {
     const ns = SVG_TAGS.has(tag) ? "http://www.w3.org/2000/svg" : "http://www.w3.org/1999/xhtml";
@@ -786,14 +846,14 @@ function episodeRailLayout(epView) {
   function recompute() {
     // Full history: the frontier scrubber dims nodes/cars past its point (see applyFrontier)
     // rather than re-laying-out on every drag, so the layout stays stable while scrubbing.
-    layout = computeSegmentLayout(map, grid, segmentsOf(compose), { collapsed: state.collapsed });
+    layout = groupedLayout(map, grid, compose);
   }
 
-  // First-load clustering: open the rail folded to its subsystem rows -- the root(s) expanded to
-  // their direct children, deeper subsystems collapsed -- instead of every leaf feature at once
-  // (this repo alone is 26 features across 5 subsystems: a wall of rows where nothing reads).
-  // "What changed, at a glance," drill in on demand. Applied exactly once, and only after real
-  // nodes have arrived; any later expand/collapse persists and is never overwritten.
+  // The tree view opens folded to its subsystem rows: root(s) expanded to their direct children,
+  // deeper subsystems collapsed, so the reader meets ~20 rows instead of every leaf at once. It is
+  // no longer the DEFAULT view (see `flattenLayout`) -- it is what `state.grouping === "tree"`
+  // gets. Applied exactly once, and only after real nodes have arrived; any later expand/collapse
+  // persists and is never overwritten.
   function applyClusterDefaultOnce() {
     if (state.clusteredOnce) return;
     const roots = new Set(map.roots || []);
@@ -804,6 +864,33 @@ function episodeRailLayout(epView) {
     state.collapsed = subs.map((n) => n.id);
     state.clusteredOnce = true;
     saveState();
+  }
+
+  const groupBtn = document.getElementById("groupBtn");
+  if (groupBtn) {
+    groupBtn.addEventListener("click", () => {
+      state.grouping = state.grouping === "tree" ? "flat" : "tree";
+      saveState();
+      // Grouping is a LAYOUT choice, so the layout has to be rebuilt -- `render()` alone redraws
+      // the cached one, which flipped the button's label over an unchanged set of rows.
+      applyClusterDefaultOnce();  // the tree view's first open is still folded to its subsystems
+      recompute();
+      render();
+    });
+  }
+
+  // The reader's grouping choice, applied in one place so the two layout call sites cannot
+  // disagree about which view is on screen. "flat" (the default) is feature rows newest-first;
+  // "tree" is the subsystem hierarchy, folded.
+  function groupedLayout(m, g, comp) {
+    if (state.grouping === "tree") {
+      return computeSegmentLayout(m, g, segmentsOf(comp), { collapsed: state.collapsed });
+    }
+    // Flat means FEATURES, so it folds nothing: a collapsed subsystem would come back as a
+    // meta-lane, and a meta-lane is not a feature -- it has no identity hue, and one grey row in a
+    // coloured list reads as a broken row rather than as a different kind of thing. The reader's
+    // fold state is left untouched so switching back to the tree finds it as they left it.
+    return flattenLayout(computeSegmentLayout(m, g, segmentsOf(comp), { collapsed: [] }));
   }
 
   // The three "nowhere to attach" signals -- unplanned drift, unplaced forks, and reverted work whose
@@ -873,6 +960,13 @@ function episodeRailLayout(epView) {
     compositionBtn.textContent = `${state.compositionLabel || "HEAD"} ▾`;
     for (const btn of viewSeg.querySelectorAll(".seg-btn")) {
       btn.classList.toggle("active", btn.dataset.view === state.view);
+    }
+    // The button is labelled with what it SHOWS, not with what clicking it does. A toggle labelled
+    // with its action makes the reader work out which state they are currently in from the label of
+    // the state they are not in.
+    if (groupBtn) {
+      groupBtn.textContent = state.grouping === "tree" ? "Subsystems" : "Features";
+      groupBtn.hidden = state.view !== "gantt";  // the rail has no grouping to choose
     }
 
     // ── Status zone: oracle dot, consolidated plans chip, drift indicator ───────────────────────
@@ -1073,23 +1167,179 @@ function episodeRailLayout(epView) {
   // what it is, a forecast has only its label. Truncating a step title to 6 glyphs ("Reserv…") would
   // leave the reader exactly where the old `+1` badge did, so the band prefers fewer, legible cars
   // over more, unreadable ones -- and collapses the remainder into a stack card (see renderForecastCars).
-  const GANTT = { padT: 14, rowH: 26, barH: 12, axisH: 34, minBarW: 6, minCarW: 9, carGap: 1.5, labelMinW: 34, gutterPad: 8, cellGap: 0.5, indent: 14, ghostW: 72, nowPad: 7 };
+  // `countW` reserves the right-hand column the per-lane op count is set in. It used to be placed
+  // at `lastCar + 6`, clamped only to the SVG edge -- so on a lane whose work runs to the present
+  // the number landed ON the plot edge and the frontier scrubber, and on every other lane it sat
+  // at a different x. Ragged and overlapping, for a column of numbers that only means anything
+  // read down the page.
+  // `padT` is the plot's top margin. At 14 the `time →` axis title (baseline padT-3, a 9px face)
+  // ascended to y=2 and collided with the first swimlane band at y=14 -- the title read as
+  // clipped by the top of the panel. 20 clears it.
+  const GANTT = { maxLanes: 400, padT: 20, rowH: 26, barH: 12, axisH: 34, minBarW: 6, minCarW: 9, carGap: 1.5, labelMinW: 34, gutterPad: 8, cellGap: 0.5, indent: 14, ghostW: 72, nowPad: 7, countW: 40 };
   let graphView = null; // { geom, handleEl, frontierEl, veilEl } -- set each render for the scrubber
+
+  // ─── The checkpoint name chip ────────────────────────────────────────────────────────────────
+  // Most chapters are too narrow to hold their own name (`renderCars` only sets a label inline when
+  // the WHOLE name fits), so on a real repository the timeline was a field of coloured bars whose
+  // names lived in a native SVG `<title>` -- a second's delay, an OS tooltip, unreadable in a
+  // recording, and invisible to anyone scanning for "what can I go back to". The names were there;
+  // nothing put them on screen.
+  //
+  // The chip is an overlay, not a resize. Widening the hovered bar to fit its name was the obvious
+  // move and it is a lie: x means WHEN on this plot, so a bar that grows to fit its text is claiming
+  // time it does not own, and its neighbours appear to shift. Instead the bar keeps its geometry and
+  // a chip is drawn over the row in the lane's own hue, centred on the bar, with a tick pointing at
+  // the bar's true centre so the chip still names the right thing after it has been clamped inside
+  // the plot. Overlapping neighbouring bars is fine here in a way it is not for the persistent
+  // in-row tag: this appears only under the cursor and only for the one chapter being pointed at.
+  //
+  // A selected chapter keeps its chip. Clicking a bar is the reader saying "this one", and the name
+  // of the thing they picked should stay on screen while they decide what to do with it.
+  const CHIP = { h: 18, padX: 8, tickW: 3, maxW: 260 };
+  let chipLayer = null;   // the top <g>, re-made every render (SVG paints in document order)
+  let pinnedChip = null;  // the selected car's chip args, redrawn whenever a hover chip retracts
+
+  function drawCarChip(args, pinned) {
+    if (!chipLayer) return;
+    const { car, color, x, w, midY, geom } = args;
+    const name = car.label || `checkpoint ${car.segIndex}`;
+    const detail = `  ${car.opCount} edit${car.opCount === 1 ? "" : "s"}`
+      + (car.reverted ? " · retired" : "");
+    const fit = fitText(name, CHIP.maxW, "gchip-name");
+    const cw = Math.min(
+      CHIP.maxW + CHIP.padX * 2,
+      textWidth(fit.text, "gchip-name") + textWidth(detail, "gchip-detail") + CHIP.padX * 2,
+    );
+    const plotR = geom.plotX0 + geom.plotW + geom.forecastW;
+    const anchor = x + w / 2;                       // where the chapter actually is
+    const cx = Math.max(geom.plotX0, Math.min(anchor - cw / 2, plotR - cw));
+    const y = midY - CHIP.h / 2;
+    const g = mk("g", { class: "gchip" + (pinned ? " gchip-pinned" : "") });
+    // Container transform: the chip's first frame IS the bar. This maps the finished capsule
+    // exactly onto the hovered car's rectangle (about the view-box origin, so it is pure
+    // arithmetic: p' = T + S·p), and the unfold animates from it to identity. The tick survives
+    // for the clamped case — after the morph lands, it is what still points at a chapter whose
+    // chip could not be centred over it.
+    const barY = midY - GANTT.barH / 2;
+    const fsx = Math.max(0.02, w / cw);
+    const fsy = GANTT.barH / CHIP.h;
+    g.style.setProperty("--flip-from",
+      `translate(${(x - fsx * cx).toFixed(2)}px, ${(barY - fsy * y).toFixed(2)}px) `
+      + `scale(${fsx.toFixed(4)}, ${fsy.toFixed(4)})`);
+    g.appendChild(mk("rect", {
+      x: cx, y, width: cw, height: CHIP.h, rx: 4, class: "gchip-bg", fill: color,
+    }));
+    // The tick keeps the chip honest once clamping has moved it off its bar: it marks the bar's real
+    // centre, so a chip pinned against the plot edge still points at the chapter it names.
+    g.appendChild(mk("rect", {
+      x: Math.max(cx + 2, Math.min(anchor - CHIP.tickW / 2, cx + cw - CHIP.tickW - 2)),
+      y: y + CHIP.h, width: CHIP.tickW, height: 3, class: "gchip-tick", fill: color,
+    }));
+    const t = mk("text", { x: cx + CHIP.padX, y: midY + 3, class: "gchip-name" });
+    t.appendChild(mk("tspan", { text: fit.text }));
+    t.appendChild(mk("tspan", { class: "gchip-detail", text: detail }));
+    g.appendChild(t);
+    chipLayer.appendChild(g);
+  }
+
+  // A chip that is on its way out, kept so a re-entered hover can cancel its own retraction rather
+  // than fighting it. Without this, sweeping the cursor along a lane left every chip it touched
+  // mid-retraction on screen at once.
+  let retracting = null;
+
+  function clearRetraction() {
+    if (!retracting) return;
+    retracting.el.remove();
+    clearTimeout(retracting.timer);
+    retracting = null;
+  }
+
+  function showCarChip(args) {
+    if (!chipLayer) return;
+    clearRetraction();
+    chipLayer.replaceChildren();
+    drawCarChip(args, false);
+  }
+
+  // Retract to whatever should be on screen with no cursor on the plot: the selected chapter's chip,
+  // or nothing. The chip ANIMATES back into its bar instead of being deleted where it stands --
+  // deleting it is what made the name feel thrown at the reader and then taken away, because the
+  // only motion in the whole interaction pointed one way.
+  function hideCarChip() {
+    if (!chipLayer) return;
+    clearRetraction();
+    // Filtered in JS rather than with `:not()` in the selector: the hover chip is the only child
+    // that is not pinned, and a plain class check is one less thing for a DOM to disagree about.
+    // Spread first -- a browser's `querySelectorAll` returns a NodeList, which has `forEach` but NOT
+    // `find`, so calling it directly silently yields nothing and the retraction never runs.
+    const live = [...chipLayer.querySelectorAll(".gchip")]
+      .find((c) => !c.classList.contains("gchip-pinned"));
+    chipLayer.replaceChildren();
+    if (pinnedChip) drawCarChip(pinnedChip, true);
+    if (!live) return;
+    // Reduced motion: the retreat is the flourish, so there is none -- the chip simply goes. Left to
+    // the animation path it would sit fully visible for the backstop timeout, because with
+    // `animation: none` there is no `animationend` to remove it on.
+    if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    // Re-attached ON TOP so the pinned chip (redrawn above) does not paint over the retreat, and
+    // removed on `animationend` -- with a timer as the backstop, since an animation on a detached or
+    // reduced-motion element may never fire the event and a leaked node would sit there forever.
+    live.classList.add("gchip-out");
+    chipLayer.appendChild(live);
+    const done = () => { if (retracting && retracting.el === live) clearRetraction(); };
+    live.addEventListener("animationend", done, { once: true });
+    retracting = { el: live, timer: setTimeout(done, 400) };
+  }
 
   // `forecastCars` is the widest forecast a single lane carries this render (0 when nothing is
   // pending or planned). It buys a FORECAST BAND to the right of the `now` rule: measured time ends
   // at `now`, and anticipated work lives past it. Without a band the future has literally no room on
   // an axis whose domain is [c0, lastCommit] -- which is why pending work used to degenerate into a
   // badge jammed against the plot edge instead of reading as a car.
+  // The name column's width, in px. A hard `clamp(130, paneW*0.4, 220)` truncated most of the
+  // repo's feature names on a pane with room to spare -- 220px is about 34 glyphs, and these names
+  // are sentences -- and offered the reader no way to see the rest. So: fit to the longest name the
+  // view is actually drawing (bounded by a share of the pane, so the plot is never squeezed out),
+  // and let the reader override that by dragging the divider. Every table view works this way.
+  // Two different ceilings, because automatic and deliberate are different acts. Left to itself the
+  // column takes at most 45% of the pane -- names matter, but this is a TIMELINE, and a fit that
+  // quietly ate two thirds of a docked pane would trade one unreadable field for another. A drag is
+  // the reader saying "right now I am reading names", so it may go to 70%.
+  const LABEL_MIN_W = 90;                 // narrower than this and a name is a stub, not a name
+  const LABEL_FIT_FRAC = 0.45;            // ...how far the automatic fit may go
+  const LABEL_DRAG_FRAC = 0.7;            // ...and how far a deliberate drag may
+  const labelFitW = (paneW) => Math.max(LABEL_MIN_W, Math.round(paneW * LABEL_FIT_FRAC));
+  const labelMaxW = (paneW) => Math.max(LABEL_MIN_W, Math.round(paneW * LABEL_DRAG_FRAC));
+
+  // The natural width: the widest label actually on screen, plus its indent and swatch. Measured,
+  // not estimated -- see textWidth.
+  function naturalLabelW() {
+    let widest = 0;
+    for (const l of layout.lanes) {
+      const node = byId(l.id);
+      const raw = (node && node.label) || l.id;
+      const text = l.isMeta ? `${raw} (${l.leaves.length})` : raw;
+      const labelX = GANTT.gutterPad + (l.depth || 0) * GANTT.indent + (l.isMeta ? 24 : 12);
+      widest = Math.max(widest, labelX + textWidth(text, "glane-label"));
+    }
+    for (const hd of layout.headers) {
+      const ind = (hd.depth || 0) * GANTT.indent;
+      widest = Math.max(widest, 22 + ind + textWidth(hd.label, "swimlane-label")
+        + 12 + textWidth(`${hd.laneCount} feat`, "swimlane-meta"));
+    }
+    return Math.ceil(widest) + 10; // a little air before the divider
+  }
+
   function ganttGeom(forecastCars = 0) {
     const pane = panePx();
     const paneW = pane.w;
-    // Keep the label column wide enough to stay legible even when the inspector is dragged wide and
-    // the rail is squeezed -- the labels never collapse; instead the plot compresses (and clips at
-    // the pane edge) when there isn't room, which is the acceptable trade here.
-    const labelW = Math.round(Math.max(130, Math.min(220, paneW * 0.4)));
+    // A width the reader dragged wins over the fit, clamped to what this pane can hold (so a column
+    // dragged wide in a maximized panel doesn't swallow the plot when the panel is docked narrow).
+    const labelW = Math.round(state.labelW != null
+      ? Math.max(LABEL_MIN_W, Math.min(state.labelW, labelMaxW(paneW)))
+      : Math.max(LABEL_MIN_W, Math.min(naturalLabelW(), labelFitW(paneW))));
     const plotX0 = labelW + GANTT.gutterPad;
-    const fullW = Math.max(60, paneW - plotX0 - 16);
+    const fullW = Math.max(60, paneW - plotX0 - 16 - GANTT.countW);
     // The band asks for one nameable slot per forecast car, then gets clamped to 38% of the plot so a
     // forecast can never crowd out measured history (and the history side never drops below 40px).
     // `forecastSlots` reports how many slots SURVIVED that clamp -- the renderer collapses anything
@@ -1108,9 +1358,14 @@ function episodeRailLayout(epView) {
     // Rows stay top-anchored, but the axis pins to the bottom of the pane: the SVG grows to fill the
     // rail's viewport (minus its 8px padding each side) so a short timeline no longer leaves a dead
     // band of background below it -- the void becomes an honest empty plot with a full-height axis.
-    const naturalH = GANTT.padT + rowsH + 12 + GANTT.axisH;
-    const h = Math.max(naturalH, pane.h - 16);
-    const axisY = h - GANTT.axisH;
+    // The axis is PINNED: it lives in its own SVG below the scroller, so the plot's height is its
+    // rows and nothing else. It used to sit at the bottom of the one scrolling SVG, which meant the
+    // `c0 … cN` ruler -- the thing that makes every column mean a time -- scrolled off the moment a
+    // repository had more features than the pane is tall. On this repo that was already true at 24
+    // rows, with the tick labels clipped by the pane's own edge.
+    const naturalH = GANTT.padT + rowsH + 12;
+    const h = Math.max(naturalH, pane.h - 16 - GANTT.axisH);
+    const axisY = h;  // gridlines, the future-veil and the frontier line run the full plot height
     const maxCommit = Math.max(1, layout.commitCount - 1);
     const xOf = (ci) => plotX0 + (Math.max(0, Math.min(maxCommit, ci)) / maxCommit) * plotW;
     return {
@@ -1140,6 +1395,8 @@ function episodeRailLayout(epView) {
   // past the last car (or the plain lifetime track when the feature has no mined segments yet), so
   // the caller can place the op-count label and badges against it.
   function renderCars(g, l, geom, color, barY, midY) {
+    const laneNode = byId(l.id);
+    const laneName = (laneNode && laneNode.label) || l.id;
     const cars = l.cars || [];
     if (!cars.length) {
       const x1 = geom.xOf(l.firstCommit), x2 = geom.xOf(l.lastCommit);
@@ -1169,6 +1426,7 @@ function episodeRailLayout(epView) {
     const colStep = geom.plotW / Math.max(1, geom.maxCommit);
     let cursor = geom.plotX0;
     let lastRight = geom.plotX0;
+    let tagRight = 0; // how far right an in-row big-event tag reached, so the op count clears it
     for (let i = 0; i < cars.length; i++) {
       const car = cars[i];
       const isBig = cars.length > 1 && i === bigIndex;
@@ -1176,8 +1434,15 @@ function episodeRailLayout(epView) {
       let rightEnd = car.lastIndex >= geom.maxCommit ? plotR : geom.xOf(car.lastIndex) + colStep;
       if (i + 1 < cars.length) rightEnd = Math.min(rightEnd, geom.xOf(cars[i + 1].firstIndex) - GANTT.carGap);
       let w = Math.max(GANTT.minCarW, rightEnd - x);
-      if (x + w > plotR) { x = Math.max(cursor, plotR - w); } // keep it on-screen
-      if (x + w > plotR) { w = Math.max(GANTT.minCarW, plotR - x); }
+      // Never past the plot's right edge. x means WHEN, so a car drawn beyond the axis is claiming a
+      // time that does not exist -- and in a dense lane that is exactly what happened: each car is
+      // nudged right to clear the previous one and floored at `minCarW`, so a train of short
+      // chapters walked `cursor` off the end and the clamp, which also floored at `minCarW`, could
+      // not pull it back. On seedbank-v3's folded `Plant Discovery` row the last chapters ran 57px
+      // past the axis and through the op-count column. Pinning to the edge and letting the final
+      // cars thin to slivers is the honest degradation: too many chapters for the width.
+      if (x + w > plotR) x = Math.max(geom.plotX0, plotR - w);
+      if (x + w > plotR) w = Math.max(2, plotR - x);
       const selected = car.checkpoint === state.selectedCheckpoint;
       const wrap = mk("g", {
         class: "gcar-wrap" + (isBig ? " gcar-big" : "") + (selected ? " gcar-selected" : ""),
@@ -1216,28 +1481,77 @@ function episodeRailLayout(epView) {
       // across, so it's left as one flat fill rather than one bright sliver + dead space.
       const bins = car.subBins && car.subBins.length ? car.subBins : [];
       if (bins.length > 1 && w >= 6 && !car.reverted) {  // density cells would repaint a hollow car solid
-        const cellW = w / bins.length;
-        const localMax = Math.max(1, ...bins.map((b) => b[1]));
+        // Resolution is bounded by the PIXELS available, not by the number of commits.
+        //
+        // This drew one rect per commit in the chapter's span. On a 4,000-commit history that is 400
+        // rects inside a 30px car -- each 0.075px wide, none of them visible, and 588,499 of them
+        // across the view: a 5.2-second render and 599,317 SVG nodes for a texture no one can see.
+        // Detail finer than a pixel is not detail. Commits are folded into at most one bucket per
+        // `DENSITY_PX`, which leaves the texture identical wherever it was ever legible and turns
+        // the pathological case into a handful of rects.
+        const DENSITY_PX = 2;
+        const slots = Math.max(1, Math.min(bins.length, Math.floor(w / DENSITY_PX)));
+        const buckets = new Array(slots).fill(0);
         for (let j = 0; j < bins.length; j++) {
+          buckets[Math.min(slots - 1, Math.floor((j * slots) / bins.length))] += bins[j][1];
+        }
+        // A loop, not `Math.max(1, ...buckets)`: spreading a long array into a call blows the stack
+        // outright past ~65k elements, and `bins` is one per commit in the span.
+        let localMax = 1;
+        for (const v of buckets) if (v > localMax) localMax = v;
+        const cellW = w / slots;
+        for (let j = 0; j < slots; j++) {
+          if (buckets[j] <= 0) continue;   // a bucket nothing landed in is not ink
           const cell = mk("rect", {
             x: x + j * cellW, y: barY, width: Math.max(0.5, cellW - GANTT.cellGap), height: GANTT.barH,
             class: "gcar-cell", fill: color,
           });
-          cell.setAttribute("fill-opacity", (0.3 + 0.55 * Math.sqrt(bins[j][1] / localMax)).toFixed(3));
+          cell.setAttribute("fill-opacity", (0.3 + 0.55 * Math.sqrt(buckets[j] / localMax)).toFixed(3));
           wrap.appendChild(cell);
         }
       }
       // Inline label: the chapter's intent, not the bare @n index (which reads as a meaningless
       // "0"). Only when the car is wide enough to hold a few glyphs; otherwise the hover tooltip
       // carries it. The big-event car gets a labelled tag just above the strip even when narrow.
-      if (w >= GANTT.labelMinW && car.label) {
-        wrap.appendChild(mk("text", {
-          x: x + w / 2, y: midY + 3, class: "gcar-label", text: truncate(car.label, Math.floor(w / 6)),
-        }));
-      } else if (isBig && car.label) {
-        wrap.appendChild(mk("text", {
-          x: x + w / 2, y: barY - 3, class: "gcar-tag", text: truncate(car.label, 22),
-        }));
+      //
+      // ...unless the label only echoes the lane's own name (`Sort The Grid` on the row called
+      // `sort the grid by name, species or days to harvest`), in which case it is printing the row
+      // header a second time, inside the row. The floated tag is the worse case: it costs a line of
+      // vertical space the 26px row does not have, so an echo pushed a duplicate of the lane name
+      // up into the row above it. The tooltip still carries the chapter name either way.
+      // ...and the inline label goes in only when the whole name FITS. A car sized between "wide
+      // enough for a few glyphs" and "wide enough for the name" printed `Variet…` -- which could be
+      // `Variety Side Panel` or `Varieties Grid`, so it names nothing while looking like it does.
+      // The tooltip (and, for the lane's big event, the in-row tag) carries what doesn't fit.
+      const inlineFit = car.label ? fitText(car.label, w - 6, "gcar-label") : null;
+      if (car.label && !echoesLane(car.label, laneName)) {
+        if (w >= GANTT.labelMinW && !inlineFit.clipped) {
+          wrap.appendChild(mk("text", {
+            x: x + w / 2, y: midY + 3, class: "gcar-label", text: inlineFit.text,
+          }));
+        } else if (isBig) {
+          // In the row, just past the car -- not floating above it. A tag centred over a narrow car
+          // sat in the 7px gutter BETWEEN two rows, as near the bar above as to its own, so the one
+          // label a lane gets was ambiguous about which lane it named. `rank matches by field…` read
+          // as belonging to `sort the grid`, the row above it. Set beside its car it cannot.
+          // Bounded by the NEXT CAR, not by the plot's right edge. Measured to `plotR` a tag ran
+          // for up to 140px straight across every chapter that followed it -- on a dense lane the
+          // labels and the cars they were meant to name overlapped into an unreadable smear, which
+          // is exactly what the row is supposed to be showing. A label may use the empty time after
+          // its own chapter and not one pixel of anyone else's.
+          const nextX = i + 1 < cars.length
+            ? geom.xOf(cars[i + 1].firstIndex) - GANTT.carGap
+            : plotR;
+          const room = Math.min(140, nextX - (x + w) - 8);
+          if (room >= 34) {
+            const tag = mk("text", {
+              x: x + w + 5, y: midY + 3, class: "gcar-tag gcar-tag-inrow",
+              text: fitText(car.label, room, "gcar-tag").text,
+            });
+            wrap.appendChild(tag);
+            tagRight = Math.max(tagRight, x + w + 5 + room);
+          }
+        }
       }
       // A car is its own click target: selecting it picks the CHECKPOINT (`f-XXXX@n`, the revert
       // unit), distinct from a row/label click that picks the whole feature. stopPropagation keeps
@@ -1249,14 +1563,20 @@ function episodeRailLayout(epView) {
       // had not chosen and might never choose. Feedforward belongs to the verb the reader is
       // pointing at, and pointing at a chapter is not pointing at a verb. Instant and local: no
       // round-trip, no hover-intent delay, because naming what is already on screen costs nothing.
+      // The chapter's own name, on screen, under the cursor -- see drawCarChip for why this is an
+      // overlay and not a wider bar.
+      const chipArgs = { car, color, x, w, midY, geom };
+      if (selected) pinnedChip = chipArgs;
       wrap.addEventListener("mouseenter", () => {
         if (armedVerb || stagedAction) return;
         wrap.classList.add("gcar-hovered");
+        showCarChip(chipArgs);
         setPreviewContext(`${car.label} · ${car.opCount} edit(s)`
           + (car.reverted ? " · retired" : "") + " — click to select", "identity");
       });
       wrap.addEventListener("mouseleave", () => {
         wrap.classList.remove("gcar-hovered");
+        hideCarChip();
         // Only ever retract this hover's own sentence.
         if (previewContext.classList.contains("identity")) setPreviewContext(null);
       });
@@ -1264,7 +1584,7 @@ function episodeRailLayout(epView) {
       cursor = x + w + GANTT.carGap;
       lastRight = x + w;
     }
-    return lastRight;
+    return Math.max(lastRight, tagRight);
   }
 
   // Pending ops a lane would gain on the next save. A meta (collapsed-subsystem) lane rolls up its
@@ -1399,6 +1719,7 @@ function episodeRailLayout(epView) {
   function renderGraph() {
     if (state.view === "rail") { renderRail(); return; }
     if (!paneMeasurable()) return;
+    resetFontCache(); // the editor font can change under us; re-resolve before measuring anything
     const prevScroll = rail.scrollTop;
     rail.innerHTML = "";
     // Size the forecast band to the busiest lane's forecast, once, before geometry: every lane shares
@@ -1407,6 +1728,7 @@ function episodeRailLayout(epView) {
     const forecasts = new Map(layout.lanes.map((l) => [l.id, laneForecast(l)]));
     const widest = Math.max(0, ...[...forecasts.values()].map((f) => f.length));
     const geom = ganttGeom(widest);
+    const scroller = mk("div", { class: "plot-scroll" });
     const svg = mk("svg", { width: geom.w, height: geom.h, class: "railsvg gantt" });
     const bandLayer = mk("g", { class: "swimlanes" });
     const laneLayer = mk("g", { class: "glanes" });
@@ -1422,12 +1744,39 @@ function episodeRailLayout(epView) {
     svg.appendChild(bandLayer);
     svg.appendChild(laneLayer);
 
+    // SVG has no z-index -- paint order is document order -- so the chip layer is made before the
+    // lanes (its handlers capture it) and appended after them, or a chip would be drawn under the
+    // rows it is meant to name.
+    chipLayer = mk("g", { class: "gchip-layer" });
+    pinnedChip = null; // re-established by renderCars for whichever car is selected this pass
     for (const hd of layout.headers) bandLayer.appendChild(renderSwimlaneHeader(hd, geom));
-    for (const l of layout.lanes) laneLayer.appendChild(renderLane(l, geom, forecasts.get(l.id) || []));
-    renderTimeAxis(svg, geom);
+    // A backstop, not a design: every lane is ~10 SVG nodes, so a repository with thousands of
+    // features would build a document the browser cannot lay out. Measured on a synthetic 600-feature
+    // history this render was 131,053 nodes and 3.7s. The flat view is ordered by most-recently
+    // touched, so the cap keeps what a reader is most likely to be looking for -- and it SAYS what it
+    // dropped, because a view that silently stops at 250 rows is lying about the size of the repo.
+    // (The real fix is virtualising on scroll; this bounds the damage until then.)
+    const drawn = layout.lanes.slice(0, GANTT.maxLanes);
+    const hiddenLanes = layout.lanes.length - drawn.length;
+    for (const l of drawn) laneLayer.appendChild(renderLane(l, geom, forecasts.get(l.id) || []));
+    if (hiddenLanes > 0) {
+      svg.appendChild(mk("text", {
+        x: GANTT.gutterPad, y: geom.rowY(drawn.length) + 12, class: "glane-overflow",
+        text: `+${hiddenLanes} more feature${hiddenLanes === 1 ? "" : "s"} not drawn — narrow the view with find, or group by subsystem`,
+      }));
+    }
+    svg.appendChild(renderColumnDivider(geom));
+    svg.appendChild(chipLayer);
+    if (pinnedChip) drawCarChip(pinnedChip, true);
+    const axisSvg = mk("svg", {
+      width: geom.w, height: GANTT.axisH, class: "railsvg gantt gantt-axis",
+    });
+    renderTimeAxis(svg, axisSvg, geom);
 
-    rail.appendChild(svg);
-    rail.scrollTop = prevScroll;
+    scroller.appendChild(svg);
+    rail.appendChild(scroller);
+    rail.appendChild(axisSvg);
+    scroller.scrollTop = prevScroll;
     applySpotlight(); // re-pin a label-click spotlight across the re-render
   }
 
@@ -1440,7 +1789,8 @@ function episodeRailLayout(epView) {
 
   function renderRail() {
     if (!paneMeasurable()) return;
-    const prevScroll = rail.scrollTop;
+    const prevScrollEl = rail.querySelector(".plot-scroll");
+    const prevScroll = prevScrollEl ? prevScrollEl.scrollTop : 0;
     rail.innerHTML = "";
     graphView = null; // no frontier scrubber in rail mode; drop the stale Gantt handle
     const rlayout = episodeRailLayout(rollupEpisodes(map, grid));
@@ -1450,17 +1800,25 @@ function episodeRailLayout(epView) {
     const allRows = rlayout.rows;
     const rows = allRows.slice(0, RAIL.maxRows);
     const hiddenRows = allRows.length - rows.length;
+    const scroller = mk("div", { class: "plot-scroll" });
     const paneW = panePx().w;
-    const gutterW = RAIL.padL + rlayout.laneCount * RAIL.laneW;
+    // Lane columns narrow so the whole gutter fits a fixed share of the pane. At the flat 16px it
+    // used to be, this repo's twelve concurrent features spent 204px -- a fifth of the view -- on a
+    // column of connectors, before the first word of any save. Every lane still gets its own
+    // column; they just stop being the widest thing on screen.
+    const laneW = Math.max(6, Math.min(RAIL.laneW,
+      Math.floor((paneW * 0.16 - RAIL.padL) / Math.max(1, rlayout.laneCount))));
+    const gutterW = RAIL.padL + rlayout.laneCount * laneW;
     const h = RAIL.padT * 2 + rows.length * RAIL.rowH + (hiddenRows > 0 ? RAIL.rowH : 0);
     const svg = mk("svg", { width: paneW, height: Math.max(h, 40), class: "railsvg rail" });
     const yOf = (row) => RAIL.padT + row * RAIL.rowH + RAIL.rowH / 2;
-    const xOf = (lane) => RAIL.padL + lane * RAIL.laneW + RAIL.laneW / 2;
+    const xOf = (lane) => RAIL.padL + lane * laneW + laneW / 2;
 
     if (!allRows.length) {
       const t = mk("text", { x: RAIL.padL, y: 24, class: "rail-subject", text: "No episodes yet." });
       svg.appendChild(t);
-      rail.appendChild(svg);
+      scroller.appendChild(svg);
+      rail.appendChild(scroller);
       return;
     }
 
@@ -1483,10 +1841,17 @@ function episodeRailLayout(epView) {
     svg.appendChild(spineLayer);
 
     const textX = gutterW + 8;
-    // Reserve a right-hand zone for each save's feature chips; the subject takes what's left.
+    // Reserve a right-hand zone for each save's feature name; the subject takes what's left. The
+    // zone is inset from the pane's right edge, not flush to it -- flush, the longest name sat hard
+    // against the inspector's border with no air, and read as clipped whether or not it was.
     const chipZoneW = Math.min(Math.round(paneW * 0.42), 280);
     const chipX0 = paneW - chipZoneW;
-    const subjChars = Math.max(6, Math.floor((chipX0 - 8 - (textX + RAIL.shaW)) / 6.2));
+    // Measured, not estimated. A 6.2px-per-character guess is wrong in both directions in a
+    // proportional UI font -- `docs(plan): record the MCP parity work` is far narrower than 6.2px a
+    // glyph and `Implement persistent caching` far wider -- so subjects ran straight through the
+    // feature column on the right and the two texts overlapped, unreadably, on most rows. The same
+    // canvas `measureText` the Gantt's gutter labels are cut with answers this exactly.
+    const subjPx = Math.max(40, chipX0 - 8 - (textX + RAIL.shaW));
     for (const r of rows) {
       const inSel = r.feature === state.selected || (state.multi || []).includes(r.feature);
       const g = mk("g", { class: "rail-row" + (inSel ? " selected" : ""), "data-id": r.feature || "" });
@@ -1499,9 +1864,14 @@ function episodeRailLayout(epView) {
       }));
       g.appendChild(mk("text", { x: textX, y: yOf(r.row) + 4, class: "rail-sha", text: (r.sha || "").slice(0, 7) }));
       const subj = mk("text", { x: textX + RAIL.shaW, y: yOf(r.row) + 4, class: "rail-subject" });
-      subj.textContent = truncate((r.subject || "").replace(/\n/g, " "), subjChars);
+      const raw = (r.subject || "").replace(/\n/g, " ");
+      const cut = fitText(raw, subjPx, "rail-subject");
+      subj.textContent = cut.text;
+      // An `<text>` ignores a `title` ATTRIBUTE, so a cut subject carries its full text as a
+      // `<title>` CHILD or it is simply lost.
+      if (cut.clipped) subj.appendChild(mk("title", { text: raw }));
       g.appendChild(subj);
-      renderRailChips(g, r, chipX0, yOf(r.row) + 4, chipZoneW - 8);
+      renderRailChips(g, r, chipX0, yOf(r.row) + 4, chipZoneW - 16);
       if (r.feature) {
         g.addEventListener("click", (ev) => selectRow(r.feature, ev.metaKey || ev.ctrlKey || ev.shiftKey));
       }
@@ -1519,15 +1889,15 @@ function episodeRailLayout(epView) {
         class: "rail-chip-more", text: `+${hiddenRows} older episode(s) not shown`,
       }));
     }
-    rail.appendChild(svg);
-    rail.scrollTop = prevScroll;
+    scroller.appendChild(svg);
+    rail.appendChild(scroller);
+    scroller.scrollTop = prevScroll;
   }
 
   // One save-row's feature chips: each touched feature's label in its own identity hue, the
-  // dominant feature first, then densest-first (mirrors sgt/tui/graph.py's `chips`). Up to three,
-  // with a dim "+N" for the rest -- the save -> feature mapping, on every row. SVG text spans flow
-  // left->right in the reserved right-hand zone; widths are the same ~6px/char estimate the rail's
-  // subject truncation uses (no text metrics available in the webview).
+  // dominant feature first -- the save -> feature mapping, on every row. Widths come from canvas
+  // `measureText` in the real font (`fitText`/`textWidth`), never a per-character estimate: the
+  // estimate is what let these spans overlap the subject column on most rows.
   function renderRailChips(g, r, x0, y, maxW) {
     const feats = r.features || {};
     const ids = Object.keys(feats);
@@ -1539,26 +1909,26 @@ function episodeRailLayout(epView) {
       if (feats[a] !== feats[b]) return feats[b] - feats[a];
       return a < b ? -1 : a > b ? 1 : 0;
     });
-    const shown = ids.slice(0, 3);
-    const right = x0 + maxW;
-    let x = x0;
-    for (let i = 0; i < shown.length; i++) {
-      if (x >= right) return;
-      if (i > 0) {
-        g.appendChild(mk("text", { x, y, class: "rail-chip-sep", text: "·" }));
-        x += 8;
-      }
-      const fid = shown[i];
-      const node = byId(fid);
-      const label = truncate((node && node.label) || fid || "(unattributed)", 16);
-      const t = mk("text", { x, y, class: "rail-chip", fill: laneColor(fid || "") });
-      t.textContent = label;
-      g.appendChild(t);
-      x += label.length * 6.2 + 2;
-    }
-    const extra = ids.length - shown.length;
-    if (extra > 0 && x < right) {
-      g.appendChild(mk("text", { x, y, class: "rail-chip-more", text: `+${extra}` }));
+    // ONE name, whole, plus an honest count of the rest. Three names packed into this zone were
+    // three HALF names -- `Semantic Versioni…`, `Operation Match…`, `Intent Cluster…` -- and a
+    // reader can identify none of them; the dot in the gutter already attributes the row, so the
+    // column's whole job is to name the one feature the save is about. This is the rule the
+    // terminal's rail follows too; keep the two in step.
+    const extra = ids.length - 1;
+    const tag = extra > 0 ? ` +${extra}` : "";
+    const fid = ids[0];
+    const node = byId(fid);
+    const full = (node && node.label) || fid || "(unattributed)";
+    const cut = fitText(full, Math.max(0, maxW - textWidth(tag, "rail-chip-more")), "rail-chip");
+    if (!cut.text) return;
+    const t = mk("text", { x: x0, y, class: "rail-chip", fill: laneColor(fid || "") });
+    t.textContent = cut.text;
+    if (cut.clipped) t.appendChild(mk("title", { text: full }));
+    g.appendChild(t);
+    if (extra > 0) {
+      g.appendChild(mk("text", {
+        x: x0 + textWidth(cut.text, "rail-chip") + 4, y, class: "rail-chip-more", text: `+${extra}`,
+      }));
     }
   }
 
@@ -1575,6 +1945,58 @@ function episodeRailLayout(epView) {
     });
   }
 
+  // The divider between the name column and the plot -- draggable, the way a column header edge is
+  // draggable in every table view. It replaces a fixed 220px cap that truncated most of this repo's
+  // feature names with no recourse: the reader could not widen the column, and the cut names carried
+  // no tooltip either, so a row could be unidentifiable and stay that way.
+  //
+  // Drag sets `state.labelW` (persisted, so the column survives a reload); double-click clears it
+  // back to the measured fit. The visible rule is 1px; the grab target is 9px, because a 1px target
+  // is a target only in theory.
+  function renderColumnDivider(geom) {
+    const x = geom.labelW + GANTT.gutterPad / 2;
+    const g = mk("g", { class: "col-divider" });
+    g.appendChild(mk("line", { x1: x, x2: x, y1: GANTT.padT - 6, y2: geom.axisY, class: "col-divider-rule" }));
+    const grip = mk("rect", {
+      x: x - 4.5, y: 0, width: 9, height: Math.max(0, geom.axisY),
+      class: "col-divider-grip",
+    });
+    grip.appendChild(mk("title", { text: "Drag to resize the name column · double-click to fit" }));
+    g.appendChild(grip);
+
+    grip.addEventListener("pointerdown", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation(); // never let the grab fall through to the frontier scrubber underneath
+      grip.setPointerCapture(ev.pointerId);
+      const startX = ev.clientX, startW = geom.labelW;
+      const maxW = labelMaxW(panePx().w);
+      g.classList.add("dragging");
+      const onMove = (e) => {
+        const next = Math.round(Math.max(LABEL_MIN_W, Math.min(startW + (e.clientX - startX), maxW)));
+        if (next === state.labelW) return;
+        state.labelW = next;
+        // Redraw at the new width rather than sliding a preview line and reflowing on release: the
+        // point of the drag is to read the names, so the names have to grow while it is happening.
+        renderGraph();
+      };
+      const onUp = () => {
+        saveState();
+        document.removeEventListener("pointermove", onMove);
+        document.removeEventListener("pointerup", onUp);
+      };
+      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointerup", onUp);
+    });
+    grip.addEventListener("dblclick", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      state.labelW = null; // back to the measured fit
+      saveState();
+      renderGraph();
+    });
+    return g;
+  }
+
   // A subsystem swimlane header: a faint full-width band with a ▾ caret + label + "(N feat)", and
   // the group's [first,last] span drawn faintly in the plot. Clicking collapses the subsystem back
   // to a single meta-lane (toggleCollapse), so it's the "fold this cluster" affordance.
@@ -1584,12 +2006,13 @@ function episodeRailLayout(epView) {
     const g = mk("g", { class: "swimlane", "data-id": hd.collapsedId, "data-first": hd.firstCommit });
     g.appendChild(mk("rect", { x: 0, y, width: geom.w, height: GANTT.rowH, class: "swimlane-band" }));
     g.appendChild(mk("text", { x: 8 + ind, y: y + GANTT.rowH / 2 + 4, class: "swimlane-caret", text: "▾" }));
-    // The end-anchored meta grows leftward from ~labelW into the same column, so reserve its width
-    // (10px font ~= 6px/char, + an 8px gap) out of the label's char budget or the two overprint.
+    // The end-anchored meta grows leftward from the divider into the same column, so reserve its
+    // measured width (plus a gap) out of the label's budget or the two overprint.
     const metaText = `${hd.laneCount} feat`;
-    const metaW = metaText.length * 6 + 8;
-    const label = mk("text", { x: 22 + ind, y: y + GANTT.rowH / 2 + 4, class: "swimlane-label" });
-    label.textContent = truncate(hd.label, Math.max(4, Math.floor((geom.labelW - 30 - ind - metaW) / 6.5)));
+    const metaW = textWidth(metaText, "swimlane-meta") + 12;
+    const labelX = 22 + ind;
+    const label = mk("text", { x: labelX, y: y + GANTT.rowH / 2 + 4, class: "swimlane-label" });
+    setLabel(label, hd.label, geom.labelW - labelX - metaW);
     g.appendChild(label);
     // The subsystem's own activity envelope in the plot, so the header still shows "when".
     const bx = geom.xOf(hd.firstCommit), bx2 = geom.xOf(hd.lastCommit);
@@ -1630,8 +2053,10 @@ function episodeRailLayout(epView) {
     const label = mk("text", { x: labelX, y: midY + 4, class: "glane-label" });
     const node = byId(l.id);
     const raw = (node && node.label) || l.id;
-    label.textContent = truncate(l.isMeta ? `${raw} (${l.leaves.length})` : raw,
-      Math.floor((geom.labelW - labelX) / 6.5));
+    // Measured, and carrying its full text on hover whenever it had to be cut. A feature's name is
+    // the only thing on this row a reader can identify it by, and `put a search box in the h…` had
+    // no way at all to finish itself -- not a wider column, not a tooltip, not a drag.
+    setLabel(label, l.isMeta ? `${raw} (${l.leaves.length})` : raw, geom.labelW - labelX - 4);
     // A feature label is its own click target: it spotlights the feature (dim the field, light this
     // lane + co-change neighbors) rather than selecting it -- a distinct, reversible viewing gesture.
     // Meta (collapsed-subsystem) labels keep the row's fold-toggle behavior.
@@ -1646,9 +2071,17 @@ function episodeRailLayout(epView) {
     // Chunk-car train: the lane's checkpoints, packed left->right in seg_index order (see
     // renderCars) -- the visual atom is the intent segment, not a raw op or a shared time column.
     const lastX = renderCars(g, l, geom, color, barY, midY);
-    // Op count just past the cars (clamped so it stays on-screen).
-    const cx = Math.min(lastX + 6, geom.w - 30);
-    g.appendChild(mk("text", { x: cx, y: midY + 4, class: "gbar-count", text: String(l.opCount) }));
+    // Op count in its own right-hand column: one x for every row, so the numbers read down the page
+    // and none of them can land on the plot edge or the frontier scrubber.
+    const count = mk("text", {
+      // Anchored to the plot's own right edge, not the SVG's: the SVG is drawn at the pane's
+      // clientWidth, which includes the rail's 8px padding, so an x measured from `geom.w` sits
+      // past the visible content and only appears once the pane is scrolled sideways.
+      x: geom.plotX0 + geom.plotW + geom.forecastW + GANTT.countW - 6,
+      y: midY + 4, class: "gbar-count", text: String(l.opCount),
+    });
+    count.appendChild(mk("title", { text: `${l.opCount} edit(s) in this feature` }));
+    g.appendChild(count);
 
     // This lane's future, in the band right of the `now` rule: uncommitted work + pending plan steps,
     // drawn as cars in the same grammar as history (see laneForecast / renderForecastCars).
@@ -1697,21 +2130,34 @@ function episodeRailLayout(epView) {
   // draggable handle (and click anywhere in the plot) scrubs a fold frontier -- a translucent veil
   // covers everything to its right (the "future") and the code(I)/op-set panels reflect that point,
   // without a relayout on every drag.
-  function renderTimeAxis(svg, geom) {
+  // `svg` is the scrolling plot; `axisSvg` is the pinned strip beneath it. Marks that measure the
+  // plot's own height -- gridlines, the future-veil, the frontier line and its grab-band -- belong
+  // to the plot and scroll with it. The ruler and the drag handle belong to the axis and do not.
+  function renderTimeAxis(svg, axisSvg, geom) {
     if (layout.commitCount <= 1) return;
-    const y = geom.axisY;
-    svg.appendChild(mk("line", { x1: geom.plotX0, x2: geom.plotX0 + geom.plotW, y1: y, y2: y, class: "axis-track" }));
+    const y = geom.axisY;          // the plot's bottom edge, in plot coordinates
+    const ay = 8;                  // the track's y, in the axis strip's own coordinates
+    axisSvg.appendChild(mk("line", {
+      x1: geom.plotX0, x2: geom.plotX0 + geom.plotW, y1: ay, y2: ay, class: "axis-track",
+    }));
     for (let i = 0; i <= 4; i++) {
       const ci = Math.round((i / 4) * geom.maxCommit);
       const tx = geom.xOf(ci);
-      // Faint full-height gridline so the (now bottom-pinned) plot reads as a structured field of
-      // time columns rather than an empty expanse above the axis.
+      // Faint full-height gridline so the plot reads as a structured field of time columns rather
+      // than an empty expanse above the axis.
       svg.appendChild(mk("line", { x1: tx, x2: tx, y1: GANTT.padT, y2: y, class: "axis-gridline", "data-ci": ci }));
-      svg.appendChild(mk("text", {
-        x: tx, y: y + 16, class: "axis-tick" + (i === 0 ? " start" : i === 4 ? " end" : ""), text: `c${ci}`, "data-ci": ci,
+      axisSvg.appendChild(mk("text", {
+        x: tx, y: ay + 16, class: "axis-tick" + (i === 0 ? " start" : i === 4 ? " end" : ""), text: `c${ci}`, "data-ci": ci,
       }));
     }
     svg.appendChild(mk("text", { x: geom.plotX0, y: GANTT.padT - 3, class: "axis-title", text: "time →" }));
+    // The count column had no header at all: a strip of bare numbers (97, 328, 204…) down the right
+    // edge of the plot, in a view whose every other column says what it is. A reader who cannot
+    // tell whether that is edits, commits, or symbols cannot use it.
+    svg.appendChild(mk("text", {
+      x: geom.plotX0 + geom.plotW + GANTT.countW - 4, y: GANTT.padT - 3,
+      class: "axis-title count-title", text: "edits",
+    }));
 
     // The `now` rule: the honest right edge of measured time. Everything left of it happened;
     // everything right of it is forecast. Drawn only when there IS a forecast, so a repo with nothing
@@ -1733,7 +2179,7 @@ function episodeRailLayout(epView) {
       class: "future-veil" + (playheadCommitIndex == null ? " at-head" : ""),
     });
     const line = mk("line", { x1: fx, x2: fx, y1: GANTT.padT - 2, y2: y, class: "frontier-line" + (playheadCommitIndex == null ? " at-head" : "") });
-    const handle = mk("path", { d: `M ${fx - 5} ${y + 3} L ${fx + 5} ${y + 3} L ${fx} ${y - 4} Z`, class: "frontier-handle", "data-cx": fx });
+    const handle = mk("path", { d: `M ${fx - 5} ${ay + 3} L ${fx + 5} ${ay + 3} L ${fx} ${ay - 4} Z`, class: "frontier-handle", "data-cx": fx });
     // A wide invisible grab-band over the frontier line, spanning the plot height. Scrubbing is a
     // deliberate "grab the playhead and drag" gesture -- via this band or the bottom handle -- never
     // a plain click: a lane click still selects its feature, and clicking empty plot does nothing.
@@ -1746,14 +2192,14 @@ function episodeRailLayout(epView) {
     svg.appendChild(veil);
     svg.appendChild(line);
     svg.appendChild(band);
-    svg.appendChild(handle);
+    axisSvg.appendChild(handle);   // the handle rides the pinned ruler, always reachable
     svg.appendChild(readout);
     // Snap targets: every checkpoint boundary (a car's first/last commit) -- the commit indices where
     // "something happened", so the playhead clicks onto real events instead of arbitrary columns.
     const snap = new Set();
     for (const l of layout.lanes) for (const c of (l.cars || [])) { snap.add(c.firstIndex); snap.add(c.lastIndex); }
     graphView = { geom, handleEl: handle, frontierEl: line, veilEl: veil, scrubBandEl: band,
-      readoutEl: readout, snap: [...snap].sort((a, b) => a - b) };
+      readoutEl: readout, handleY: ay, snap: [...snap].sort((a, b) => a - b) };
     handle.addEventListener("pointerdown", onScrubPointerDown);
     band.addEventListener("pointerdown", onScrubPointerDown);
   }
@@ -1782,6 +2228,97 @@ function episodeRailLayout(epView) {
   function truncate(s, n) {
     s = String(s);
     return s.length > n ? s.slice(0, Math.max(1, n - 1)) + "…" : s;
+  }
+
+  // ─── Measuring label text ───────────────────────────────────────────────────────────────────
+  // Every label in the gutter used to be cut with `truncate(s, floor(availablePx / 6.5))` -- a
+  // guessed 6.5px per glyph, applied to whatever font the user's VS Code happens to render the
+  // webview in. The guess is wrong in both directions: a narrow font clipped names that had room to
+  // spare, a wide one let them overrun into the plot. Measure the actual string in the actual font
+  // instead, and cut to a PIXEL budget rather than a character count.
+  const _measureCtx = document.createElement("canvas").getContext("2d");
+  const _measureCache = new Map();   // `${font}\0${text}` -> px
+  const _fontByClass = new Map();    // css class -> resolved shorthand, re-read once per render
+  const _probes = new Map();
+
+  // The font a label class is ACTUALLY drawn in. VS Code resolves the family and size from the
+  // user's own settings at runtime, so the only honest way to get it is to ask a real node styled
+  // exactly like the labels -- hence one off-screen probe per class, kept for the session.
+  function fontFor(cls) {
+    let font = _fontByClass.get(cls);
+    if (font) return font;
+    let probe = _probes.get(cls);
+    if (!probe) {
+      const svg = mk("svg", { class: "railsvg gantt", width: "0", height: "0" });
+      svg.setAttribute("style", "position:absolute;left:-9999px;top:0;visibility:hidden");
+      probe = mk("text", { class: cls });
+      svg.appendChild(probe);
+      document.body.appendChild(svg);
+      _probes.set(cls, probe);
+    }
+    const cs = getComputedStyle(probe);
+    font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    _fontByClass.set(cls, font);
+    return font;
+  }
+
+  // Drop the resolved fonts at the start of each draw: the user can change the editor font
+  // mid-session, and a cache keyed to a stale font measures lies with total confidence.
+  function resetFontCache() {
+    _fontByClass.clear();
+    if (_measureCache.size > 4000) _measureCache.clear(); // a long session, not a leak
+  }
+
+  function textWidth(s, cls = "glane-label") {
+    s = String(s);
+    const font = fontFor(cls);
+    const key = font + " " + s;
+    let w = _measureCache.get(key);
+    if (w === undefined) {
+      _measureCtx.font = font;
+      w = _measureCtx.measureText(s).width;
+      _measureCache.set(key, w);
+    }
+    return w;
+  }
+
+  // Cut `s` to at most `px` pixels, ellipsis included. Returns `{text, clipped}` so the caller can
+  // decide whether the row needs a tooltip -- a name the reader cannot finish is exactly the case
+  // where hovering has to be able to finish it, and until now nothing in the gutter carried one.
+  function fitText(s, px, cls) {
+    s = String(s);
+    if (px <= 0) return { text: "", clipped: s.length > 0 };
+    if (textWidth(s, cls) <= px) return { text: s, clipped: false };
+    const ell = textWidth("…", cls);
+    let lo = 0, hi = s.length;
+    while (lo < hi) { // widest prefix whose glyphs + `…` still fit
+      const mid = (lo + hi + 1) >> 1;
+      if (textWidth(s.slice(0, mid), cls) + ell <= px) lo = mid; else hi = mid - 1;
+    }
+    return { text: s.slice(0, lo).trimEnd() + "…", clipped: true };
+  }
+
+  // True when a chapter's name only repeats words from the lane it sits on -- `Sort The Grid` on the
+  // row called `sort the grid by name, species or days to harvest`. Those labels are most of the ink
+  // and none of the information: the row says it, then the bar inside the row says it again in title
+  // case. Compared on the first few words, since the two strings are ellipsized independently and a
+  // tail cut at a different place would otherwise read as new content.
+  // The terminal's `_echoes` in sgt/tui/graph.py is the same rule -- keep the two in step.
+  const WORD_RE = /[a-z0-9]+/g;
+  function echoesLane(chapter, lane) {
+    const laneWords = new Set(String(lane).toLowerCase().match(WORD_RE) || []);
+    if (!laneWords.size) return false;
+    const words = (String(chapter).toLowerCase().match(WORD_RE) || []).slice(0, 6);
+    return words.length > 0 && words.every((w) => laneWords.has(w));
+  }
+
+  // Put the full text on hover whenever the drawn text is a cut of it. An SVG <text> ignores a
+  // `title` attribute, so the tooltip has to be a <title> CHILD (same rule the chapter cars follow).
+  function setLabel(el, full, px, cls) {
+    const fit = fitText(full, px, cls || el.getAttribute("class"));
+    el.textContent = fit.text;
+    if (fit.clipped) el.appendChild(mk("title", { text: String(full) }));
+    return fit.clipped;
   }
 
   // A circular progress arc for a plan session's `matchedCount/stepCount` -- geometric, no
@@ -1822,7 +2359,9 @@ function episodeRailLayout(epView) {
     graphView.veilEl.setAttribute("width", Math.max(0, geom.plotX0 + geom.plotW - fx));
     graphView.veilEl.classList.toggle("at-head", atHead);
     const hd = graphView.handleEl;
-    const y = geom.axisY;
+    // The handle lives in the PINNED axis SVG, so its y is that strip's own coordinate -- not the
+    // plot's bottom edge, which is where it used to sit when the two shared one SVG.
+    const y = graphView.handleY != null ? graphView.handleY : geom.axisY;
     hd.setAttribute("d", `M ${fx - 5} ${y + 3} L ${fx + 5} ${y + 3} L ${fx} ${y - 4} Z`);
     if (graphView.scrubBandEl) graphView.scrubBandEl.setAttribute("x", fx - 6); // keep the grab-band on the line
     if (graphView.readoutEl) {
