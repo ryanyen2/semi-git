@@ -87,7 +87,7 @@ export const CONSENT: Instrument = {
   perHalf: false,
   estimateMin: 2,
   intro:
-    'Please read each line and tick it if you agree. The first five are needed to take part. The last two are genuinely optional, and ticking or not ticking them makes no difference to anything else, including your payment.',
+    'Please read each statement and check it if you agree. The first five are required to participate. The next two are optional and do not affect your payment. Then type your name to sign.',
   items: [
     {
       id: 'read',
@@ -99,14 +99,14 @@ export const CONSENT: Instrument = {
       id: 'recording',
       type: 'checkbox',
       required: true,
-      label: 'I agree to my screen and voice being recorded for this session.',
+      label: 'I agree to have my screen and voice recorded during this session.',
     },
     {
       id: 'telemetry',
       type: 'checkbox',
       required: true,
       label:
-        'I agree that the commands I run during the session, in the terminal and through the editor, are recorded.',
+        'I agree to have the commands I run in the terminal and editor recorded during this session.',
     },
     {
       id: 'deidentified',
@@ -125,7 +125,7 @@ export const CONSENT: Instrument = {
       type: 'checkbox',
       required: false,
       label:
-        'Optional: I agree to short anonymized quotes from my session appearing in a publication.',
+        'Optional: I agree to the use of short, anonymized quotes from my session in a publication.',
     },
     // The own-repository walkthrough (protocol v2 section 7). Optional and
     // separately ticked, because it is the one part of the session that
@@ -138,8 +138,8 @@ export const CONSENT: Instrument = {
       type: 'checkbox',
       required: false,
       label:
-        'Optional: for the closing interview, I agree that a repository I bring is processed on this machine to build a view of its history, and that short excerpts of its code are sent to a language model service to name the pieces of work. Nothing from the repository is kept after the session; only the recorded conversation about it is.',
-      help: 'If you leave this unticked, the interview uses a prepared public repository instead.',
+        'Optional: For the closing interview, I agree to use a repository I bring. The repository will be processed on this machine to build a view of its history. Short code excerpts will be sent to a language model service to generate labels for parts of the history. The repository will not be kept after the session; only the recorded interview will be retained.',
+      help: 'If you do not agree, we will use a prepared public repository instead.',
     },
     {
       id: 'name',
@@ -147,7 +147,7 @@ export const CONSENT: Instrument = {
       required: true,
       label: 'Type your name to sign',
       placeholder: 'Your name',
-      help: 'Stored with your consent record and separated from your task data before analysis.',
+      help: 'Your name will be stored with your consent record and separated from your task data before analysis.',
     },
   ],
 }
@@ -156,12 +156,13 @@ export const CONSENT: Instrument = {
 // Background
 // ---------------------------------------------------------------------------
 
-const FREQ: Option[] = [
-  { value: '0', label: 'Never' },
-  { value: '1', label: 'Rarely' },
-  { value: '2', label: 'Sometimes' },
-  { value: '3', label: 'Often' },
-]
+// Only used by the git-verb frequency grid, which is commented out below.
+// const FREQ: Option[] = [
+//   { value: '0', label: 'Never' },
+//   { value: '1', label: 'Rarely' },
+//   { value: '2', label: 'Sometimes' },
+//   { value: '3', label: 'Often' },
+// ]
 
 export const BACKGROUND: Instrument = {
   id: 'background',
@@ -170,13 +171,13 @@ export const BACKGROUND: Instrument = {
   perHalf: false,
   estimateMin: 5,
   intro:
-    'None of this is a test and none of it affects what you are asked to do. It lets us describe who took part, and it lets us tell apart differences caused by the tools from differences caused by experience.',
+    'These questions help us describe the study participants and account for differences in prior experience.',
   items: [
     {
       id: 'yearsCoding',
       type: 'number',
       required: true,
-      label: 'Roughly how many years have you been writing code seriously?',
+      label: 'About how many years have you been programming?',
       min: 0,
       max: 50,
     },
@@ -184,49 +185,49 @@ export const BACKGROUND: Instrument = {
       id: 'yearsGit',
       type: 'number',
       required: true,
-      label: 'Roughly how many years have you used git?',
+      label: 'About how many years have you used Git?',
       min: 0,
       max: 30,
     },
-    {
-      id: 'gitVerbs',
-      type: 'grid',
-      required: true,
-      label: 'How often do you use each of these?',
-      help: 'There is no right answer here. Plenty of good engineers have never run bisect.',
-      options: FREQ,
-      serves: 'git expertise composite, 0-24',
-      rows: [
-        { id: 'log', label: 'git log' },
-        { id: 'blame', label: 'git blame' },
-        { id: 'bisect', label: 'git bisect' },
-        { id: 'revert', label: 'git revert' },
-        { id: 'reset', label: 'git reset' },
-        { id: 'rebasei', label: 'git rebase -i' },
-        { id: 'reflog', label: 'git reflog' },
-        { id: 'cherrypick', label: 'git cherry-pick' },
-      ],
-    },
-    {
-      id: 'agentTools',
-      type: 'multi',
-      required: true,
-      label: 'Which of these have you used in agent mode, where the tool edits files itself?',
-      options: [
-        { value: 'claude-code', label: 'Claude Code' },
-        { value: 'cursor', label: 'Cursor' },
-        { value: 'copilot', label: 'GitHub Copilot agent mode' },
-        { value: 'codex', label: 'Codex' },
-        { value: 'windsurf', label: 'Windsurf' },
-        { value: 'other', label: 'Something else' },
-        { value: 'none', label: 'None of these' },
-      ],
-    },
+    // {
+    //   id: 'gitVerbs',
+    //   type: 'grid',
+    //   required: true,
+    //   label: 'How often do you use each of these Git commands?',
+    //   // help: 'There is no right answer here. Plenty of good engineers have never run bisect.',
+    //   options: FREQ,
+    //   serves: 'git expertise composite, 0-24',
+    //   rows: [
+    //     { id: 'log', label: 'git log' },
+    //     { id: 'blame', label: 'git blame' },
+    //     { id: 'bisect', label: 'git bisect' },
+    //     { id: 'revert', label: 'git revert' },
+    //     { id: 'reset', label: 'git reset' },
+    //     { id: 'rebasei', label: 'git rebase -i' },
+    //     { id: 'reflog', label: 'git reflog' },
+    //     { id: 'cherrypick', label: 'git cherry-pick' },
+    //   ],
+    // },
+    // {
+    //   id: 'agentTools',
+    //   type: 'multi',
+    //   required: true,
+    //   label: 'Which of these AI coding tools have you used in a mode where the tool edits files for you?',
+    //   options: [
+    //     { value: 'claude-code', label: 'Claude Code' },
+    //     { value: 'cursor', label: 'Cursor' },
+    //     { value: 'copilot', label: 'GitHub Copilot agent mode' },
+    //     { value: 'codex', label: 'Codex' },
+    //     { value: 'windsurf', label: 'Windsurf' },
+    //     { value: 'other', label: 'Something else' },
+    //     { value: 'none', label: 'None of these' },
+    //   ],
+    // },
     {
       id: 'agentFrequency',
       type: 'select',
       required: true,
-      label: 'How often do you work with an AI coding assistant?',
+      label: 'How often do you use an AI coding assistant?',
       options: [
         { value: 'daily', label: 'Most days' },
         { value: 'weekly', label: 'Most weeks' },
@@ -239,31 +240,31 @@ export const BACKGROUND: Instrument = {
       id: 'aiShare',
       type: 'slider',
       required: true,
-      label: 'Of the code you shipped last month, roughly what share did an assistant write?',
+      label: 'About what percentage of the code you shipped last month was written by an AI coding assistant?',
       min: 0,
       max: 100,
       step: 5,
       anchors: ['None of it', 'All of it'],
     },
-    {
-      id: 'languages',
-      type: 'text',
-      required: true,
-      label: 'Which languages do you work in most?',
-      placeholder: 'Python, TypeScript, ...',
-    },
-    {
-      id: 'priorSgt',
-      type: 'select',
-      required: true,
-      label: 'Have you used a tool called sgt or semi-git before?',
-      help: 'If yes, say so. It does not disqualify you from anything, it just has to be recorded.',
-      options: [
-        { value: 'no', label: 'No' },
-        { value: 'heard', label: 'Heard of it, never used it' },
-        { value: 'yes', label: 'Yes, I have used it' },
-      ],
-    },
+    // {
+    //   id: 'languages',
+    //   type: 'text',
+    //   required: true,
+    //   label: 'Which languages do you work in most?',
+    //   placeholder: 'Python, TypeScript, ...',
+    // },
+    // {
+    //   id: 'priorSgt',
+    //   type: 'select',
+    //   required: true,
+    //   label: 'Have you used a tool called sgt or semi-git before?',
+    //   help: 'If yes, say so. It does not disqualify you from anything, it just has to be recorded.',
+    //   options: [
+    //     { value: 'no', label: 'No' },
+    //     { value: 'heard', label: 'Heard of it, never used it' },
+    //     { value: 'yes', label: 'Yes, I have used it' },
+    //   ],
+    // },
   ],
 }
 
@@ -305,62 +306,43 @@ export const TLX: Instrument = {
   // because TLX measures the load of a bounded task and returns something else
   // when pointed at an hour of mixed activity.
   intro:
-    'Six scales about the requests you just worked through. Click anywhere on each line. Answer quickly, first instinct. There is no good or bad score.',
+    'For these six questions, think only about the four stages you just completed. Choose a point on each scale based on your first impression.',
   items: [
-    // Each subscale carries its published name, its question and its published
-    // definition. The name alone is not enough: the six correlate strongly in
-    // interactive work, and a participant reading only "Mental demand" answers
-    // several of them alike. Name and question are joined by an em dash, which
-    // is where the renderer splits them.
     tlxItem(
       'mental',
       'Mental demand — How mentally demanding was the task?',
-      'How much mental and perceptual activity was required? Thinking, deciding, looking, ' +
-        'remembering, searching. Was the task easy or demanding, simple or complex?',
+      'How much thinking, deciding, looking, remembering, and searching did the task require?',
       ['Very low', 'Very high'],
     ),
     tlxItem(
       'physical',
       'Physical demand — How physically demanding was the task?',
-      // No "for desk work this is usually low, and that is a normal answer" here
-      // any more. It was meant kindly and it told the participant what to
-      // answer before they answered, on the one subscale where a floor effect
-      // is the expected result -- so it manufactured the very reading it was
-      // reassuring them about.
-      'How much physical activity was required? Typing, clicking, moving between windows. Was ' +
-        'the task easy or demanding, restful or laborious?',
+      'How much physical activity did the task require, such as typing, clicking, and moving between windows?',
       ['Very low', 'Very high'],
     ),
     tlxItem(
       'temporal',
       'Temporal demand — How hurried or rushed was the pace of the task?',
-      'How much time pressure did you feel because of the rate at which things happened? Was the ' +
-        'pace slow and leisurely, or rapid and frantic?',
+      'How much time pressure did you feel because of the pace of the work?',
       ['Very low', 'Very high'],
     ),
-    // Presented failure-to-perfect, the direction the words are read in, and
-    // reversed exactly once in `tlxScore`. It was previously presented
-    // perfect-to-failure AND reversed in scoring, so a participant who felt
-    // they had done perfectly contributed the maximum possible workload.
     tlxItem(
       'performance',
       'Performance — How successful were you in accomplishing what you were asked to do?',
-      'How satisfied were you with how you did? This is the one scale whose ends run the other ' +
-        'way, so read them.',
+      'How satisfied were you with your performance?',
       ['Failure', 'Perfect'],
       true,
     ),
     tlxItem(
       'effort',
-      'Effort — How hard did you have to work to accomplish your level of performance?',
-      'Mentally and physically, how hard did you have to work to reach the level of performance ' +
-        'you reached?',
+      'Effort — How hard did you have to work to complete the task?',
+      'Think about both mental and physical effort.',
       ['Very low', 'Very high'],
     ),
     tlxItem(
       'frustration',
-      'Frustration — How insecure, discouraged, irritated, stressed and annoyed were you?',
-      'As against secure, content, relaxed and complacent.',
+      'Frustration — How frustrated, stressed, irritated, discouraged, or annoyed did you feel?',
+      '',
       ['Very low', 'Very high'],
     ),
   ],
@@ -405,7 +387,7 @@ export const UMUX_LITE: Instrument = {
   perHalf: true,
   estimateMin: 1,
   intro:
-    'Two statements about the setup you just used for those requests. Rate how much you agree.',
+    'First, rate the setup you just used. Then rate the workload of the four stages you just completed.',
   items: [
     umuxItem(
       'capability',
@@ -444,8 +426,7 @@ export const AFTER_HALF: Instrument = {
   perHalf: true,
   estimateMin: 3,
   intro:
-    'Two questions about the setup you have just used, then six about how the work felt. ' +
-    'Nothing here is timed, and there is no good or bad score.',
+    'First, rate the setup you just used. Then rate the workload of the four stages you just completed.',
   items: [
     umuxItem(
       'capability',
@@ -707,135 +688,105 @@ export const PREFERENCE: Instrument = {
   // paper's argument is about a tradeoff, and a block that cannot record "these
   // were the same here" cannot describe one.
   intro:
-    'Now that you have used both, which one would you rather have had for each kind of job? There is no expected answer, and "no real difference" is a real answer — some of these jobs may genuinely not differ, and we would rather have that than a guess.',
+    'For each item, choose whether you would prefer Setup A or Setup B. Choose “No real difference” if they felt about the same.',
   items: [
-    // Which letter was which, on the page, at the moment they are asked to
-    // compare them. Every comparable published study named the two tools
-    // outright; we cannot, because naming them tells the participant which one
-    // is ours. The cost of that choice is that "Setup A" is an arbitrary token
-    // they last saw an hour ago, and this line is what we pay instead.
-    //
-    // Note for the writeup: A and B are assigned by order, so letter and order
-    // are perfectly confounded within a participant and recency favours B.
-    // Counterbalancing fixes that across the group, not inside one person.
     {
       id: 'reminder',
       type: 'statement',
       required: false,
       label: 'Setup A was the one you used first. Setup B was the one you used second.',
     },
-    // One item per stage the participant just did twice, in outcome terms,
-    // never in tool terms -- "taking one piece of work out without breaking
-    // the rest", not "reverting a feature". A question phrased as a mechanism
-    // only one setup has is not a comparison, it is a leading question with a
-    // forced answer. Each item names the same job as one stage, so every
-    // comparison here has a scored measure and a rating triplet to cross
-    // against.
-    section('secJobs', 'The jobs you just did'),
-    pref('jobRecord', 'Recording work an assistant did, and knowing what you recorded', 'C1'),
+    section('secJobs', 'The tasks you just did'),
+    pref('jobRecord', 'Recording the assistant\'s work and knowing what was included', 'C1'),
     pref('jobFind', 'Finding the piece of work behind a wrong behavior', 'C2'),
-    pref('jobRemove', 'Taking one piece of work out without breaking the rest', 'C3'),
-    pref('jobPutBack', 'Putting removed work back, after the fact', 'C3'),
-    pref('jobIntended', 'Being confident the result was what you intended', 'C3'),
+    pref('jobRemove', 'Removing one piece of work without breaking the rest', 'C3'),
+    pref('jobPutBack', 'Restoring work you had removed', 'C3'),
+    pref('jobIntended', 'Knowing that the final result matched what you intended', 'C3'),
 
-    {
-      id: 'reasons',
-      type: 'multi',
-      required: true,
-      label: 'What made the difference, wherever you felt one?',
-      help: 'Tick anything that applies. If nothing does, tick the last one.',
-      // Replaces five free-text "Why?" boxes. The options are the reasons
-      // pilots actually gave, in their words, plus the two that would be
-      // evidence against us: knowing the commands already, and not trusting
-      // what the tool did. An option list with no losing options is a leading
-      // question wearing a checkbox.
-      options: [
-        { value: 'preview', label: 'I could see what a change would do before doing it' },
-        { value: 'names', label: 'What things were called matched what I was looking for' },
-        { value: 'blast', label: 'I could tell what else would be affected' },
-        { value: 'whole', label: 'I could see the whole piece of work, not just the lines' },
-        { value: 'undoEasy', label: 'Undoing was easy' },
-        { value: 'undoTrust', label: 'I trusted what the undo had done' },
-        { value: 'record', label: 'I knew what had gone into the record when I saved' },
-        { value: 'familiar', label: 'I already knew the commands, so I was faster' },
-        { value: 'predictable', label: 'I could predict exactly what it would do' },
-        { value: 'escape', label: 'When it went wrong I knew how to get out' },
-        { value: 'none', label: 'Nothing much — they felt about the same' },
-      ],
-    },
+    // {
+    //   id: 'reasons',
+    //   type: 'multi',
+    //   required: true,
+    //   label: 'What differences mattered to you?',
+    //   help: 'Select any that apply. If none apply, choose the last option.',
+    //   // Replaces five free-text "Why?" boxes. The options are the reasons
+    //   // pilots actually gave, in their words, plus the two that would be
+    //   // evidence against us: knowing the commands already, and not trusting
+    //   // what the tool did. An option list with no losing options is a leading
+    //   // question wearing a checkbox.
+    //   options: [
+    //     { value: 'preview', label: 'I could see what a change would do before doing it' },
+    //     { value: 'names', label: 'The names matched what I was looking for' },
+    //     { value: 'blast', label: 'I could tell what else a change would affect' },
+    //     { value: 'whole', label: 'I could see the whole piece of work, not just the changed lines' },
+    //     { value: 'undoEasy', label: 'Undoing changes was easy' },
+    //     { value: 'undoTrust', label: 'I trusted the result after undoing' },
+    //     { value: 'record', label: 'I knew what was included when I recorded work' },
+    //     { value: 'familiar', label: 'I already knew the commands' },
+    //     { value: 'predictable', label: 'I could predict exactly what it would do' },
+    //     { value: 'escape', label: 'When it went wrong I knew how to get out' },
+    //     { value: 'none', label: 'Nothing much — they felt about the same' },
+    //   ],
+    // },
 
-    section('secWhere', 'Where each one would earn its keep'),
-    // Two hypotheticals, pointing opposite ways: a repository you will never see
-    // again is not a job that rewards reading history carefully, and a codebase
-    // you will own for a year is. A participant who picks the same setup for
-    // both, having also picked it for all five jobs above, is evidence of
-    // demand characteristics and is reported as such. Differentiated answers
-    // are the credible signal.
-    //
-    // A third, "a production hotfix under time pressure", was cut. Its own note
-    // recorded that we had no prediction for it, and an item nobody can be wrong
-    // about cannot discriminate -- it was costing a question to collect a shrug.
-    //
-    // These are the weakest items in the block and are kept deliberately few:
-    // each asks a person to forecast from thirty-five minutes of use, which the
-    // five items above do not.
-    pref(
-      'scenarioThrowaway',
-      'A repository you have never seen and will not see again',
-      'discriminant — plain git expected',
-    ),
-    pref(
-      'scenarioOwn',
-      'A codebase you will own for the next year',
-      'discriminant — sgt expected',
-    ),
-    section('secOverall', 'Overall'),
-    pref('overall', 'Which setup would you rather work in?'),
-    {
-      id: 'wouldUseA',
-      type: 'likert',
-      required: true,
-      min: 1,
-      max: 7,
-      anchors: ['Strongly disagree', 'Strongly agree'],
-      label: 'I would want Setup A on my own projects.',
-    },
-    {
-      id: 'wouldUseB',
-      type: 'likert',
-      required: true,
-      min: 1,
-      max: 7,
-      anchors: ['Strongly disagree', 'Strongly agree'],
-      label: 'I would want Setup B on my own projects.',
-    },
-    {
-      id: 'cost',
-      type: 'multi',
-      required: true,
-      label: 'What would put you off using the one you preferred?',
-      help: 'The honest answer here is worth more to us than the one above.',
-      // Every tool study collects reasons to adopt. This one collects the price,
-      // because the finding is a tradeoff and a tradeoff with no cost recorded
-      // reads as advocacy.
-      options: [
-        { value: 'learn', label: 'Learning it' },
-        { value: 'trust', label: 'Not being sure what it had done' },
-        { value: 'slow', label: 'Waiting for it' },
-        { value: 'wrong', label: 'It grouped or named things in ways I disagreed with' },
-        { value: 'reconstruct', label: 'Having to piece together what happened from the messages' },
-        { value: 'team', label: 'Everyone else uses the other one' },
-        { value: 'escape', label: 'Not knowing how to get out when it went wrong' },
-        { value: 'nothing', label: 'Nothing — I would use it tomorrow' },
-      ],
-    },
-    {
-      id: 'missing',
-      type: 'textarea',
-      required: false,
-      label: 'Anything you wanted to ask the project history and could not?',
-      help: 'Optional. Answer from what you remember wanting, not from what either setup offered.',
-    },
+    // section('secWhere', 'Preference among different situations'),
+    // pref(
+    //   'scenarioThrowaway',
+    //   'A repository you are using only once',
+    //   'discriminant — plain git expected',
+    // ),
+    // pref(
+    //   'scenarioOwn',
+    //   'A codebase you will own for the next year',
+    //   'discriminant — sgt expected',
+    // ),
+    // section('secOverall', 'Overall'),
+    // pref('overall', 'Which setup would you rather work in?'),
+    // {
+    //   id: 'wouldUseA',
+    //   type: 'likert',
+    //   required: true,
+    //   min: 1,
+    //   max: 7,
+    //   anchors: ['Strongly disagree', 'Strongly agree'],
+    //   label: 'I would want Setup A on my own projects.',
+    // },
+    // {
+    //   id: 'wouldUseB',
+    //   type: 'likert',
+    //   required: true,
+    //   min: 1,
+    //   max: 7,
+    //   anchors: ['Strongly disagree', 'Strongly agree'],
+    //   label: 'I would want Setup B on my own projects.',
+    // },
+    // {
+    //   id: 'cost',
+    //   type: 'multi',
+    //   required: true,
+    //   label: 'What would put you off using the one you preferred?',
+    //   help: 'The honest answer here is worth more to us than the one above.',
+    //   // Every tool study collects reasons to adopt. This one collects the price,
+    //   // because the finding is a tradeoff and a tradeoff with no cost recorded
+    //   // reads as advocacy.
+    //   options: [
+    //     { value: 'learn', label: 'Learning it' },
+    //     { value: 'trust', label: 'Not being sure what it had done' },
+    //     { value: 'slow', label: 'Waiting for it' },
+    //     { value: 'wrong', label: 'It grouped or named things in ways I disagreed with' },
+    //     { value: 'reconstruct', label: 'Having to piece together what happened from the messages' },
+    //     { value: 'team', label: 'Everyone else uses the other one' },
+    //     { value: 'escape', label: 'Not knowing how to get out when it went wrong' },
+    //     { value: 'nothing', label: 'Nothing — I would use it tomorrow' },
+    //   ],
+    // },
+    // {
+    //   id: 'missing',
+    //   type: 'textarea',
+    //   required: false,
+    //   label: 'Anything you wanted to ask the project history and could not?',
+    //   help: 'Optional. Answer from what you remember wanting, not from what either setup offered.',
+    // },
   ],
 }
 

@@ -1,39 +1,50 @@
 # Welcome
 
-Thanks for taking part. Plan for an hour and a half, including breaks. Your facilitator walks you through every step, so you never have to work out on your own what comes next.
+Thanks for taking part. Plan for an hour and a half, including breaks. Your facilitator will guide you through the session and tell you when to move on.
 
 ## What you'll do
 
-- Work through four short stages on a small web dashboard: record a change an AI assistant made, find the piece of work behind a wrong number, take that work out, and put it back.
-- Do that twice, with two different setups for reading and changing the project's history, on two different projects.
-- At the end, look at one of your own repositories through one of the setups, and talk with us about it.
+You will work through four stages on a small web dashboard:
 
-We are comparing the two setups, not testing you. If something confuses you, saying so is the most useful thing you can do for us.
+1. Record changes made earlier by an AI coding assistant.
+2. Find the work that caused a wrong result.
+3. Remove that work.
+4. Restore it.
+
+You will complete these stages twice. Each round uses a different project and a different way of working with project history.
+
+At the end, we will open a history view for one of your repositories if you chose to provide one. Otherwise, we will use a prepared public repository.
 
 ## Think out loud
 
-Say what you are about to do and what you expect to happen, and say when something surprises you. We record the screen and audio, and you can ask us to stop at any time.
+As you work, say what you are looking for, what you plan to do, and what you expect to happen. Please also say when something is confusing or surprising.
 
-## The schedule
+We record your screen and voice during the session.
 
-| Minutes | What |
+## Schedule
+
+| Minutes | What you'll do |
 |---|---|
-| 4 | Consent and a few questions about your background |
-| 6 | Setting up your machine |
-| 5 | Practice with the first setup, on the project itself |
-| 20 | Four stages with the first setup, each a few minutes plus a few questions |
-| 2 | Questions about that setup |
-| 6 | Setting up and practising the second setup |
-| 20 | The same four stages with the second setup, on the second project |
-| 2 | Questions again |
-| 3 | Comparing the two |
-| 15 | One of your own repositories, and a short interview |
-| 2 | Handing your data over |
+| 4 | Consent and background questions |
+| 6 | Set up the first project |
+| 5 | Practice with the first setup |
+| 20 | Four stages with the first setup |
+| 2 | Questions about the first setup |
+| 6 | Set up and practice with the second setup |
+| 20 | Four stages with the second setup |
+| 2 | Questions about the second setup |
+| 3 | Compare the two setups |
+| 15 | Repository walkthrough and interview |
+| 2 | Send the study data and clean up |
 
-That is about 85 minutes of work. The rest is breaks. Each stage has a visible countdown for the doing part, the questions after a stage are untimed, and running out of time on a stage is a normal result.
+The study contains about 85 minutes of activities, with breaks during the remaining time.
 
-## Good to know
+Each stage has a visible timer for the task itself. The questions after each stage are untimed. When the timer ends, move on to the questions and then continue to the next stage.
 
-- There is no AI assistant to chat with during the timed stages. The first stage shows you changes an assistant made earlier, and every participant sees exactly the same ones.
-- Nothing you do can break anything. Every project is a fresh copy, and every stage starts by resetting it. If you get stuck, say so rather than hiding it.
-- The setup installs everything inside one folder with its own Python. Your shell, your global packages, and anything you have installed stay untouched, and a repository of your own is only read, never changed.
+## During the stages
+
+- The AI changes were made before the study. Every participant sees the same changes.
+- Each stage starts from a prepared project state, so your work in one stage does not affect the next.
+- If you get stuck, say what you are trying to do and continue as far as you can.
+- The study software stays inside the study folder and uses its own Python environment.
+- A repository you provide for the final interview is read to build its history view. The study does not edit it.

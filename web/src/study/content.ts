@@ -1,10 +1,3 @@
-// Participant-facing prose: the welcome, the practice sheets, the task-block
-// preamble, the interview page, the handover, and the debrief.
-//
-// One wording, not two: the printed sheets in docs/study/materials/ are
-// generated from this file (`npm run gen:materials`), and a test fails if a
-// file on disk has drifted.
-
 import type { Condition, Project } from '../lib/types'
 import {
   BLOCK_ESTIMATE_MIN,
@@ -15,383 +8,494 @@ import {
 } from './tasks'
 import { TOTAL_ESTIMATE_MIN } from './flow'
 
-// The numbers in the schedule below are read from the step list and the stage
-// caps rather than written out. The old copy said 110 minutes while the steps
-// added up to 113, which is the harmless-looking version of a promise the
-// session cannot keep.
-//
-// The figure at the top is rounder and more generous than the sum: it is what
-// someone blocks out in a calendar, and it has to hold with breaks, a slow
-// install, and a facilitator explaining something twice. A test keeps it above
-// the computed total, so adding a stage cannot quietly overrun the promise the
-// participant agreed to.
 export const PLAN_FOR = 'an hour and a half'
 
 export const WELCOME_MD = `
-Thanks for taking part. Plan for ${PLAN_FOR}, including breaks. Your facilitator walks you through every step, so you never have to work out on your own what comes next.
+Thanks for taking part. Plan for ${PLAN_FOR}, including breaks. Your facilitator will guide you through the session and tell you when to move on.
 
 ## What you'll do
 
-- Work through four short stages on a small web dashboard: record a change an AI assistant made, find the piece of work behind a wrong number, take that work out, and put it back.
-- Do that twice, with two different setups for reading and changing the project's history, on two different projects.
-- At the end, look at one of your own repositories through one of the setups, and talk with us about it.
+You will work through four stages on a small web dashboard:
 
-We are comparing the two setups, not testing you. If something confuses you, saying so is the most useful thing you can do for us.
+1. Record changes made earlier by an AI coding assistant.
+2. Find the work that caused a wrong result.
+3. Remove that work.
+4. Restore it.
+
+You will complete these stages twice. Each round uses a different project and a different way of working with project history.
+
+At the end, we will open a history view for one of your repositories if you chose to provide one. Otherwise, we will use a prepared public repository.
 
 ## Think out loud
 
-Say what you are about to do and what you expect to happen, and say when something surprises you. We record the screen and audio, and you can ask us to stop at any time.
+As you work, say what you are looking for, what you plan to do, and what you expect to happen. Please also say when something is confusing or surprising.
 
-## The schedule
+We record your screen and voice during the session.
 
-| Minutes | What |
+## Schedule
+
+| Minutes | What you'll do |
 |---|---|
-| 4 | Consent and a few questions about your background |
-| 6 | Setting up your machine |
-| 5 | Practice with the first setup, on the project itself |
-| ${BLOCK_ESTIMATE_MIN} | Four stages with the first setup, each a few minutes plus a few questions |
-| 2 | Questions about that setup |
-| 6 | Setting up and practising the second setup |
-| ${BLOCK_ESTIMATE_MIN} | The same four stages with the second setup, on the second project |
-| 2 | Questions again |
-| 3 | Comparing the two |
-| 15 | One of your own repositories, and a short interview |
-| 2 | Handing your data over |
+| 4 | Consent and background questions |
+| 6 | Set up the first project |
+| 5 | Practice with the first setup |
+| ${BLOCK_ESTIMATE_MIN} | Four stages with the first setup |
+| 2 | Questions about the first setup |
+| 6 | Set up and practice with the second setup |
+| ${BLOCK_ESTIMATE_MIN} | Four stages with the second setup |
+| 2 | Questions about the second setup |
+| 3 | Compare the two setups |
+| 15 | Repository walkthrough and interview |
+| 2 | Send the study data and clean up |
 
-That is about ${TOTAL_ESTIMATE_MIN} minutes of work. The rest is breaks. Each stage has a visible countdown for the doing part, the questions after a stage are untimed, and running out of time on a stage is a normal result.
+The study contains about ${TOTAL_ESTIMATE_MIN} minutes of activities, with breaks during the remaining time.
 
-## Good to know
+Each stage has a visible timer for the task itself. The questions after each stage are untimed. When the timer ends, move on to the questions and then continue to the next stage.
 
-- There is no AI assistant to chat with during the timed stages. The first stage shows you changes an assistant made earlier, and every participant sees exactly the same ones.
-- Nothing you do can break anything. Every project is a fresh copy, and every stage starts by resetting it. If you get stuck, say so rather than hiding it.
-- The setup installs everything inside one folder with its own Python. Your shell, your global packages, and anything you have installed stay untouched, and a repository of your own is only read, never changed.
+## During the stages
+
+- The AI changes were made before the study. Every participant sees the same changes.
+- Each stage starts from a prepared project state, so your work in one stage does not affect the next.
+- If you get stuck, say what you are trying to do and continue as far as you can.
+- The study software stays inside the study folder and uses its own Python environment.
+- A repository you provide for the final interview is read to build its history view. The study does not edit it.
 `.trim()
 
-/**
- * The same welcome, as the printed handout in `docs/study/materials/00-welcome.md`.
- *
- * That file used to be written by hand alongside this one, and the two drifted
- * until they promised different session lengths. `npm run gen:materials` writes
- * the file from here, and a test fails if it drifts.
- *
- * The only difference is the title: the website renders its own, a printed page
- * needs one in the text.
- */
 export const HANDOUT_MD = `# Welcome\n\n${WELCOME_MD}\n`
 
-// ---------------------------------------------------------------------------
-// The two practice sheets
-// ---------------------------------------------------------------------------
-//
-// The warm-up used to happen on a throwaway shopping-cart repository built by
-// scripts/make-practice-repo.sh. It is gone, and the practice now happens on
-// the project the stages use, for two reasons.
-//
-// The first is that the sheets quoted ids from that repository -- `git show
-// 44da4ad`, `sgt show "The Cart@2"` -- and a participant who typed them got
-// `unknown revision`, because the id was real in a repository they were no
-// longer standing in. Nothing here quotes an id any more. Every command below
-// either needs no id, or says to take one from what the previous command
-// printed, which is what somebody does in their own work anyway.
-//
-// The second is that ten minutes spent learning a shopping cart is ten minutes
-// not spent learning the dashboard four timed stages are about. Practising on
-// the real project means the codebase tour and the tool warm-up are the same
-// ten minutes. `./stage 0` puts the project back to just before the assistant's
-// changes, so the warm-up cannot show them the work stage 1 asks them to read.
-//
-// Both sheets are written editor-first. Pilots of the old design read a sheet
-// made entirely of terminal commands, then met the tasks inside an editor they
-// had been given but never shown, and several never opened the history view at
-// all, which turns "does this representation help" into "did you find the
-// panel".
-//
-// Each sheet teaches exactly the four actions the stages need: read a change,
-// record work, find a piece of work, and take one out and put it back.
-//
-// The git sheet's conflict section is deliberately concrete. A pilot who hit
-// the practice revert got git's own hint ("git add/rm <pathspec>"), typed it
-// literally with a commit hash, then resolved the modify/delete conflict the
-// wrong way round -- kept the page file, removed the function it calls -- and
-// check.py failed with an AttributeError they had no way to interpret. The
-// sheet now walks through both conflict kinds and says which resolution keeps
-// the project running. The same pilot was trapped twice by the terminal
-// itself: less on `git log`, pico on `git revert HEAD`. Those are fixed in the
-// bundle (core.pager and core.editor, set by install/setup.sh), and the sheet
-// says so where a git user would expect the old behavior.
-//
-// The prose style follows the pilot feedback too: complete sentences, plain
-// words, and no sentence that names a thing the participant cannot see.
-
-/** The project itself, in both conditions. The stages are about this codebase,
- * so the warm-up is the only place anybody gets told how it is put together. */
 const PROJECT_TOUR: Record<Project, string> = {
   bikecount: `
-## The project you are looking after
+## The project
 
-**bikecount** is a small web dashboard over the bicycle counter on the Fremont Bridge in Seattle. The city has counted people crossing every hour since 2013 and publishes the file. The dashboard reads that file and draws a handful of pages, and its numbers go into the cycling team's quarterly report.
+**bikecount** is a small web dashboard for bicycle counts from the Fremont Bridge in Seattle. It reads the city's hourly count data and produces several pages used for a quarterly report.
 
-Start it and look at it:
+Start the dashboard:
 
-    python3 -m bikecount.server
+\`\`\`
+python3 -m bikecount.server
+\`\`\`
 
-Then open http://localhost:8000 and click through the five pages: the front page, the hour-of-day page, monthly totals, the by-year table, and the east against west comparison. There is also a csv download at \`/daily.csv\`. Stop the server with Ctrl-C when you have seen them.
+Open http://localhost:8000 and look through these pages:
 
-The code is laid out like this:
+- Front page
+- Hour of day
+- Monthly totals
+- By-year table
+- East versus west
 
-- \`bikecount/pages/\` is one file per page. Each one has a \`render()\` that returns the html for that page, and the navigation and the routing are built from whatever is in that folder.
-- \`bikecount/metrics.py\` works out the numbers the pages show: daily totals, the busiest day, the hour-of-day averages, the by-year summary.
-- \`bikecount/data.py\` reads \`data/counts.csv\` and hands the rows to everything else.
-- \`bikecount/charts.py\` draws the bar charts the pages embed.
-- \`check.py\` renders every page and fails if one of them blows up. It is the quickest way to see whether the project still works, and it takes about a second:
+There is also a CSV download at \`/daily.csv\`.
+
+Press Ctrl-C in the terminal when you are finished looking around.
+
+The main files are:
+
+- \`bikecount/pages/\` — one file for each page
+- \`bikecount/metrics.py\` — calculates the numbers shown on the pages
+- \`bikecount/data.py\` — reads \`data/counts.csv\`
+- \`bikecount/charts.py\` — creates the charts
+- \`check.py\` — checks that every page can render successfully
+
+You can check the whole project with:
 
 \`\`\`
 python3 check.py
 \`\`\`
 
-You will not have to write any code in the stages. You will have to read some.
+The stages only require reading code.
 `,
   footfall: `
-## The project you are looking after
+## The project
 
-**footfall** is a small web dashboard over the pedestrian counter on Spencer Street in Melbourne. The city has counted people walking past every hour since 2013 and publishes the file. The dashboard reads that file and draws a handful of pages, and its numbers go into the transport committee's quarterly paper.
+**footfall** is a small web dashboard for pedestrian counts from Spencer Street in Melbourne. It reads the city's hourly count data and produces several pages used for a quarterly report.
 
-Start it and look at it:
+Start the dashboard:
 
-    python3 -m footfall.server
+\`\`\`
+python3 -m footfall.server
+\`\`\`
 
-Then open http://localhost:8000 and click through the five pages: the front page, the hour-of-day page, monthly totals, the by-year table, and the north against south comparison. There is also a csv download at \`/daily.csv\`. Stop the server with Ctrl-C when you have seen them.
+Open http://localhost:8000 and look through these pages:
 
-The code is laid out like this:
+- Front page
+- Hour of day
+- Monthly totals
+- By-year table
+- North versus south
 
-- \`footfall/pages/\` is one file per page. Each one has a \`render()\` that returns the html for that page, and the navigation and the routing are built from whatever is in that folder.
-- \`footfall/metrics.py\` works out the numbers the pages show: daily totals, the busiest day, the hour-of-day averages, the by-year summary.
-- \`footfall/data.py\` reads \`data/counts.csv\` and hands the rows to everything else.
-- \`footfall/charts.py\` draws the bar charts the pages embed.
-- \`check.py\` renders every page and fails if one of them blows up. It is the quickest way to see whether the project still works, and it takes about a second:
+There is also a CSV download at \`/daily.csv\`.
+
+Press Ctrl-C in the terminal when you are finished looking around.
+
+The main files are:
+
+- \`footfall/pages/\` — one file for each page
+- \`footfall/metrics.py\` — calculates the numbers shown on the pages
+- \`footfall/data.py\` — reads \`data/counts.csv\`
+- \`footfall/charts.py\` — creates the charts
+- \`check.py\` — checks that every page can render successfully
+
+You can check the whole project with:
 
 \`\`\`
 python3 check.py
 \`\`\`
 
-You will not have to write any code in the stages. You will have to read some.
+The stages only require reading code.
 `,
 }
 
-/** Where the warm-up starts, in both conditions. */
 const WARM_UP_STATE = `
-## Put the project in its warm-up state
+## Start the practice state
 
-In the session shell, run:
+In the study terminal, run:
 
 \`\`\`
 ./stage 0
 \`\`\`
 
-The command puts the project back to where it stood just before the changes the first stage is about, so nothing you see during the warm-up spoils that stage. Running \`./stage 1\` later undoes everything you do between now and then, so nothing you try here can go wrong.
+This prepares the project for practice. When the first timed stage begins, \`./stage 1\` will replace anything you changed during practice with the correct starting state.
 `
 
 const GIT_OPENING = `
-You already know git, so this page is not a lesson. It is a warm-up on the four things the stages will ask you to do, on the same project the stages use. The point is that nothing about this machine should surprise you once a stage's clock is running.
+This practice covers the Git actions you will use during the timed stages: reading history, recording work, finding earlier work, and reverting it.
 `
 
 const GIT_BODY = `
 ## Open the editor
 
+Run:
+
 \`\`\`
 study-code
 \`\`\`
 
-The command opens the project in VS Code. Find these three places now, because the stages use all of them:
+This opens the project in VS Code.
 
-- **Source Control**, in the left bar, lists what you have changed and is where you commit.
-- **Graph**, in the lower half of that same view, draws the history as a graph you can click through.
-- **Timeline**, at the bottom of the Explorer, lists the commits that touched the file you click.
+You will use three parts of the editor:
 
-## 1. Read one change
+- **Source Control** shows your current changes and lets you commit them.
+- **Graph** shows the commit history.
+- **Timeline**, at the bottom of the Explorer, shows commits that changed the open file.
 
-Open the Graph and click a commit. The editor shows what that commit changed, file by file. The terminal shows the same thing:
+You can use either the editor or the terminal during the stages.
+
+## 1. Read a change
+
+Click a commit in the Graph to see the files and lines it changed.
+
+The terminal provides the same information:
 
 \`\`\`
 git log --oneline
-git show <paste a hash from that list>
+git show <commit hash>
 \`\`\`
 
-On this machine git prints straight to the terminal. It never opens the pager screen that you would normally leave by pressing q, so long output simply scrolls past and you scroll back to read it.
+On this machine, Git prints directly in the terminal, so long output stays in the terminal history.
 
-Read the commit that added the csv download, and the one that added the by-year table. Together they show most of how the pages are put together.
+Find and read:
+
+- the commit that added the CSV download
+- the commit that added the by-year table
+
+These commits show how most of the project is organized.
 
 ## 2. Record some work
 
-Open \`README.md\` and change a word in it. Then record the change the way you normally would. Stage it and commit it in Source Control with a message, or do the same in the terminal:
+Open \`README.md\` and change one word.
+
+Then commit the change using Source Control, or run:
 
 \`\`\`
 git add README.md
 git commit -m "reword a line in the readme"
 \`\`\`
 
-Stage 1 asks you to do exactly this, on changes somebody else made.
+The first timed stage asks you to record changes in the same way.
 
-## 3. Find a piece of work
+## 3. Find earlier work
 
-\`git log -S\` finds the commits where a piece of text arrived or went away. Any word from the code works:
+Git can search history for commits that added or removed a piece of text:
 
 \`\`\`
 git log --oneline -S "average"
 \`\`\`
 
-The Graph has no search like that, so use the two together. The command gives you the hashes, and clicking those commits in the Graph shows what each one changed.
+Useful commands include:
 
-Two more commands are useful here. \`git log --stat\` lists the files each commit touched, and \`git blame <file>\` names the commit that last changed each line. The editor shows the same information in two places: the Timeline lists the commits that touched the open file, and the grey note at the end of the line your cursor is on names the commit that last changed that line.
+\`\`\`
+git log --stat
+git blame <file>
+\`\`\`
 
-Stage 2 asks you to find one particular piece of work this way.
+- \`git log --stat\` shows which files each commit changed.
+- \`git blame\` shows which commit last changed each line.
+- The editor Timeline shows commits that changed the current file.
+- The grey annotation beside the current line shows the commit that last changed it.
 
-## 4. Take something out, and put it back
+The second timed stage asks you to find a particular piece of work.
+
+## 4. Remove work and restore it
+
+First, try a simple revert:
 
 \`\`\`
 git revert HEAD
 \`\`\`
 
-The command makes a new commit that undoes the most recent one. On this machine git uses the commit message it suggests instead of opening a terminal editor, so the revert finishes in one step. Put the work back by running \`git revert HEAD\` again, which reverts the revert.
+This creates a new commit that reverses the latest commit.
 
-**Now try one that does not apply cleanly.** In \`git log --oneline\`, find the commit that first added the hour-of-day page, and revert it:
+Run the same command again to restore that work:
 
 \`\`\`
-git revert <that hash>
+git revert HEAD
 \`\`\`
 
-Git stops partway, because later commits built on the work you are removing. It leaves the affected files for you to settle, and \`git status\` lists them under "Unmerged paths". You will see two kinds:
+Now practice a revert that has conflicts.
 
-- A file listed as **both modified** has conflict markers in it, from \`<<<<<<<\` to \`>>>>>>>\`. Open the file in the editor and edit it down to the lines that should survive, with the marker lines deleted. Save it, then run \`git add <that file>\`.
-- A file listed as **deleted by them** has no markers. The revert wants to delete the whole file, but a later commit changed it, so git leaves the choice to you. Run \`git rm <that file>\` to delete it, or \`git add <that file>\` to keep it. Here the right choice is \`git rm\`, because the page is part of the work you are removing. A kept page file still calls the functions the revert takes out, and the project will not run.
+Use \`git log --oneline\` to find the commit that first added the hour-of-day page, then run:
 
-Git's own hint writes those two commands as \`git add/rm <pathspec>\`. It is shorthand for "\`git add\` or \`git rm\`, followed by a file path", not a command to type as written.
+\`\`\`
+git revert <commit hash>
+\`\`\`
 
-When \`git status\` no longer lists unmerged paths, finish the revert and check the project:
+Git will stop when later work overlaps with the commit you are removing.
+
+Run:
+
+\`\`\`
+git status
+\`\`\`
+
+Files under **Unmerged paths** need your attention.
+
+For a file marked **both modified**:
+
+1. Open the file.
+2. Find the conflict markers from \`<<<<<<<\` through \`>>>>>>>\`.
+3. Keep the code that should remain.
+4. Delete the conflict-marker lines.
+5. Save the file.
+6. Run:
+
+\`\`\`
+git add <file>
+\`\`\`
+
+For a file marked **deleted by them**, choose whether the file belongs to the work being removed. For this practice example, remove the hour-of-day page:
+
+\`\`\`
+git rm <file>
+\`\`\`
+
+When \`git status\` shows no unmerged paths, finish the revert:
 
 \`\`\`
 git revert --continue
 python3 check.py
 \`\`\`
 
-If the check fails, read which file the error names. The usual cause is a kept file that still calls something the revert removed. If you want out instead, any time before the \`--continue\`, run \`git revert --abort\` and everything goes back to how it was before the revert.
+If you want to cancel a revert while it is still in progress, run:
 
-Do this now. Stage 3 asks you to remove work that several later commits have landed on, and the warm-up is the only place to practise getting out of a conflicted revert.
+\`\`\`
+git revert --abort
+\`\`\`
 
-## Before we start
+The third timed stage also asks you to remove work that later commits depend on.
 
-Run \`python3 check.py\` once more to see that the project still works, and tell us if anything above behaved differently from what you expected.
+## Before the timed stages
+
+Run:
+
+\`\`\`
+python3 check.py
+\`\`\`
+
+Make sure the project passes the check. Tell the facilitator if any command behaved differently from the instructions.
 `
 
 const SGT_OPENING = `
-## What it is
+## What sgt records
 
-\`sgt\` sits on top of an ordinary git repository. Git records which lines in which files changed. \`sgt\` records which functions and classes changed, and groups related work under a name.
+\`sgt\` works on top of a Git repository. It organizes history around functions, classes, and the pieces of work they belong to.
 
-Two words are worth learning, because you will type both.
+Two terms appear throughout the interface:
 
-A **feature** is a body of work that grew over time, such as "the hourly charts".
+A **feature** is a larger body of work, such as "hourly charts."
 
-A **checkpoint** is one step inside a feature, such as "split it into weekday and weekend". Checkpoints are usually what you want, because a feature can be months of work while a checkpoint is normally one afternoon. Some screens call checkpoints **chapters**. They are the same thing.
+A **checkpoint** is one step within a feature, such as "split weekday and weekend averages." Some screens call checkpoints **chapters**. Both words refer to the same thing.
 
-Ten minutes will not make you fluent, and we do not expect it to. Every command ends by printing what you might want to run next.
+This practice covers the commands used in the timed stages. Most commands also print suggested next steps.
 `
 
 const SGT_BODY = `
 ## Open the editor
 
-    study-code
+Run:
 
-The command opens the project in VS Code with the **semi-git** extension. Click the semi-git icon in the left bar to find three views:
+\`\`\`
+study-code
+\`\`\`
 
-- **Now** says where things stand.
-- **Features** shows the work as a tree. Expand a feature to see its checkpoints.
-- **Changes** lists what you have edited and not yet saved.
+This opens the project in VS Code with the **semi-git** extension.
 
-At the bottom of the window, the **workbench** panel draws every feature as a row across time, and the chips under each row are its checkpoints. Right-clicking a feature or a chip offers **Revert** and **Restore**, which section 4 below covers.
+Click the semi-git icon in the left bar. You will use these views:
 
-The sidebar has two more views, **Forks** and **Compositions**. Nothing in this session needs them.
+- **Now** shows the current state.
+- **Features** shows features and their checkpoints.
+- **Changes** shows edits that have not been saved into the history.
 
-## 1. Read one change
+The **workbench** panel at the bottom shows features as rows across time. The chips on each row are checkpoints.
 
-Click a checkpoint in the Features tree or in the workbench. The editor shows what that piece of work covers, in functions rather than lines. The terminal shows the same thing:
+You can click features and checkpoints to inspect them. You can also right-click them to find actions such as **Revert** and **Restore**.
 
-    sgt log
+## 1. Read a change
 
-The command lists the jobs somebody did, newest first, in their own words. Each row carries a short id, the seven-character code near the left. Pass one of those ids to \`sgt show\`:
+Click a checkpoint in **Features** or in the workbench.
 
-    sgt show <a short id from a row>
+The terminal lists the same history:
 
-\`show\` takes an id or an exact name, never a phrase, so pasting a whole row's description back at it will not work. The feature name on the right of a row works too, in quotes:
+\`\`\`
+sgt log
+\`\`\`
 
-    sgt show "<a feature name, exactly as it is written>"
+Each row has a short seven-character ID. Use that ID with:
 
-Read the work that added the csv download, and the work that added the by-year table. \`sgt log --map\` draws the same history as one row per feature.
+\`\`\`
+sgt show <short id>
+\`\`\`
+
+You can also show a feature by its exact name:
+
+\`\`\`
+sgt show "<feature name>"
+\`\`\`
+
+Find and read:
+
+- the work that added the CSV download
+- the work that added the by-year table
+
+You can also see the history grouped by feature:
+
+\`\`\`
+sgt log --map
+\`\`\`
 
 ## 2. Record some work
 
-Open \`README.md\` and change a word in it. The **Changes** view shows the edit. Record it, in your own words:
+Open \`README.md\` and change one word.
 
-    sgt save -m "reword a line in the readme"
+The **Changes** view will show the edit.
 
-The command files your change under the piece of work it belongs to and prints which one. Plain \`sgt save\` works too, and its record then says \`no words captured\`, because only you can say what a change was for. Stage 1 asks you to do exactly this, on changes somebody else made.
+Record it with:
 
-## 3. Find a piece of work
+\`\`\`
+sgt save -m "reword a line in the readme"
+\`\`\`
 
-Describe the work in your own words:
+The first timed stage asks you to record changes in the same way.
 
-    sgt find "the bit that works out the averages"
+## 3. Find earlier work
 
-The command lists the closest matches to what you typed, across functions, features, and individual saves. The search box in the workbench toolbar does the same thing.
+Search in your own words:
 
-Some rows are shortened to fit the screen. To get a name you can type back, run:
+\`\`\`
+sgt find "the bit that works out the averages"
+\`\`\`
 
-    sgt intent list
+The results can include functions, features, and individual saves.
 
-The command prints every feature and checkpoint with its handle. The groups at the bottom are pieces of work that span several features. **The sidebar does not show those groups**, so \`sgt intent list\` is the only place they appear, and stage 3 names one of them.
+The search box in the workbench performs the same kind of search.
 
-## 4. Take something out, and put it back
+To see the complete names and handles for features and checkpoints, run:
 
-Work through this whole section now, because stages 3 and 4 ask you to do exactly this with a clock running.
+\`\`\`
+sgt intent list
+\`\`\`
 
-Pick a checkpoint from \`sgt intent list\`, one from the middle of the list rather than the newest. Type it by the handle in the brackets, such as \`f-08915a9f@1\`, because a checkpoint's plain name does not resolve on its own. Feature names and the group names at the bottom of the list work as written. Preview taking it out:
+A checkpoint handle looks like:
 
-    sgt revert "<that handle>"
+\`\`\`
+f-08915a9f@1
+\`\`\`
 
-Nothing has happened yet, because without \`--yes\` the command only prints a preview. Read the preview before going on. It says which checkpoint is **removed** and which are **kept**, a row like **2/6 edits removed** means that checkpoint shares some code with what you are taking out, and a line starting with ⚠ names code that still calls what you are removing. Now do it:
+The bottom of \`sgt intent list\` can also contain groups that combine work from several features. The third timed stage may refer to one of these groups.
 
-    sgt revert "<that handle>" --yes
-    python3 check.py
+## 4. Remove work and restore it
 
-The check can come out red here. That is the ⚠ line come true: something you kept still calls what you removed, and putting the work back will fix it. Do that now. \`restore\` is \`revert\`'s opposite and takes the same handle, and it needs \`--yes\` for the same reason:
+Choose a checkpoint from somewhere in the middle of \`sgt intent list\`.
 
-    sgt restore "<that handle>" --yes
-    python3 check.py
+Use its handle to preview a revert:
 
-If you lose track of where you are, \`sgt undo\` reverses whatever you last did, and \`sgt now\` says where things stand.
+\`\`\`
+sgt revert "<checkpoint handle>"
+\`\`\`
+
+The preview leaves the project unchanged. Read it before continuing.
+
+The preview tells you:
+
+- which work will be removed
+- which work will remain
+- when only part of a checkpoint will be removed
+- when remaining code still depends on something being removed
+
+For example, **2/6 edits removed** means that two of the six edits in that checkpoint belong to the work being removed.
+
+A line beginning with ⚠ points out code that may stop working after the revert.
+
+Apply the revert with:
+
+\`\`\`
+sgt revert "<checkpoint handle>" --yes
+python3 check.py
+\`\`\`
+
+If the check reports an error, read the warning and the failing file. The error may come from remaining code that still uses the work you removed.
+
+Restore the checkpoint with:
+
+\`\`\`
+sgt restore "<checkpoint handle>" --yes
+python3 check.py
+\`\`\`
+
+Useful recovery commands are:
+
+\`\`\`
+sgt undo
+sgt now
+\`\`\`
+
+- \`sgt undo\` reverses your most recent sgt action.
+- \`sgt now\` shows the current state.
+
+The third and fourth timed stages ask you to remove and restore work.
 
 ## 5. Help
 
-    sgt --help
-    sgt <command> --help
+For command help, run:
 
-## Before we start
+\`\`\`
+sgt --help
+sgt <command> --help
+\`\`\`
 
-Run \`python3 check.py\` once more to see that the project still works, and tell us if anything above printed something you could not make sense of.
+## Before the timed stages
+
+Run:
+
+\`\`\`
+python3 check.py
+\`\`\`
+
+Make sure the project passes the check. Tell the facilitator if any command or output was unclear.
 `
 
-/**
- * One practice sheet: what the tool is, then what the project is, then the four
- * things to try.
- *
- * The project comes second rather than last on purpose. Somebody about to run
- * `sgt find "the bit that works out the averages"` has to know that there are
- * averages, and roughly where. The old sheet described no codebase at all,
- * because the practice happened on an unrelated shopping cart.
- */
 export function tutorialFor(condition: Condition, project: Project): string {
   const opening = condition === 'git' ? GIT_OPENING : SGT_OPENING
   const body = condition === 'git' ? GIT_BODY : SGT_BODY
+
   return (
     [opening.trim(), PROJECT_TOUR[project].trim(), WARM_UP_STATE.trim(), body.trim()].join(
       '\n\n',
@@ -399,52 +503,40 @@ export function tutorialFor(condition: Condition, project: Project): string {
   )
 }
 
-/**
- * What the practice step says before the sheet itself, on both surfaces.
- */
 export const TUTORIAL_LEDE =
-  'Take a few minutes on the project itself before the stages start. Ask us anything now, ' +
-  'because once the stages start we can only answer questions about the stage instructions themselves.'
+  'Take a few minutes to practice on the project before the timed stages begin. ' +
+  'Your facilitator can answer questions about the setup during this practice.'
 
-/**
- * The same practice sheet as a printed page. Generated rather than typed
- * again, because the hand-written copy of this sheet once quoted a command
- * that fails on any feature name with a space in it while the website showed
- * the working one.
- */
 export function sheetTutorialMd(condition: Condition, project: Project): string {
   return `# Practice: ${condition}, ${project}\n\n${TUTORIAL_LEDE}\n\n${tutorialFor(condition, project)}\n`
 }
 
-/** Spells the small counts the prose below quotes. `4 stages` in a sentence
- * reads like a field in a form. */
 export const spell = (n: number) =>
-  ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'][n] ?? String(n)
+  ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'][n] ??
+  String(n)
 
-/**
- * What the participant is told at the top of a task block.
- *
- * The counts come from the stage list. Written down, they went stale through
- * two redesigns of what was under them.
- */
 export const TASK_PREAMBLE = (app: string, maintainer: string, blurb: string) =>
   `
-You are looking after **${app}**, ${blurb}. ${maintainer} built it over six weeks and has left the team, and its numbers go into a quarterly report. It is the same project you have just been practising on, and you run everything from the same folder.
+You are now responsible for **${app}**, ${blurb}. ${maintainer} built the project over six weeks before leaving the team. Its numbers are used in a quarterly report.
 
-There are ${spell(STAGE_COUNT)} stages, in order. Each stage card says what happened, what your job is, and what done looks like, and it lists the commands you are most likely to want, so you do not lose a minute to remembering a flag.
+You just practiced on this project. Keep using the same folder and the same terminal.
 
-Start each stage by running its \`./stage\` command, which puts the project into that stage's starting state. The clock starts once that command has finished printing, the doing part has a visible countdown, and the questions after it are untimed. Running out of time on a stage is a normal result, and the next stage starts clean either way. Tell us what you are thinking as you go.
+You will complete ${spell(STAGE_COUNT)} stages in order.
+
+Each stage tells you:
+
+- what happened
+- what you need to do
+- how to tell when you are finished
+- which commands may help
+
+Start each stage by running the \`./stage\` command shown on the card. This prepares the correct starting state. The timer begins after that command finishes.
+
+The task itself is timed. The questions after the task are untimed. When the timer ends, continue to the questions and then move to the next stage.
+
+Please say what you are thinking as you work.
 `.trim()
 
-/**
- * The stages as a printed page, for the participant to keep beside the
- * keyboard. Built from the same stage list the cards render, because this is
- * the sheet where drift does real damage.
- *
- * The checklists and rating scales are not printed: they are answered on
- * screen after each stage, and a paper copy would invite someone to fill them
- * in early. The sheet names them and points at the screen.
- */
 export function sheetTasksMd(project: Project, condition: Condition): string {
   const { app, maintainer, blurb } = SCENARIO[project]
   const out = [
@@ -452,79 +544,96 @@ export function sheetTasksMd(project: Project, condition: Condition): string {
     '',
     TASK_PREAMBLE(app, maintainer, blurb),
     '',
-    'After each stage, the screen asks a few short questions about what you just did. They are not timed.',
+    'After each stage, answer the short questions on the screen. These questions are untimed.',
   ]
 
   for (const r of REQUESTS) {
     out.push('', `## ${requestHeading(r)}: ${r.title[project]}`, '')
-    out.push(`You have ${r.capMin} minutes for the doing part.`)
+    out.push(`You have ${r.capMin} minutes for this task.`)
     out.push('', r.body[project])
-    out.push('', `What \`${r.run.script[project]}\` does:`, '')
+    out.push('', `When you run \`${r.run.script[project]}\`, it will:`, '')
     out.push(...r.run.does[project].map((d) => `- ${d}`))
-    out.push('', 'Commands you may want:', '')
+    out.push('', 'Commands that may help:', '')
     out.push(...r.tips[condition].map((t) => `- ${t}`))
-    if (r.identify) out.push('', `**${r.identify[project]}:** ______________________`)
+
+    if (r.identify) {
+      out.push('', `**${r.identify[project]}:** ______________________`)
+    }
   }
+
   return out.join('\n') + '\n'
 }
 
-// ---------------------------------------------------------------------------
-// The interview page
-// ---------------------------------------------------------------------------
-
-/**
- * Shown on the own-repository step. The interview itself is the
- * facilitator's; this page tells the participant what is about to happen and
- * what was, or was not, done with their repository.
- */
 export const INTERVIEW_MD = `
-For the last part, we step away from our projects and look at one of yours.
+For the final part of the session, we will look at the history of a real repository.
 
-If you brought a repository and ticked the consent line for it, we built its history view during setup, and your facilitator will open it now. If you did not, we use a prepared public repository instead. Either way nothing is changed, and nothing from a repository of yours is kept after the session except the recorded conversation.
+If you brought a repository and gave consent to use it, your facilitator will open the history view created during setup.
 
-There are no tasks and no clocks here. Walk us through what you see, say where it matches how you think about your own work, and say where it is wrong. The places where it is wrong are the most useful thing you can give us.
+If you chose the prepared repository, your facilitator will open that instead.
+
+This part is an open interview without a timer. Walk us through what you see. Tell us:
+
+- which parts match how you think about the work
+- which parts seem grouped or named correctly
+- which parts seem wrong or misleading
+- what you would want to change
+
+Your repository stays unchanged. The study keeps the recorded conversation and removes the temporary history view during cleanup.
 `.trim()
 
 export const HANDOVER_MD = `
-Almost done. Two steps and you can close everything.
+Almost finished. Please complete these two steps before closing the study.
 
-## 1. Send us what your machine recorded
+## 1. Send the remaining study data
 
-In the study shell, run:
+In the study terminal, run:
 
 \`\`\`
 study-sync --final
 \`\`\`
 
-It uploads anything still waiting, and the tick below turns green when we have it. If the tick stays red for more than a minute, tell your facilitator rather than retrying. The log on your disk is safe either way.
+The status indicator will turn green when the upload finishes.
 
-## 2. Delete the study folders
+If it stays red for more than a minute, tell your facilitator. The local copy remains on the machine until cleanup.
 
-Once the tick is green, run:
+## 2. Remove the study files
+
+After the status indicator turns green, run:
 
 \`\`\`
 study-cleanup
 \`\`\`
 
-It removes the study folders, the session's keys, the editor profile, and the history view built for the interview. The projects get reused with other participants, so please do run it.
+This removes the study projects, session keys, editor profile, and the temporary history view created for the interview.
 
-Nothing was installed outside the study folder, and your own repository, if you brought one, was only read.
+Your own repository remains unchanged.
 `.trim()
 
 export const DEBRIEF_MD = `
-That is everything. Thank you.
+That completes the study. Thank you for taking part.
 
-## What this was about
+## What we are studying
 
-Version control records history as changed lines in files, but more and more of the code in a repository is written by AI assistants, in units of "what I asked for" rather than lines. We built a tool that records history as the pieces of work someone meant to do, and we wanted to know whether that helps at three moments: when you record work an assistant did, when you look for the work behind a defect, and when you take a piece of work out or put it back.
+Git records project history through commits and changes to files. We are studying another way to organize that history around functions, classes, and the pieces of work they belong to.
 
-One of the two setups you used was that tool, and the other was ordinary git. We deliberately did not say which was which, and we asked the same ${spell(STAGE_COUNT)} stages of both, because we are measuring the difference between the two representations, not the difference between you and anyone else.
+During the study, you used ordinary Git and our experimental history tool on the same ${spell(STAGE_COUNT)} tasks:
 
-The changes you recorded in stage 1 really were made by an AI assistant, in an earlier recorded session that a script replayed onto your machine. Every participant read exactly the same changes.
+- recording work made by an AI coding assistant
+- finding the work behind a defect
+- removing a piece of work
+- restoring it
+
+We compare how the two setups support these tasks.
+
+The changes in the first stage were created earlier by an AI coding assistant and replayed onto the study project. Every participant receives the same changes.
 
 ## What happens to your data
 
-Your recordings, your answers, and the log of commands from your machine are stored under a participant code, not your name. Your name appears only on the consent record, which is kept separately, and results are reported in aggregate. If you ticked the optional consent line, a short quote might appear, with nothing in it that identifies you.
+Your recordings, questionnaire answers, and command logs are stored under a participant code.
 
-If you want your data removed, email us with your participant code and we will delete it. No reason needed.
+Your name is stored separately with the consent record.
+
+Study results are reported across participants. If you agreed to the optional quotation consent, a publication may include a short anonymized quote from your session.
+
+If you later want your study data removed, email us and include your participant code.
 `.trim()
