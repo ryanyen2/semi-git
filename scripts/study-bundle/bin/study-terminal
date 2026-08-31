@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# The shell inside the editor's integrated terminal.
+#
+# The editor exports the shim PATH to its children, but that is not enough on
+# macOS: the integrated terminal starts zsh as a login shell, /etc/zprofile
+# runs path_helper, and path_helper moves the system directories back in front
+# of the shims. A user's own rc file can do the same with Homebrew's git. In
+# the pilot the participant's terminal showed the stock zsh prompt and their
+# git commands never reached the log.
+#
+# So the editor's terminal profile points here instead (see bin/study-code),
+# and this starts a bash that reads no rc file at all. PATH is set last, after
+# anything else has had a say, and the prompt says where you are.
+STUDY_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export STUDY_HOME
+export STUDY_SHIM_DIR="$STUDY_HOME/bin/shims"
+export STUDY_SURFACE=terminal
+export CLAUDE_CONFIG_DIR="$STUDY_HOME/.claude-study"
+export PATH="$STUDY_SHIM_DIR:$STUDY_HOME/bin:$STUDY_HOME/work/.venv/bin:$PATH"
+export PS1='study \W \$ '
+export HISTFILE="$STUDY_HOME/telemetry/shell-history"
+export HISTSIZE=10000
+export EDITOR="${EDITOR:-nano}"
+unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL OPENAI_API_KEY OPENAI_BASE_URL || true
+exec bash --noprofile --norc -i

@@ -288,6 +288,17 @@ fi
 if [ -d "$here/work/.git" ]; then
     printf '%s\n' "" "# added by the study setup" ".claude/" ".mcp.json" ".vscode/" \
         >> "$here/work/.git/info/exclude"
+
+    # git's pager and terminal editor trapped pilots under a running clock:
+    # `git log` opened less and got force-killed, and `git revert HEAD` opened
+    # pico over the suggested message. Neither is what the study measures, so
+    # in this repo git prints straight to the terminal and commit messages are
+    # taken as git suggests them (see bin/study-git-editor). Repo-local config
+    # rather than the session shell's environment, because pilots also typed
+    # git into the editor's terminal and their own shell, which that
+    # environment never reaches.
+    git -C "$here/work" config core.pager cat
+    git -C "$here/work" config core.editor "$here/bin/study-git-editor"
 fi
 
 say "Setting up session recording"

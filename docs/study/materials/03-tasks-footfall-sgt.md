@@ -1,14 +1,10 @@
 # Your stages: footfall, sgt
 
-You are looking after **footfall**, a small web dashboard over the pedestrian counter on Spencer Street in Melbourne. Dana Whitfield built it over six weeks and has left the team. It reads a public csv of hourly sensor counts and renders a handful of pages: a front page, an hour-of-day page, monthly and yearly totals, a comparison of the two sensors, and a csv download. Its numbers go into a quarterly report.
+You are looking after **footfall**, a small web dashboard over the pedestrian counter on Spencer Street in Melbourne. Dana Whitfield built it over six weeks and has left the team, and its numbers go into a quarterly report. It is the same project you have just been practising on, and you run everything from the same folder.
 
-This is the same project you have just been practising on, and you run these from the same folder.
+There are four stages, in order. Each stage card says what happened, what your job is, and what done looks like, and it lists the commands you are most likely to want, so you do not lose a minute to remembering a flag.
 
-There are four stages, in order. Each one starts with a command you run yourself, `./stage 1` and so on, which puts the project into that stage's starting state. The clock starts once that command has finished printing. The doing part has a visible countdown. The questions after it are not timed.
-
-Every stage card carries a short list of the commands you are most likely to want. They are there so that you do not lose a minute to remembering a flag.
-
-Running out of time on a stage is a normal result, and the next stage starts clean either way. Tell us what you are thinking as you go.
+Start each stage by running its `./stage` command, which puts the project into that stage's starting state. The clock starts once that command has finished printing, the doing part has a visible countdown, and the questions after it are untimed. Running out of time on a stage is a normal result, and the next stage starts clean either way. Tell us what you are thinking as you go.
 
 After each stage, the screen asks a few short questions about what you just did. They are not timed.
 
@@ -16,15 +12,15 @@ After each stage, the screen asks a few short questions about what you just did.
 
 You have 4 minutes for the doing part.
 
-This stage's task is to read a change an AI assistant has already made, and then record it in the project's history.
-
-Start by running the command below. It puts the project into the state this stage begins from.
+Run the command below first. It puts the project into this stage's starting state.
 
     ./stage 1
 
-Earlier today you asked the coding assistant to round the numbers on the dashboard's front page to the nearest ten, so that they stop implying single-person precision. The assistant has finished. Its changes are sitting in your working copy, and none of them have been recorded in the project's history yet.
+**What happened:** Earlier today you asked the coding assistant to round the numbers on the dashboard's front page to the nearest ten, so that they stop implying single-person precision. The assistant has finished. Its changes are in your working copy, and none of them are recorded in the project's history yet.
 
-Read what it changed, in the editor or in the terminal, until you could describe it to a colleague. Then record all of it, the way this setup records finished work.
+**Your job:** Read what the assistant changed, in the editor or in the terminal, until you could describe it to a colleague. Then record all of it, the way this setup records finished work.
+
+**You are done when:** Every one of the assistant's changes is recorded in the project's history, with a message in your own words, and nothing is left unrecorded.
 
 What `./stage 1` does:
 
@@ -42,17 +38,15 @@ Commands you may want:
 
 You have 4 minutes for the doing part.
 
-This stage's task is to find one piece of work in the project's history. You do not have to change anything.
-
-Start by running the command below. It puts the project back to its full history and clears anything left over from the last stage.
+Run the command below first. It resets the project and prints the two numbers this stage is about, side by side.
 
     ./stage 2
 
-The transport committee published a paper last year. It says that the average day in 2018 saw **42,436** people walk past. The dashboard's by-year page now says **42,545** for the same year. The command above prints both numbers so that you can see them side by side.
+**What happened:** The transport committee published a paper last year saying that the average day in 2018 saw **42,436** people walk past. The dashboard's by-year page now says **42,545** for the same year. The numbers disagree because a colleague changed the way the dashboard works out an average. Days on the project's list of unusual days, such as Grand Final Friday and Christmas, are now left out of every average, and the paper was written when every day still counted.
 
-Here is what happened. A colleague changed the way the dashboard works out an average. Days on the project's list of unusual days, such as Grand Final Friday and Christmas, are now left out of every average. The colleague had a reason for doing that, but the paper was written when every day still counted, and the committee wants the two numbers to agree again.
+**Your job:** Find the piece of work in the project's history that made that change. You do not have to change any code.
 
-Find the work in the project's history that made that change, and write down what this setup calls it in the box below. That might be a commit hash, a named piece of work, or an id. If you are not certain, write down what you have and say that you are not certain. That is more useful to us than a guess.
+**You are done when:** You have written what this setup calls that work into the box below. A commit hash, a named piece of work, or an id all count. If you are not certain you found the right one, write down what you have and say that you are not certain. That is more useful to us than a guess.
 
 What `./stage 2` does:
 
@@ -72,21 +66,15 @@ Commands you may want:
 
 You have 4 minutes for the doing part.
 
-This stage's task is to take one piece of work back out of the project.
-
-Start by running the command below. It puts the project back to its full history, clears anything left over from the last stage, and names the work you have to take out. You have that name whether or not you found it yourself in the last stage.
+Run the command below first. It resets the project and names the work you have to take out, so you have the name whether or not you found it in the last stage.
 
     ./stage 3
 
-The committee never approved the change your colleague made. They want the averages to count every day the sensors recorded, including the unusual ones, so that the by-year page reads **42,436** for 2018 again.
+**What happened:** The committee never approved the change your colleague made. They want the averages to count every day the sensors recorded, including the unusual ones.
 
-Three things have to come out: the list of unusual days the project keeps, the marks that flag those days on the daily and monthly charts, and the rule that leaves those days out of the averages. They were one job, and the project's history has them spread over three commits. Everything else the dashboard shows has to keep working.
+**Your job:** Take that work out of the project. Three things have to go: the list of unusual days the project keeps, the marks that flag those days on the daily and monthly charts, and the rule that leaves those days out of the averages. Everything else the dashboard shows has to keep working.
 
-When you think you are done, run:
-
-    ./check 3
-
-It tells you whether the program still runs and what the by-year page says now. It prints the same words for everyone, it does not mark you, and a red line in it is information rather than a verdict.
+**You are done when:** `./check 3` says the program still runs and the by-year page reads **42,436** for 2018 again. Run it as often as you like. It prints the same words for everyone, it does not mark you, and a red line in it is information rather than a verdict.
 
 What `./stage 3` does:
 
@@ -104,19 +92,15 @@ Commands you may want:
 
 You have 4 minutes for the doing part.
 
-This stage's task is to put that same work back into the project.
-
-Start by running the command below. It puts the project into the state where the work has already been taken out. That is the same starting state for everyone, whether or not your own removal in the last stage worked, so nothing from the last stage follows you here.
+Run the command below first. It puts the project into the state where the work has already been taken out. Everyone starts stage 4 from this same state, whether or not their own removal in the last stage worked.
 
     ./stage 4
 
-The committee has changed its mind. Now that they have seen the averages with every day counted, they agree with your colleague: a public holiday when the offices are shut says nothing about how many people walk to work on an ordinary day, so those days should stay out of the averages after all.
+**What happened:** The committee has changed its mind. Now that they have seen the averages with every day counted, they agree with your colleague that a public holiday when the offices are shut says nothing about how many people walk to work on an ordinary day, so those days should stay out of the averages after all.
 
-Put the work back, exactly as it was, so that the by-year page reads **42,545** for 2018 again.
+**Your job:** Put that work back into the project, exactly as it was before the removal.
 
-When you think you are done, run:
-
-    ./check 4
+**You are done when:** `./check 4` says the program still runs and the by-year page reads **42,545** for 2018 again.
 
 What `./stage 4` does:
 

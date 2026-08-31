@@ -1,6 +1,6 @@
 # Practice: sgt, bikecount
 
-A few minutes on the project itself before the stages start. Ask us anything now. Once the stages start we can only answer questions about the stage instructions themselves.
+Take a few minutes on the project itself before the stages start. Ask us anything now, because once the stages start we can only answer questions about the stage instructions themselves.
 
 ## What it is
 
@@ -10,7 +10,7 @@ Two words are worth learning, because you will type both.
 
 A **feature** is a body of work that grew over time, such as "the hourly charts".
 
-A **checkpoint** is one step inside a feature, such as "split it into weekday and weekend". Checkpoints are usually what you want: a feature can be months of work, where a checkpoint is normally one afternoon. Some screens call these **chapters**. They are the same thing.
+A **checkpoint** is one step inside a feature, such as "split it into weekday and weekend". Checkpoints are usually what you want, because a feature can be months of work while a checkpoint is normally one afternoon. Some screens call checkpoints **chapters**. They are the same thing.
 
 Ten minutes will not make you fluent, and we do not expect it to. Every command ends by printing what you might want to run next.
 
@@ -30,7 +30,7 @@ The code is laid out like this:
 - `bikecount/metrics.py` works out the numbers the pages show: daily totals, the busiest day, the hour-of-day averages, the by-year summary.
 - `bikecount/data.py` reads `data/counts.csv` and hands the rows to everything else.
 - `bikecount/charts.py` draws the bar charts the pages embed.
-- `check.py` renders every page and fails if one of them blows up. It is the safety net, and it takes a second:
+- `check.py` renders every page and fails if one of them blows up. It is the quickest way to see whether the project still works, and it takes about a second:
 
 ```
 python3 check.py
@@ -46,29 +46,29 @@ In the session shell, run:
 ./stage 0
 ```
 
-That puts the project back to where it stood just before the changes the first stage is about, so nothing you see here spoils that stage. Everything you do from now until you run `./stage 1` is undone by `./stage 1`, so nothing you try can go wrong.
+The command puts the project back to where it stood just before the changes the first stage is about, so nothing you see during the warm-up spoils that stage. Running `./stage 1` later undoes everything you do between now and then, so nothing you try here can go wrong.
 
 ## Open the editor
 
     study-code
 
-That opens the project in VS Code with the **semi-git** extension. Click the semi-git icon in the left bar:
+The command opens the project in VS Code with the **semi-git** extension. Click the semi-git icon in the left bar to find three views:
 
-- **Now**, for where things stand.
-- **Features**, the work as a tree. Expand a feature to see its checkpoints.
-- **Changes**, for what you have edited and not yet saved.
+- **Now** says where things stand.
+- **Features** shows the work as a tree. Expand a feature to see its checkpoints.
+- **Changes** lists what you have edited and not yet saved.
 
-At the bottom, the **workbench** panel draws every feature as a row across time. The chips under each row are its checkpoints. Right-clicking either one offers **Revert** and **Restore**, which section 4 below covers.
+At the bottom of the window, the **workbench** panel draws every feature as a row across time, and the chips under each row are its checkpoints. Right-clicking a feature or a chip offers **Revert** and **Restore**, which section 4 below covers.
 
-There are two more views in that sidebar, **Forks** and **Compositions**. Nothing in this session needs them.
+The sidebar has two more views, **Forks** and **Compositions**. Nothing in this session needs them.
 
 ## 1. Read one change
 
-Click a checkpoint in the Features tree or in the workbench. It shows what that piece of work covers, in functions rather than lines. The same thing in the terminal:
+Click a checkpoint in the Features tree or in the workbench. The editor shows what that piece of work covers, in functions rather than lines. The terminal shows the same thing:
 
     sgt log
 
-That lists the jobs somebody did, newest first, in their own words. Each row carries a short id, the seven-character code near the left. Pass one of those to `sgt show`:
+The command lists the jobs somebody did, newest first, in their own words. Each row carries a short id, the seven-character code near the left. Pass one of those ids to `sgt show`:
 
     sgt show <a short id from a row>
 
@@ -76,7 +76,7 @@ That lists the jobs somebody did, newest first, in their own words. Each row car
 
     sgt show "<a feature name, exactly as it is written>"
 
-Read the work that added the csv download, and the work that added the by-year table. `sgt log --map` draws one row per feature.
+Read the work that added the csv download, and the work that added the by-year table. `sgt log --map` draws the same history as one row per feature.
 
 ## 2. Record some work
 
@@ -84,41 +84,41 @@ Open `README.md` and change a word in it. The **Changes** view shows the edit. R
 
     sgt save -m "reword a line in the readme"
 
-It files your change under the piece of work it belongs to and prints which one. Plain `sgt save` works too and says `no words captured`, because the words are yours to give. Stage 1 asks you to do exactly this, on changes somebody else made.
+The command files your change under the piece of work it belongs to and prints which one. Plain `sgt save` works too, and its record then says `no words captured`, because only you can say what a change was for. Stage 1 asks you to do exactly this, on changes somebody else made.
 
 ## 3. Find a piece of work
 
-Describe it in your own words:
+Describe the work in your own words:
 
     sgt find "the bit that works out the averages"
 
-It lists the closest matches to what you typed: functions, features, and individual saves. The search box in the workbench toolbar does the same thing.
+The command lists the closest matches to what you typed, across functions, features, and individual saves. The search box in the workbench toolbar does the same thing.
 
-Some rows are shortened to fit. To get a name you can type back, run:
+Some rows are shortened to fit the screen. To get a name you can type back, run:
 
     sgt intent list
 
-That prints every feature and checkpoint with its handle. The groups at the bottom are pieces of work that span several features; **the sidebar does not show those**, so that command is the only place they appear. Stage 3 names one of them.
+The command prints every feature and checkpoint with its handle. The groups at the bottom are pieces of work that span several features. **The sidebar does not show those groups**, so `sgt intent list` is the only place they appear, and stage 3 names one of them.
 
 ## 4. Take something out, and put it back
 
-Do this whole sequence now. It is the most useful thing on this sheet.
+Work through this whole section now, because stages 3 and 4 ask you to do exactly this with a clock running.
 
-Pick a checkpoint from `sgt intent list` -- one from the middle of the list, not the newest -- and preview taking it out:
+Pick a checkpoint from `sgt intent list`, one from the middle of the list rather than the newest. Type it by the handle in the brackets, such as `f-08915a9f@1`, because a checkpoint's plain name does not resolve on its own. Feature names and the group names at the bottom of the list work as written. Preview taking it out:
 
-    sgt revert "<that name>"
+    sgt revert "<that handle>"
 
-Nothing has happened yet. That was a preview, and four things in it are worth reading: which checkpoint says **removed**, which say **kept**, any that say something like **2/6 edits removed** (that one shares code with what you are taking out), and the line counting the other features it leaves alone. Now do it:
+Nothing has happened yet, because without `--yes` the command only prints a preview. Read the preview before going on. It says which checkpoint is **removed** and which are **kept**, a row like **2/6 edits removed** means that checkpoint shares some code with what you are taking out, and a line starting with ⚠ names code that still calls what you are removing. Now do it:
 
-    sgt revert "<that name>" --yes
+    sgt revert "<that handle>" --yes
     python3 check.py
 
-Then put it back. **`--yes` again.** Without it you get another preview and nothing happens:
+The check can come out red here. That is the ⚠ line come true: something you kept still calls what you removed, and putting the work back will fix it. Do that now. `restore` is `revert`'s opposite and takes the same handle, and it needs `--yes` for the same reason:
 
-    sgt restore "<that name>" --yes
+    sgt restore "<that handle>" --yes
     python3 check.py
 
-`restore` is `revert`'s opposite and takes the same words. If you lose track of where you are, `sgt undo` reverses whatever you last did, and `sgt now` says where things stand.
+If you lose track of where you are, `sgt undo` reverses whatever you last did, and `sgt now` says where things stand.
 
 ## 5. Help
 
@@ -127,5 +127,5 @@ Then put it back. **`--yes` again.** Without it you get another preview and noth
 
 ## Before we start
 
-Run `python3 check.py` once more to see the project still works, and tell us if anything above printed something you could not make sense of.
+Run `python3 check.py` once more to see that the project still works, and tell us if anything above printed something you could not make sense of.
 
