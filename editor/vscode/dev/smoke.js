@@ -167,6 +167,9 @@ global.window = {
   removeEventListener: () => {},
   matchMedia: () => ({ matches: false }),
   dispatchEvent: (ev) => (winListeners[ev.type] || []).forEach((fn) => fn(ev)),
+  // The chip hover-intent waits for the cursor to rest before naming a chapter; 0 makes it show
+  // synchronously so this harness's mouseenter -> assert sequences stay synchronous.
+  __CHIP_INTENT_MS__: 0,
 };
 // The label-measurement probes read their font off a real styled node. There is no stylesheet here,
 // so answer with the shape `fontFor` builds its shorthand from; the widths come from Ctx2D anyway.
@@ -187,17 +190,16 @@ eval(src);
 
 const compose = JSON.parse(fs.readFileSync(path.join(__dirname, "fixture-compose.json"), "utf8"));
 
-// The real host enriches every FEATURE node with a concrete identity hex before posting (see
-// `colorForNode` in workbench.ts); a subsystem node gets null, and `laneColor` then falls back to a
-// neutral grey. The harness fed the raw capture, so every lane came back grey and it could not have
-// caught the bug where the default view was ENTIRELY subsystem rows -- a whole timeline in the
-// fallback colour. The exact hue is `tests/test_color_parity.py`'s business; what matters here is
-// that features have one and subsystems do not.
+// The real host enriches EVERY node with a concrete identity hex before posting (see
+// `colorForNode` in workbench.ts) -- subsystems included, which is what lets the folded tree be
+// the default view without opening as a grey wall. The harness fed the raw capture, so every lane
+// came back grey and it could not have caught a regression where lanes lose their hue. The exact
+// hue is `tests/test_color_parity.py`'s business; what matters here is that every lane has one.
 compose.map = {
   ...compose.map,
   nodes: (compose.map.nodes || []).map((n, i) => ({
     ...n,
-    color: n.kind === "feature" ? `#${(0x334455 + i * 0x010203).toString(16).padStart(6, "0")}` : null,
+    color: `#${(0x334455 + i * 0x010203).toString(16).padStart(6, "0")}`,
   })),
 };
 
@@ -249,14 +251,17 @@ try {
   console.log("state render:");
   check("svg emitted", !!svg);
   check("lanes emitted", lanes.length > 0, `${lanes.length} lanes`);
-  // The DEFAULT view is flat feature rows, so it has no swimlane headers -- and every row it draws
-  // is a feature, which is the point: a subsystem row carries no identity hue, so the folded-tree
-  // default rendered the entire timeline in the neutral grey `laneColor` falls back to.
-  check("default view is flat (no swimlane headers)", swimlanes.length === 0,
-        `${swimlanes.length} swimlanes`);
+  // The DEFAULT view is the folded tree: non-root subsystems arrive collapsed to meta-lanes, so
+  // the first open shows the hierarchy's top level rather than every leaf as a flat sibling list.
+  const metaLanes = lanes.filter((n) => {
+    const id = n.getAttribute("data-id") || "";
+    return id && !id.startsWith("f-");
+  });
+  check("default view is the folded tree (collapsed subsystems present as meta-lanes)",
+        metaLanes.length > 0, `${metaLanes.length} meta-lanes of ${lanes.length} lanes`);
   const swatches = rail.querySelectorAll(".glane-swatch");
   const grey = [...swatches].filter((el) => el.getAttribute("fill") === "#8a8a8a");
-  check("every default lane is a feature, so every lane has an identity hue",
+  check("every lane has an identity hue (subsystem meta-lanes included)",
         swatches.length > 0 && grey.length === 0,
         `${grey.length}/${swatches.length} swatches fell back to neutral grey`);
   check("chunk-cars emitted", cars.length > 0, `${cars.length} cars`);
