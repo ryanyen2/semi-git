@@ -678,10 +678,39 @@ def ideal_for_ref(repo: str | Path, ref: str = "HEAD", store: Store | None = Non
 
     included = _recorded_ideal_at(gb, ref)
     if included is None:
-        ref_commits = set(gb.commit_shas(ref))
-        included = {op.id for op in all_ops if set(op.provenance) & ref_commits}
+        included = _provenance_ids_at(gb, ref, all_ops)
     # `_reduced_ideal_ids` drops ids with no op in the store up front, so a trailer naming an op
     # this clone has not fetched degrades to a smaller valid ideal rather than raising.
+    return _validated_from_ops(repo, _reduced_ideal_ids(repo, included, all_ops), all_ops)
+
+
+def _provenance_ids_at(gb: GitBinding, ref: str, all_ops: list) -> set[str]:
+    """The ops whose `provenance` intersects `ref`'s commit ancestry."""
+    ref_commits = set(gb.commit_shas(ref))
+    return {op.id for op in all_ops if set(op.provenance) & ref_commits}
+
+
+def provenance_ideal_for_ref(repo: str | Path, ref: str = "HEAD", store: Store | None = None) -> Ideal:
+    """Everything `ref`'s ancestry ever recorded, including ops a revert has since taken out.
+
+    Deliberately not `ideal_for_ref`. That one answers "the ideal this ref's tree embodies", which
+    is what `--at <ref>` and `fold` want, and after a revert it correctly *excludes* the reverted
+    op. `restore` needs the opposite: the whole point of the verb is to address something the
+    current ideal no longer holds, so its source has to be the superset that still holds it.
+    Reverting an op does not remove the commit that introduced it from the ancestry, so provenance
+    still selects it where the tip's `Sgt-Op:` trailers -- which record the post-revert ideal --
+    no longer do.
+
+    Split out because `plan_restore` used to get this by calling `ideal_for_ref`, back when that
+    was provenance-only. When `ideal_for_ref` grew its trailers rung, restore silently kept
+    resolving `file::sym` to the still-live older version instead of the reverted one, so its
+    downset was already in the ideal and it applied nothing while reporting `ok` -- a verb that
+    moves files reporting success over an untouched tree.
+
+    `store` is accepted (unused) for call-site compatibility, as on `ideal_for_ref`."""
+    repo = Path(repo)
+    all_ops = opindex.index_ops(repo)
+    included = _provenance_ids_at(GitBinding(repo), ref, all_ops)
     return _validated_from_ops(repo, _reduced_ideal_ids(repo, included, all_ops), all_ops)
 
 

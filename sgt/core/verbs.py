@@ -464,7 +464,7 @@ def plan_pin(repo: str | Path, symbol: str, version: str) -> VerbPreview:
 
 def plan_restore(repo: str | Path, target: str) -> VerbPreview:
     ops, ideal, declared = _load(repo)
-    source = lens.ideal_for_ref(repo, "HEAD")  # the full provenance ideal still holds reverted ops
+    source = lens.provenance_ideal_for_ref(repo, "HEAD")  # still holds the reverted ops
     op_id, err = resolve_target(source, ops, target)
     source_ids = source.op_ids
     if err:

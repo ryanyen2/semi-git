@@ -175,7 +175,7 @@
         "log"
       ],
       "exit": 0,
-      "out": " \u2192 next      nothing pending\n\n\u001b[1m 5 of 7 saves with tracked work  \u00b7  1 main feature  \u00b7  (newest on top)\u001b[0m\n\u001b[2m each row = one save; cN = its commit position\u001b[0m\n\n \u001b[2m\u25cf\u001b[0m \u001b[1m\u001b[38;2;201;136;214m\u25cf\u001b[0m\u001b[0m \u001b[2mc6\u001b[0m \u001b[38;2;201;136;214mb558b8b\u001b[0m  edit non-parseable config                     \u001b[38;2;201;136;214mbaz qux\u001b[0m\n \u001b[2m\u25cf\u001b[0m \u001b[1m\u001b[38;2;201;136;214m\u25cf\u001b[0m\u001b[0m \u001b[2mc5\u001b[0m \u001b[38;2;201;136;214mf3a8be6\u001b[0m  delete bar                                    \u001b[38;2;201;136;214mbaz qux\u001b[0m\n \u001b[2m\u25cf\u001b[0m \u001b[1m\u001b[38;2;201;136;214m\u25cf\u001b[0m\u001b[0m \u001b[2mc4\u001b[0m \u001b[38;2;201;136;214md1a2bc5\u001b[0m  tangled: add baz to b.py and edit unrelated\u2026  \u001b[38;2;201;136;214mbaz qux\u001b[0m\n \u001b[2m\u25cf\u001b[0m \u001b[1m\u001b[38;2;201;136;214m\u25cf\u001b[0m\u001b[0m \u001b[2mc3\u001b[0m \u001b[38;2;201;136;214m00cc584\u001b[0m  move bar from a.py to b.py                    \u001b[38;2;201;136;214mbaz qux\u001b[0m\n \u001b[2m\u25cf\u001b[0m \u001b[1m\u001b[38;2;201;136;214m\u25cf\u001b[0m\u001b[0m \u001b[2mc0\u001b[0m \u001b[38;2;201;136;214mb511794\u001b[0m  add foo, qux, config, binary                  \u001b[38;2;201;136;214mbaz qux\u001b[0m\n\n\u001b[2m next:  sgt log --map  (the feature map)   \u00b7   sgt show \"baz qux\"  (what is it)   \u00b7   sgt log --focus \"baz qux\"  (its checkpoints)   \u00b7   sgt revert \"baz qux\"  (remove it)\u001b[0m\n"
+      "out": " \u2192 next      nothing pending\n\n \u001b[1m5 of 7 saves with tracked work\u001b[0m\u001b[2m  \u00b7  \u001b[0m\u001b[2m1 feature\u001b[0m\u001b[2m  \u00b7  \u001b[0m\u001b[2mnewest first\u001b[0m\n\n\u001b[2m      \u001b[0m\u001b[2mWHEN\u001b[0m\u001b[2m  \u001b[0m\u001b[2mSAVE   \u001b[0m\u001b[2m  \u001b[0m\u001b[2mWHAT                                                   \u001b[0m\u001b[2m  \u001b[0m\u001b[2mFEATURE\u001b[0m\n\u001b[2m \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u001b[0m\n \u001b[2m\u25cf \u001b[0m\u001b[1;38;2;201;136;214m\u25cf\u001b[0m  \u001b[2mc6\u001b[0m  \u001b[38;2;201;136;214mb558b8b\u001b[0m  edit non-parseable config                                \u001b[38;2;201;136;214mbaz qux\u001b[0m\n \u001b[2m\u25cf \u001b[0m\u001b[1;38;2;201;136;214m\u25cf\u001b[0m  \u001b[2mc5\u001b[0m  \u001b[38;2;201;136;214mf3a8be6\u001b[0m  delete bar                                               \u001b[38;2;201;136;214mbaz qux\u001b[0m\n \u001b[2m\u25cf \u001b[0m\u001b[1;38;2;201;136;214m\u25cf\u001b[0m  \u001b[2mc4\u001b[0m  \u001b[38;2;201;136;214md1a2bc5\u001b[0m  tangled: add baz to b.py and edit unrelated qux in c.py  \u001b[38;2;201;136;214mbaz qux\u001b[0m\n \u001b[2m\u25cf \u001b[0m\u001b[1;38;2;201;136;214m\u25cf\u001b[0m  \u001b[2mc3\u001b[0m  \u001b[38;2;201;136;214m00cc584\u001b[0m  move bar from a.py to b.py                               \u001b[38;2;201;136;214mbaz qux\u001b[0m\n \u001b[2m\u25cf \u001b[0m\u001b[1;38;2;201;136;214m\u25cf\u001b[0m  \u001b[2mc0\u001b[0m  \u001b[38;2;201;136;214mb511794\u001b[0m  add foo, qux, config, binary                             \u001b[38;2;201;136;214mbaz qux\u001b[0m\n\n\u001b[2m \u001b[0m\u001b[2m5 saves\u001b[0m\n\n\u001b[2;3m \u001b[0m\u001b[2;3msgt show \"baz qux\"   \u00b7   sgt log --focus \"baz qux\"   \u00b7   sgt log --map\u001b[0m\n\n"
     }
   },
   "map": {
@@ -194,7 +194,7 @@
         "--tree"
       ],
       "exit": 0,
-      "out": "baz qux (004014ef) \u00b7 5 symbols\n1 feature\n"
+      "out": " \u001b[1m1 feature\u001b[0m\u001b[2m  \u00b7  \u001b[0m\u001b[2m0 subsystems\u001b[0m\n\n\u001b[2m \u001b[0m\u001b[2mFEATURE             \u001b[0m\u001b[2m  \u001b[0m\u001b[2mSYMBOLS\u001b[0m\n\u001b[2m \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u001b[0m\n \u001b[38;2;201;136;214m\u25cf \u001b[0mbaz qux             \u001b[2m      5\u001b[0m\n\n\u001b[2m \u001b[0m\u001b[2m1 row\u001b[0m\n\n"
     }
   },
   "merge": {
@@ -578,7 +578,7 @@
         "--summary"
       ],
       "exit": 0,
-      "out": "6 files, 15 symbols, 1 feature, 33% entity coverage\n  oracle: unconfigured\n  \u2713 in sync\n"
+      "out": " \u001b[1m6 files\u001b[0m\u001b[2m  \u00b7  \u001b[0m\u001b[1m15 symbols\u001b[0m\u001b[2m  \u00b7  \u001b[0m\u001b[1m1 feature\u001b[0m\u001b[2m  \u00b7  \u001b[0m\u001b[2m33% coverage\u001b[0m\u001b[2m  \u00b7  \u001b[0m\u001b[2moracle unconfigured\u001b[0m\n\n\u001b[32m \u001b[0m\u001b[32m\u2713 in sync\u001b[0m\n\n"
     }
   },
   "switch": {
