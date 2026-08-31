@@ -1,0 +1,25 @@
+#!/bin/sh
+# The editor git opens for a commit message during the study.
+#
+# A pilot ran `git revert HEAD`, got dropped into pico over the suggested
+# message, and did not know how to leave it or whether the commit had happened.
+# Nothing the study measures lives in a terminal editor, so the work repo's
+# core.editor points here instead (set by install/setup.sh).
+#
+# git calls this with the path to the message file. If git already wrote a
+# message into it, as it does for a revert, a merge, or an amend, that message
+# is used unchanged. If the file holds nothing but comments, which is what a
+# bare `git commit` produces, there is no message to accept, so say how to pass
+# one and let git abort the commit.
+if grep -q '^[^#]' "$1" 2>/dev/null; then
+    exit 0
+fi
+cat >&2 <<'MSG'
+
+This session does not open a terminal editor. Give the message on the command
+line instead:
+
+    git commit -m "what you changed"
+
+MSG
+exit 1

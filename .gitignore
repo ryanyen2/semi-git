@@ -65,6 +65,7 @@ web/*.tsbuildinfo
 scripts/study-bundle/telemetry/events.jsonl
 scripts/study-bundle/telemetry/uploaded.txt
 scripts/study-bundle/telemetry/state.json
+scripts/study-bundle/telemetry/shell-history
 
 # Built participant bundles. They are generated into the site's static files by
 # scripts/make-study-bundle.sh and published by `firebase deploy`; the sources

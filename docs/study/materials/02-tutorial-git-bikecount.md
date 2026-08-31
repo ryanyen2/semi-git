@@ -1,8 +1,8 @@
 # Practice: git, bikecount
 
-A few minutes on the project itself before the stages start. Ask us anything now. Once the stages start we can only answer questions about the stage instructions themselves.
+Take a few minutes on the project itself before the stages start. Ask us anything now, because once the stages start we can only answer questions about the stage instructions themselves.
 
-You already know git. This is not a lesson. It is a warm-up on the four things the stages will ask you to do, on the project the stages use, so that nothing on this machine surprises you later.
+You already know git, so this page is not a lesson. It is a warm-up on the four things the stages will ask you to do, on the same project the stages use. The point is that nothing about this machine should surprise you once a stage's clock is running.
 
 ## The project you are looking after
 
@@ -20,7 +20,7 @@ The code is laid out like this:
 - `bikecount/metrics.py` works out the numbers the pages show: daily totals, the busiest day, the hour-of-day averages, the by-year summary.
 - `bikecount/data.py` reads `data/counts.csv` and hands the rows to everything else.
 - `bikecount/charts.py` draws the bar charts the pages embed.
-- `check.py` renders every page and fails if one of them blows up. It is the safety net, and it takes a second:
+- `check.py` renders every page and fails if one of them blows up. It is the quickest way to see whether the project still works, and it takes about a second:
 
 ```
 python3 check.py
@@ -36,7 +36,7 @@ In the session shell, run:
 ./stage 0
 ```
 
-That puts the project back to where it stood just before the changes the first stage is about, so nothing you see here spoils that stage. Everything you do from now until you run `./stage 1` is undone by `./stage 1`, so nothing you try can go wrong.
+The command puts the project back to where it stood just before the changes the first stage is about, so nothing you see during the warm-up spoils that stage. Running `./stage 1` later undoes everything you do between now and then, so nothing you try here can go wrong.
 
 ## Open the editor
 
@@ -44,26 +44,28 @@ That puts the project back to where it stood just before the changes the first s
 study-code
 ```
 
-That opens the project in VS Code. Find these three now, because the stages will want them:
+The command opens the project in VS Code. Find these three places now, because the stages use all of them:
 
-- **Source Control** in the left bar. It shows what you have changed, and it is where you commit.
-- **Graph**, the lower half of that same view. This is the history as a graph you can click through.
-- **Timeline**, at the foot of the Explorer. Click a file and it lists the commits that touched that file.
+- **Source Control**, in the left bar, lists what you have changed and is where you commit.
+- **Graph**, in the lower half of that same view, draws the history as a graph you can click through.
+- **Timeline**, at the bottom of the Explorer, lists the commits that touched the file you click.
 
 ## 1. Read one change
 
-Open the Graph and click a commit. It shows you what that commit changed, file by file. The same thing in the terminal:
+Open the Graph and click a commit. The editor shows what that commit changed, file by file. The terminal shows the same thing:
 
 ```
 git log --oneline
 git show <paste a hash from that list>
 ```
 
-Read the commit that added the csv download, and the one that added the by-year table. Between them they will tell you most of how the pages are put together.
+On this machine git prints straight to the terminal. It never opens the pager screen that you would normally leave by pressing q, so long output simply scrolls past and you scroll back to read it.
+
+Read the commit that added the csv download, and the one that added the by-year table. Together they show most of how the pages are put together.
 
 ## 2. Record some work
 
-Open `README.md` and change a word in it. Then record it the way you normally would: stage it and commit it in Source Control, with a message. Or in the terminal:
+Open `README.md` and change a word in it. Then record the change the way you normally would. Stage it and commit it in Source Control with a message, or do the same in the terminal:
 
 ```
 git add README.md
@@ -74,13 +76,15 @@ Stage 1 asks you to do exactly this, on changes somebody else made.
 
 ## 3. Find a piece of work
 
-`git log -S` finds the commits where a piece of text arrived or went away. Any word from the code will do:
+`git log -S` finds the commits where a piece of text arrived or went away. Any word from the code works:
 
 ```
 git log --oneline -S "average"
 ```
 
-Try to see the same story in the Graph. Also worth knowing: `git log --stat` shows which files each commit touched, and `git blame <file>` says which commit last changed each line. The editor does both: the Timeline for a file, and the grey note at the end of the line your cursor is on, which names the commit that last changed it.
+The Graph has no search like that, so use the two together. The command gives you the hashes, and clicking those commits in the Graph shows what each one changed.
+
+Two more commands are useful here. `git log --stat` lists the files each commit touched, and `git blame <file>` names the commit that last changed each line. The editor shows the same information in two places: the Timeline lists the commits that touched the open file, and the grey note at the end of the line your cursor is on names the commit that last changed that line.
 
 Stage 2 asks you to find one particular piece of work this way.
 
@@ -90,23 +94,33 @@ Stage 2 asks you to find one particular piece of work this way.
 git revert HEAD
 ```
 
-That makes a new commit undoing the most recent one. This one applies cleanly. Put it back by reverting the revert:
+The command makes a new commit that undoes the most recent one. On this machine git uses the commit message it suggests instead of opening a terminal editor, so the revert finishes in one step. Put the work back by running `git revert HEAD` again, which reverts the revert.
 
-```
-git revert HEAD
-```
-
-**Now try one that does not apply cleanly.** Pick a commit from a few pages back in `git log --oneline` -- one that later work has built on, such as the commit that first added the hour-of-day page -- and revert it:
+**Now try one that does not apply cleanly.** In `git log --oneline`, find the commit that first added the hour-of-day page, and revert it:
 
 ```
 git revert <that hash>
 ```
 
-Git will stop and leave conflict markers in the files. Resolve them, `git add` the file, then `git revert --continue`. Or walk away with `git revert --abort`.
+Git stops partway, because later commits built on the work you are removing. It leaves the affected files for you to settle, and `git status` lists them under "Unmerged paths". You will see two kinds:
 
-Do this now. Stage 3 asks you to remove work that several later commits have landed on, and this is the only place you can practise getting out of it.
+- A file listed as **both modified** has conflict markers in it, from `<<<<<<<` to `>>>>>>>`. Open the file in the editor and edit it down to the lines that should survive, with the marker lines deleted. Save it, then run `git add <that file>`.
+- A file listed as **deleted by them** has no markers. The revert wants to delete the whole file, but a later commit changed it, so git leaves the choice to you. Run `git rm <that file>` to delete it, or `git add <that file>` to keep it. Here the right choice is `git rm`, because the page is part of the work you are removing. A kept page file still calls the functions the revert takes out, and the project will not run.
+
+Git's own hint writes those two commands as `git add/rm <pathspec>`. It is shorthand for "`git add` or `git rm`, followed by a file path", not a command to type as written.
+
+When `git status` no longer lists unmerged paths, finish the revert and check the project:
+
+```
+git revert --continue
+python3 check.py
+```
+
+If the check fails, read which file the error names. The usual cause is a kept file that still calls something the revert removed. If you want out instead, any time before the `--continue`, run `git revert --abort` and everything goes back to how it was before the revert.
+
+Do this now. Stage 3 asks you to remove work that several later commits have landed on, and the warm-up is the only place to practise getting out of a conflicted revert.
 
 ## Before we start
 
-Run `python3 check.py` once more to see the project still works, and tell us if anything above behaved differently from what you expected.
+Run `python3 check.py` once more to see that the project still works, and tell us if anything above behaved differently from what you expected.
 
