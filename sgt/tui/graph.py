@@ -1066,7 +1066,6 @@ def render_graph_lines(
     color: bool = True,
     bar_width: int | None = None,
     show_links: bool = False,
-    states: dict | None = None,
     max_rows: int = 40,
 ) -> list[str]:
     """Render the feature map as terminal lines (ANSI truecolor when `color`): one row per lane,
