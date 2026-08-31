@@ -60,7 +60,7 @@ def _vocab(repo: Path, verb: str):
     resolves against) -- listing the live frontier there would only ever yield no-op candidates.
     Synthetic anchor/residue symbols are filtered from both (`_user_symbols`)."""
     from sgt.api import map_view, oplog_view
-    from sgt.core.lens import current_ideal, ideal_for_ref
+    from sgt.core.lens import current_ideal, provenance_ideal_for_ref
 
     tree = map_view(repo)
     features = [n for n in tree["nodes"] if n["kind"] == "feature"]
@@ -68,7 +68,7 @@ def _vocab(repo: Path, verb: str):
     ideal_ids = current_ideal(repo).op_ids
     all_ops = oplog_view(repo, full=True)["ops"]  # needs each op's footprint (`_user_symbols`)
     if verb == "restore":
-        restorable = ideal_for_ref(repo, "HEAD").op_ids
+        restorable = provenance_ideal_for_ref(repo, "HEAD").op_ids
         pool = [op for op in all_ops if op["id"] in restorable and op["id"] not in ideal_ids]
         op_header = "Removed ops that `restore` can bring back (id | intent | symbols)"
         sym_header = "Removed symbols that can be restored (file::name)"
