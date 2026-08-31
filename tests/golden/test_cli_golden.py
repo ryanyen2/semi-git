@@ -48,15 +48,33 @@ _SNAPSHOTS = pathlib.Path(__file__).resolve().parent / "snapshots"
 def _capture(repo: pathlib.Path, argv: list[str]) -> dict:
     """Run `sgt <argv>` with `repo` as cwd (the CLI operates on the working directory, like every
     real invocation), capturing exit code and stdout. Determinism: op ids are content-addressed,
-    feature labels use the offline fallback, so the captured bytes are stable across runs."""
+    feature labels use the offline fallback, so the captured bytes are stable across runs.
+
+    The colour environment is pinned for the same reason. `theme.console` builds its rich Console
+    with `force_terminal`, so it emits ANSI into this StringIO -- but *which* ANSI is detected from
+    the environment, and that is not a property of sgt. A developer terminal advertising
+    `COLORTERM=truecolor` captured `\x1b[38;2;201;136;214m` where CI, which sets neither COLORTERM
+    nor TERM, produced `\x1b[37m`, so a snapshot regenerated on a laptop failed on every runner and
+    read as a real CLI drift. Pinned to truecolor rather than to the runner's 8 colours because the
+    snapshot is more useful naming the colours the theme actually chose."""
     cwd = os.getcwd()
     os.chdir(repo)
     buf = io.StringIO()
+    prior = {k: os.environ.get(k) for k in ("COLORTERM", "TERM", "NO_COLOR", "FORCE_COLOR")}
+    os.environ["COLORTERM"] = "truecolor"
+    os.environ["TERM"] = "xterm-256color"
+    os.environ.pop("NO_COLOR", None)
+    os.environ.pop("FORCE_COLOR", None)
     try:
         with contextlib.redirect_stdout(buf):
             code = cli.main(list(argv))
     finally:
         os.chdir(cwd)
+        for k, v in prior.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
     return {"argv": list(argv), "exit": code, "out": buf.getvalue()}
 
 
