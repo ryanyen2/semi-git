@@ -34,7 +34,7 @@ export function validateGroundTruth(parsed: GroundTruth): void {
   // those checks only ever look at entries the key happens to carry.
   for (const spec of REQUESTS) {
     const entry = parsed.requestKeys[spec.id]
-    if (spec.identify && !entry?.locate) {
+    if ((spec.identify || spec.scoredLocate) && !entry?.locate) {
       throw new Error(
         `That key has no locate answer for ${spec.id}, so the stage asking which piece of ` +
           'work caused the defect would go unscored. It looks like a key from an earlier ' +
@@ -116,7 +116,7 @@ export function validateGroundTruth(parsed: GroundTruth): void {
       }
     }
 
-    if (!spec?.identify || !entry.locate) continue
+    if (!(spec?.identify || spec?.scoredLocate) || !entry.locate) continue
     const projects = Object.keys(entry.locate)
     const absent = PROJECTS.filter((p) => !projects.includes(p))
     if (absent.length > 0) {

@@ -59,7 +59,7 @@ Run the command below first. It resets the project and prints the two numbers th
 
 **Your job:** Find the piece of work in the project's history that made that change. You do not have to change any code.
 
-**You are done when:** You have written what this setup calls that work into the box below. A commit hash, a named piece of work, or an id all count. If you are not certain you found the right one, write down what you have and say that you are not certain. That is more useful to us than a guess.
+**You are done when:** You can name the piece of work — a commit hash, a named piece of work, or an id all count. The questions after this stage ask you which one you found. If you are not certain, choose what you have and say that you are not certain. That is more useful to us than a guess.
 
 When you run `./stage 2`, it will:
 
@@ -68,12 +68,10 @@ When you run `./stage 2`, it will:
 
 Commands that may help:
 
-- `sgt log` lists the jobs somebody did, newest first, in their own words.
+- `sgt log` shows the history grouped by feature; `sgt log --rail` lists what happened, newest first.
 - `sgt find "the bit that works out the averages"` searches by description. Any wording will do.
 - `sgt intent list` prints every feature and checkpoint with the handle you can type back, and the groups that span several features at the bottom.
 - `sgt show "<name>"` shows what one piece of work covers.
-
-**What this setup calls the work that changed the averages:** ______________________
 
 ## Stage 3: Take that work out
 

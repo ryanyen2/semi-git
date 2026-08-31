@@ -24,7 +24,7 @@ describe('the shipped answer key', () => {
   })
 
   it('accepts an answer for every locate step, in both projects', () => {
-    for (const spec of REQUESTS.filter((r) => r.identify)) {
+    for (const spec of REQUESTS.filter((r) => r.identify || r.scoredLocate)) {
       for (const project of PROJECTS) {
         const accepted = key.requestKeys[spec.id].locate?.[project]
         expect(accepted, `${spec.id} has no accepted answers for ${project}`).toBeTruthy()
@@ -37,7 +37,7 @@ describe('the shipped answer key', () => {
   // vocabularies or it marks one arm wrong for being right in its own terms. A
   // key holding only a sha would do exactly that to the sgt arm.
   it('accepts more than one way of naming the work', () => {
-    for (const spec of REQUESTS.filter((r) => r.identify)) {
+    for (const spec of REQUESTS.filter((r) => r.identify || r.scoredLocate)) {
       for (const project of PROJECTS) {
         expect(key.requestKeys[spec.id].locate![project].length).toBeGreaterThan(1)
       }
@@ -49,7 +49,7 @@ describe('the shipped answer key', () => {
   // and cannot be settled from this side. The shas in particular are regenerated
   // after every bundle build, and this test would keep passing over stale ones.
   it('accepts nothing blank or duplicated', () => {
-    for (const spec of REQUESTS.filter((r) => r.identify)) {
+    for (const spec of REQUESTS.filter((r) => r.identify || r.scoredLocate)) {
       for (const project of PROJECTS) {
         const accepted = key.requestKeys[spec.id].locate![project]
         for (const a of accepted) expect(a.trim()).toBeTruthy()

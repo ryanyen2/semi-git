@@ -229,6 +229,13 @@ export interface RequestSpec {
    * in the browser (see protocol v2 section 4).
    */
   identify?: Record<Project, string>
+  /**
+   * The key must accept `locate` answers for this stage even when no in-work
+   * box (`identify`) collects them -- the participant names the work in the
+   * recognition question and aloud, and the facilitator scores that against
+   * the key after the session.
+   */
+  scoredLocate?: boolean
   /** The quiz, in order. Rendered after the work phase, untimed. Two items at
    * most: pilots spent longer on a three-item quiz than on the stage. */
   quiz: QuizItem[]
@@ -412,14 +419,19 @@ Run the command below first. It puts the project into this stage's starting stat
       // cost a minute of an untimed quiz that people were already tired of. The
       // same thing as four options is answerable in five seconds and comparable
       // across participants.
+      // Asks whether they READ where the record landed (the save echo / the commit in the log),
+      // not what they did -- a participant who recorded without looking picks "I could not tell",
+      // and that is the signal. The old wording ("What did it join?") assumed the sgt arm's
+      // vocabulary and read as a riddle in the git arm.
       {
         kind: 'choice',
         id: 'joined',
-        prompt: 'Your record is now part of the project’s history. What did it join?',
+        prompt:
+          'When you recorded the work, did the setup connect it to any earlier work in the project?',
         options: [
-          { value: 'alone', label: 'Nothing. It stands on its own.' },
-          { value: 'same', label: 'Earlier work on the same part of the dashboard.' },
-          { value: 'other', label: 'Earlier work on a different part of the dashboard.' },
+          { value: 'alone', label: 'No — it stands on its own.' },
+          { value: 'same', label: 'Yes — earlier work on the same part of the dashboard.' },
+          { value: 'other', label: 'Yes — earlier work on a different part of the dashboard.' },
           { value: 'unsure', label: 'I could not tell.' },
         ],
         scored: false,
@@ -460,7 +472,7 @@ Run the command below first. It resets the project and prints the two numbers th
 
 **Your job:** Find the piece of work in the project's history that made that change. You do not have to change any code.
 
-**You are done when:** You have written what this setup calls that work into the box below. A commit hash, a named piece of work, or an id all count. If you are not certain you found the right one, write down what you have and say that you are not certain. That is more useful to us than a guess.
+**You are done when:** You can name the piece of work — a commit hash, a named piece of work, or an id all count. The questions after this stage ask you which one you found. If you are not certain, choose what you have and say that you are not certain. That is more useful to us than a guess.
 `,
     ),
     tips: {
@@ -471,7 +483,7 @@ Run the command below first. It resets the project and prints the two numbers th
         '`git log --oneline -- <file>` narrows that to one file, and `git blame <file>` says which commit last touched each line.',
       ],
       sgt: [
-        '`sgt log` lists the jobs somebody did, newest first, in their own words.',
+        '`sgt log` shows the history grouped by feature; `sgt log --rail` lists what happened, newest first.',
         '`sgt find "the bit that works out the averages"` searches by description. Any wording will do.',
         '`sgt intent list` prints every feature and checkpoint with the handle you can type back, and the groups that span several features at the bottom.',
         '`sgt show "<name>"` shows what one piece of work covers.',
@@ -490,17 +502,18 @@ Run the command below first. It resets the project and prints the two numbers th
         ],
       },
     },
-    identify: {
-      bikecount: 'What this setup calls the work that changed the averages',
-      footfall: 'What this setup calls the work that changed the averages',
-    },
+    scoredLocate: true,
+    // The in-work text box (`identify`) is gone: it duplicated the recognition
+    // question below, and typing a handle mid-stage measured transcription
+    // under a clock rather than whether the work was found. The recognition
+    // choice after the stage is the measure now. The answer key's `locate`
+    // entries stay -- a facilitator can still score a name a participant says
+    // aloud -- and the `identify` machinery in the renderer/key stays for any
+    // future stage that wants a production measure.
     quiz: [
-      // Options as well as the free-text box, not instead of it. The box is the
-      // measurement -- can you produce the name this setup uses -- and it stays
-      // where it was, on the card, during the work. This is the recognition
-      // half, for the participant who found the work but could not write down a
-      // handle for it. Unscored: promoting it means adding
-      // `requestKeys.s2.choices.found` to the answer key.
+      // This is the recognition half, for the participant who found the work
+      // but could not write down a handle for it. Unscored: promoting it means
+      // adding `requestKeys.s2.choices.found` to the answer key.
       {
         kind: 'choice',
         id: 'found',
