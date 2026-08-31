@@ -253,12 +253,12 @@ function computeGraphLayout(map, grid, opts) {
 // pair whose other half is `graph_layout` in sgt/tui/graph.py, and a rule changed in one and not the
 // other drifts silently. So the flat view reuses that output and only reassigns rows.
 //
-// Why it is the default. The tree view opens folded to its subsystem rows, and a subsystem is not a
-// feature: it carries no identity hue, so `laneColor` answers the neutral `#8a8a8a` for every row a
-// reader sees on arrival. The whole timeline was grey, and the one channel the design spends on
-// identity said nothing until you expanded something. Flat rows are features, so they are coloured,
-// and ordering them by most-recently-touched puts what you were working on at the top instead of
-// whatever the clusterer happened to name first.
+// The alternate view, not the default. Flat rows are leaves ordered by most-recently-touched --
+// "what was I just working on" -- at the cost of the hierarchy: every leaf is a sibling, so the
+// grouping the tree exists to show disappears (the study's pilots met this list and read it as a
+// commit log with different labels). It was briefly the default while subsystems had no identity
+// hue and the folded tree opened grey; the host colors subsystems now, so the tree is back as the
+// default and this stays as the toggle.
 function flattenLayout(layout) {
   const lanes = layout.lanes
     .slice()
@@ -547,9 +547,11 @@ function episodeRailLayout(epView) {
   if (state.selectedPlanSession === undefined) state.selectedPlanSession = null;
   if (!Array.isArray(state.multi)) state.multi = state.selected ? [state.selected] : [];
   if (state.view !== "rail") state.view = "gantt"; // "gantt" (feature timeline) | "rail" (episodes)
-  // "flat" (feature rows, newest-touched first) | "tree" (the subsystem hierarchy, folded).
-  // Flat is the default: see `flattenLayout` for why the folded tree could not be.
-  if (state.grouping !== "tree") state.grouping = "flat";
+  // "tree" (the subsystem hierarchy, folded to its top level) | "flat" (feature rows,
+  // newest-touched first). Tree is the default again: the grey-wall objection that made flat the
+  // default is gone (the host now gives subsystems an identity hue too, see workbench.ts), and a
+  // flat list of leaves is how the study's pilots lost the hierarchy this surface exists to show.
+  if (state.grouping !== "flat") state.grouping = "tree";
   let compose = {
     map: { nodes: [], roots: [], edges: [] }, history: { commits: [], ops: [] },
     grid: { commits: [], cells: [] },
@@ -849,11 +851,10 @@ function episodeRailLayout(epView) {
     layout = groupedLayout(map, grid, compose);
   }
 
-  // The tree view opens folded to its subsystem rows: root(s) expanded to their direct children,
-  // deeper subsystems collapsed, so the reader meets ~20 rows instead of every leaf at once. It is
-  // no longer the DEFAULT view (see `flattenLayout`) -- it is what `state.grouping === "tree"`
-  // gets. Applied exactly once, and only after real nodes have arrived; any later expand/collapse
-  // persists and is never overwritten.
+  // The tree view (the default) opens folded to its subsystem rows: root(s) expanded to their
+  // direct children, deeper subsystems collapsed, so the reader meets ~20 rows instead of every
+  // leaf at once. Applied exactly once, and only after real nodes have arrived; any later
+  // expand/collapse persists and is never overwritten.
   function applyClusterDefaultOnce() {
     if (state.clusteredOnce) return;
     const roots = new Set(map.roots || []);
@@ -1254,6 +1255,29 @@ function episodeRailLayout(epView) {
     retracting = null;
   }
 
+  // Chip hover-intent: the name waits for the cursor to REST on a chapter. Naming is cheap, but a
+  // chip that unfolds on every car the cursor merely CROSSES is motion the reader did not ask for
+  // -- sweeping a dense lane popped a chip per car. Its own timer, not `onHoverIntent`'s preview
+  // timer, so a leave cancels a pending chip without cancelling a pending preview elsewhere.
+  // The node harness (dev/smoke.js) sets `window.__CHIP_INTENT_MS__ = 0`, which shows the chip
+  // synchronously so its assertions can stay synchronous.
+  const CHIP_INTENT_MS = (typeof window !== "undefined" && window.__CHIP_INTENT_MS__ != null)
+    ? window.__CHIP_INTENT_MS__ : 260;
+  let chipTimer = null;
+
+  function cancelChipIntent() {
+    if (chipTimer !== null) {
+      clearTimeout(chipTimer);
+      chipTimer = null;
+    }
+  }
+
+  function chipIntent(fn) {
+    cancelChipIntent();
+    if (CHIP_INTENT_MS <= 0) { fn(); return; }
+    chipTimer = setTimeout(() => { chipTimer = null; fn(); }, CHIP_INTENT_MS);
+  }
+
   function showCarChip(args) {
     if (!chipLayer) return;
     clearRetraction();
@@ -1382,7 +1406,7 @@ function episodeRailLayout(epView) {
 
   function laneColor(id) {
     const n = byId(id);
-    return (n && n.color) || "#8a8a8a"; // meta/subsystem lanes have no identity hue -> neutral
+    return (n && n.color) || "#8a8a8a"; // neutral only for a node the host didn't color (unknown id)
   }
 
   // Draw one lane's checkpoints as chunk-cars positioned on the SHARED commit-time axis: each car
@@ -1570,12 +1594,15 @@ function episodeRailLayout(epView) {
       wrap.addEventListener("mouseenter", () => {
         if (armedVerb || stagedAction) return;
         wrap.classList.add("gcar-hovered");
-        showCarChip(chipArgs);
+        // The highlight is instant (the affordance); the chip waits for the cursor to rest
+        // (`chipIntent`), so sweeping the lane does not unfold a name per car crossed.
+        chipIntent(() => showCarChip(chipArgs));
         setPreviewContext(`${car.label} · ${car.opCount} edit(s)`
           + (car.reverted ? " · retired" : "") + " — click to select", "identity");
       });
       wrap.addEventListener("mouseleave", () => {
         wrap.classList.remove("gcar-hovered");
+        cancelChipIntent(); // a pending chip must not appear after the cursor has gone
         hideCarChip();
         // Only ever retract this hover's own sentence.
         if (previewContext.classList.contains("identity")) setPreviewContext(null);

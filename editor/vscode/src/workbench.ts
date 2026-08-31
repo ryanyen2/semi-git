@@ -75,8 +75,39 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
       // Identity colors are theme-aware (color.ts's OKLCH lightness shifts light<->dark), so a
       // theme switch needs the rail's node colors recomputed -- same trigger blame.ts uses.
       vscode.window.onDidChangeActiveColorTheme(() => void this.pushState()),
-      this.watchAgentActions()
+      this.watchAgentActions(),
+      // The uncommitted-work ghosts (`compose.save_preview`) go stale the moment a source file is
+      // edited: the `.sgt/**` watcher deliberately ignores source saves (extension.ts), so nothing
+      // re-ran the preview until the next sgt command, and the rail showed a clean forecast over a
+      // dirty tree. A document save re-fetches the compose slice -- debounced, only while the rail
+      // is visible, and `compose` mines on contact, so the ghost a save would land appears right
+      // after ⌘S instead of after the fact.
+      vscode.workspace.onDidSaveTextDocument((doc) => this.queueEditRefresh(doc)),
+      new vscode.Disposable(() => clearTimeout(this.editRefresh))
     );
+  }
+
+  private editRefresh: ReturnType<typeof setTimeout> | undefined;
+
+  private queueEditRefresh(doc: vscode.TextDocument): void {
+    if (!this.view?.visible) return; // a hidden rail repaints from a fresh compose when it opens
+    if (doc.uri.scheme !== "file") return;
+    const rel = doc.uri.fsPath.startsWith(this.root + "/")
+      ? doc.uri.fsPath.slice(this.root.length + 1) : null;
+    // `.sgt/` writes are the watcher's business (and our own subprocess's side effects); `.git/`
+    // churn is git's. Neither is a source edit that changes what the next save would land.
+    if (!rel || rel.startsWith(".sgt/") || rel.startsWith(".git/")) return;
+    clearTimeout(this.editRefresh);
+    this.editRefresh = setTimeout(() => {
+      void (async () => {
+        try {
+          await this.store.composeView(true);
+        } catch {
+          return; // a failed refresh keeps the last state; the next save or poll retries
+        }
+        void this.pushState();
+      })();
+    }, 1500); // a multi-file "save all" costs one refresh, not one per file
   }
 
   /**
@@ -242,9 +273,13 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     } catch {
       grid = { commits: [], cells: [] };
     }
+    // Every node gets an identity hue, subsystems included. Subsystems used to get null (grey),
+    // which is the reason the folded tree could not be the default view: the whole first-open
+    // timeline rendered in `laneColor`'s neutral fallback. With a hue on the meta-lanes the tree
+    // default is legible, and the hierarchy is the point of the surface.
     const nodes = compose.map.nodes.map((n) => ({
       ...n,
-      color: n.kind === "feature" ? colorForNode(n.id) : null,
+      color: colorForNode(n.id),
     }));
     this.previewCache.clear();
     void this.view?.webview.postMessage({
