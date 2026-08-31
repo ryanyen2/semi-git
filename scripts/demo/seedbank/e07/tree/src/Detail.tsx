@@ -1,0 +1,29 @@
+import { Badge } from './Badge'
+import { Mark } from './Mark'
+import { SowDots } from './SowDots'
+import type { Variety } from './varieties'
+
+export function Detail({ variety, onClose }: { variety: Variety; onClose: () => void }) {
+  return (
+    <aside className="detail" aria-label={variety.name}>
+      <button className="detail-close" onClick={onClose} aria-label="close">
+        ×
+      </button>
+      <Mark name={variety.name} />
+      <h2 className="detail-name">{variety.name}</h2>
+      <p className="card-species">{variety.species}</p>
+      <dl className="detail-facts">
+        <dt>family</dt>
+        <dd>{variety.family}</dd>
+        <dt>days to harvest</dt>
+        <dd>{variety.daysToHarvest}</dd>
+        <dt>availability</dt>
+        <dd>
+          <Badge id={variety.id} />
+        </dd>
+      </dl>
+      <p className="detail-label">sow</p>
+      <SowDots id={variety.id} />
+    </aside>
+  )
+}

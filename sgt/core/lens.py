@@ -47,7 +47,7 @@ from sgt.core.ideal import Ideal
 from sgt.core.mine import mine
 from sgt.core.op import MINER_VERSION
 from sgt.core.store import Store, locked_section
-from sgt.store.gitbind import GitBinding, format_op_trailers
+from sgt.store.gitbind import GitBinding, format_op_trailers, parse_op_ids
 
 
 class DirtyWorkingTreeError(Exception):
@@ -610,23 +610,78 @@ def current_ideal(repo: str | Path) -> Ideal:
     return _validated_from_ops(repo, ids, opindex.index_ops(repo))
 
 
+def _recorded_ideal_at(gb: GitBinding, ref: str) -> frozenset[str] | None:
+    """The op-set a ref's tip commit *records* in its own `Sgt-Op:` trailers, or None when it has
+    none (pre-sgt history, a plain `git commit`, a rewrite that stripped them).
+
+    The tip alone is enough, and is better than walking: sgt writes the whole ideal into every
+    commit it makes (`record_ideal` -> `format_op_trailers(sorted(ideal.op_ids))`), so the trailers
+    are cumulative and each commit's set is already complete. Measured on a 13-commit React repo,
+    every commit's trailers are a valid ideal on their own, growing 31 -> 151 ops and folding
+    14 -> 30 files. That also settles the merge case without needing a walk policy: a two-parent
+    `sgt sync` merge records the full *merged* ideal in its own trailers (verified: 12 trailers,
+    12 ops in the resulting ideal), where any single-parent walk would have under-counted a whole
+    merged-in branch.
+
+    An empty parse is treated as "no trailers" rather than "the empty ideal", so a commit carrying
+    only bookkeeping trailers falls back rather than claiming a repo has no ops.
+
+    An unresolvable ref returns None rather than raising: `commit_shas` answers `[]` for one
+    ("Empty before the first commit, or if `ref` doesn't resolve"), so the provenance rung already
+    degrades gracefully, and `commit_message` raising here would turn `sgt advanced fold --at
+    no-such-branch` from a clean refusal into a `GitError` traceback."""
+    try:
+        ids = parse_op_ids(gb.commit_message(ref))
+    except Exception:  # noqa: BLE001 -- an unresolvable/unborn ref is the fallback's business
+        return None
+    return frozenset(ids) if ids else None
+
+
 def ideal_for_ref(repo: str | Path, ref: str = "HEAD", store: Store | None = None) -> Ideal:
     """The ideal a given ref's committed history implies -- a *pure read*: no mining, no
-    checkout, no side effects. It projects the ops already in the store onto `ref`'s own commit
-    ancestry, exactly as `_committed_ids_by_provenance` does for the current ref, but for any
-    ref, and never consults the persisted `.sgt/local/ideal.json` table (see `_sync`). A ref
-    whose history was never mined yields an under-approximated ideal, so contact it with `get()`
-    first for completeness. The read views (U7's `state_view`/`ideal_diff_view`) use this to
-    inspect and compare refs without disturbing the working tree.
+    checkout, no side effects.
+
+    Two sources, in order, and never a union of them (a union would produce a set that is neither):
+
+    1. The ref tip's own `Sgt-Op:` trailers (`_recorded_ideal_at`) -- the committed, tree-witnessed
+       record of which ops that commit's tree embodies.
+    2. Failing that, provenance projection: the ops whose `provenance` intersects `ref`'s commit
+       ancestry, exactly as `_committed_ids_by_provenance` does for the current ref.
+
+    Rung 1 exists because rung 2 alone is not merely approximate, it collapses. `op.provenance` is
+    stamped only by *mining* pre-existing git history; ops minted by `sgt save` and by `verbs.apply`
+    carry none, so no ref can ever select them. Measured on a React app authored the way sgt asks
+    people to author -- 13 commits, all but the scaffold made by `sgt save` -- provenance projection
+    returned **10 of 151 ops and 7 of 30 files, with 0 of its 23 source files**, while its trailers
+    named all 151. The same repo shape mined from real git commits instead loses far less (bikecount:
+    111 of 189), which is why this went unnoticed: the convenient instrumented repo was the one
+    shape that hides it.
+
+    This still never consults the persisted `.sgt/local/ideal.json` table (see `_sync`). Trailers
+    live in the commit, so reading a ref's own trailers is what "the ideal this ref's committed
+    history implies" already means -- the same source `sync`'s log -> trailers -> mine recovery
+    ladder trusts (`sync.ingest._attributed_ids`). A rewrite that strips trailers falls to rung 2,
+    i.e. exactly today's answer and never a worse one; `sgt advanced resync` remains the remedy
+    there.
+
+    A ref whose history was never mined *and* carries no trailers still yields an under-approximated
+    ideal, so contact it with `get()` first for completeness. The read views (U7's
+    `state_view`/`ideal_diff_view`) use this to inspect and compare refs without disturbing the
+    working tree.
 
     `store` is accepted (unused) for call-site compatibility -- this is a pure ideal-derivation,
     so it reads the footprint-only `opindex` sidecar (never `op.images`) rather than a caller-
     supplied `Store`."""
     repo = Path(repo)
     gb = GitBinding(repo)
-    ref_commits = set(gb.commit_shas(ref))
     all_ops = opindex.index_ops(repo)
-    included = {op.id for op in all_ops if set(op.provenance) & ref_commits}
+
+    included = _recorded_ideal_at(gb, ref)
+    if included is None:
+        ref_commits = set(gb.commit_shas(ref))
+        included = {op.id for op in all_ops if set(op.provenance) & ref_commits}
+    # `_reduced_ideal_ids` drops ids with no op in the store up front, so a trailer naming an op
+    # this clone has not fetched degrades to a smaller valid ideal rather than raising.
     return _validated_from_ops(repo, _reduced_ideal_ids(repo, included, all_ops), all_ops)
 
 
@@ -1481,7 +1536,8 @@ def _reproducible_content(
 
 
 def materialization_skips(
-    repo: str | Path, materialized: dict[str, bytes], all_ops: list | None = None
+    repo: str | Path, materialized: dict[str, bytes], all_ops: list | None = None,
+    *, prior_ideal: Ideal | None = None,
 ) -> dict[str, list[str]]:
     """What `_write_working_tree` would refuse to touch, computed *without* writing -- for `status`
     to surface (R3/R4). `unmanaged`: tracked symlink paths. `backstop_kept`: tracked paths the
@@ -1494,7 +1550,16 @@ def materialization_skips(
     reporting it as damage and pointing at `sgt advanced fsck --tree` sends a user to run a command
     that answers "0 drifted path(s)" and leaves the same warning on the next `status`. That is the
     failure `_history_rewritten` documents for resync: a remedy that reports success without
-    fixing anything is worse than none, because it also removes the reason to keep looking."""
+    fixing anything is worse than none, because it also removes the reason to keep looking.
+
+    `prior_ideal` mirrors `_write_working_tree`'s parameter of the same name, and every caller
+    predicting a *specific* edit must pass it (`api.verb_result_out_view` passes the preview's
+    `before_ids`; `status`, which asks about no particular edit, does not). These two functions are
+    a matched pair -- this one exists only to say what that one would do -- so a keep-condition
+    added there and not here silently makes the prediction disagree with the apply. Not
+    hypothetical: when `prior_ideal` landed in the writer alone, `revert --emit --out` went on
+    keeping three bikecount pages the apply had begun deleting, which is the same class of defect
+    as the omission it was added to fix, pointing the other way."""
     repo = Path(repo)
     tracked = _tracked_paths(repo)
     unmanaged = [p for p in tracked if _writes_through_symlink(repo, p)]
@@ -1504,7 +1569,15 @@ def materialization_skips(
         and (repo / p).is_file() and not _writes_through_symlink(repo, p)
     ]
     reproducible = _reproducible_content(repo, all_ops, only_paths=set(to_delete)) if to_delete else {}
-    kept = [p for p in to_delete if (repo / p).read_bytes() != reproducible.get(p)]
+    prior: dict[str, bytes] = (
+        code(prior_ideal, all_ops, only_paths=set(to_delete))
+        if prior_ideal is not None and all_ops is not None and to_delete else {}
+    )
+    kept = [
+        p for p in to_delete
+        if (repo / p).read_bytes() != reproducible.get(p)
+        and (repo / p).read_bytes() != prior.get(p)
+    ]
     # Which of those the store has ever mined an entity for. A footprint symbol is
     # `path::entity`, so the path prefix is the test.
     ops = all_ops if all_ops is not None else Store(repo).all_ops()

@@ -56,6 +56,13 @@ fi
 # the editor pointed at wrappers that no longer exist -- which fails silently,
 # by recording nothing.
 #
+# The terminal profile below exists because inheriting PATH is not enough on
+# macOS: the integrated terminal starts zsh as a login shell, path_helper puts
+# the system directories back in front of the shims, and a pilot's terminal
+# commands never reached the log. bin/study-terminal starts a bash that reads
+# no rc file and puts the shims first, so a command typed in the editor's
+# terminal is recorded like one typed in the session shell.
+#
 # Nothing here turns a feature off to make the recording tidier. The editor's
 # own refreshes are flagged in the log instead. Quieting the tool being measured
 # to make its measurements easier to read is how a study ends up describing an
@@ -79,7 +86,12 @@ $GIT_ARM_SETTINGS
   "window.restoreWindows": "none",
 
   "terminal.integrated.env.osx": { "STUDY_SURFACE": "terminal" },
-  "terminal.integrated.env.linux": { "STUDY_SURFACE": "terminal" }
+  "terminal.integrated.env.linux": { "STUDY_SURFACE": "terminal" },
+
+  "terminal.integrated.profiles.osx": { "study": { "path": "$STUDY_HOME/bin/study-terminal" } },
+  "terminal.integrated.profiles.linux": { "study": { "path": "$STUDY_HOME/bin/study-terminal" } },
+  "terminal.integrated.defaultProfile.osx": "study",
+  "terminal.integrated.defaultProfile.linux": "study"
 }
 SETTINGS
 

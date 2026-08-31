@@ -161,7 +161,23 @@ class SegmentThemer:
             "For each chapter give: label (2-5 words, Title Case, in the developer's own terms), "
             "rationale (one line), and commit_shas -- the exact 8-char prefixes from the list that "
             "belong to it. Chapters must be contiguous stretches of the timeline and together cover "
-            "every commit exactly once. Never invent a sha not shown.\n\n"
+            "every commit exactly once. Never invent a sha not shown.\n"
+            # A checkpoint is a place someone can put the code back to, so its name has to answer
+            # "what would I get back?" -- and the failure the examples correct is real: on the
+            # sketchpad demo the model named chapters for the shape of the diff (`Update Solver
+            # Logic`) rather than for the idea that arrived in them (`One Pass Method`), which
+            # leaves a reader scanning a feature's row with nothing to choose between.
+            "\nWhat a good chapter name does: a reader scanning this feature's timeline picks a "
+            "chapter to put the code back to, so name the IDEA that arrived, not the shape of the "
+            "diff. `One Pass Method` and `Expiry and Limits` tell a reader what returning would "
+            "give them; `Update Solver Logic`, `Refactor Validation` and `More Changes` do not.\n"
+            "An example cut, five commits into two chapters:\n"
+            "  [0] scaffold the coupon form and its route   \\\n"
+            "  [1] wire the form into the cart total         > Coupon Entry\n"
+            "  [2] reject expired codes, with a message     \\\n"
+            "  [3] cap it at one coupon per order            > Expiry and Limits\n"
+            "  [4] fix the total when a coupon is removed   /  (a repair, low novelty: it joins the "
+            "chapter it repairs rather than becoming its own)\n\n"
             f"Commits (sha | subject | op-kinds | novelty | symbols[ | prompt]):\n{lines}\n"
         )
         try:

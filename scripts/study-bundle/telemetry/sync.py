@@ -29,6 +29,16 @@ import shim  # noqa: E402
 
 DAEMON_INTERVAL = 20
 
+# How often the daemon re-checks that the session it belongs to is still there.
+# Shorter than the push interval, so an orphan stops promptly instead of pushing
+# one more time on its way out -- which is the push that recreates a folder the
+# participant has just deleted.
+DAEMON_CHECK_INTERVAL = 1
+
+# Not client.study_home(): the daemon is the thing that recreates that directory,
+# so its own file is the marker. mkdir does not bring a deleted sync.py back.
+SELF = Path(__file__).resolve()
+
 
 def resolve_code(explicit: str | None) -> str | None:
     return explicit or client.participant_code()
@@ -142,18 +152,47 @@ def once(code: str, quiet: bool, verbose: bool = False, with_tests: bool = False
         return 1
 
 
+def session_is_over() -> bool:
+    """Whether this daemon has outlived the session that started it.
+
+    bin/study-shell starts the daemon in the background and traps EXIT to kill
+    it, but that trap only runs when the shell exits cleanly. A participant who
+    closes the terminal window instead leaves the daemon orphaned onto launchd,
+    still pushing every twenty seconds. Because client.telemetry_dir() creates
+    the directory it is about to write into, the study folder deleted after the
+    session then reappears seconds later, with nothing on screen to say what is
+    doing it. Two pilots watched `~/Downloads/study-*` come back; three orphaned
+    daemons were still running days after their sessions had ended.
+
+    Two ways to know the session is over. The shell that started this is gone,
+    so we have been reparented onto pid 1. Or the bundle itself has been
+    deleted, which the mkdir cannot undo, because this file is not one of the
+    things it recreates.
+    """
+    return os.getppid() == 1 or not SELF.is_file()
+
+
 def daemon(code: str) -> int:
     # A long-lived pusher so the facilitator's screen is never more than twenty
     # seconds behind. Failures are silent on purpose: a participant should not
     # see network noise while they are working.
     while True:
+        if session_is_over():
+            return 0
         try:
             capture_repo_outcome()
             client.sync(code)
             client.heartbeat(code, uploaded=len(client.read_ledger()))
         except Exception:
             pass
-        time.sleep(DAEMON_INTERVAL)
+        # Slept in short steps rather than one long one, so that stopping is
+        # about as quick as the participant expects deleting a folder to be.
+        waited = 0.0
+        while waited < DAEMON_INTERVAL:
+            if session_is_over():
+                return 0
+            time.sleep(DAEMON_CHECK_INTERVAL)
+            waited += DAEMON_CHECK_INTERVAL
 
 
 def main() -> int:

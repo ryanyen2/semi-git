@@ -33,6 +33,22 @@ import { PreviewProvider } from "./preview";
 import { FoldFrontier, StaleRequestError } from "./sgt";
 import { Store } from "./store";
 
+/** The composition picker's ref, as a fold frontier.
+ *
+ * Its first entry is the literal "HEAD" (labelled "current composition"), and `workbench.js` sends
+ * that same string as its no-selection default. In this UI "HEAD" means *the present* — which is
+ * the current ideal, not the git ref of that name. The two diverge the moment an ideal edit is
+ * applied locally: `apply` mints a revert's compensating ops with empty provenance, so
+ * `lens.ideal_for_ref` can never select them and a HEAD fold returns the pre-revert tree (measured
+ * on bikecount: 111 ops against the current ideal's 113, disagreeing with the working tree on 7 of
+ * 16 files). That is why the code(I) panel kept showing the un-reverted code after a revert.
+ *
+ * A real branch or session ref still folds as a ref, which is what those mean. Shared by
+ * `previewComposition` and `requestFold` so the rule cannot drift between the two. */
+function compositionFrontier(ref: string | undefined): FoldFrontier {
+  return ref && ref !== "HEAD" ? { ref } : { current: true };
+}
+
 export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Disposable {
   private view: vscode.WebviewView | undefined;
   private readonly disposables: vscode.Disposable[] = [];
@@ -49,7 +65,10 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     private readonly context: vscode.ExtensionContext,
     private store: Store,
     private readonly previewTabs: PreviewProvider,
-    private readonly root: string
+    private readonly root: string,
+    // Optional so the workbench keeps working with no panel open -- the render panel is a second
+    // consumer of a fold the scrub already performs, never a dependency of it.
+    private readonly render?: { show(frontier: FoldFrontier): unknown; isOpen(): boolean }
   ) {
     this.disposables.push(
       store.onDidChange(() => void this.pushState()),
@@ -129,6 +148,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
         <button class="seg-btn" data-view="gantt" title="Feature timeline (Gantt)">▤ Timeline</button>
         <button class="seg-btn" data-view="rail" title="Episode rail (what I did, in order)">◫ Rail</button>
       </div>
+      <button id="groupBtn" class="group-btn" title="Group rows by subsystem, or list features by what you touched last">Features</button>
       <button id="compositionBtn" class="composition-btn">HEAD</button>
     </div>
     <div class="tb-divider"></div>
@@ -758,7 +778,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     }
     void this.view?.webview.postMessage({ type: "compositionPreviewStart", ref, seq });
     try {
-      const fold = await this.store.foldAt({ ref });
+      const fold = await this.store.foldAt(compositionFrontier(ref));
       void this.view?.webview.postMessage({
         type: "compositionPreviewResult", seq, ref,
         files: fold.files, oracle_verdict: fold.oracle_verdict, forked: fold.forked, error: fold.error,
@@ -782,9 +802,8 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
       return;
     }
     const node = map.nodes.find((n) => n.id === featureId);
-    const frontier: FoldFrontier = { ref: ref || "HEAD" };
     try {
-      const fold = await this.store.foldAt(frontier, () => this.latest.fold === seq);
+      const fold = await this.store.foldAt(compositionFrontier(ref), () => this.latest.fold === seq);
       const memberFiles = new Set((node?.members || []).map((m) => m.split("::")[0]));
       const files = node
         ? Object.fromEntries(Object.entries(fold.files || {}).filter(
@@ -830,6 +849,10 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
   // webview filter by the selected feature's `dir` client-side so dragging never re-requests.
   private async scrubPlayhead(commitIndex: number, seq: number): Promise<void> {
     this.latest.playhead = seq;
+    // Phase 5: if the render panel is open, the same frontier drives the running app. Fired
+    // before the read so the panel starts its own (debounced) fold in parallel rather than after
+    // this one returns -- the panel's fold writes to disk and is the slower of the two.
+    if (this.render?.isOpen()) void this.render.show({ commitIndex });
     try {
       const fold = await this.store.foldAt({ commitIndex }, () => this.latest.playhead === seq);
       void this.view?.webview.postMessage({

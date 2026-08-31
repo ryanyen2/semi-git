@@ -391,6 +391,7 @@ To run the tests:
 
 ```bash
 cd web && npm test                                  # security rules, analysis, figures
+python3 scripts/study-bundle/tests/test_sync_daemon.py  # when the pusher stops
 FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 \
     python3 scripts/study-bundle/tests/test_telemetry.py   # the recording pipeline
 ```

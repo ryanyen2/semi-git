@@ -9,12 +9,11 @@ the pilot test (Textual) boots the real app and opens the graph screen.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from sgt.tui.graph import (
-    _NOW_RULE,
-    _chips,
-    _forecast_band,
     _min_unique_prefixes,
     _reverted_gap_note,
     _state_banner,
@@ -175,15 +174,35 @@ def test_nested_subsystems_indent_by_depth_in_tree_order():
                    _node("S", "R", ["F1", "F2"], kind="subsystem"),
                    _node("F1", "S", []), _node("F2", "S", []), _node("F0", "R", [])],
          "edges": []}
-    # F1 born first (0) so S sorts before the later-born F0 (5) within R.
+    # F1 is born first (0) and F0 later (5), so a level ordered by time alone would put the whole S
+    # block ahead of F0 -- see the grouping assertion below for why it must not.
     out = graph_layout(m, _grid(("F1", 0), ("F2", 10), ("F0", 5)))
     headers = {h["collapsed_id"]: h for h in out["headers"]}
     assert headers["R"]["depth"] == 0 and headers["S"]["depth"] == 1  # S nests under R
     lanes = out["node_by_id"]
     assert lanes["F1"]["depth"] == 2 and lanes["F2"]["depth"] == 2  # features under the nested S
     assert lanes["F0"]["depth"] == 1  # a direct feature of R
-    assert headers["R"]["row"] < headers["S"]["row"] < lanes["F1"]["row"] < lanes["F0"]["row"]
+    assert headers["R"]["row"] < headers["S"]["row"] < lanes["F1"]["row"]  # a header opens its block
     assert headers["R"]["op_count"] == 3 and headers["R"]["lane_count"] == 3  # rolls up all 3
+
+
+def test_a_features_own_rows_come_before_its_subsystem_blocks():
+    """One parent's own feature lanes are emitted before its sub-groups, so the indent means
+    containment. A subsystem is not one row but a BLOCK, and ordering a level by first appearance
+    alone interleaved the two kinds: F0, a direct feature of R born after F1, landed below S's
+    entire subtree, where the indent then read as membership of S. On seedbank-v3 that filed four of
+    the repo's own features under `Plant Discovery`, whose header announced six features above nine
+    rows -- so the one number a reader can check against the rows beneath it disagreed with them."""
+    m = {"roots": ["R"],
+         "nodes": [_node("R", None, ["S", "F0"], kind="subsystem"),
+                   _node("S", "R", ["F1", "F2"], kind="subsystem"),
+                   _node("F1", "S", []), _node("F2", "S", []), _node("F0", "R", [])],
+         "edges": []}
+    out = graph_layout(m, _grid(("F1", 0), ("F2", 10), ("F0", 5)))
+    lanes = out["node_by_id"]
+    headers = {h["collapsed_id"]: h for h in out["headers"]}
+    assert lanes["F0"]["row"] < headers["S"]["row"], "R's own feature sits above R's sub-group"
+    assert headers["S"]["row"] < lanes["F1"]["row"] < lanes["F2"]["row"], "S's block stays contiguous"
 
 
 def test_a_collapsed_child_subsystem_counts_its_features_in_the_parents_header():
@@ -215,10 +234,16 @@ def test_nesting_is_drawn_inside_the_title_column_so_the_commit_axis_stays_align
     # Fixed geometry: the label field is padded back to the same total width whatever the indent, so
     # every row is the same length and the density bar occupies the same columns on all of them.
     assert len({len(ln) for ln in rows}) == 1
-    assert len({ln.index("●") for ln in rows}) == 1
     nested = next(ln for ln in rows if "● F1" in ln)
     flat = next(ln for ln in rows if "● F0" in ln)
-    assert nested.rindex("F1") == flat.rindex("F0") + 2  # the deeper lane's label steps in by 2
+    # Containment is drawn with `├─ / └─ / │` guides rather than bare indentation, so a row still
+    # says who owns it once its header has scrolled away. A guide level is three columns.
+    # `index`, not `rindex`: the row now carries an ID column too, and in this fixture the id and
+    # the label are the same string, so `rindex` would measure the handle instead of the name.
+    assert nested.index("F1") == flat.index("F0") + 3
+    # Both rows are filed under a subsystem, so both carry a guide; the deeper one carries an extra
+    # `│` stem showing the level it hangs off.
+    assert all(any(g in ln for g in ("├─", "└─")) for ln in (nested, flat))
     hdrs = [ln for ln in lines if "▾" in ln]
     assert hdrs[0].index("▾") < hdrs[1].index("▾")   # and so does the nested header
 
@@ -236,7 +261,8 @@ def test_a_feature_in_no_subsystem_sits_left_of_one_that_is_in_a_group():
     rows = [ln for ln in lines if "●" in ln]
     member = next(ln for ln in rows if "F1" in ln)
     loose = next(ln for ln in rows if "LOOSE" in ln)
-    assert member.rindex("F1") == loose.rindex("LOOSE") + 2  # the filed one steps in, the loose one doesn't
+    assert member.index("F1") == loose.index("LOOSE") + 3  # the filed one steps in (one guide level)
+    assert any(g in member for g in ("├─", "└─")) and "─ " not in loose
     assert len({len(ln) for ln in rows}) == 1  # and the commit axis stays aligned
 
 
@@ -365,12 +391,16 @@ def test_a_reverted_checkpoint_is_drawn_as_removed_not_as_live():
 
     body = "\n".join(render_graph_lines(m, hist, [live, gone, part], focus="A", color=False))
     assert "3 checkpoints" in body and "1 reverted" in body   # the count still counts them
+    # The `[░░░]`/`(███)` car glyphs are gone -- twelve of them down the left of a real feature read
+    # as a cipher -- so removal is now carried by a STATE column and the way back by the footer.
     rewound = next(l for l in body.splitlines() if "rewound" in l)
-    assert "░" in rewound and "█" not in rewound                # removed, in the preview's own glyph
-    assert "reverted" in rewound and "sgt restore A@1" in rewound
     kept = next(l for l in body.splitlines() if "kept" in l)
-    assert "█" in kept and "░" not in kept
-    assert "1 of 2 edits reverted" in next(l for l in body.splitlines() if "half" in l)
+    assert "reverted" in rewound                    # the removed chapter says so, on its own row
+    assert "reverted" not in kept                   # ...and the live one is not drawn the same way
+    assert "sgt restore A@1" in body                # and the way back is one copyable command
+    # A chapter with only SOME of its ops reverted reports the fraction rather than rounding
+    # to either extreme; the "edits" the numbers count is the column header beside it now.
+    assert "1 of 2 reverted" in next(l for l in body.splitlines() if "half" in l)
 
 
 def test_a_checkpoint_with_no_presence_claim_is_drawn_as_live():
@@ -444,32 +474,35 @@ def test_render_lines_carry_header_and_labels():
     assert "A" in text and "B" in text  # labels rendered
 
 
-def test_render_map_lists_positioned_checkpoint_chips_and_drops_the_f_tag():
-    """The map surface (formerly split into overview + `--timeline`): a bare-hex handle (no `f-`
-    tag), a per-feature-packed edit-density bar, and the checkpoints spelled out as `@n slug` chips
-    on their OWN indented sub-line below the bar (so a long label can't wrap the bar) -- the `@n` is
-    the revert handle. NOT the opaque `✦N` count."""
+def test_map_row_is_name_bar_and_count_with_checkpoints_one_command_away():
+    """The map row is three columns: the name, the density bar, the edit count.
+
+    It used to also carry an eight-character hex handle before the name and a second line of `@n`
+    chips below the bar. The handle made a wall of hex down the left of a view whose subject is
+    named beside it (and every verb takes the name), and the chip line was drawn at a fixed indent
+    that matched nothing above it, so it broke the column grid on every row and halved how much
+    history fits on screen. The checkpoints moved to `--focus`, which renders them as a table --
+    checked at the bottom of this test, because the information must still be reachable."""
     fid = "f-aaaaaaaaaa"
     m = {"roots": [fid], "nodes": [_node(fid, None, [])], "edges": []}
     hist = _grid((fid, 0), (fid, 100), (fid, 199))
     segs = [_seg(fid, 0, ["o0"], 0, 0, label="scaffold"),
             _seg(fid, 1, ["o1", "o2"], 100, 199, label="refine")]
+    m["nodes"][0]["label"] = "Scaffolding"
     lines = render_graph_lines(m, hist, segs, color=False)
-    lane_idx = next(i for i, ln in enumerate(lines) if "aaaaaaaa" in ln)
-    lane = lines[lane_idx]
-    chips = lines[lane_idx + 1]                              # checkpoints ride on the sub-line below
-    assert fid[:10] not in lane                              # the `f-` tag is gone from the handle
-    assert "aaaaaaaa" in lane                                # bare-hex copy token
-    assert "✦" not in lane                                   # no opaque ✦N count
-    assert any(ch in lane for ch in "▁▂▃▄▅▆▇█·")              # a packed density bar on the lane line
-    assert "scaffold" in chips and "refine" in chips         # checkpoints listed by name (own line)
-    assert "@0" in chips and "@1" in chips                   # ...led by their @n revert handle
-    assert any("edit density" in ln for ln in lines)         # legend explains the bar
-    assert any("shared commit axis" in ln for ln in lines)   # legend states columns line up across rows
-    # no segments -> no chips
-    plain = render_graph_lines(m, _grid((fid, 0)), color=False)
-    plain_lane = next(ln for ln in plain if "aaaaaaaa" in ln)
-    assert "✦" not in plain_lane and "@0" not in plain_lane
+    lane = next(ln for ln in lines if "● Scaffolding" in ln)
+    assert "aaaaaaaa" in lane                                 # the copy-paste handle, after the name
+    assert fid[:10] not in lane                               # ...as bare hex, with the `f-` tag gone
+    assert lane.index("Scaffolding") < lane.index("aaaaaaaa")  # name first, handle after it
+    assert "✦" not in lane                                    # no opaque ✦N count
+    assert any(ch in lane for ch in "▁▂▃▄▅▆▇█")               # a density bar on the lane row
+    assert "c0" in "\n".join(lines)                           # ...under a ruler that names the axis
+    assert not any(ln.strip().startswith("@") for ln in lines)  # and no chip sub-line
+
+    # The checkpoints are still one command away, named and handled.
+    focus = "\n".join(render_graph_lines(m, hist, segs, focus=fid, color=False))
+    assert "scaffold" in focus and "refine" in focus
+    assert "@0" in focus and "@1" in focus
 
 
 def test_render_car_draws_tier_brackets():
@@ -502,13 +535,15 @@ def test_time_bar_draws_a_lanes_gap_to_scale_on_the_shared_axis():
                        "kinds": {"add": 1}, "fidelity": "full"}]}
     segs = [_seg(fid, 0, ["o0"], 0, 0, tier="co-changed"),
             _seg(fid, 1, ["o1"], 199, 199, tier="co-changed")]
+    m["nodes"][0]["label"] = "Bookends"
     lines = render_graph_lines(m, grid, segs, color=False)
-    lane = next(ln for ln in lines if "cccccccc" in ln)
-    bar = lane[lane.index("cccccccc") + 8:]
+    lane = next(ln for ln in lines if "● Bookends" in ln)
+    bar = lane[lane.index("Bookends") + len("Bookends"):]
     marks = [i for i, ch in enumerate(bar) if ch in "▁▂▃▄▅▆▇█"]
     assert len(marks) == 2                       # one block per touched commit
     assert marks[1] - marks[0] > 8               # drawn to scale, not packed together
-    assert set(bar[marks[0] + 1:marks[1]]) == {" "}  # the quiet stretch is blank
+    quiet = bar[marks[0] + 1:marks[1]]
+    assert not (set(quiet) & set("▁▂▃▄▅▆▇█")), f"a block sits in the quiet stretch: {quiet!r}"
 
 
 def test_render_links_hidden_by_default_and_shown_with_show_links():
@@ -552,19 +587,26 @@ def test_render_focus_mode_resolves_a_unique_id_prefix_or_label():
     assert any("chapter one" in ln for ln in by_label)
 
 
-def test_render_overview_blank_line_separates_subsystem_groups():
-    """Whitespace carries the hierarchy: in the overview each subsystem group is preceded by a blank
-    line (except when it opens the list) and its features are indented under the header."""
+def test_render_overview_guides_carry_the_subsystem_hierarchy():
+    """Tree guides carry the hierarchy, not blank lines.
+
+    The map used to separate groups with a blank row, which costs one line per subsystem and stops
+    meaning anything the moment the header scrolls off the top -- exactly what a long timeline does.
+    A `├─`/`└─` guide travels with the row instead, so a feature still says which subsystem it is in
+    when its header is nowhere on screen, and the view fits twice as much history."""
     m = {"roots": ["N0", "N1"],
          "nodes": [_node("N0", None, ["F1"], kind="subsystem"), _node("F1", "N0", []),
                    _node("N1", None, ["F2"], kind="subsystem"), _node("F2", "N1", [])],
          "edges": []}
     lines = render_graph_lines(m, _grid(("F1", 0), ("F2", 40)), color=False)
-    headers = [i for i, ln in enumerate(lines) if "▾" in ln]
+    headers = [ln for ln in lines if "▾" in ln]
     assert len(headers) == 2
-    assert lines[headers[1] - 1] == ""                          # blank line before the 2nd subsystem group
     feat_rows = [ln for ln in lines if "●" in ln]
-    assert feat_rows and all(ln.startswith("   ") for ln in feat_rows)  # features indented under their header
+    assert len(feat_rows) == 2
+    # Every feature row is filed under a header, and says so with a guide of its own.
+    assert all(any(g in ln for g in ("├─", "└─")) for ln in feat_rows), feat_rows
+    # ...and the bar still starts in the same column on both, whatever their guides.
+    assert len({len(ln) for ln in feat_rows}) == 1
 
 
 def test_render_swimlane_header_present_for_expanded_subsystem():
@@ -646,13 +688,77 @@ def test_map_density_bar_positions_checkpoints_by_commit_time():
     m = {"roots": [fid], "nodes": [_node(fid, None, [])], "edges": []}
     hist = _grid((fid, 0), (fid, 100), (fid, 199))
     segs = [_seg(fid, 0, ["o0"], 0, 0), _seg(fid, 1, ["o1", "o2"], 100, 199)]
+    m["nodes"][0]["label"] = "Positioned"
+    # Named after the lane, so the echo rule drops both labels and the row is pure blocks: the
+    # invariant here is where the blocks SIT, not whether they can carry their own names.
+    segs = [dict(seg, intent="Positioned") for seg in segs]
     lines = render_graph_lines(m, hist, segs, color=False)
-    lane = next(ln for ln in lines if fid[2:10] in ln)  # handle is bare hex (no `f-`)
-    pre = lane.split("  @")[0]                      # handle + label + density bar, before the @n chips
-    assert "│" not in pre                           # no rewind-boundary separator anymore
-    marks = [i for i, ch in enumerate(pre) if ch in "▁▂▃▄▅▆▇█"]
-    assert len(marks) >= 2                          # a positioned density bar
-    assert set(pre[marks[0] + 1:marks[-1]]) - set("▁▂▃▄▅▆▇█") == {" "}  # quiet columns, blank
+    # The map's row is the name, the bar and the count -- there is no handle column and no chip
+    # sub-line, so the row is found by the one thing on it a reader would recognise: its name.
+    pre = next(ln for ln in lines if "● Positioned" in ln)
+    # Two checkpoints a hundred commits apart must be two SEPARATE blocks with quiet columns
+    # between, not one run: the gap is the boundary.
+    # A one-column block has no room even for its `@n`, so blocks are found by their fill, not by a
+    # handle -- which is itself the honest degradation at 200 commits in a terminal.
+    blocks = [b for b in re.split(r"\s{2,}", pre.rstrip()) if "▄" in b]
+    assert len(blocks) == 2, f"expected two separated blocks, got {blocks!r}"
+    assert blocks[1].startswith("@1"), blocks   # the wider one names itself
+    assert len(blocks[0]) < len(blocks[1])      # one commit vs a hundred: width means duration
+
+
+def test_the_map_strip_makes_every_checkpoint_addressable():
+    """Each block on the strip is one `@n` — the exact token `revert`/`restore`/`show` take.
+
+    The density bar this replaced drew a feature's life as one unbroken run of `▁▂▃▄▅▆▇█`: it read
+    beautifully and answered nothing you could act on. A reader looking at `the console` could see
+    that it was worked on throughout and had no way to tell which point they could go back to, what
+    that point was, or what typing it would get them."""
+    fid = "f-aaaaaaaaaa"
+    m = {"roots": [fid], "nodes": [_node(fid, None, [])], "edges": []}
+    m["nodes"][0]["label"] = "The Console"
+    # A short axis on purpose: `_grid` pads to 200 commits, which crams three checkpoints into the
+    # first columns and is a fair test of degradation but not of the labelling this test is about.
+    hist = {"commits": [{"index": i} for i in range(10)], "commit_count": 10,
+            "cells": [{"feature_id": fid, "commit_index": ci, "op_ids": [f"o{k}"], "op_count": 1,
+                       "kinds": {"add": 1}, "fidelity": "full"}
+                      for k, ci in enumerate((0, 4, 9))]}
+    segs = [_seg(fid, 0, ["o0"], 0, 0, label="Scaffold"),
+            _seg(fid, 1, ["o1"], 4, 4, label="Solver"),
+            _seg(fid, 2, ["o2"], 9, 9, label="One Pass Method")]
+    lines = render_graph_lines(m, hist, segs, color=False)
+    row = next(ln for ln in lines if "● The Console" in ln)
+    for n in ("@0", "@1", "@2"):
+        assert n in row, f"{n} is not addressable from the map: {row!r}"
+    # ...and the newest one is NAMED, whatever the axis does to the room around it: it is the point
+    # a reader most often wants to go back to, and it is the one that sits hard against the right
+    # edge with no empty time to spill its name into.
+    assert "@2 One Pass Method" in row, row
+    # The footer closes the loop with a real handle, not a `<name>` placeholder: `show` before
+    # `revert`, because it states what removing that checkpoint would cost without doing it.
+    text = "\n".join(lines)
+    assert "sgt show aaaaaaaa@2" in text, text
+    assert "sgt revert aaaaaaaa@2" in text, text
+
+
+def test_the_map_offers_the_prefix_handle_after_the_name():
+    """The copy-paste handle, with its minimal unique prefix picked out.
+
+    A name addresses a feature too, but it has to be typed in full and quoted; `aaaa` is four
+    characters and every verb resolves a unique prefix. The first pass of this redesign dropped the
+    column on the grounds that names suffice -- which cost the reader the cheaper of the two ways to
+    point at a row. It sits AFTER the name, because the wall of hex that made the old layout
+    unreadable was where it sat, between the glyph and the name, not the hex itself."""
+    a, b = "f-aaaaaaaaaa", "f-bbbbbbbbbb"
+    m = {"roots": [a, b], "nodes": [_node(a, None, []), _node(b, None, [])], "edges": []}
+    lines = render_graph_lines(m, _grid((a, 0), (b, 1)), color=False)
+    row = next(ln for ln in lines if "F-AAAAAAAAAA" in ln)
+    assert "aaaaaaaa" in row                                   # bare hex, no `f-` tag
+    assert row.index("F-AAAAAAAAAA") < row.index("aaaaaaaa")   # name first, handle after
+    assert any("ID" in ln for ln in lines)                     # ...under a header that says so
+    # A folded group is not a verb target and has no handle to offer, so it prints none rather than
+    # a build-local `N<k>` that resolves to nothing.
+    folded = render_graph_lines(m, _grid((a, 0), (b, 1)), collapsed=[a], color=False)
+    assert not any("N0" in ln or "N1" in ln for ln in folded), folded
 
 
 # ── feedforward verb-preview graph ───────────────────────────────────────────────────────────────
@@ -996,13 +1102,16 @@ def test_render_rail_drops_a_ghost_with_no_lane_to_the_unplaced_gutter():
     grid = _rail_grid()
     grid["ghosts"] = [{"feature_id": "fz", "title": "future work", "known_feature": False}]
     text = "\n".join(render_rail_lines(m, grid, color=False))
-    assert "planned (no lane yet)" in text and "future work" in text
+    assert "planned, no lane yet" in text and "future work" in text
 
 
-def test_render_graph_draws_a_plan_step_as_a_named_card_in_the_lane_forecast_band():
-    """A pending plan step is a NAMED card on its lane's own row, past the `┊` now-rule -- the same
-    place and grammar the lane's built work uses. It used to be a `◇ planned: …` chip on the
-    checkpoint line below, which put "what is coming" in a different spot than everything else."""
+def test_render_graph_names_a_plan_step_on_its_lanes_own_row():
+    """A pending plan step is NAMED on its lane's own row, not deferred to a chip line and not
+    reduced to a bare count.
+
+    It used to be a card in a forecast band that could claim up to 40% of the bar's columns --
+    anticipated work crowding out the measured history it hangs off. One planned step is worth
+    naming; several are worth counting, which is the same rule the rail's feature column follows."""
     m = {"roots": ["A"], "nodes": [_node("A", None, [])], "edges": []}
     grid = _grid(("A", 0), ("A", 1))
     grid["ghosts"] = [{"feature_id": "A", "title": "add caching", "known_feature": True}]
@@ -1010,27 +1119,9 @@ def test_render_graph_draws_a_plan_step_as_a_named_card_in_the_lane_forecast_ban
     text = "\n".join(lines)
     assert "◇ add caching" in text                     # named, not a bare count
     assert "planned: " not in text                     # the old chip encoding is gone
-    assert f"past {_NOW_RULE} = planned" in text        # and the legend explains the new region
-    # The card sits on the LANE row (right of the density bar), not on a line of its own.
+    # It sits on the LANE row, right of the count, not on a line of its own.
     lane_row = next(l for l in lines if "add caching" in l)
-    assert _NOW_RULE in lane_row and "A" in lane_row
-
-
-def test_forecast_band_collapses_extra_steps_but_always_names_at_least_one():
-    """Crowding must never reduce the band to a bare count. With more steps than cards fit, the last
-    card becomes `◇+N` -- but only once another step is already named; a band with room for a single
-    card names that card instead of showing a naked number."""
-    wide = _forecast_band(["first step", "second step", "third step"], 2 + 17 * 2, "#888", color=False)
-    assert "◇ first step" in wide and "◇+2" in wide
-
-    # One slot, three steps: the terminal has no tooltip, so the count rides on the named card rather
-    # than being deferred to hover -- the reader gets both "what is next" and "there is more".
-    narrow = _forecast_band(["only room for one", "second", "third"], 2 + 17, "#888", color=False)
-    assert "◇ only room… +2" in narrow
-    assert "◇+" not in narrow  # never a naked count as the band's only content
-
-    # An empty forecast occupies its reserved columns without drawing a rule (nothing is coming).
-    assert _forecast_band([], 12, "#888", color=False) == " " * 12
+    assert "● A" in lane_row and lane_row.index("● A") < lane_row.index("◇")
 
 
 def _wide_grid(n):
@@ -1049,7 +1140,7 @@ def test_render_save_list_has_no_lane_column_and_lists_saves_newest_first():
                    {"id": "fc", "label": "RGA"}]}
     lines = render_save_list_lines(m, _rail_grid(), color=False)
     text = "\n".join(lines)
-    assert "3 saves" in text and "newest on top" in text
+    assert "3 saves" in text and "newest first" in text
     # the lane art the wall was made of is gone
     assert "●" not in text and "│" not in text
     # every save is listed with its commit position, sha, subject and feature chip
@@ -1072,11 +1163,14 @@ def test_render_save_list_draws_a_topology_spine_when_topology_given():
     text = "\n".join(lines)
     row_of = {tag: next(l for l in lines if tag in l)
               for tag in ("add rga", "add bus", "add wire")}
+    # One vocabulary across both screens. The rail spelled an off-trunk save `○` and this list
+    # spelled the same thing `│●`, so the two views of one history disagreed about what a glyph
+    # means -- which is the cost the shared renderer exists to remove.
     assert row_of["add rga"].lstrip().startswith("◆")   # s2 is a merge
-    assert row_of["add bus"].lstrip().startswith("│●")  # s1 landed on a side branch
+    assert row_of["add bus"].lstrip().startswith("○")   # s1 landed on a side branch
     assert row_of["add wire"].lstrip().startswith("●")  # s0 landed on the trunk
-    # the legend names exactly the glyphs that appear (merge + side branch here)
-    assert "◆ merge" in text and "on a side branch" in text
+    # the legend names exactly the glyphs that appear (merge + off-trunk here)
+    assert "◆ merge" in text and "○ off-trunk" in text
 
 
 def test_render_save_list_without_topology_has_no_spine():
@@ -1169,21 +1263,23 @@ def test_chips_spend_the_budget_on_whole_names_before_truncating_several():
     assert "+2" in row, row                                 # and the rest counted, not mangled
 
 
-def test_chips_half_name_the_main_feature_rather_than_showing_a_bare_count():
-    """When the budget cannot fit one whole name, the cell still names the main feature and counts the
+def test_the_feature_column_half_names_its_feature_rather_than_showing_a_bare_count():
+    """When the column cannot fit one whole name, it still NAMES the main feature and counts the
     rest. The alternative -- a bare `+15` -- is the same cell for fifteen different states, and it is
     what an 80-column `sgt log --saves` printed on every row of a real repo. One hint plus a count is
-    one name, so the whole-name rule ("never half-name *several*") is intact."""
-    m = {"nodes": [{"id": f"f{i}", "label": f"Semantic Versioning Architecture {i}"} for i in range(4)]}
-    r = {"feature": "f0", "features": {f"f{i}": 3 - i for i in range(4)}}
-    cell = _chips(r, {n["id"]: n["label"] for n in m["nodes"]}, color=False, budget=24)
-    assert cell.startswith("Semantic Versioni"), cell   # the main feature, identifiable
-    assert cell.endswith("+3"), cell                    # the other three counted
-    assert len(cell) <= 24, cell
+    one name, so the whole-name rule ("never half-name *several*") is intact.
 
-    # ...but below the width where a truncated name identifies anything, the count alone is honest.
-    tight = _chips(r, {n["id"]: n["label"] for n in m["nodes"]}, color=False, budget=10)
-    assert tight == "+4", tight
+    Asserted through the renderer, not against a helper: the rule used to live in `_chips`, a second
+    implementation of what the rail already did, and two implementations of one rule is how the two
+    screens came to disagree about it in the first place."""
+    m = {"nodes": [{"id": f"f{i}", "label": f"Semantic Versioning Architecture {i}"} for i in range(4)]}
+    grid = _rail_grid()
+    grid["cells"] = [{"feature_id": f"f{i}", "commit_index": 0, "op_ids": [f"o{i}"],
+                      "op_count": 4 - i, "kinds": {"add": 1}, "fidelity": "full"} for i in range(4)]
+    row = next(l for l in render_save_list_lines(m, grid, color=False, width=72) if "add wire" in l)
+    assert "Semantic Versioni" in row, row   # the main feature, identifiable
+    assert "+3" in row, row                  # the other three counted, not mangled
+    assert len(row) <= 72, row               # ...and the row still fits the terminal it was given
 
 
 def test_gap_note_names_the_symbols_whole_and_wraps_them():
@@ -1289,3 +1385,93 @@ def test_map_draws_every_lane_on_one_shared_commit_axis():
     assert all(marks), "each lane drew at least one density block"
     assert marks[0][0] == marks[1][0], "the shared commit is the same column in both rows"
     assert marks[1][-1] > marks[0][-1], "a later commit sits further right"
+
+
+# ── The map's reading surface ────────────────────────────────────────────────────────────────────
+# Three encodings the map promises in its own legend, and used to break one row below the promise.
+
+def _chip_rows(lines):
+    """The checkpoint sub-lines of a rendered map, ANSI stripped."""
+    import re
+    plain = [re.sub(r"\x1b\[[0-9;]*m", "", ln) for ln in lines]
+    return [ln for ln in plain if re.match(r"^\s+(@\d|\+\d+ earlier|[A-Za-z])", ln)
+            and ("@" in ln or " · " in ln) and not re.match(r"^\s+[▸ ][◈●]", ln)]
+
+
+def test_checkpoints_are_a_list_and_only_the_bar_carries_time():
+    """Only the density bar carries time; the checkpoints are a list.
+
+    They used to sit in fixed 30-column cells on a sub-line under the bar, which spread three of
+    them evenly across exactly the x-range the bar occupies. A reader following "the same column is
+    the same time in every row" then read `@5 Seed Tray` as a checkpoint that landed at that commit,
+    which it has nothing to do with. They are rows of a `--focus` table now -- one per line, in `@n`
+    order -- so there is no x-position left to misread.
+    """
+    fid = "f-aaaaaaaaaa"
+    m = {"roots": [fid], "nodes": [_node(fid, None, [])], "edges": []}
+    hist = _grid((fid, 0), (fid, 40), (fid, 80))
+    segs = [_seg(fid, 0, ["o0"], 0, 0, label="Alpha"),
+            _seg(fid, 1, ["o1"], 40, 40, label="Beta"),
+            _seg(fid, 2, ["o2"], 80, 80, label="Gamma")]
+    lines = render_graph_lines(m, hist, segs, focus=fid, color=False)
+    rows = [ln for ln in lines if ln.strip().startswith("@")]
+    assert len(rows) == 3, rows
+    # One checkpoint per row, in `@n` order, each named beside its handle.
+    assert [ln.split()[0] for ln in rows] == ["@0", "@1", "@2"]
+    for row, name in zip(rows, ("Alpha", "Beta", "Gamma")):
+        assert name in row
+        # The name sits immediately after its handle -- never pushed out into a column that would
+        # read as a position on a time axis.
+        assert row.split()[1] == name, row
+
+
+def test_a_checkpoint_chip_that_only_echoes_its_lane_keeps_the_handle_and_drops_the_words():
+    """`@0 Chips Filters` under `make the chips filters: pick traits…` says nothing the row above it
+    did not just say, and on the demo repo that was five of thirteen rows. The `@n` handle survives
+    -- it is the token `sgt revert` takes, and the map is where a reader finds it."""
+    fid = "f-aaaaaaaaaa"
+    m = {"roots": [fid], "nodes": [_node(fid, None, [])], "edges": []}
+    m["nodes"][0]["label"] = "make the chips filters: pick traits in the header"
+    # A short axis: `_grid` pads to 200 commits, which squeezes every block to one column, and a
+    # block with no room for its own `@n` cannot show whether the words beside it were dropped.
+    hist = {"commits": [{"index": i} for i in range(8)], "commit_count": 8,
+            "cells": [{"feature_id": fid, "commit_index": ci, "op_ids": [f"o{k}"], "op_count": 1,
+                       "kinds": {"add": 1}, "fidelity": "full"} for k, ci in enumerate((0, 4))]}
+    segs = [_seg(fid, 0, ["o0"], 0, 0, label="Chips Filters"),      # only echoes the lane
+            _seg(fid, 1, ["o1"], 4, 4, label="Seed Tray")]          # says something new
+    # The rule lives on the MAP STRIP, where the lane's name sits on the same row and every column
+    # is contested. In the `--focus` table it does not apply: the name has a column of its own and
+    # the feature's name is a header several lines up, so blanking the cell there reads as missing
+    # data rather than as "nothing new to say".
+    row = next(ln for ln in render_graph_lines(m, hist, segs, color=False) if "● make the" in ln)
+    assert "@0" in row and "Chips Filters" not in row, row
+    assert "Seed Tray" in row, row
+    table = [ln.strip() for ln in render_graph_lines(m, hist, segs, focus=fid, color=False)
+             if ln.strip().startswith("@")]
+    assert "Chips Filters" in table[0], table[0]
+
+
+def test_a_commit_fills_its_whole_cell_on_the_density_bar():
+    """A commit paints every column of its span, so the bar reads as a bar.
+
+    It used to mark only the single column its index mapped to -- fine when there are more commits
+    than columns, confetti when there aren't. On a 14-commit repo in a wide terminal that drew 14
+    lonely glyphs with eight blank columns between each pair, and widening the terminal made it
+    worse: the tell that the encoding, not the size, was wrong."""
+    fid = "f-aaaaaaaaaa"
+    m = {"roots": [fid], "nodes": [_node(fid, None, [])], "edges": []}
+    # Two commits on a two-commit axis, drawn into 12 columns: 6 columns each, both solid.
+    hist = {"commits": [{"index": 0}, {"index": 1}], "commit_count": 2,
+            "cells": [{"feature_id": fid, "commit_index": i, "op_ids": [f"o{i}"], "op_count": 1,
+                       "kinds": {"add": 1}, "fidelity": "full"} for i in (0, 1)]}
+    # The checkpoint is named after its own lane, so the echo rule drops the label and the strip is
+    # pure block glyphs -- this test is about the block's GEOMETRY, and a label written into it
+    # would be measuring the labelling rule instead.
+    segs = [_seg(fid, 0, ["o0", "o1"], 0, 1, label=m["nodes"][0]["label"])]
+    row = _lane_rows(render_graph_lines(m, hist, segs, color=False, bar_width=12))[0]
+    # The block's first columns carry its `@n` -- part of the block, and never dropped, since it is
+    # the token the reader would type -- so the extent is the handle plus the fill, not the fill.
+    strip = row[row.index("@0"):]
+    block = strip[:len(strip) - len(strip.lstrip("@0123456789▄"))]
+    assert len(block) == 12, f"expected a solid 12-column block, got {block!r} in {row!r}"
+    assert " " not in block, f"the block must be contiguous, not dotted: {block!r}"

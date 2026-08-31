@@ -214,21 +214,54 @@ def _with_layout_siblings(added, ops: list[Op], before_ids, source_ids,
 # instead makes it random-access: address any recorded revert, keep the work that came after.
 
 
+def _entity_core(op_ids: frozenset[str], ops: list[Op]) -> frozenset[str]:
+    """`op_ids` minus the ops that carry nothing but layout facts (anchors, residue).
+
+    Which ops those are is stable; which *grouping* they are attributed to is not. Re-deriving
+    after a revert's own land commit moved a theme's anchor and residue chains into the theme's
+    atoms, so the name that had resolved to 24 ops when the revert was recorded resolved to 31
+    when the restore asked -- and every one of the extras was layout-only (the study's stage 4,
+    2026-08-30, where `sgt restore` refused the rewind the journal held). Layout facts ride with
+    their entity in both directions (F35: `plan_subtraction` removes them alongside it,
+    `_with_layout_siblings` brings them back with it), so they are never on their own the
+    difference between two edits somebody asked for. An op the store no longer holds counts as
+    entity, so an unknown id still blocks a match the way it always did."""
+    from sgt.core.op import _symbol_kind
+
+    by_id = {op.id: op for op in ops}
+
+    def layout_only(oid: str) -> bool:
+        op = by_id.get(oid)
+        if op is None:
+            return False
+        footprint = tuple(op.footprint)
+        return bool(footprint) and all(
+            _symbol_kind(sym) in ("anchor", "residue") for sym in footprint
+        )
+
+    return frozenset(oid for oid in op_ids if not layout_only(oid))
+
+
 def _matching_revert_event(
-    repo: Path, target_ids: frozenset[str],
+    repo: Path, target_ids: frozenset[str], ops: list[Op] | None = None,
 ) -> tuple[dict, frozenset[str]] | None:
-    """The newest applied `revert` event whose target op-set is exactly `target_ids`, paired with
-    everything the edits *after* it took back out.
+    """The newest applied `revert` event whose target op-set names the same removal as
+    `target_ids`, paired with everything the edits *after* it took back out.
 
     That second half is what keeps the inverse from reaching through a later decision. A revert's
     recorded `removed` set describes the ideal as it stood then, and an op in it may since have
     been removed again deliberately -- re-admitting the set wholesale would undo that newer edit
     silently, which is the resurrection this pairing exists to prevent.
 
-    Exact equality, not containment. "Reverse that revert" and "re-admit one op that a revert
+    Equality, not containment. "Reverse that revert" and "re-admit one op that a revert
     happened to remove" are different questions, and answering the second from this event would
     re-admit work the caller never named. A subset target simply finds no event and takes the
     algebraic path, which is the answer it got before.
+
+    With `ops`, equality is over entity cores: the sets are compared with layout-only ops
+    (anchors, residue) left out, because layout attribution shifts when the record is re-derived
+    across the revert's own land commit while the entity ops stay put -- see `_entity_core` for
+    the failure this absorbs. Two removals that agree on every entity op are the same removal.
 
     Reverse-chronological, so a revert -> restore -> revert cycle resolves against the *second*
     revert. An `undo` drops the event it inverted, so a reverted-then-undone edit leaves nothing
@@ -236,6 +269,7 @@ def _matching_revert_event(
     """
     from sgt.core import oplog
 
+    core = _entity_core(target_ids, ops) if ops is not None else frozenset()
     try:
         key = oplog._ref_key(repo)
         events = oplog.load(repo).get(key, []) if key else []
@@ -248,8 +282,15 @@ def _matching_revert_event(
                 continue
             if event.get("kind") != "ideal_edit" or event.get("applied") is False:
                 continue
-            if event.get("verb") == "revert" and _event_op_ids(event, "target_ops") == target_ids:
-                return event, frozenset(later_removed)
+            if event.get("verb") == "revert":
+                event_ids = _event_op_ids(event, "target_ops")
+                if event_ids == target_ids or (
+                    ops is not None
+                    and core
+                    and event_ids is not None
+                    and _entity_core(event_ids, ops) == core
+                ):
+                    return event, frozenset(later_removed)
             # Newer than the event we are looking for, so what it took out is a later decision.
             # Every edit counts here, not just reverts: a pin or the undo of a restore removes work
             # just as deliberately.
@@ -314,7 +355,7 @@ def _plan_restore_via_journal(
         # `revert <lane> --to <commit>` records `target_ops: []` (it names a commit boundary, not
         # an op-set), so an empty lookup would match it and reverse an edit nobody asked about.
         return None
-    found = _matching_revert_event(Path(repo), target_ids)
+    found = _matching_revert_event(Path(repo), target_ids, ops)
     if found is None:
         return None
     event, later_removed = found

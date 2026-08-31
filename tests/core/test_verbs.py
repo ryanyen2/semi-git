@@ -828,6 +828,50 @@ def test_restore_never_peels_only_some_of_the_stand_ins_a_revert_minted(tmp_path
     assert is_valid_ideal(Store(repo).all_ops(), get(repo).op_ids)
 
 
+def test_restore_matches_the_revert_event_across_shifted_layout_attribution(tmp_path):
+    """A theme resolves to the ops its member atoms carry, and re-deriving that record across the
+    revert's own land commit moves the entities' anchor and residue chains into the theme's atoms.
+    The same name then resolves to more ops than the revert recorded (24 -> 31 on the study's
+    stage 4, 2026-08-30, every extra one layout-only), the exact-equality journal lookup missed,
+    and the algebraic fallback refused the rewind as a fork. Removals that agree on every entity
+    op are the same removal, so the lookup compares entity cores."""
+    from sgt.core.op import _symbol_kind
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "util.py").write_text("def build():\n    a()\n    b()\n", encoding="utf-8")
+    gb.commit_all("base")
+    (repo / "util.py").write_text(
+        "def build():\n    a()\n    wl()\n    b()\n\ndef wl():\n    return 1\n",
+        encoding="utf-8")
+    gb.commit_all("feature F: wl plus wiring")
+
+    get(repo)
+    target = next(o for o in Store(repo).all_ops()
+                  if "util.py::wl" in o.footprint and o.footprint["util.py::wl"][0] is None)
+    preview = verbs.plan_revert_op_set(repo, "the wl work", frozenset({target.id}))
+    assert preview.ok, preview.message
+    verbs.apply(repo, preview)
+    assert b"def wl" not in code(get(repo), Store(repo).all_ops())["util.py"]
+
+    layout = {o.id for o in Store(repo).all_ops()
+              if o.footprint
+              and all(_symbol_kind(s) in ("anchor", "residue") for s in o.footprint)}
+    inflated = frozenset(preview.target_ops) | layout
+    assert inflated - frozenset(preview.target_ops), \
+        "the inflation needs a layout op the event never named"
+
+    ops_now = verbs._load(repo)[0]
+    assert verbs._matching_revert_event(Path(repo), inflated) is None       # exact match misses
+    assert verbs._matching_revert_event(Path(repo), inflated, ops_now) is not None
+
+    again = verbs.plan_restore_op_set(repo, "the wl work", inflated)
+    assert again.ok, again.message
+    verbs.apply(repo, again)
+    text = code(get(repo), Store(repo).all_ops())["util.py"].decode()
+    assert "def wl" in text and "wl()" in text
+
+
 def test_a_pre_upgrade_journal_entry_is_never_mistaken_for_a_revert(tmp_path):
     """Real repositories hold entries written before `verb`/`target_ops` existed. They carry a
     revert-shaped before/after delta and nothing that says which verb wrote it, so matching one
