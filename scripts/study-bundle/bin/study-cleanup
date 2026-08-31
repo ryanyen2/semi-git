@@ -36,6 +36,13 @@ if [ "$answer" != "yes" ]; then
     exit 0
 fi
 
+# The background pusher first, because it recreates the directory it writes
+# into. Leave one running and the folder the last line invites you to delete
+# comes back twenty seconds later. It stops on its own once this shell is gone
+# (see telemetry/sync.py), but this is the moment we are telling somebody the
+# folder is theirs to remove, so it should already be true.
+pkill -f "$STUDY_HOME/telemetry/sync.py --daemon" 2>/dev/null || true
+
 rm -rf "$STUDY_HOME/work" "$STUDY_HOME/toolenv" \
        "$STUDY_HOME/.claude-study" "$STUDY_HOME/.vscode-study"
 rm -f "$STUDY_HOME/study.env"

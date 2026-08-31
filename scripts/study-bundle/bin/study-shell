@@ -55,7 +55,10 @@ if [ ! -s "$STUDY_HOME/.claude-study/api-key" ]; then
 fi
 
 # A background pusher, so the facilitator is never more than twenty seconds
-# behind. It dies with the shell.
+# behind. The trap below kills it, but only when this shell exits cleanly:
+# close the terminal window and the trap never runs. The daemon stops itself in
+# that case, which is what keeps a deleted study folder deleted -- see
+# session_is_over() in telemetry/sync.py.
 if [ -n "$STUDY_CODE" ]; then
     "$STUDY_HOME/bin/study-sync" --daemon >/dev/null 2>&1 &
     SYNC_PID=$!
