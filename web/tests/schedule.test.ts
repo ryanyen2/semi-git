@@ -31,7 +31,7 @@ describe('the session schedule', () => {
   })
 
   it('shows the participant the same total it computes', () => {
-    expect(WELCOME_MD).toContain(`about ${TOTAL_ESTIMATE_MIN} minutes of work`)
+    expect(WELCOME_MD).toContain(`about ${TOTAL_ESTIMATE_MIN} minutes`)
     expect(WELCOME_MD).toContain(`| ${BLOCK_ESTIMATE_MIN} |`)
   })
 
@@ -46,7 +46,7 @@ describe('the session schedule', () => {
   it('quotes the same stage count everywhere it says one', () => {
     const preamble = TASK_PREAMBLE('footfall', 'Sam Park', 'a small tool')
     expect(preamble).toContain(`${spell(STAGE_COUNT)} stages`)
-    expect(DEBRIEF_MD).toContain(`the same ${spell(STAGE_COUNT)} stages`)
+    expect(DEBRIEF_MD).toContain(`the same ${spell(STAGE_COUNT)} tasks`)
     expect(STAGE_COUNT).toBe(REQUESTS.length)
   })
 
@@ -90,7 +90,7 @@ describe('the printed sheets', () => {
   // stale render of it.
   it('tells the participant the same total the website computes', () => {
     const text = readFileSync('../docs/study/materials/00-welcome.md', 'utf8')
-    expect(text).toContain(`about ${TOTAL_ESTIMATE_MIN} minutes of work`)
+    expect(text).toContain(`about ${TOTAL_ESTIMATE_MIN} minutes`)
     expect(text).toContain(`| ${BLOCK_ESTIMATE_MIN} |`)
   })
 })

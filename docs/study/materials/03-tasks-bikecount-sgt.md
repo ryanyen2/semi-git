@@ -1,16 +1,29 @@
 # Your stages: bikecount, sgt
 
-You are looking after **bikecount**, a small web dashboard over the bicycle counter on the Fremont Bridge in Seattle. Dana Whitfield built it over six weeks and has left the team, and its numbers go into a quarterly report. It is the same project you have just been practising on, and you run everything from the same folder.
+You are now responsible for **bikecount**, a small web dashboard over the bicycle counter on the Fremont Bridge in Seattle. Dana Whitfield built the project over six weeks before leaving the team. Its numbers are used in a quarterly report.
 
-There are four stages, in order. Each stage card says what happened, what your job is, and what done looks like, and it lists the commands you are most likely to want, so you do not lose a minute to remembering a flag.
+You just practiced on this project. Keep using the same folder and the same terminal.
 
-Start each stage by running its `./stage` command, which puts the project into that stage's starting state. The clock starts once that command has finished printing, the doing part has a visible countdown, and the questions after it are untimed. Running out of time on a stage is a normal result, and the next stage starts clean either way. Tell us what you are thinking as you go.
+You will complete four stages in order.
 
-After each stage, the screen asks a few short questions about what you just did. They are not timed.
+Each stage tells you:
+
+- what happened
+- what you need to do
+- how to tell when you are finished
+- which commands may help
+
+Start each stage by running the `./stage` command shown on the card. This prepares the correct starting state. The timer begins after that command finishes.
+
+The task itself is timed. The questions after the task are untimed. When the timer ends, continue to the questions and then move to the next stage.
+
+Please say what you are thinking as you work.
+
+After each stage, answer the short questions on the screen. These questions are untimed.
 
 ## Stage 1: Record what the assistant did
 
-You have 4 minutes for the doing part.
+You have 4 minutes for this task.
 
 Run the command below first. It puts the project into this stage's starting state.
 
@@ -22,12 +35,12 @@ Run the command below first. It puts the project into this stage's starting stat
 
 **You are done when:** Every one of the assistant's changes is recorded in the project's history, with a message in your own words, and nothing is left unrecorded.
 
-What `./stage 1` does:
+When you run `./stage 1`, it will:
 
 - resets the project to this stage's starting state
 - replays the assistant's changes into your working copy, unrecorded
 
-Commands you may want:
+Commands that may help:
 
 - `sgt now` says where things stand.
 - `git diff` shows the change line by line, and `git status` lists the files it touches. Nothing is recorded yet, so this is where the detail is.
@@ -36,7 +49,7 @@ Commands you may want:
 
 ## Stage 2: Find the work behind the wrong number
 
-You have 4 minutes for the doing part.
+You have 4 minutes for this task.
 
 Run the command below first. It resets the project and prints the two numbers this stage is about, side by side.
 
@@ -48,12 +61,12 @@ Run the command below first. It resets the project and prints the two numbers th
 
 **You are done when:** You have written what this setup calls that work into the box below. A commit hash, a named piece of work, or an id all count. If you are not certain you found the right one, write down what you have and say that you are not certain. That is more useful to us than a guess.
 
-What `./stage 2` does:
+When you run `./stage 2`, it will:
 
 - puts the project back to its full history, discarding anything from the last stage
 - prints the number the report quotes next to the number the dashboard shows
 
-Commands you may want:
+Commands that may help:
 
 - `sgt log` lists the jobs somebody did, newest first, in their own words.
 - `sgt find "the bit that works out the averages"` searches by description. Any wording will do.
@@ -64,7 +77,7 @@ Commands you may want:
 
 ## Stage 3: Take that work out
 
-You have 4 minutes for the doing part.
+You have 4 minutes for this task.
 
 Run the command below first. It resets the project and names the work you have to take out, so you have the name whether or not you found it in the last stage.
 
@@ -76,12 +89,12 @@ Run the command below first. It resets the project and names the work you have t
 
 **You are done when:** `./check 3` says the program still runs and the by-year page reads **2,882** for 2018 again. Run it as often as you like. It prints the same words for everyone, it does not mark you, and a red line in it is information rather than a verdict.
 
-What `./stage 3` does:
+When you run `./stage 3`, it will:
 
 - puts the project back to its full history, discarding anything from the last stage
 - names the work to take out, in the words this setup uses for it
 
-Commands you may want:
+Commands that may help:
 
 - `sgt revert "<name>"` shows you what the removal would do and changes nothing.
 - Add `--yes` to actually do it: `sgt revert "<name>" --yes`.
@@ -90,7 +103,7 @@ Commands you may want:
 
 ## Stage 4: Put it back
 
-You have 4 minutes for the doing part.
+You have 4 minutes for this task.
 
 Run the command below first. It puts the project into the state where the work has already been taken out. Everyone starts stage 4 from this same state, whether or not their own removal in the last stage worked.
 
@@ -102,11 +115,11 @@ Run the command below first. It puts the project into the state where the work h
 
 **You are done when:** `./check 4` says the program still runs and the by-year page reads **2,900** for 2018 again.
 
-What `./stage 4` does:
+When you run `./stage 4`, it will:
 
 - puts the project in the state where that work has already been taken out, the same for everyone
 
-Commands you may want:
+Commands that may help:
 
 - `sgt restore "<name>" --yes` puts back what `sgt revert` took out. It takes the same name.
 - Without `--yes` you get a preview and nothing happens.
