@@ -90,7 +90,9 @@ def register(subs, parent) -> None:
     p.add_argument("b")
     p.set_defaults(func=_cmd_diff)
     p = subs.add_parser("blame", parents=[parent])
-    p.add_argument("file")
+    p.add_argument("file", nargs="?", default=None)
+    p.add_argument("--all", action="store_true", dest="all_files",
+                    help="every covered file at once, in one fold (the repo-wide provenance map)")
     p.set_defaults(func=_cmd_blame)
     p = subs.add_parser("preview", parents=[parent])
     p.add_argument("--to")
@@ -98,8 +100,12 @@ def register(subs, parent) -> None:
     p.set_defaults(func=_cmd_preview)
     p = subs.add_parser("fold", parents=[parent])
     p.add_argument("--at", required=True,
-                    help="a commit-index (int), an explicit op-id set (op:<id>,<id>,...), "
+                    help="`now` (the current ideal — what the tree holds right now), a "
+                         "commit-index (int), an explicit op-id set (op:<id>,<id>,...), "
                          "or a ref name")
+    p.add_argument("--out", default=None, metavar="DIR",
+                    help="also materialize the fold onto DIR as raw bytes -- a sync (files that "
+                         "left the fold are removed), never a wipe")
     p.set_defaults(func=_cmd_fold)
 
 
@@ -116,7 +122,8 @@ def _cmd_log(args) -> int:
     if args.ops:  # compat alias; the listed home is `sgt advanced ops`
         return _log_ops(".", args.as_json, args.full, args.limit, args.offset)
     if args.tree:
-        return _log_tree(".", args.as_json, args.refresh, args.rebuild)
+        return _log_tree(".", args.as_json, args.refresh, args.rebuild,
+                         color=not args.no_color)
     if args.summary:
         return _status(".", args.as_json, full=args.full, color=not args.no_color)
     if args.saves:
@@ -161,7 +168,7 @@ def _cmd_now(args) -> int:
 
 
 def _cmd_fold(args) -> int:
-    return _fold(".", args.at, args.as_json)
+    return _fold(".", args.at, args.as_json, args.out)
 
 
 def _cmd_fsck(args) -> int:
@@ -175,6 +182,11 @@ def _cmd_diff(args) -> int:
 
 
 def _cmd_blame(args) -> int:
+    if args.all_files:
+        return _blame_all(".", args.as_json)
+    if args.file is None:
+        print("usage: sgt advanced blame [--json] (<file> | --all)")
+        return 2
     return _blame(".", args.file, args.as_json)
 
 
@@ -442,19 +454,24 @@ def state_lines(view: dict, *, color: bool = False, indent: str = "") -> list[st
     return lines
 
 
-def _log_tree(repo: str, as_json: bool = False, refresh: bool = False, rebuild: bool = False) -> int:
+def _log_tree(repo: str, as_json: bool = False, refresh: bool = False, rebuild: bool = False,
+              color: bool = True) -> int:
     """`sgt log --tree` (the feature tree, no time axis — what `sgt map` shows): a read of the
     last-built tree (`--refresh` rebuilds it first). `--json` returns `map_view`. `--rebuild` is the
     former `sgt map --rebuild`: a full from-scratch recluster (delegates to `_map`)."""
     from sgt.api import map_view
 
     if rebuild:
-        return _map(repo, as_json, rebuild=True)
+        return _map(repo, as_json, rebuild=True, color=color)
     _map_for_view(repo, refresh, not as_json)
     view = map_view(repo)
     if as_json:
         return _emit_json(view)
-    _print_map_tree(view)
+    # The same `├─ └─ │` guides the map draws, so the two views of one hierarchy read as one view.
+    from sgt.tui.views import tree_lines
+
+    for line in tree_lines(view, color=color):
+        print(line)
     return 0
 
 
@@ -588,7 +605,8 @@ def _print_map_tree(view: dict) -> None:
     print(plural(shown, "feature"))
 
 
-def _map(repo: str, as_json: bool = False, rebuild: bool = False) -> int:
+def _map(repo: str, as_json: bool = False, rebuild: bool = False, *,
+         color: bool = True) -> int:
     """`sgt log --tree` (formerly `sgt map`, plan U13/U14): (re)build the feature tree from the live
     op store -- clustering, Greene identity, pins, labeling -- then print the kernel-backed
     projection (`api.map_view`). `--rebuild` forces a full from-scratch recluster, bypassing
@@ -602,7 +620,11 @@ def _map(repo: str, as_json: bool = False, rebuild: bool = False) -> int:
     view = map_view(repo)
     if as_json:
         return _emit_json(view)
-    _print_map_tree(view)
+    # The same `├─ └─ │` guides the map draws, so the two views of one hierarchy read as one view.
+    from sgt.tui.views import tree_lines
+
+    for line in tree_lines(view, color=color):
+        print(line)
     return 0
 
 
@@ -702,6 +724,25 @@ def _blame(repo: str, file: str, as_json: bool = False) -> int:
     return 0
 
 
+def _blame_all(repo: str, as_json: bool = False) -> int:
+    """`sgt advanced blame --all`: the same attribution for every covered file, off one fold
+    (`api.blame_all_view`) rather than one fold -- and one subprocess -- per file."""
+    from sgt.api import blame_all_view
+    from sgt.core.lens import get
+
+    get(repo)
+    view = blame_all_view(repo)
+    if as_json:
+        return _emit_json(view)
+    for file in sorted(view["files"]):
+        spans = view["files"][file]["spans"]
+        print(f"{file}  ({len(spans)} span(s))")
+        for span in spans:
+            print(f"  {span['start_line']:>5}-{span['end_line']:<5}  {span['symbol']}"
+                  f"  [{span['label']} ({span['feature_id']})]")
+    return 0
+
+
 def _status(repo: str, as_json: bool = False, full: bool = False, *, color: bool = False) -> int:
     """`sgt log --summary` (formerly `sgt status`, plan U13/U14): file/symbol/feature counts,
     coverage, oracle status, drift. Path lists are capped at 5 (`--full` for all of them) --
@@ -716,58 +757,15 @@ def _status(repo: str, as_json: bool = False, full: bool = False, *, color: bool
     if as_json:
         return _emit_json(view)
 
-    def clip(paths, head: int = 5) -> str:
-        paths = list(paths)
-        if full or len(paths) <= head:
-            return ", ".join(paths)
-        return ", ".join(paths[:head]) + f"  (+{len(paths) - head} more — --full lists them)"
+    # The block is `views.summary_lines`: a scalar header, then WHAT NEEDS YOU, then FOR
+    # INFORMATION. The split is the point -- 826 untracked files and one symlink used to print under
+    # the same `⚠` as a staged rewrite that blocks every materializing verb.
+    from sgt.tui.views import summary_lines
 
-    print(f"{plural(view['files'], 'file')}, {plural(view['symbols'], 'symbol')}, "
-          f"{plural(view['features'], 'feature')}, "
-          f"{view['coverage_fraction'] * 100:.0f}% entity coverage")
-    print(f"  oracle: {view['oracle']['status']}")
     for line in _state_banner({"forks": view["forks"]["records"]}, color=color):
         print(line)
-    rewritten = view.get("sync_status", {}).get("history_rewritten")
-    if rewritten:
-        # A backward/sideways git move (`reset --hard`, `amend`, `branch -f`) leaves the recorded
-        # ideal naming ops from commits that are gone, so the counts above over-report and the
-        # difference is NOT ordinary working-tree drift. Said before the drift line, and pointing at
-        # the verb that actually fixes it: the generic "`sgt save` absorbs them" advice below finds
-        # nothing new here, prints "nothing to save", and exits 0 -- success with the problem intact.
-        print("  ⚠ git history moved backward since sgt last recorded this branch — the counts above "
-              "still include dropped commits")
-        print("      run `sgt advanced resync` to re-derive the current state from git history")
-    if view["drift"]["any"] and not rewritten:
-        n = len(view["drift"]["paths"])
-        print(f"  ⚠ {n} file(s) on disk differ from the recorded state — `sgt save` absorbs them")
-        print(f"      {clip(view['drift']['paths'])}")
-    if view["staged"]["any"]:
-        # These paths used to be counted in the drift line above, whose remedy is `sgt save` -- and
-        # `save` refuses while a stage is live, so the summary's one piece of advice was a dead end.
-        # Classifying them `staged` fixed the wrong word and left silence in its place ("✓ in sync"
-        # over a tree where every materializing verb refuses), which is worse. Named with both exits
-        # because this line is where a terminal reader finds out the state exists.
-        print(f"  ⧗ {len(view['staged']['paths'])} file(s) hold a staged rewrite candidate — not "
-              f"recorded yet, and edits are blocked until it is resolved")
-        print(f"      {clip(view['staged']['paths'])}")
-        print("      `sgt advanced commit` lands it · `sgt advanced unstage` abandons it")
-    if view.get("backstop_kept"):
-        print(f"  ⚠ kept {len(view['backstop_kept'])} unreproducible file(s) — left on disk (not "
-              f"deleted); repair the chain (`sgt advanced fsck --tree`) to materialize them")
-        print(f"      {clip(view['backstop_kept'])}")
-    # Not a warning, and no command offered: these are files sgt has never recorded an entity for
-    # (`.gitignore`, most config), so nothing can materialize them and there is nothing to repair.
-    # They used to print as damage above, pointing at an `fsck --tree` that answers "0 drifted
-    # path(s)" and leaves the line exactly where it was.
-    if view.get("never_recorded"):
-        print(f"  · {len(view['never_recorded'])} file(s) sgt does not track, left alone: "
-              f"{clip(view['never_recorded'])}")
-    if view.get("unmanaged"):
-        print(f"  ⚠ {len(view['unmanaged'])} unmanaged path(s) (symlinks, untouched): "
-              f"{clip(view['unmanaged'])}")
-    if not view["drift"]["any"] and not view["staged"]["any"] and not view["forks"]["open"]:
-        print("  ✓ in sync")
+    for line in summary_lines(view, color=color, full=full):
+        print(line)
     _print_residual(repo, full)
     return 0
 
@@ -939,9 +937,22 @@ def _now(repo: str, as_json: bool = False, *, color: bool = False) -> int:
 
 
 def _parse_at(spec: str) -> dict:
-    """Parse `sgt fold --at <spec>` into one of `fold_view`'s three keyword-only frontier args: an
-    all-digit spec is a commit-index position on `history_view`'s axis; an `op:<id>,<id>,...` spec
-    is an explicit op-id set; anything else is a ref name."""
+    """Parse `sgt fold --at <spec>` into one of `fold_view`'s keyword-only frontier args: `now` is
+    the current ideal (the present); an all-digit spec is a commit-index position on
+    `history_view`'s axis; an `op:<id>,<id>,...` spec is an explicit op-id set; anything else is a
+    ref name.
+
+    `now` is spelled the way `sgt now` already spells the same idea -- "where am I", the present
+    state -- so the grammar gains a word the tool has, not a new one. It is not a synonym for
+    `HEAD`: a ref folds the ops whose provenance sits in that ref's commit ancestry, which cannot
+    see a locally-applied revert (its compensating ops are minted with empty provenance), so after
+    `sgt revert <f> --yes` only `now` agrees with the working tree. Anything asking "what does the
+    tree look like right now" -- the workbench panel, the render overlay -- wants `now`.
+
+    A branch literally named `now` is shadowed by this, the same way one named `5` is already
+    shadowed by the commit-index rung; spell it `refs/heads/now` to reach it."""
+    if spec == "now":
+        return {"current": True}
     if spec.isdigit():
         return {"at_commit_index": int(spec)}
     if spec.startswith("op:"):
@@ -949,14 +960,20 @@ def _parse_at(spec: str) -> dict:
     return {"ref": spec}
 
 
-def _fold(repo: str, at: str, as_json: bool = False) -> int:
-    """`sgt fold --at <spec> [--json]`: a side-effect-free fold of an arbitrary frontier
+def _fold(repo: str, at: str, as_json: bool = False, out: str | None = None) -> int:
+    """`sgt fold --at <spec> [--out <dir>] [--json]`: a fold of an arbitrary frontier
     (`api.fold_view`) -- the composition workbench's draggable-playhead primitive. Never checks
-    anything out."""
+    anything out.
+
+    Bare, it is side-effect-free and prints the file list. `--out <dir>` additionally materializes
+    the fold onto `dir` as raw bytes (`api.fold_out_view`) -- the render overlay's sync step, which
+    also removes the files that left the fold. Same `--at` grammar either way."""
     from sgt.api import fold_view
     from sgt.core.lens import get
 
     get(repo)  # mine-on-contact so the fold reflects current reality (R9)
+    if out is not None:
+        return _fold_out(repo, at, out, as_json)
     view = fold_view(repo, **_parse_at(at))
     if as_json:
         return _emit_json(view)
@@ -971,6 +988,24 @@ def _fold(repo: str, at: str, as_json: bool = False) -> int:
     for path in sorted(view["files"]):
         print(f"  {path}")
     print(f"  oracle verdict: {overall_status(view['oracle_verdict'])}")
+    return 0
+
+
+def _fold_out(repo: str, at: str, out: str, as_json: bool) -> int:
+    """The `--out <dir>` half of `_fold`: materialize rather than list. Rendered separately from
+    the listing branch because it reports what it *did* (wrote/removed), not what exists."""
+    from sgt.api import fold_out_view
+
+    view = fold_out_view(repo, out, **_parse_at(at))
+    if as_json:
+        return _emit_json(view)
+    if view.get("forked"):
+        print(f"✗ fold --at {at}: {view['message']}")
+        return 1
+    if "error" in view:
+        return _fail(view["error"])
+    print(f"code(I) at {at} → {view['path']}: {view['op_count']} op(s), "
+          f"{view['written']} file(s) written, {view['deleted']} removed")
     return 0
 
 

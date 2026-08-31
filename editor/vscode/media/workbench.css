@@ -20,6 +20,31 @@
   --land: var(--vscode-testing-iconPassed, var(--vscode-charts-green, #6bbf7b));
   --fail: var(--vscode-testing-iconFailed, var(--vscode-charts-red, #e5675f));
   --code-bg: var(--vscode-textCodeBlock-background, var(--vscode-editor-background));
+
+  /* ── Motion ───────────────────────────────────────────────────────────────────────────────────
+     One vocabulary, four durations. Before this the file carried twelve ad-hoc numbers -- 110ms
+     here, 150 there, 200, 240, 260, 340, 360 -- so nothing on screen shared a tempo and every new
+     transition guessed. A reader cannot name a duration, but they feel a view where two things that
+     happen together take different times.
+
+     The pairing is the part that matters: something ENTERS by decelerating out of where it came
+     from (`--ease-out`) and LEAVES by accelerating back into it (`--ease-in`). An enter animation
+     with no matching exit is what makes an overlay feel like it is thrown at you and then deleted --
+     it arrives from somewhere and departs from nowhere. */
+  --dur-flick: 90ms;    /* a state flip: dim/light, a stroke appearing */
+  --dur-quick: 170ms;   /* an overlay arriving or retracting under the cursor */
+  --dur-base: 240ms;    /* a fill or opacity settling */
+  --dur-slow: 360ms;    /* a morph the reader is meant to watch: preview, landing */
+  --ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);   /* entering: fast, then settles */
+  --ease-in: cubic-bezier(0.55, 0, 0.85, 0.35);    /* leaving: eases away, then quick */
+  --ease-both: cubic-bezier(0.4, 0, 0.2, 1);       /* moving between two on-screen states */
+  /* One tempo for everything that WAITS. Five different periods (1.1s, 1.3s, 1.6s, 1.8s, 2.2s) meant
+     that a pane showing two pending things at once had them breathing against each other, which
+     reads as several unrelated processes rather than one view that is busy. `--beat-slow` is for a
+     pulse that must stay in the corner of the eye for a long time; `--beat` is for anything the
+     reader is actually waiting on. */
+  --beat: 1.3s;
+  --beat-slow: 2s;
 }
 
 * {
@@ -104,6 +129,26 @@ body {
 }
 
 /* Segmented Timeline│Rail control: one bordered group, the active segment filled. */
+/* The grouping toggle sits beside the view segmented control because it answers the neighbouring
+   question -- not WHICH view, but how its rows are ordered. Same quiet chrome as .composition-btn:
+   it is a mode switch a reader flips rarely, so it must not compete with Save. */
+.group-btn {
+  margin-left: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--dim);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.group-btn:hover {
+  color: var(--fg);
+  background: var(--vscode-list-hoverBackground, transparent);
+}
+
 .view-seg {
   display: inline-flex;
   height: 24px;
@@ -213,7 +258,7 @@ body {
   height: 8px;
   border-radius: 50%;
   background: var(--dim);
-  transition: background 200ms ease;
+  transition: background var(--dur-base) var(--ease-both);
 }
 
 .oracle-chip[data-state="pending"] .oracle-dot { background: var(--accent); }
@@ -327,10 +372,33 @@ body {
 }
 
 #rail {
-  overflow: auto;
+  /* A column, so the timeline's rows can scroll while its time axis stays pinned to the bottom.
+     The axis is what makes every column mean a moment; scrolling it away on a repository with more
+     features than the pane is tall takes the meaning off the screen with it. */
+  display: flex;
+  flex-direction: column;
+  /* `hidden`, not `auto`: the inner `.plot-scroll` owns scrolling in both views. Left on `auto` the
+     column grew to its content's natural height instead of shrinking to the pane, so `flex: 1`
+     resolved against an unbounded height and pushed the pinned axis below the fold -- the exact
+     thing pinning it was meant to prevent. */
+  overflow: hidden;
   padding: 8px;
   min-width: 0; /* allow the grid track to shrink below the SVG width so the rail scrolls */
   min-height: 0; /* ...and below content height in the stacked (narrow) layout */
+}
+
+/* The scrolling half. `overflow-x: hidden` is load-bearing, not cosmetic: the pinned axis is a
+   sibling SVG, so the two share an x origin only while neither scrolls sideways -- a horizontal
+   scroll here would slide the plot out from under its own ruler. */
+.plot-scroll {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+}
+
+.gantt-axis {
+  flex: 0 0 auto;
 }
 
 #inspector {
@@ -372,6 +440,29 @@ svg.railsvg {
   fill-opacity: 0.08;
 }
 
+/* ── The name column / plot divider ──────────────────────────────────────────────────────────
+   Draggable, like a column edge in a table view. The rule is a hairline the eye reads as the
+   column's right edge; the grip is a 9px transparent band over it, because a 1px drag target is
+   a target only in theory. It only announces itself (brighter rule, col-resize cursor) on hover
+   and while dragging -- at rest the timeline should look like a timeline, not like a form. */
+.col-divider-rule {
+  stroke: var(--line);
+  stroke-width: 1px;
+  shape-rendering: crispEdges;
+}
+
+.col-divider-grip {
+  fill: transparent;
+  cursor: col-resize;
+}
+
+.col-divider-grip:hover + .col-divider-rule,
+.col-divider:hover .col-divider-rule,
+.col-divider.dragging .col-divider-rule {
+  stroke: var(--accent);
+  stroke-width: 2px;
+}
+
 .swimlane-caret {
   fill: var(--dim);
   font-size: 10px;
@@ -398,7 +489,7 @@ svg.railsvg {
 /* A feature lane. */
 .glane {
   cursor: pointer;
-  transition: opacity 150ms ease;
+  transition: opacity var(--dur-quick) var(--ease-both);
 }
 
 .glane-hit {
@@ -453,6 +544,10 @@ svg.railsvg {
   fill-opacity: 0.55;
   stroke: var(--bg);
   stroke-width: 1px;
+  /* `0`, not the default `none`: a dash pattern can only interpolate against another pattern, so
+     with `none` at rest the preview's dashes appeared and vanished in a single frame underneath an
+     otherwise smooth fade. Zero-length dashes draw a solid line, so this changes nothing visible. */
+  stroke-dasharray: 0;
   cursor: pointer;
 }
 
@@ -518,7 +613,7 @@ svg.railsvg {
   stroke: var(--accent);
   stroke-width: 1.4px;
   stroke-dasharray: 3 3;
-  animation: gcar-pending-pulse 1.8s ease-in-out infinite;
+  animation: gcar-pending-pulse var(--beat-slow) ease-in-out infinite;
 }
 
 .gcar-plan-ghost {
@@ -568,7 +663,7 @@ svg.railsvg {
 /* Newly-arrived plan steps settle in reading order (staggered by animation-delay from
    planStepEnterStagger) instead of the whole plan popping at once. */
 .gcar-ghost-enter {
-  animation: gcar-ghost-in 260ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  animation: gcar-ghost-in var(--dur-slow) var(--ease-out) both;
 }
 
 @keyframes gcar-ghost-in {
@@ -585,7 +680,7 @@ svg.railsvg {
    from the ghost look into a solid car. A one-shot keyframe -- not a transition -- because
    renderGraph rebuilds the car DOM each render, so there's no persistent element to interpolate. */
 .gcar-landing {
-  animation: gcar-land 340ms ease-out;
+  animation: gcar-land var(--dur-slow) var(--ease-out);
 }
 
 @keyframes gcar-land {
@@ -636,10 +731,115 @@ svg.railsvg {
   opacity: 0.32;
 }
 
+/* The per-lane op count sits in a fixed right-hand column (GANTT.countW), right-aligned and
+   tabular, so the numbers form a column the eye can run down instead of stopping wherever each
+   lane's last chapter happened to end. */
 .gbar-count {
   fill: var(--dim);
   font-size: 10px;
+  text-anchor: end;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The big-event tag set beside its car, inside the row (not floating in the gutter between rows). */
+.gcar-tag-inrow {
+  text-anchor: start;
+}
+
+/* The checkpoint name chip: the hovered (or selected) chapter's full name, drawn over its row in
+   the lane's own hue. See `drawCarChip` for why this is an overlay rather than a bar that grows.
+   The whole layer is inert to the pointer -- a chip that could take a hover would sit between the
+   cursor and the bar it names, and moving onto it would read as leaving the bar, so the chip would
+   flicker itself away. */
+.gchip-layer,
+.gchip {
   pointer-events: none;
+}
+
+.gchip-bg {
+  stroke: var(--bg);
+  stroke-width: 1px;
+  fill-opacity: 0.97;
+}
+
+/* The bar UNFOLDS into its name, and folds back — a container transform, not an overlay arriving.
+
+   Frame 0 of the chip is the bar's own rectangle: `--flip-from` (set per-chip in JS) maps the
+   finished capsule exactly onto the hovered car, and the animation carries it from there to its
+   final geometry. The reveal therefore starts as the thing under the cursor and grows out of its
+   exact shape — there is no moment where a second object appears NEXT to the bar, which even a
+   well-aimed scale-from-a-point could not avoid saying. Leaving plays the same path backwards.
+
+   This is also why the neighbours never move: the expansion is an overlay morph, so the axis keeps
+   telling the truth underneath it (x is WHEN — a bar that grew in place would claim time it does
+   not own, and every bar beside it would have to shift to make room).
+
+   The text fades in on the back half of the unfold instead of riding the scale: scaled text
+   smears, and the name is the one part that must arrive legible. */
+.gchip {
+  animation: gchip-unfold var(--dur-quick) var(--ease-out) both;
+  transform-box: view-box;
+  transform-origin: 0 0;
+}
+
+.gchip-out {
+  animation: gchip-fold var(--dur-quick) var(--ease-in) both;
+}
+
+@keyframes gchip-unfold {
+  from { transform: var(--flip-from, scale(0.8)); }
+  to   { transform: none; }
+}
+
+@keyframes gchip-fold {
+  from { transform: none; }
+  to   { transform: var(--flip-from, scale(0.8)); }
+}
+
+.gchip .gchip-name {
+  animation: gchip-text-in var(--dur-quick) var(--ease-out) both;
+}
+
+.gchip-out .gchip-name {
+  animation: gchip-text-out var(--dur-quick) var(--ease-in) both;
+}
+
+@keyframes gchip-text-in {
+  0%   { opacity: 0; }
+  45%  { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes gchip-text-out {
+  0%   { opacity: 1; }
+  55%  { opacity: 0; }
+  100% { opacity: 0; }
+}
+
+/* The selected chapter's chip is already on screen when the cursor arrives, so it does not animate
+   and it sits back a little -- present, but not competing with whatever is being hovered. */
+.gchip-pinned,
+.gchip-pinned .gchip-name {
+  animation: none;
+}
+
+.gchip-pinned {
+  opacity: 0.9;
+}
+
+.gchip-name {
+  font-size: 10px;
+  font-weight: 600;
+  fill: #fff;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.45);
+  stroke-width: 2px;
+  stroke-linejoin: round;
+}
+
+.gchip-detail {
+  font-weight: 400;
+  fill-opacity: 0.78;
   font-variant-numeric: tabular-nums;
 }
 
@@ -755,18 +955,23 @@ svg.railsvg {
   fill-opacity: 0.3;
 }
 
-/* Morph: ops leaving (revert) collapse the lane's cars to a dashed ghost; ops arriving land solid. */
+/* Morph: ops leaving (revert) collapse the lane's cars to a dashed ghost; ops arriving land solid.
+   
+   The leave is a TRANSITION, not a `forwards` animation. A held animation end-state cannot be
+   animated back out: `exitPreviewMode` strips the class and every drained car snapped to solid in
+   one frame, so backing out of a preview looked like a bug rather than like the reverse of the
+   thing you had just watched. A transition plays in both directions for free, which is the whole
+   argument for using one wherever the end state is a style and not a gesture. */
 .gantt.preview .preview-leaving .gcar {
-  animation: preview-leave 360ms ease-out forwards;
+  fill-opacity: 0.14;
+  stroke: var(--blast);
+  stroke-dasharray: 3 3;
 }
 
+/* An arrival IS a gesture -- a one-shot landing that plays once and is over -- so it stays a
+   keyframe. There is nothing to reverse: backing out simply leaves the car as it already was. */
 .gantt.preview .preview-arriving .gcar {
-  animation: gcar-land 360ms ease-out;
-}
-
-@keyframes preview-leave {
-  from { fill-opacity: 0.55; stroke-dasharray: 0; }
-  to { fill-opacity: 0.14; stroke: var(--blast); stroke-dasharray: 3 3; }
+  animation: gcar-land var(--dur-slow) var(--ease-out);
 }
 
 /* The "N -> M" delta in the lane's op-count slot -- the plain replacement for "removes 64 ops from
@@ -831,6 +1036,17 @@ svg.railsvg {
   padding: 2px 10px;
   font-size: 12px;
   pointer-events: none;
+  /* It rises into place and sinks back out. Toggling `hidden` alone made the sentence that explains
+     what you are pointing at blink in and out of existence at the bottom of the pane -- the most
+     distracting possible treatment for a line whose whole job is to be read calmly. */
+  transition: opacity var(--dur-quick) var(--ease-out),
+              transform var(--dur-quick) var(--ease-out);
+}
+
+.preview-context-pill[hidden] {
+  display: block;
+  opacity: 0;
+  transform: translateY(4px);
 }
 
 .preview-context-pill[hidden] {
@@ -1056,7 +1272,7 @@ svg.railsvg {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   margin-bottom: 6px;
-  transition: color 200ms ease;
+  transition: color var(--dur-base) var(--ease-both);
 }
 
 .code-panel-heading.oracle-fail {
@@ -1140,7 +1356,7 @@ svg.railsvg {
 
 .plan-ring-fill {
   stroke: var(--accent);
-  transition: stroke-dashoffset 340ms ease;
+  transition: stroke-dashoffset var(--dur-slow) var(--ease-both);
 }
 
 .plans-chip.complete .plan-ring-fill {
@@ -1353,6 +1569,9 @@ svg.railsvg {
   .glane,
   .oracle-dot,
   .code-panel-heading,
+  /* The preview morph and the context sentence are transitions now, not keyframes, so they are cut
+     here rather than in the `animation: none` list below -- where they would have been missed. */
+  .preview-context-pill,
   .plan-ring-fill {
     transition: none !important;
   }
@@ -1374,7 +1593,12 @@ svg.railsvg {
   .preview-context-pill.pending,
   .confirm-step.live,
   .glane.settle-flash,
-  .rail-row.settle-flash {
+  .rail-row.settle-flash,
+  /* The name still appears on hover -- it is the content, not the flourish. Only the grow is cut,
+     and the retreat with it (`hideCarChip` removes the node outright under reduced motion). */
+  .gchip,
+  .gchip-out,
+  .gchip .gchip-name {
     animation: none !important;
   }
   .gcar {
@@ -1668,7 +1892,7 @@ svg.railsvg {
    cached answers never flash a wait state. */
 .glane.preview-pending,
 .rail-row.preview-pending {
-  animation: pending-breathe 1.1s ease-in-out infinite;
+  animation: pending-breathe var(--beat) ease-in-out infinite;
 }
 
 @keyframes pending-breathe {
@@ -1679,7 +1903,7 @@ svg.railsvg {
 .preview-context-pill.pending {
   color: var(--dim);
   border-color: var(--accent);
-  animation: pending-breathe 1.1s ease-in-out infinite;
+  animation: pending-breathe var(--beat) ease-in-out infinite;
 }
 
 /* ── Skeletons: the waiting shape of the answer ────────────────────────────────────────────────
@@ -1700,7 +1924,7 @@ svg.railsvg {
     color-mix(in srgb, var(--fg) 8%, transparent) 60%
   );
   background-size: 200% 100%;
-  animation: skel-shimmer 1.3s linear infinite;
+  animation: skel-shimmer var(--beat) linear infinite;
 }
 
 .skel-find {
@@ -1865,7 +2089,7 @@ svg.railsvg {
 .confirm-step.live {
   opacity: 1;
   color: var(--fg);
-  animation: pending-breathe 1.1s ease-in-out infinite;
+  animation: pending-breathe var(--beat) ease-in-out infinite;
 }
 
 .confirm-detail {
@@ -1892,7 +2116,13 @@ svg.railsvg {
      merge/move/split -> the car RELOCATES: keeps its fill, nudges out in dashed outline
    The fill-opacity transition is what makes the hover read as a morph, not a repaint. */
 .gcar {
-  transition: fill-opacity 240ms ease;
+  /* Everything the hover and the preview morph touch, so both play in both directions. `stroke-
+     dasharray` is included deliberately: it is what turns a solid car into a ghost, and without it
+     the dashes appear and vanish in a single frame under an otherwise smooth fade. */
+  transition: fill-opacity var(--dur-quick) var(--ease-out),
+              stroke-opacity var(--dur-quick) var(--ease-out),
+              stroke var(--dur-slow) var(--ease-both),
+              stroke-dasharray var(--dur-slow) var(--ease-both);
 }
 
 .gcar-wrap.gcar-preview-out .gcar {
@@ -1920,7 +2150,7 @@ svg.railsvg {
   stroke-dasharray: 3 3;
   stroke-width: 1.2;
   fill-opacity: 0.55;
-  animation: gcar-pending-pulse 2.2s ease-in-out infinite;
+  animation: gcar-pending-pulse var(--beat-slow) ease-in-out infinite;
 }
 
 .gcar-wrap.gcar-preview-in.gcar-preview-partial .gcar {
@@ -1957,7 +2187,7 @@ svg.railsvg {
   fill-opacity: 0.16;
   stroke-dasharray: 3 3;
   stroke-width: 1.2;
-  animation: migrate-arrive 1.6s ease-in-out infinite;
+  animation: migrate-arrive var(--beat-slow) ease-in-out infinite;
 }
 
 @keyframes migrate-arrive {
@@ -1970,6 +2200,9 @@ svg.railsvg {
   stroke: var(--fg);
   stroke-width: 1.4;
   stroke-opacity: 0.7;
+  /* Brightening the bar on the chip's own clock is what ties the two together: the reader sees the
+     chapter light up and its name come out of it, rather than a label arriving next to a bar. */
+  fill-opacity: 0.85;
 }
 
 /* The way back to retired work, said once at the top of the checkpoint list. */
@@ -2067,4 +2300,18 @@ svg.railsvg {
 .code-panel-visit:hover {
   color: var(--fg);
   border-color: var(--accent);
+}
+
+/* The count column's header, right-aligned over its numbers (which are themselves right-aligned),
+   in the same quiet channel as the `time →` label on the other side of the plot. */
+.count-title {
+  text-anchor: end;
+}
+
+/* The lane cap's note. Its own class rather than `.gbar-count`, which is `text-anchor: end` for the
+   right-aligned op counts -- borrowing it drew this sentence backwards off the left edge. */
+.glane-overflow {
+  fill: var(--dim);
+  font-size: 11px;
+  text-anchor: start;
 }

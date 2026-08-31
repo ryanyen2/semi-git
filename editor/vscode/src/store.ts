@@ -296,12 +296,23 @@ export class Store {
   // `stillWanted` (optional) lets an interactive caller -- the scrub playhead, a selection fold --
   // drop a queued fold that a newer one superseded before it ever spawns (see Sgt.run). A cache
   // hit ignores it: already-computed data costs nothing to hand back.
+  // The render panel's fold. Deliberately NOT cached, and deliberately not routed through
+  // `foldAt`'s LRU: this call has a side effect on disk, so a cache hit would report success while
+  // leaving the directory on the previous frontier -- the panel would show the old app and say it
+  // was showing the new one. Exactly the failure class the panel exists to make visible.
+  foldTo(frontier: FoldFrontier, outDir: string, stillWanted?: () => boolean): Promise<FoldView> {
+    return this.sgt.foldTo(frontier, outDir, stillWanted);
+  }
+
   async foldAt(frontier: FoldFrontier, stillWanted?: () => boolean): Promise<FoldView> {
     // A `ref` frontier ("HEAD", a branch) is a *moving* target: its spec string is stable but the
     // content it resolves to changes as the ref advances, so caching it by spec would serve the
-    // pre-advance fold after a checkpoint. Only `commitIndex`/`opIds` frontiers name fixed content
-    // and are safe to memoize. Ref folds always shell out.
-    if ("ref" in frontier) return this.sgt.foldAt(frontier, stillWanted);
+    // pre-advance fold after a checkpoint. `current` ("now") is the most moving of all -- every
+    // save, revert and restore changes the current ideal, and an edit made in a terminal never
+    // reaches `invalidate()` at all, so memoizing it would reintroduce exactly the staleness
+    // `current` was added to cure. Only `commitIndex`/`opIds` name fixed content and are safe to
+    // memoize; the other two always shell out.
+    if ("ref" in frontier || "current" in frontier) return this.sgt.foldAt(frontier, stillWanted);
     const key = foldAtSpec(frontier);
     const cached = this.foldCache.get(key);
     if (cached) {

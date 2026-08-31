@@ -21,7 +21,15 @@ class El {
     this.attrs = {};
     this._classes = new Set();
     this._text = "";
-    this.style = {};
+    // A real `style` answers `setProperty`/`getPropertyValue` as well as named properties, and the
+    // chip's growth origin is a CSS custom property -- which can ONLY be set that way. A plain
+    // object silently lacked the method and the harness died on the first hover chip.
+    this.style = {
+      _custom: {},
+      setProperty(k, v) { this._custom[k] = String(v); },
+      getPropertyValue(k) { return this._custom[k] || ""; },
+      removeProperty(k) { delete this._custom[k]; },
+    };
     this.dataset = {};
     this.parent = null;
     this._listeners = {};
@@ -39,12 +47,18 @@ class El {
   setAttribute(k, v) { this.attrs[k] = String(v); if (k === "class") this.className = v; }
   getAttribute(k) { return this.attrs[k] != null ? this.attrs[k] : null; }
   set textContent(v) { this._text = String(v); this.children = []; }
-  get textContent() { return this._text; }
+  // Aggregates descendants, like the real thing. A `<text>` that carries its content in `<tspan>`
+  // children (the checkpoint chip) read as empty under a getter that returned only its own `_text`,
+  // so a chip with a perfectly good name in it looked nameless to the harness.
+  get textContent() { return this._text || this.children.map((c) => c.textContent).join(""); }
   set innerHTML(v) { this.children = []; this._text = ""; }
   get innerHTML() { return ""; }
   get firstChild() { return this.children[0] || null; }
   appendChild(c) { c.parent = this; this.children.push(c); return c; }
   append(...cs) { cs.forEach((c) => (typeof c === "string" ? (this._text += c) : this.appendChild(c))); }
+  // The titlebar chips rebuild themselves with replaceChildren; without it the harness died in
+  // renderTitlebar before ever reaching the graph it exists to exercise.
+  replaceChildren(...cs) { this.children = []; this._text = ""; cs.forEach((c) => this.appendChild(c)); }
   insertBefore(c, ref) {
     c.parent = this;
     const i = ref ? this.children.indexOf(ref) : -1;
@@ -52,6 +66,13 @@ class El {
     return c;
   }
   insertAdjacentElement(_pos, el) { if (this.parent) this.parent.children.push(el); return el; }
+  // Real elements detach themselves; the retracting chip removes itself when its animation ends.
+  remove() {
+    if (!this.parent) return;
+    const i = this.parent.children.indexOf(this);
+    if (i !== -1) this.parent.children.splice(i, 1);
+    this.parent = null;
+  }
   addEventListener(t, fn) { (this._listeners[t] || (this._listeners[t] = [])).push(fn); }
   removeEventListener() {}
   setPointerCapture() {}
@@ -74,6 +95,10 @@ class El {
     if (sel.startsWith(".")) return sel.slice(1).split(".").every((c) => this._classes.has(c));
     return this.tagName === sel;
   }
+  // NOTE: this returns a real Array, while a browser returns a NodeList -- which has `forEach` but
+  // NOT `find`/`filter`/`map`. Array methods called on a `querySelectorAll` result therefore work
+  // here and silently do nothing in Chrome, and this harness cannot see the difference. The chip's
+  // retraction shipped broken exactly that way. Spread before using array methods in `workbench.js`.
   querySelectorAll(sel) {
     const parts = sel.split(",").map((s) => s.trim());
     return this._descendants().filter((el) => parts.some((p) => el._matches(p)));
@@ -109,11 +134,28 @@ function elById(id) {
   return el;
 }
 
+// Canvas 2D, enough of it to measure text. The gutter labels are cut to a PIXEL budget measured in
+// the font they are actually drawn in (see `textWidth` in workbench.js), so the shim has to answer
+// `measureText` or the render path dies at import. A fixed 6.5px per glyph is a stand-in for real
+// glyph metrics -- what this harness checks is that the fitting logic runs and produces sane
+// widths, not that a headless Node agrees with Chrome about a font it doesn't have.
+const CANVAS_PX_PER_CHAR = 6.5;
+class Ctx2D {
+  constructor() { this.font = ""; }
+  measureText(s) { return { width: String(s).length * CANVAS_PX_PER_CHAR }; }
+}
+
 const docListeners = {};
 global.document = {
   getElementById: elById,
-  createElement: (t) => new El(t),
+  createElement: (t) => {
+    const el = new El(t);
+    if (t === "canvas") el.getContext = () => new Ctx2D();
+    return el;
+  },
   createElementNS: (_ns, t) => new El(t),
+  // The measurement probes are appended to <body>; without one they would throw on append.
+  body: new El("body"),
   // Document-level listeners (the popover's click-outside dismissal) are registered, not dropped, so
   // the harness can fire them if a future assertion needs to.
   addEventListener: (t, fn) => (docListeners[t] || (docListeners[t] = [])).push(fn),
@@ -126,6 +168,12 @@ global.window = {
   matchMedia: () => ({ matches: false }),
   dispatchEvent: (ev) => (winListeners[ev.type] || []).forEach((fn) => fn(ev)),
 };
+// The label-measurement probes read their font off a real styled node. There is no stylesheet here,
+// so answer with the shape `fontFor` builds its shorthand from; the widths come from Ctx2D anyway.
+global.getComputedStyle = () => ({
+  fontStyle: "normal", fontWeight: "400", fontSize: "11px", fontFamily: "monospace",
+});
+global.window.getComputedStyle = global.getComputedStyle;
 global.MessageEvent = class { constructor(type, init) { this.type = type; this.data = (init || {}).data; } };
 global.ResizeObserver = class { observe() {} disconnect() {} };
 let posted = [];
@@ -138,6 +186,20 @@ const src = fs.readFileSync(jsPath, "utf8");
 eval(src);
 
 const compose = JSON.parse(fs.readFileSync(path.join(__dirname, "fixture-compose.json"), "utf8"));
+
+// The real host enriches every FEATURE node with a concrete identity hex before posting (see
+// `colorForNode` in workbench.ts); a subsystem node gets null, and `laneColor` then falls back to a
+// neutral grey. The harness fed the raw capture, so every lane came back grey and it could not have
+// caught the bug where the default view was ENTIRELY subsystem rows -- a whole timeline in the
+// fallback colour. The exact hue is `tests/test_color_parity.py`'s business; what matters here is
+// that features have one and subsystems do not.
+compose.map = {
+  ...compose.map,
+  nodes: (compose.map.nodes || []).map((n, i) => ({
+    ...n,
+    color: n.kind === "feature" ? `#${(0x334455 + i * 0x010203).toString(16).padStart(6, "0")}` : null,
+  })),
+};
 
 // The real host injects `grid_view`'s cell table (plan U3) into the state message alongside the
 // compose_view aggregate; the fixture is a raw compose_view capture, so derive the equivalent
@@ -187,7 +249,16 @@ try {
   console.log("state render:");
   check("svg emitted", !!svg);
   check("lanes emitted", lanes.length > 0, `${lanes.length} lanes`);
-  check("swimlane header(s) emitted", swimlanes.length > 0, `${swimlanes.length} swimlanes`);
+  // The DEFAULT view is flat feature rows, so it has no swimlane headers -- and every row it draws
+  // is a feature, which is the point: a subsystem row carries no identity hue, so the folded-tree
+  // default rendered the entire timeline in the neutral grey `laneColor` falls back to.
+  check("default view is flat (no swimlane headers)", swimlanes.length === 0,
+        `${swimlanes.length} swimlanes`);
+  const swatches = rail.querySelectorAll(".glane-swatch");
+  const grey = [...swatches].filter((el) => el.getAttribute("fill") === "#8a8a8a");
+  check("every default lane is a feature, so every lane has an identity hue",
+        swatches.length > 0 && grey.length === 0,
+        `${grey.length}/${swatches.length} swatches fell back to neutral grey`);
   check("chunk-cars emitted", cars.length > 0, `${cars.length} cars`);
   check("within-car density cells emitted", cells.length > 0, `${cells.length} cells`);
   check("time axis ticks", axisTick.length > 0, `${axisTick.length} ticks`);
@@ -339,6 +410,162 @@ try {
   const backW = Number(byId.rail.querySelector("svg").getAttribute("width"));
   check("a measurable pane reflows to its full width", backW === 1200, String(backW));
   PANE_W = 900;
+
+  // ── The name column: fitted, resizable, and never silently truncating ────────────────────────
+  // The gutter used to be a hard `clamp(130, paneW*0.4, 220)` -- about 34 glyphs -- cut with a
+  // guessed 6.5px per character and carrying no tooltip. On a repo whose feature names are
+  // sentences that made most rows unidentifiable, with no way to widen the column and no way to
+  // read the rest. Three things have to hold now: the column fits its content, a cut name still
+  // hands over its full text, and the reader can drag the divider.
+  console.log("\nname column:");
+  PANE_W = 900;
+  feed(idle);
+  const divider = byId.rail.querySelector(".col-divider-grip");
+  check("the name column has a drag grip", !!divider);
+
+  const laneLabels = byId.rail.querySelectorAll(".glane-label");
+  check("lane labels are drawn", laneLabels.length > 0, `${laneLabels.length} label(s)`);
+  // Anything ellipsized must carry its full text as a <title> child (an SVG <text> ignores the
+  // attribute), so a name too long for the column is still recoverable by hovering it.
+  const clipped = laneLabels.filter((t) => /…$/.test(t.textContent));
+  check("every clipped label carries its full text on hover",
+    clipped.every((t) => t.children.some((c) => c.tagName === "title" && c.textContent.length > 0)),
+    `${clipped.length} clipped of ${laneLabels.length}`);
+
+  // Dragging the grip right widens the column: the labels get more room, not the plot.
+  const widthOfCol = () => Number(byId.rail.querySelector(".col-divider-rule").getAttribute("x1"));
+  const before = widthOfCol();
+  divider._listeners.pointerdown[0]({
+    clientX: 100, pointerId: 1, preventDefault() {}, stopPropagation() {},
+  });
+  (docListeners.pointermove || []).forEach((fn) => fn({ clientX: 220 }));
+  check("dragging the divider widens the name column", widthOfCol() > before,
+    `${before} -> ${widthOfCol()}`);
+  (docListeners.pointerup || []).forEach((fn) => fn({}));
+
+  // ...and a double-click drops back to the measured fit rather than leaving the reader stuck with
+  // whatever they last dragged.
+  const dragged = widthOfCol();
+  byId.rail.querySelector(".col-divider-grip")
+    ._listeners.dblclick[0]({ preventDefault() {}, stopPropagation() {} });
+  check("double-click resets the column to its fit", widthOfCol() !== dragged,
+    `${dragged} -> ${widthOfCol()}`);
+
+  // ── Nothing draws past the axis ───────────────────────────────────────────────────────────────
+  // x means WHEN, so a car past the plot's right edge is claiming a time that does not exist. A
+  // dense lane used to walk right off the end: every car is nudged clear of the previous one and
+  // floored at `minCarW`, and the clamp that was supposed to pull it back floored at `minCarW` too.
+  console.log("\nplot bounds:");
+  const plotEdge = Number(byId.rail.querySelector(".axis-track").getAttribute("x2"));
+  const carRights = byId.rail.querySelectorAll(".gcar, .gcar-cell")
+    .map((r) => Number(r.getAttribute("x")) + Number(r.getAttribute("width")));
+  const worst = Math.max(0, ...carRights);
+  check("no chapter car is drawn past the axis", worst <= plotEdge + 0.5,
+    `rightmost car ${worst.toFixed(1)} vs plot edge ${plotEdge}`);
+  // ...and the op-count column sits clear of them, in the reserved strip to their right.
+  const countXs = new Set(byId.rail.querySelectorAll(".gbar-count").map((t) => t.getAttribute("x")));
+  check("op counts share one column, clear of the plot",
+    countXs.size === 1 && Number([...countXs][0]) > plotEdge, [...countXs].join(","));
+
+  // A chapter's out-of-car tag may use the empty time AFTER its own chapter and none of anyone
+  // else's. Measured to the plot's right edge instead of to the next car, a tag ran up to 140px
+  // across every chapter that followed it, and a dense lane rendered as overlapping text.
+  const tagOverlaps = [];
+  for (const lane of byId.rail.querySelectorAll(".glane")) {
+    const cars = lane.querySelectorAll(".gcar")
+      .map((r) => ({ x: Number(r.getAttribute("x")), w: Number(r.getAttribute("width")) }))
+      .sort((a, b) => a.x - b.x);
+    for (const tag of lane.querySelectorAll(".gcar-tag-inrow")) {
+      const tx = Number(tag.getAttribute("x"));
+      const tw = String(tag.textContent).length * CANVAS_PX_PER_CHAR;
+      for (const c of cars) {
+        if (c.x >= tx + tw || c.x + c.w <= tx) continue;    // no horizontal overlap
+        if (Math.abs(c.x + c.w - tx) <= 6) continue;        // its own car, immediately left of it
+        tagOverlaps.push(`"${tag.textContent}" over a car at x=${c.x}`);
+      }
+    }
+  }
+  check("no chapter label is drawn over another chapter's car", tagOverlaps.length === 0,
+    tagOverlaps.slice(0, 3).join("; "));
+
+  // Density texture is bounded by PIXELS, not by commits. One rect per commit meant a chapter
+  // spanning 400 commits drew 400 rects into a 30px car -- 0.075px each, none of them visible --
+  // which measured 588,499 nodes and a 5.2-second render on a 4,000-commit history.
+  const subPixel = [...byId.rail.querySelectorAll(".gcar-cell")]
+    .map((c) => Number(c.getAttribute("width")))
+    .filter((w) => w < 0.5);
+  check("no density cell is drawn narrower than it can be seen", subPixel.length === 0,
+    `${subPixel.length} sub-pixel cell(s)`);
+
+  // ── Every checkpoint can say its own name ─────────────────────────────────────────────────────
+  // Most cars are too narrow to hold their label inline, so before the chip the only way to read a
+  // chapter's name was an OS tooltip on a one-second delay. Hovering must put the name on screen,
+  // and it must come back off.
+  console.log("\ncheckpoint names:");
+  const chipLayer = byId.rail.querySelector(".gchip-layer");
+  check("the chip layer paints above the lanes", !!chipLayer
+    && chipLayer.parent.children.indexOf(chipLayer)
+       > chipLayer.parent.children.indexOf(chipLayer.parent.querySelector(".glanes")));
+  const narrow = byId.rail.querySelectorAll(".gcar-wrap")
+    .find((c) => c._listeners && c._listeners.mouseenter
+      && c.querySelectorAll(".gcar-label").length === 0);
+  if (!narrow) {
+    check("a car with no inline label exists to hover", false, "none found in the fixture");
+  } else {
+    narrow._listeners.mouseenter.forEach((fn) => fn({}));
+    const chip = chipLayer.querySelector(".gchip");
+    const name = chip && chip.querySelector(".gchip-name");
+    check("hovering an unlabelled chapter names it", !!name && String(name.textContent).trim().length > 0,
+      name ? name.textContent : "no chip");
+    // The chip must stay inside the plot: clamped left of the op-count column, right of the gutter.
+    const bg = chip && chip.querySelector(".gchip-bg");
+    const right = bg ? Number(bg.getAttribute("x")) + Number(bg.getAttribute("width")) : 0;
+    check("the chip stays inside the plot", bg && right <= plotEdge + 0.5,
+      `chip right ${right.toFixed(1)} vs plot edge ${plotEdge}`);
+    // Leaving retracts the hover chip. What may remain is the SELECTED chapter's pinned chip --
+    // an earlier test in this run clicks a car, and the name of the thing you picked is supposed to
+    // stay on screen.
+    // Frame 0 of the unfold must BE the bar: `--flip-from` has to map the capsule's rect exactly
+    // onto the hovered car's rect, or the reveal starts from somewhere the reader was not pointing.
+    // Verified by APPLYING the transform to the capsule and comparing rectangles, not by
+    // pattern-matching the property's text.
+    const flipChip = chipLayer.querySelectorAll(".gchip")
+      .find((c) => !c.classList.contains("gchip-pinned"));
+    const ffm = flipChip && flipChip.style.getPropertyValue("--flip-from")
+      .match(/translate\(([-\d.]+)px, ([-\d.]+)px\) scale\(([-\d.]+), ([-\d.]+)\)/);
+    let flipOk = false, flipDetail = "no --flip-from on the chip";
+    if (ffm) {
+      const [ftx, fty, fsx, fsy] = ffm.slice(1).map(Number);
+      const bg2 = flipChip.querySelector(".gchip-bg");
+      const carR = narrow.querySelector(".gcar");
+      const n = (el, a) => Number(el.getAttribute(a));
+      const dx = Math.abs(ftx + fsx * n(bg2, "x") - n(carR, "x"));
+      const dw = Math.abs(fsx * n(bg2, "width") - n(carR, "width"));
+      const dy = Math.abs(fty + fsy * n(bg2, "y") - n(carR, "y"));
+      const dh = Math.abs(fsy * n(bg2, "height") - n(carR, "height"));
+      flipOk = dx < 0.6 && dw < 0.6 && dy < 0.6 && dh < 0.6;
+      flipDetail = `Δx ${dx.toFixed(2)} Δw ${dw.toFixed(2)} Δy ${dy.toFixed(2)} Δh ${dh.toFixed(2)}`;
+    }
+    check("the chip's first frame maps exactly onto the bar (container transform)", flipOk, flipDetail);
+
+    narrow._listeners.mouseleave.forEach((fn) => fn({}));
+    // Leaving RETRACTS the hover chip along the way it came -- it is not deleted where it stands.
+    // Deleting it is what made the name read as thrown at the reader and then taken away: the only
+    // motion in the interaction pointed one way. What may also remain is the SELECTED chapter's
+    // pinned chip; an earlier test in this run clicks a car, and the name of the thing you picked is
+    // supposed to stay on screen.
+    const hoverChips = chipLayer.querySelectorAll(".gchip")
+      .filter((c) => !c.classList.contains("gchip-pinned"));
+    check("it retracts on leave rather than vanishing",
+      hoverChips.length === 1 && hoverChips[0].classList.contains("gchip-out"),
+      `${hoverChips.length} hover chip(s), classes ${hoverChips.map((c) => c.className).join("|")}`);
+    // ...and a hover that arrives mid-retreat cancels it, instead of leaving a trail of retreating
+    // chips behind a cursor swept along a dense lane.
+    narrow._listeners.mouseenter.forEach((fn) => fn({}));
+    const trailing = chipLayer.querySelectorAll(".gchip-out");
+    check("a new hover cancels the retreat in progress", trailing.length === 0,
+      `${trailing.length} retreating chip(s) left behind`);
+  }
 
   console.log(failures === 0 ? "\nSMOKE OK" : `\nSMOKE FAILED (${failures})`);
   process.exit(failures === 0 ? 0 : 1);

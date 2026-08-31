@@ -64,7 +64,48 @@ def _callee_name(node) -> str | None:
     return None
 
 
+def _jsx_tag_name(node) -> str | None:
+    """The leaf name a JSX element references (`Badge`, or `Bar` in `<Foo.Bar />`), else None.
+
+    Host vs component is React's capitalisation convention, tested on the whole tag exactly as
+    `tools/vite-plugin-sgt-loc.mjs` tests it (`/^[a-z]/`): `<div>` and `<foo.bar>` are DOM, and
+    depend on nothing in the codebase; `<Badge />` is a reference to `Badge`."""
+    name = node.child_by_field_name("name")
+    if name is None:
+        return None  # fragment (`<>`)
+    tag = name.text.decode("utf-8", "replace")
+    if tag[:1].islower():
+        return None
+    if name.type == "identifier":
+        return tag
+    # `<Foo.Bar />` -> member_expression, resolved on its leaf like `obj.m()` in `_callee_name`.
+    if name.type == "member_expression":
+        prop = name.child_by_field_name("property")
+        return prop.text.decode("utf-8", "replace") if prop else None
+    return None
+
+
 _CALL_TYPES = {"call", "call_expression", "new_expression"}
+
+# Rendering a component is a reference as much as calling a function is: `<Badge />` depends on
+# `Badge` the way `badge()` depends on `badge`, and deleting the definition breaks the render the
+# same way. None of the JSX node types is a call node, so without these the graph was blind to
+# every React component dependency -- `revert` on a component reported "nothing depends on it"
+# and left dangling imports behind. Only the *element* types: a closing tag would double-count.
+_JSX_TYPES = {"jsx_opening_element", "jsx_self_closing_element"}
+
+
+# Passing a function as a *value* is a reference too, and in React it is the dominant one:
+# `useSyncExternalStore(subscribe, snapshot)`, `onClick={handleClick}`, `items.map(formatRow)`.
+# None of those is a call node, so the walk recorded nothing for them -- a new module whose
+# symbols only refer to each other this way came out with **no edges at all**, and the clustering
+# split one file into one feature per symbol because it had nothing to bind them with.
+# Deliberately narrow: only a bare identifier in argument position or as a JSX attribute value,
+# never every identifier. A name that does not resolve to a known entity is dropped by the same
+# `leaf_to_ids` filter that already guards calls, so a local variable sharing a function's name
+# costs nothing.
+_ARG_PARENTS = {"arguments", "argument_list"}
+_JSX_VALUE_PARENTS = {"jsx_expression"}
 
 
 # Content-addressed reference cache, the `_references` counterpart to `extract.py`'s
@@ -83,6 +124,14 @@ _REFS_PERSIST_REPO = None
 _REFS_SEEN: set[tuple] = set()  # keys touched since the last flush
 _REFS_MISSES = 0
 
+# What `_references` counts as a reference. The cache key is (language, source bytes) with no room
+# for *this*, so a repo mined before a change to the walk keeps its old edge set forever -- edges
+# silently missing from a graph that reports itself complete. Bump this whenever the walk records
+# something it did not before (or stops recording something it did): entries stamped with another
+# value are dropped on load and re-parsed. 2 = JSX elements are references. 3 = a function
+# passed as a value (argument or JSX attribute) is a reference.
+_REFS_WALK = 3
+
 
 def attach_persistent_refs_cache(repo) -> None:
     """Point the refs cache's disk backing at `repo`'s `.sgt/local/` and load it. Idempotent per
@@ -96,7 +145,9 @@ def attach_persistent_refs_cache(repo) -> None:
     from sgt import state
 
     body = state.load_json(repo, "refs_cache", default=None)
-    entries = body.get("entries") if isinstance(body, dict) else None
+    if not isinstance(body, dict) or body.get("walk") != _REFS_WALK:
+        return  # written by a different walk -- re-parse rather than trust it
+    entries = body.get("entries")
     if not isinstance(entries, dict):
         return
     for skey, rows in entries.items():
@@ -128,12 +179,13 @@ def flush_persistent_refs_cache() -> None:
         lang, digest = key
         entries[f"{lang}\x00{digest.hex()}"] = [[line, name] for line, name in refs]
     _REFS_SEEN.clear()
-    state.save_json(_REFS_PERSIST_REPO, "refs_cache", {"entries": entries})
+    state.save_json(_REFS_PERSIST_REPO, "refs_cache", {"walk": _REFS_WALK, "entries": entries})
 
 
 def _references(path: str, source: str) -> list[tuple[int, str]]:
-    """``(line, callee_leaf_name)`` for every call/instantiation in the file. Content-addressed
-    cache: a pure function of (language, source bytes)."""
+    """``(line, referenced_leaf_name)`` for every call/instantiation and every component element
+    in the file. Content-addressed cache: a pure function of (language, source bytes) -- and of
+    the walk itself, which `_REFS_WALK` stands in for."""
     lang = _language_for(path)
     if lang is None:
         return []
@@ -153,6 +205,20 @@ def _references(path: str, source: str) -> list[tuple[int, str]]:
             name = _callee_name(node)
             if name:
                 refs.append((node.start_point[0] + 1, name))
+        elif node.type in _JSX_TYPES:
+            name = _jsx_tag_name(node)
+            if name:
+                refs.append((node.start_point[0] + 1, name))
+        elif node.type == "identifier" and node.parent is not None:
+            # A function handed over rather than invoked. The parent test keeps this to argument
+            # and JSX-attribute position; an identifier anywhere else stays unrecorded.
+            parent_type = node.parent.type
+            if parent_type in _ARG_PARENTS or (
+                parent_type in _JSX_VALUE_PARENTS
+                and node.parent.parent is not None
+                and node.parent.parent.type == "jsx_attribute"
+            ):
+                refs.append((node.start_point[0] + 1, node.text.decode("utf-8", "replace")))
         for child in node.children:
             walk(child)
 

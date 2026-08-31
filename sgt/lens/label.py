@@ -112,6 +112,16 @@ def _leaf_prompt(
         "themselves. Prefer the narrower word every time.\n"
         "  No filler words ('System', 'Feature', 'Management', 'Semantic', 'Support', "
         "'Handling', 'Operations').\n"
+        # The rules above are all stated as prohibitions, and a model can obey every one of them and
+        # still return `Cart Handling`. Two worked pairs give it the shape of an answer that passes.
+        # Set with no line beginning `Entities:` -- that is the data field below, and an example
+        # wearing the field's own name reads as a second helping of input rather than as a worked
+        # answer (it also broke the test that reads the real entity line off the prompt).
+        "Two worked examples, from a bookstore -- the entities, then the name they should get:\n"
+        "  cartTotal, applyCoupon, CouponRow, validateCode\n"
+        "    -> Coupon Redemption. Not 'Cart Handling': that names the area it sits in, not the act.\n"
+        "  retryFetch, backoff, RequestQueue, onOffline\n"
+        "    -> Offline Retry Queue. Not 'Network Support': that fits every network file in the repo.\n"
         "rationale: ONE factual sentence naming what it does. Do not start with 'These'.\n\n"
         f"Files: {', '.join(files)}\n"
         + (f"Entities: {', '.join(names)}\n" if names else "")
