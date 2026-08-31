@@ -322,8 +322,8 @@ def _help() -> int:
         "  the daily spine (a selection — symbol / glob / NL / feature / set — is the argument):\n"
         '  sgt save [-m "<msg>"] [--as "<feature>"]   record your edits + show which feature they landed in\n'
         "  sgt now [--json]            where am I, what next — in flight / needs you / recently done\n"
-        "  sgt log [--json]            what you did, newest first — the one inspection surface:\n"
-        "                              --map (feature lanes over time) · --tree (feature tree) ·\n"
+        "  sgt log [--json]            the feature map: one lane per feature, edits over time —\n"
+        "                              --rail (saves, newest first) · --tree (feature tree) ·\n"
         "                              --summary (what needs attention) · --refresh (reflect new edits)\n"
         "  sgt show <sel>              what is this? — any id sgt printed: what it covers, what\n"
         "                              would go with it, and what you can do next\n"

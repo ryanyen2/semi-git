@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections import Counter
 from dataclasses import dataclass
 
 from sgt.lens import label as label_mod
@@ -533,9 +532,8 @@ def test_build_map_persists_label_cache_so_reruns_dont_re_call_the_llm(tmp_path,
     client = _FakeClient(fake_out)
     monkeypatch.setattr(label_mod, "get_client", lambda repo: client)
 
-    # Two episodes of comparable weight, deliberately: a cluster dominated by ONE commit is now
-    # named from that commit's own subject with no LLM call at all (`label.subject_label`), which
-    # would leave this test asserting cache behavior on a path that never reaches the cache.
+    # Two episodes of comparable weight, so the cluster carries enough naming evidence for the
+    # labeler path this test is about.
     gb, _ = init_store(tmp_path)
     (tmp_path / "r.py").write_text("def embed(x):\n    return x\n", encoding="utf-8")
     gb.commit_all("add the embedding step")
@@ -579,128 +577,11 @@ def test_build_map_rerun_with_no_changes_does_not_touch_label_cache_mtime(tmp_pa
     assert mtime_after == mtime_before, "save() rewrote label_cache.json with no new state"
 
 
-# -- naming a feature with the developer's own words ----------------------------------------------
-
-def test_a_cluster_dominated_by_one_commit_is_named_after_it():
-    """The developer already said what the work was. Paraphrasing it hands them back a summary of
-    something they wrote -- a repo whose author wrote "Add 'done <index>' command to mark a task
-    complete" was showing that feature as "Task Command Additions"."""
-    subject = "Add 'done <index>' command to mark a task complete"
-    out = label_mod.subject_label([subject, "unrelated"], {subject: 9, "unrelated": 1})
-
-    assert out is not None
-    assert out.label == subject
-
-
-def test_a_cluster_spanning_several_episodes_defers_to_a_synthesized_name():
-    """Naming a many-episode cluster after one of them would be worse than a summary, so the
-    dominance gate is what keeps quoting honest rather than merely literal."""
-    counts = {"add the parser": 5, "add the renderer": 5}
-    assert label_mod.subject_label(list(counts), counts) is None
-
-
-def test_a_subject_that_names_a_moment_is_not_a_feature_name():
-    for subject in ("wip", "fix tests", "typo", "sgt save"):
-        assert label_mod.subject_label([subject], {subject: 9}) is None, subject
-
-
-def test_subject_label_truncates_a_long_subject_at_a_word_boundary():
-    # A hard 57-character slice cut the confplan fixture's longest subject mid-word, and the feature
-    # went out to participants as "...cross-track sessions and ro…" -- a fragment that reads as a
-    # typo in the name rather than as an elision, on the one feature a reach task asks about.
-    subject = "normalize slot comparison for cross-track sessions and rooms sharing a slot"
-    out = label_mod.subject_label([subject], {subject: 9})
-    assert out is not None
-    assert out.label == "normalize slot comparison for cross-track sessions and…"
-    assert len(out.label) <= 60
-    assert not out.label[:-1].endswith(" ")   # no space stranded before the ellipsis
-
-    # A first word longer than the budget has no boundary to cut at, so the hard slice stands rather
-    # than the label collapsing to a bare ellipsis.
-    long_word = "a" * 80
-    out = label_mod.subject_label([long_word], {long_word: 9})
-    assert out is not None and out.label == "a" * 57 + "…"
-def test_conventional_commit_prefixes_are_dropped_from_the_name():
-    """The type/scope is metadata about the commit, not a name for the work; repeated across every
-    feature it crowds out the words that distinguish them."""
-    out = label_mod.subject_label(["feat(cli): revert frontier"], {"feat(cli): revert frontier": 5})
-
-    assert out is not None
-    assert out.label == "revert frontier"
-
-
-def test_naming_from_own_words_never_calls_the_client(tmp_path, monkeypatch):
-    """The point is not only legibility: a name the developer already wrote needs no network, so
-    this path cannot be slow, rate-limited, or non-reproducible."""
-    from sgt.lens import tree as tree_mod
-
-    calls = {"n": 0}
-
-    class _CountingLabeler:
-        def leaf_request(self, *a, **k):
-            calls["n"] += 1
-            return ("k", "p", [], {})
-
-        def super_request(self, *a, **k):
-            calls["n"] += 1
-            return ("k", "p", [], None)
-
-        def label_many(self, entries):
-            return [label_mod.FeatureLabel(label="LLM", rationale="llm") for _ in entries]
-
-    subject = "Add due-date support to add/list commands"
-    result = {
-        "nodes": {"f-1": {"children": [], "members": ["a.py::foo"], "label": "", "why": ""}},
-        "roots": ["f-1"],
-        "op_leaf": {},
-    }
-    tree_mod.label_tree(
-        result, tmp_path, labeler=_CountingLabeler(),
-        subjects_by_leaf={"f-1": [subject]},
-        subject_counts_by_leaf={"f-1": {subject: 4}},
-    )
-
-    assert result["nodes"]["f-1"]["label"] == subject
-    assert calls["n"] == 0
-
-
-def test_every_op_votes_on_its_feature_name(tmp_path, monkeypatch):
-    """The dominance gate asks whether one commit carries most of a feature's mass, so the mass has
-    to be every op's. Counting `op.provenance` meant only re-mined ops voted: in a repo built
-    through `sgt save`, 4 of 370 ops had provenance, one of them was the seed commit's, and a
-    71-op feature was confidently named `init repo` on a sample of one."""
-    from sgt.core.lens import get, put
-    from sgt.core.store import Store
-    from sgt.lens import tree as tree_mod
-    from sgt.store.gitbind import init_store
-
-    monkeypatch.setattr(label_mod, "get_client", _no_client)
-    repo = tmp_path / "repo"
-    gb, _ = init_store(repo)
-    (repo / "a.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("init repo")
-    get(repo)
-
-    (repo / "b.py").write_text("def beta():\n    return 2\n", encoding="utf-8")
-    ideal = get(repo)
-    put(repo, ideal, "add the beta helper")
-
-    ops = Store(repo).all_ops()
-    assert [o for o in ops if not o.provenance], "fixture must contain pending (saved) ops"
-    built = tree_mod.build(repo, ops, ideal)
-    _subjects, _kinds, counts = tree_mod.label_context(repo, ops, built)
-
-    ops_per_leaf = Counter(built["op_leaf"].values())
-    for leaf, n in ops_per_leaf.items():
-        assert sum(counts.get(leaf, {}).values()) == n, leaf
-
-
 def test_both_tree_build_paths_name_a_feature_the_same_way(tmp_path, monkeypatch):
-    """`lens/map.py` assembled the naming context and passed it; `lens/reconcile.py` called
-    `label_tree` without it and silently skipped the developer's own words. The same feature could
-    therefore be named from its commit subject on one path and from a synthesized summary on the
-    other -- surfaces disagreeing, which is the failure the naming work exists to end. `label_tree`
-    derives the context itself now, so a caller cannot forget it."""
+    """`lens/map.py` assembled the naming context (commit subjects, change kinds) and passed it;
+    `lens/reconcile.py` called `label_tree` without it and silently named the same feature from
+    different evidence -- surfaces disagreeing, which is the failure the naming work exists to end.
+    `label_tree` derives the context itself now, so a caller cannot forget it."""
     from sgt.core.lens import get
     from sgt.lens import tree as tree_mod
     from sgt.store.gitbind import init_store
@@ -724,5 +605,3 @@ def test_both_tree_build_paths_name_a_feature_the_same_way(tmp_path, monkeypatch
     via_reconcile = {nid: nd["label"] for nid, nd in rebuilt["nodes"].items() if not nd["children"]}
 
     assert via_map == via_reconcile
-    # And it is the developer's own subject, not a structural fallback.
-    assert "Add the alpha helper" in set(via_map.values())

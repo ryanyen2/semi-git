@@ -189,71 +189,11 @@ def _clean_symbol_name(member: str) -> str | None:
 _DOC_EXT = (".md", ".rst", ".txt", ".toml", ".yaml", ".yml", ".cfg", ".ini", ".json",
             ".lock", ".html", ".css")
 
-# How much of a cluster's op mass one commit subject must carry before that subject simply *is* the
-# feature's name. Above it, the cluster is essentially one episode and the developer already named
-# it; below it, the cluster genuinely spans several episodes and needs a synthesized name.
-SUBJECT_DOMINANCE = 0.6
-
-# Subjects that name a moment rather than a piece of work. A developer scanning `sgt log` learns
-# nothing from a feature called "wip" or "fix tests", so these fall through to the ordinary naming
-# path even when they dominate.
-# Entries shorter than the length guard below would be unreachable through this set, so they are
-# left out rather than kept as decoration.
-_UNINFORMATIVE = {
-    "fixes", "fixup", "update", "updates", "cleanup", "clean up", "tweak",
-    "tweaks", "refactor", "misc", "stuff", "changes", "temp", "test", "tests",
-    "fix tests", "fix test", "fix typo", "typo", "lint", "format", "formatting", "sgt save",
-    "initial commit", "wip commit", "checkpoint", "rebase", "merge",
-}
-
-
-def _strip_conventional_prefix(subject: str) -> str:
-    """`feat(cli): revert frontier` -> `revert frontier`. The type/scope prefix is metadata about
-    the commit, not a name for the work, and repeating it in every feature label crowds out the
-    words that actually distinguish one feature from another."""
-    head, sep, rest = subject.partition(":")
-    if not sep or len(head) > 24 or " " in head.strip():
-        return subject.strip()
-    kind = head.split("(", 1)[0].strip().lower()
-    if kind.isalpha() and rest.strip():
-        return rest.strip()
-    return subject.strip()
-
-
-def subject_label(subjects: list[str], counts: dict[str, int] | None = None) -> FeatureLabel | None:
-    """Name a feature with the developer's own words, or `None` when their words don't fit.
-
-    A feature is a cluster of edits, and the developer already said what those edits were -- in the
-    commit subjects and `sgt save -m` messages that produced them. Naming the cluster anything else
-    hands them back a paraphrase of something they wrote: a repo whose author wrote "Add 'done
-    <index>' command to mark a task complete" was showing the feature as "Task Command Additions".
-    So when one subject carries most of the cluster's mass (`SUBJECT_DOMINANCE`), that subject is
-    the name, verbatim apart from a conventional-commit prefix.
-
-    Returns `None` -- deferring to the LLM or the structural fallback -- when the cluster spans
-    several episodes with no dominant one (a synthesized name is genuinely the right tool there), or
-    when the dominant subject names a moment rather than a piece of work ("wip", "fix tests")."""
-    if not subjects:
-        return None
-    top = subjects[0]
-    if counts:
-        total = sum(counts.values())
-        if total <= 0 or counts.get(top, 0) / total < SUBJECT_DOMINANCE:
-            return None
-    cleaned = _strip_conventional_prefix(top)
-    if cleaned.lower().strip(" .") in _UNINFORMATIVE or len(cleaned) < 4:
-        return None
-    # Cut at a word boundary, not mid-word. A hard slice produced
-    # "normalize slot comparison for cross-track sessions and ro…", where the "ro" fragment reads as
-    # a typo in the feature's name rather than as an elision, on a feature a reader has to recognise
-    # before they can act on it. Falls back to the hard slice for a 57-character first word.
-    if len(cleaned) <= 60:
-        label = cleaned
-    else:
-        head = cleaned[:57].rstrip()
-        cut = head.rfind(" ")
-        label = (head[:cut].rstrip() if cut > 0 else head) + "…"
-    return FeatureLabel(label=label, rationale=f"Named from the commit that introduced it: {top!r}.")
+# Feature names never quote a single commit subject verbatim. That shortcut (`subject_label`,
+# removed 2026-08-31) named nearly every lane of a save-authored repo with the raw commit
+# message, and on this repo it named 59-member features after merge subjects. Subjects remain
+# *evidence* in the leaf prompt below; the place the developer's words are quoted at their own
+# granularity is the checkpoint chapters (`sgt/intent/theme_segment.py`).
 
 
 def fallback_label(members: list[str]) -> FeatureLabel:

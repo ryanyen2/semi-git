@@ -21,12 +21,12 @@ def register(subs, parent) -> None:
     # --rebuild` reuses `_map`'s full-recluster path.
     lp = subs.add_parser("log", parents=[parent])
     lmode = lp.add_mutually_exclusive_group()
-    lmode.add_argument("--map", action="store_true", dest="map",
-                       help="the feature map: one lane per feature, density over time")
-    # The rail is now the bare `sgt log` default; --rail stays as a hidden alias. --tree/--summary
+    # The map is now the bare `sgt log` default; --map stays as a hidden alias. --tree/--summary
     # back the VS Code MapView/StatusView JSON, --saves the spine save-list -- all kept functional
-    # but off the help surface so the daily view is just `sgt log` (rail) and `sgt log --map`.
-    lmode.add_argument("--rail", action="store_true", help=_dep.SUPPRESS)
+    # but off the help surface so the daily view is just `sgt log` (map) and `sgt log --rail`.
+    lmode.add_argument("--map", action="store_true", dest="map", help=_dep.SUPPRESS)
+    lmode.add_argument("--rail", action="store_true",
+                       help="the save rail: what happened, newest first, one line per save")
     lmode.add_argument("--tree", action="store_true", help=_dep.SUPPRESS)
     lmode.add_argument("--summary", action="store_true", help=_dep.SUPPRESS)
     lmode.add_argument("--saves", action="store_true", help=_dep.SUPPRESS)
@@ -110,15 +110,15 @@ def register(subs, parent) -> None:
 
 
 def _cmd_log(args) -> int:
-    """`sgt log` is the daily inspection surface (KTD9). Bare `sgt log` answers "where am I + what
-    did I do": a compact state block (from `now_view`) atop the recurring-feature lane rail (a
-    vertical git-log with a ●/◆/○ topology column tying each save back to the commit graph). `--map`
-    is the spatial overview (one lane per feature, edit-density over time). The rest are kept
-    functional but off the help surface: `--tree`/`--summary` back the VS Code MapView/StatusView
-    JSON, `--saves` is the lane-less spine save-list, `--rail` is the bare-default alias, `--ops` the
-    op-log. `--focus`/`--links`/`--at` are map refinements, so any of them implies `--map`. `--json`
-    returns the canonical view for the mode: `grid_view` (default, `--map`, `--rail`, `--saves` — all
-    rotations of the same cells), the feature tree (`--tree`), or the status scalars (`--summary`)."""
+    """`sgt log` is the daily inspection surface (KTD9). Bare `sgt log` is the feature map (one
+    lane per feature, edit-density over time) -- the spatial overview, and `--map` stays as an
+    alias for it. `--rail` is the recurring-feature lane rail (a vertical git-log with a ●/◆/○
+    topology column tying each save back to the commit graph), the previous bare default. The rest
+    are kept functional but off the help surface: `--tree`/`--summary` back the VS Code
+    MapView/StatusView JSON, `--saves` is the lane-less spine save-list, `--ops` the op-log.
+    `--focus`/`--links`/`--at` are map refinements of the default. `--json` returns the canonical
+    view for the mode: `grid_view` (default, `--map`, `--rail`, `--saves` — all rotations of the
+    same cells), the feature tree (`--tree`), or the status scalars (`--summary`)."""
     if args.ops:  # compat alias; the listed home is `sgt advanced ops`
         return _log_ops(".", args.as_json, args.full, args.limit, args.offset)
     if args.tree:
@@ -129,14 +129,15 @@ def _cmd_log(args) -> int:
     if args.saves:
         return _log_default(".", as_json=args.as_json, color=not args.no_color,
                             refresh=args.refresh, rebuild=args.rebuild)
-    map_mode = (args.map or args.links or args.focus is not None or args.at is not None)
-    if map_mode:
-        return _log_grid(".", as_json=args.as_json, frontier=args.at, color=not args.no_color,
-                         refresh=args.refresh, rebuild=args.rebuild, focus=args.focus,
-                         links=args.links)
-    # Bare `sgt log` and the `--rail` alias both land here: the rail is now the default view.
-    return _log_rail(".", as_json=args.as_json, color=not args.no_color,
-                     refresh=args.refresh, rebuild=args.rebuild)
+    if args.rail:
+        return _log_rail(".", as_json=args.as_json, color=not args.no_color,
+                         refresh=args.refresh, rebuild=args.rebuild)
+    # Bare `sgt log` and the `--map` alias both land here: the feature map is the default view
+    # (study pilots read the rail as "commit messages again" and never met the lanes; the map is
+    # the representation the tool is about, so it is what the bare verb shows).
+    return _log_grid(".", as_json=args.as_json, frontier=args.at, color=not args.no_color,
+                     refresh=args.refresh, rebuild=args.rebuild, focus=args.focus,
+                     links=args.links)
 
 
 def _cmd_status(args) -> int:
@@ -307,13 +308,19 @@ def _log_grid(repo: str, *, as_json: bool = False, frontier: int | None = None, 
     from-scratch recluster."""
     from sgt import state
     from sgt.api import forks_view, grid_view, rewrite_view, segments_view
-    from sgt.tui.graph import render_graph_lines, render_rail_lines, resolve_focus_group
+    from sgt.tui.graph import _state_banner, render_graph_lines, render_rail_lines, \
+        resolve_focus_group
 
     mv = _map_for_view(repo, refresh, color and not as_json, rebuild=rebuild)
     gv = grid_view(repo)  # the canonical cell join; the text render and --json now read one shape
     if as_json:
         return _emit_json(gv)
+    # The loud fork banner (⋔ + per-symbol remedy) leads, exactly as `now`/`status` lead with it:
+    # a fork is divergence to resolve, and bare `sgt log` is the view people actually look at.
+    # Printed here once, so neither renderer below reports it a second time.
     states = {"forks": forks_view(repo)["forks"], "rewrites": rewrite_view(repo)}
+    for line in _state_banner(states, color=color):
+        print(line)
     # `--focus <subsystem|theme>` is a category zoom: render the vertical commit-tree scoped to the
     # group's features. A single-feature `--focus` names no group, so it falls through to the map's
     # own per-checkpoint focus detail below.
@@ -321,8 +328,10 @@ def _log_grid(repo: str, *, as_json: bool = False, frontier: int | None = None, 
         themes = state.load_json(repo, "intent_themes", default={})
         group = resolve_focus_group(focus, mv, gv, themes)
         if group is not None:
+            # `states={}`: the banner is already printed above; the rail's own footer would
+            # otherwise repeat every open fork under the group view.
             for line in render_rail_lines(mv, gv, color=color, only_features=group["feature_ids"],
-                                          group_label=group["label"], states=states):
+                                          group_label=group["label"], states={}):
                 print(line)
             return 0
     # Spatial LOD: with no focus the default map folds every LEAF subsystem (one whose children are
@@ -347,7 +356,7 @@ def _log_grid(repo: str, *, as_json: bool = False, frontier: int | None = None, 
         collapsed = ()
     for line in render_graph_lines(
         mv, gv, segments_view(repo), frontier=frontier, color=color, focus=focus, show_links=links,
-        states=states, collapsed=collapsed,
+        collapsed=collapsed,
     ):
         print(line)
     return 0
@@ -355,7 +364,7 @@ def _log_grid(repo: str, *, as_json: bool = False, frontier: int | None = None, 
 
 def _log_rail(repo: str, *, as_json: bool = False, color: bool = True, refresh: bool = False,
               rebuild: bool = False) -> int:
-    """The bare `sgt log` default (and `--rail` alias): the episode rail / vertical git-log --
+    """`sgt log --rail`: the episode rail / vertical git-log --
     "where am I + what I did, in order." A compact state block (from `now_view`) sits atop the rail;
     the rail carries a ●/◆/○ topology column tying each save back to the commit graph. `--json`
     returns `grid_view` (the rail is a time-major rotation of the same cells); the text render
