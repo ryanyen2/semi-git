@@ -1,4 +1,36 @@
+import { useState } from 'react'
 import type { ReactNode } from 'react'
+
+/** A fenced code block with a copy button. Participants retype these commands
+ * during timed stages; a mistyped flag measures typing, not the tool, so every
+ * block offers its exact text in one click. Clipboard access can be denied in
+ * odd webviews -- the button then just does nothing, and the text stays
+ * selectable as before. */
+function CodeBlock({ body }: { body: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <pre className="codeblock">
+      <button
+        type="button"
+        className="code-copy"
+        aria-label="Copy to clipboard"
+        title="Copy to clipboard"
+        onClick={() => {
+          navigator.clipboard?.writeText(body).then(
+            () => {
+              setCopied(true)
+              window.setTimeout(() => setCopied(false), 1500)
+            },
+            () => {},
+          )
+        }}
+      >
+        {copied ? '✓ copied' : '⧉ copy'}
+      </button>
+      <code>{body}</code>
+    </pre>
+  )
+}
 
 // A small block-level markdown renderer that returns React elements rather than
 // HTML. The task text, the tutorials and the consent body are all markdown, and
@@ -12,7 +44,7 @@ import type { ReactNode } from 'react'
 
 function inline(text: string, keyBase: string): ReactNode[] {
   const out: ReactNode[] = []
-  const re = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(\[[^\]]+\]\([^)]+\))/g
+  const re = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(!\[[^\]]*\]\([^)]+\))|(\[[^\]]+\]\([^)]+\))/g
   let last = 0
   let m: RegExpExecArray | null
   let i = 0
@@ -23,7 +55,12 @@ function inline(text: string, keyBase: string): ReactNode[] {
     if (tok.startsWith('`')) out.push(<code key={key}>{tok.slice(1, -1)}</code>)
     else if (tok.startsWith('**')) out.push(<strong key={key}>{tok.slice(2, -2)}</strong>)
     else if (tok.startsWith('*')) out.push(<em key={key}>{tok.slice(1, -1)}</em>)
-    else {
+    else if (tok.startsWith('![')) {
+      // Screenshots in the stage cards: `![what it shows](/stages/....png)`.
+      // The alt text doubles as the caption for anyone who cannot see the image.
+      const mm = /!\[([^\]]*)\]\(([^)]+)\)/.exec(tok)!
+      out.push(<img key={key} className="md-img" src={mm[2]} alt={mm[1]} title={mm[1]} />)
+    } else {
       const mm = /\[([^\]]+)\]\(([^)]+)\)/.exec(tok)!
       out.push(
         <a key={key} href={mm[2]} target="_blank" rel="noreferrer">
@@ -71,11 +108,7 @@ export function Markdown({ children, className }: { children: string; className?
       i++
       while (i < lines.length && !/^\s*```/.test(lines[i])) body.push(lines[i++])
       i++
-      blocks.push(
-        <pre key={k++}>
-          <code>{body.join('\n')}</code>
-        </pre>,
-      )
+      blocks.push(<CodeBlock key={k++} body={body.join('\n')} />)
       continue
     }
 

@@ -4,11 +4,28 @@ Take a few minutes to practice on the project before the timed stages begin. You
 
 This practice covers the Git actions you will use during the timed stages: reading history, recording work, finding earlier work, and reverting it.
 
+## Open the editor
+
+In the session shell, run:
+
+```
+study-code
+```
+
+Leave the session shell window open in the background for the whole half — it keeps recording the session.
+
+Everything else happens inside the editor. Open a terminal with **Terminal → New Terminal**, then open a second one with the **+** button on the terminal panel. Both record your commands, exactly like the session shell.
+
+Use the two terminals like this:
+
+- **Terminal 1** runs the dashboard server, so you can look at the pages.
+- **Terminal 2** runs every other command, in this practice and in the stages.
+
 ## The project
 
 **footfall** is a small web dashboard for pedestrian counts from Spencer Street in Melbourne. It reads the city's hourly count data and produces several pages used for a quarterly report.
 
-Start the dashboard:
+Start the dashboard in **Terminal 1**:
 
 ```
 python3 -m footfall.server
@@ -24,7 +41,7 @@ Open http://localhost:8000 and look through these pages:
 
 There is also a CSV download at `/daily.csv`.
 
-Press Ctrl-C in the terminal when you are finished looking around.
+Leave the server running in Terminal 1. The pages always show the project as it stands, so you can come back to them after any change.
 
 The main files are:
 
@@ -34,7 +51,7 @@ The main files are:
 - `footfall/charts.py` — creates the charts
 - `check.py` — checks that every page can render successfully
 
-You can check the whole project with:
+You can check the whole project at any time, in **Terminal 2**:
 
 ```
 python3 check.py
@@ -44,7 +61,7 @@ The stages only require reading code.
 
 ## Start the practice state
 
-In the study terminal, run:
+In **Terminal 2**, run:
 
 ```
 ./stage 0
@@ -52,15 +69,7 @@ In the study terminal, run:
 
 This prepares the project for practice. When the first timed stage begins, `./stage 1` will replace anything you changed during practice with the correct starting state.
 
-## Open the editor
-
-Run:
-
-```
-study-code
-```
-
-This opens the project in VS Code.
+## The editor
 
 You will use three parts of the editor:
 

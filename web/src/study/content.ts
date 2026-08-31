@@ -63,13 +63,32 @@ Each stage has a visible timer for the task itself. The questions after each sta
 
 export const HANDOUT_MD = `# Welcome\n\n${WELCOME_MD}\n`
 
+const OPEN_EDITOR = `
+## Open the editor
+
+In the session shell, run:
+
+\`\`\`
+study-code
+\`\`\`
+
+Leave the session shell window open in the background for the whole half — it keeps recording the session.
+
+Everything else happens inside the editor. Open a terminal with **Terminal → New Terminal**, then open a second one with the **+** button on the terminal panel. Both record your commands, exactly like the session shell.
+
+Use the two terminals like this:
+
+- **Terminal 1** runs the dashboard server, so you can look at the pages.
+- **Terminal 2** runs every other command, in this practice and in the stages.
+`
+
 const PROJECT_TOUR: Record<Project, string> = {
   bikecount: `
 ## The project
 
 **bikecount** is a small web dashboard for bicycle counts from the Fremont Bridge in Seattle. It reads the city's hourly count data and produces several pages used for a quarterly report.
 
-Start the dashboard:
+Start the dashboard in **Terminal 1**:
 
 \`\`\`
 python3 -m bikecount.server
@@ -85,7 +104,7 @@ Open http://localhost:8000 and look through these pages:
 
 There is also a CSV download at \`/daily.csv\`.
 
-Press Ctrl-C in the terminal when you are finished looking around.
+Leave the server running in Terminal 1. The pages always show the project as it stands, so you can come back to them after any change.
 
 The main files are:
 
@@ -95,7 +114,7 @@ The main files are:
 - \`bikecount/charts.py\` — creates the charts
 - \`check.py\` — checks that every page can render successfully
 
-You can check the whole project with:
+You can check the whole project at any time, in **Terminal 2**:
 
 \`\`\`
 python3 check.py
@@ -108,7 +127,7 @@ The stages only require reading code.
 
 **footfall** is a small web dashboard for pedestrian counts from Spencer Street in Melbourne. It reads the city's hourly count data and produces several pages used for a quarterly report.
 
-Start the dashboard:
+Start the dashboard in **Terminal 1**:
 
 \`\`\`
 python3 -m footfall.server
@@ -124,7 +143,7 @@ Open http://localhost:8000 and look through these pages:
 
 There is also a CSV download at \`/daily.csv\`.
 
-Press Ctrl-C in the terminal when you are finished looking around.
+Leave the server running in Terminal 1. The pages always show the project as it stands, so you can come back to them after any change.
 
 The main files are:
 
@@ -134,7 +153,7 @@ The main files are:
 - \`footfall/charts.py\` — creates the charts
 - \`check.py\` — checks that every page can render successfully
 
-You can check the whole project with:
+You can check the whole project at any time, in **Terminal 2**:
 
 \`\`\`
 python3 check.py
@@ -147,7 +166,7 @@ The stages only require reading code.
 const WARM_UP_STATE = `
 ## Start the practice state
 
-In the study terminal, run:
+In **Terminal 2**, run:
 
 \`\`\`
 ./stage 0
@@ -161,15 +180,7 @@ This practice covers the Git actions you will use during the timed stages: readi
 `
 
 const GIT_BODY = `
-## Open the editor
-
-Run:
-
-\`\`\`
-study-code
-\`\`\`
-
-This opens the project in VS Code.
+## The editor
 
 You will use three parts of the editor:
 
@@ -328,17 +339,9 @@ This practice covers the commands used in the timed stages. Most commands also p
 `
 
 const SGT_BODY = `
-## Open the editor
+## The editor
 
-Run:
-
-\`\`\`
-study-code
-\`\`\`
-
-This opens the project in VS Code with the **semi-git** extension.
-
-Click the semi-git icon in the left bar. You will use these views:
+The editor carries the **semi-git** extension. Click the semi-git icon in the left bar. You will use these views:
 
 - **Now** shows the current state.
 - **Features** shows features and their checkpoints.
@@ -352,13 +355,13 @@ You can click features and checkpoints to inspect them. You can also right-click
 
 Click a checkpoint in **Features** or in the workbench.
 
-The terminal lists the same history:
+The terminal shows the same history, grouped by feature — one row per feature, its checkpoints along it:
 
 \`\`\`
 sgt log
 \`\`\`
 
-Each row has a short seven-character ID. Use that ID with:
+Each feature and checkpoint has a short ID. Use it with:
 
 \`\`\`
 sgt show <short id>
@@ -375,10 +378,10 @@ Find and read:
 - the work that added the CSV download
 - the work that added the by-year table
 
-You can also see the history grouped by feature:
+To list what happened one save at a time, newest first:
 
 \`\`\`
-sgt log --map
+sgt log --rail
 \`\`\`
 
 ## 2. Record some work
@@ -497,7 +500,11 @@ export function tutorialFor(condition: Condition, project: Project): string {
   const body = condition === 'git' ? GIT_BODY : SGT_BODY
 
   return (
-    [opening.trim(), PROJECT_TOUR[project].trim(), WARM_UP_STATE.trim(), body.trim()].join(
+    // Editor first: the pilot sheets started the server in the session shell and then sent
+    // every later command to a terminal the server was occupying. The editor's integrated
+    // terminals are shimmed and recorded (bin/study-terminal), so the whole practice lives in
+    // one window: server in Terminal 1, commands in Terminal 2.
+    [opening.trim(), OPEN_EDITOR.trim(), PROJECT_TOUR[project].trim(), WARM_UP_STATE.trim(), body.trim()].join(
       '\n\n',
     ) + '\n'
   )

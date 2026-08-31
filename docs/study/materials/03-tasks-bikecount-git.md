@@ -59,7 +59,7 @@ Run the command below first. It resets the project and prints the two numbers th
 
 **Your job:** Find the piece of work in the project's history that made that change. You do not have to change any code.
 
-**You are done when:** You have written what this setup calls that work into the box below. A commit hash, a named piece of work, or an id all count. If you are not certain you found the right one, write down what you have and say that you are not certain. That is more useful to us than a guess.
+**You are done when:** You can name the piece of work — a commit hash, a named piece of work, or an id all count. The questions after this stage ask you which one you found. If you are not certain, choose what you have and say that you are not certain. That is more useful to us than a guess.
 
 When you run `./stage 2`, it will:
 
@@ -72,8 +72,6 @@ Commands that may help:
 - `git show <hash>` shows what one commit changed.
 - `git log --oneline -S "average"` finds the commits where a piece of text arrived or went away. Any word from the code works.
 - `git log --oneline -- <file>` narrows that to one file, and `git blame <file>` says which commit last touched each line.
-
-**What this setup calls the work that changed the averages:** ______________________
 
 ## Stage 3: Take that work out
 
