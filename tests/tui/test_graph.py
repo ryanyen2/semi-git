@@ -391,16 +391,19 @@ def test_a_reverted_checkpoint_is_drawn_as_removed_not_as_live():
 
     body = "\n".join(render_graph_lines(m, hist, [live, gone, part], focus="A", color=False))
     assert "3 checkpoints" in body and "1 reverted" in body   # the count still counts them
+    # The chapter table renders BELOW the (emphasized) map now, so row assertions scope to it --
+    # the map's own lane row also carries the chip names, in the LATEST column.
+    table = body[body.index("CHECKPOINT"):]
     # The `[░░░]`/`(███)` car glyphs are gone -- twelve of them down the left of a real feature read
     # as a cipher -- so removal is now carried by a STATE column and the way back by the footer.
-    rewound = next(l for l in body.splitlines() if "rewound" in l)
-    kept = next(l for l in body.splitlines() if "kept" in l)
+    rewound = next(l for l in table.splitlines() if "rewound" in l)
+    kept = next(l for l in table.splitlines() if "kept" in l)
     assert "reverted" in rewound                    # the removed chapter says so, on its own row
     assert "reverted" not in kept                   # ...and the live one is not drawn the same way
     assert "sgt restore A@1" in body                # and the way back is one copyable command
     # A chapter with only SOME of its ops reverted reports the fraction rather than rounding
     # to either extreme; the "edits" the numbers count is the column header beside it now.
-    assert "1 of 2 reverted" in next(l for l in body.splitlines() if "half" in l)
+    assert "1 of 2 reverted" in next(l for l in table.splitlines() if "half" in l)
 
 
 def test_a_checkpoint_with_no_presence_claim_is_drawn_as_live():
@@ -557,13 +560,21 @@ def test_render_links_hidden_by_default_and_shown_with_show_links():
 
 
 def test_render_focus_mode_shows_one_lane_full_detail():
+    """Focus is a lens, not a filter: the focused lane gets its chapter table, and every OTHER
+    lane stays on screen as compressed context (density only, no chapter detail) -- the
+    TableLens read. It used to swap the whole map out for the one lane's table, which lost
+    "where does this sit among the others"."""
     m = {"roots": ["A", "B"], "nodes": [_node("A", None, []), _node("B", None, [])], "edges": []}
     hist = _grid(("A", 0), ("A", 1), ("B", 5))
-    segs = [_seg("A", 0, ["o0"], 0, 0, label="scaffold"), _seg("A", 1, ["o1"], 1, 1, label="refine")]
+    segs = [_seg("A", 0, ["o0"], 0, 0, label="scaffold"), _seg("A", 1, ["o1"], 1, 1, label="refine"),
+            _seg("B", 0, ["o5"], 5, 5, label="other work")]
     lines = render_graph_lines(m, hist, segs, focus="A", color=False)
     text = "\n".join(lines)
     assert "scaffold" in text and "refine" in text
-    assert "B" not in text  # only A's lane detail is drawn, not B's
+    assert any(" B" in ln for ln in lines)      # context lanes stay on screen...
+    assert "other lanes dimmed" in text          # ...and the banner says why they look muted
+    table = text[text.index("CHECKPOINT"):]
+    assert "other work" not in table             # ...but only A's chapters are tabled
 
 
 def test_render_focus_mode_on_unknown_feature_reports_no_lane():
@@ -973,7 +984,8 @@ def test_resolve_focus_group_theme_joins_its_commits_to_the_touched_features():
                       {"feature_id": "fc", "commit_index": 9}]}
     themes = {"t1": {"label": "Realtime", "atom_shas": ["shaX"]}}
     g = resolve_focus_group("realtime", _sub_map(), grid, themes)
-    assert g == {"label": "Realtime", "kind": "theme", "feature_ids": {"fa"}}
+    assert g == {"label": "Realtime", "kind": "theme", "feature_ids": {"fa"},
+                 "commit_indices": {5}}
 
 
 def test_resolve_focus_group_returns_none_for_a_single_feature_so_caller_uses_the_map_path():

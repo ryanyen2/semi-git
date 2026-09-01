@@ -308,8 +308,7 @@ def _log_grid(repo: str, *, as_json: bool = False, frontier: int | None = None, 
     from-scratch recluster."""
     from sgt import state
     from sgt.api import forks_view, grid_view, rewrite_view, segments_view
-    from sgt.tui.graph import _state_banner, render_graph_lines, render_rail_lines, \
-        resolve_focus_group
+    from sgt.tui.graph import _state_banner, render_graph_lines, resolve_focus_group, theme_spans
 
     mv = _map_for_view(repo, refresh, color and not as_json, rebuild=rebuild)
     gv = grid_view(repo)  # the canonical cell join; the text render and --json now read one shape
@@ -321,24 +320,20 @@ def _log_grid(repo: str, *, as_json: bool = False, frontier: int | None = None, 
     states = {"forks": forks_view(repo)["forks"], "rewrites": rewrite_view(repo)}
     for line in _state_banner(states, color=color):
         print(line)
-    # `--focus <subsystem|theme>` is a category zoom: render the vertical commit-tree scoped to the
-    # group's features. A single-feature `--focus` names no group, so it falls through to the map's
-    # own per-checkpoint focus detail below.
+    themes_raw = state.load_json(repo, "intent_themes", default={}) or {}
+    # `--focus <subsystem|theme>` is a category zoom, rendered TableLens-style: the whole map
+    # stays on screen, the group's lanes keep full detail, every other lane compresses to its
+    # density spark -- then the group's own chapters (the revertable units) are tabled below.
+    # A single-feature `--focus` names no group, so it falls through to the map's own emphasized
+    # single-lane path inside `render_graph_lines`.
+    group = None
     if focus is not None:
-        themes = state.load_json(repo, "intent_themes", default={})
-        group = resolve_focus_group(focus, mv, gv, themes)
-        if group is not None:
-            # `states={}`: the banner is already printed above; the rail's own footer would
-            # otherwise repeat every open fork under the group view.
-            for line in render_rail_lines(mv, gv, color=color, only_features=group["feature_ids"],
-                                          group_label=group["label"], states={}):
-                print(line)
-            return 0
+        group = resolve_focus_group(focus, mv, gv, themes_raw)
     # Spatial LOD: with no focus the default map folds every LEAF subsystem (one whose children are
     # all features) to a single meta-lane, so its features read as one row instead of many. Interior
     # subsystems stay expanded as nested headers -- the map is a single-rooted tree, so collapsing
-    # every subsystem would fold the whole codebase into the root's one lane. `--focus <subsystem>`
-    # above already rerouted to the expanded rail view, so a collapsed subsystem is never the target.
+    # every subsystem would fold the whole codebase into the root's one lane. Under a focus nothing
+    # folds: a fold could hide the very lanes the emphasis is trying to show.
     #
     # The root is never collapsed. On a small repo the root IS a leaf subsystem -- every feature
     # hangs directly off it -- so the rule above folded the entire map to a single lane labelled
@@ -354,12 +349,59 @@ def _log_grid(repo: str, *, as_json: bool = False, frontier: int | None = None, 
         )
     else:
         collapsed = ()
+    segs = segments_view(repo)
     for line in render_graph_lines(
-        mv, gv, segments_view(repo), frontier=frontier, color=color, focus=focus, show_links=links,
+        mv, gv, segs, frontier=frontier, color=color,
+        focus=None if group is not None else focus, group=group, show_links=links,
         collapsed=collapsed,
+        themes=theme_spans(themes_raw, mv, gv) if focus is None else None,
     ):
         print(line)
+    if group is not None:
+        for line in _group_chapter_lines(group, segs, focus, color=color):
+            print(line)
     return 0
+
+
+def _group_chapter_lines(group: dict, segments: list[dict], typed: str, color: bool) -> list[str]:
+    """The chapters inside a focused group, tabled under the map: one line per member checkpoint
+    (feature-colored dot, feature, `@n` chip name), then -- for a theme -- the two whole-group
+    commands, spelled with the exact name the user just typed. This table is where the map's
+    emphasis cashes out: the blocks it highlighted, as the handles `revert`/`restore` take."""
+    from sgt.tui.color import color_for
+    from sgt.tui.graph import _bold, _dim, _paint
+
+    ids = set(group.get("feature_ids") or ())
+    idxs = group.get("commit_indices")
+    rows = []
+    for s in segments:
+        if s.get("feature_id") not in ids:
+            continue
+        if idxs and not any(s.get("first_index", -1) <= i <= s.get("last_index", -1) for i in idxs):
+            continue  # a theme emphasizes only the chapters its commits sit in
+        rows.append(s)
+    rows.sort(key=lambda s: (s.get("first_index", 0), s.get("feature_label", "")))
+    if not rows:
+        return []
+    lines = ["", _dim(" in this group:", color=color)]
+    flab_w = min(30, max(len(s.get("feature_label", "")) for s in rows))
+    for s in rows[:20]:
+        fid = s["feature_id"]
+        dot = _paint(color_for(fid), "●", color=color)
+        flab = s.get("feature_label", "")[:flab_w].ljust(flab_w)
+        handle = f"{fid[2:10] if fid.startswith('f-') else fid[:8]}@{s['seg_index']}"
+        lines.append(f"   {dot} {flab}  @{s['seg_index']} {s.get('intent', '')}  "
+                     + _dim(f"({handle})", color=color))
+    if len(rows) > 20:
+        lines.append(_dim(f"   … and {len(rows) - 20} more", color=color))
+    if group.get("kind") == "theme":
+        name = typed if typed else group.get("label", "")
+        lines.append("")
+        lines.append(" " + _bold(f'sgt revert "{name}"', color=color)
+                     + _dim("   removes this work everywhere it landed", color=color))
+        lines.append(" " + _bold(f'sgt restore "{name}"', color=color)
+                     + _dim("  brings it back", color=color))
+    return lines
 
 
 def _log_rail(repo: str, *, as_json: bool = False, color: bool = True, refresh: bool = False,

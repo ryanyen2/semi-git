@@ -2019,15 +2019,21 @@ def save_preview_view(repo) -> dict:
     ran `sgt save` right now. Answers the workbench's ghost-checkpoint render -- a dashed car on
     each affected lane at the frontier -- so the user sees the consequence of saving before saving.
 
-    Feature-granular by design (the workflow-legibility redesign keeps op/symbol reconciliation as
-    drill-down, never the default surface): the delta is `get(repo).op_ids - current_ideal(repo).op_ids`
-    (the same equality `porcelain._save` uses for "nothing_new"), attributed to the *current* tree via
-    the pure `tree.assign_ops_to_leaves` re-attributor -- not the persisted `op_leaf`, which only
-    covers committed ops. Ops that touch no owned symbol are the "new work" bucket, reported as a
-    count only (v1 does not predict which new lane they'd mint).
+    Symbol-granular spread, deliberately NOT the tree's own per-op plurality vote: the study's
+    stage-1 working tree mines as ONE op whose footprint spans every feature the assistant
+    touched, and the plurality vote filed all of it under the single biggest lane -- so the ghost
+    said "one feature gains work" while the quiz (and the truth) was "this change touched three
+    parts of the dashboard". A lane is affected here iff the pending work touches a symbol it
+    owns (residue/anchor symbols follow their anchor entity's lane, exactly the vote
+    `tree._member_leaf_for` casts), so one multi-feature op ghosts every lane it really touches.
+    The ledger still files each op under one home lane at save time (an op is atomic); this
+    preview answers "what does this change touch", not "where will the record file it".
 
-    Shape: `{"affected": [{"feature_id", "op_count", "op_ids"}], "new_work_count": int,
-    "total_op_count": int}`. Clean tree -> `affected: []`, all counts 0 (no ghosts render).
+    Shape: `{"affected": [{"feature_id", "op_count", "op_ids", "symbols"}], "new_work_count": int,
+    "total_op_count": int}` -- `symbols` are the owned symbols touched (residues shown as their
+    anchor entity), rows sorted most-touched first. An op counting in several lanes appears in
+    each row's `op_ids`; `new_work_count` counts ops touching NO owned symbol. Clean tree ->
+    `affected: []`, all counts 0 (no ghosts render).
 
     NOT fully side-effect-free: `get(repo)` mines the working tree and persists the mined ops +
     sync cache + witness into `.sgt/` (like `sgt save`/`status` already do). It creates no git
@@ -2035,7 +2041,7 @@ def save_preview_view(repo) -> dict:
     mine-on-contact, not a pure read."""
     from sgt.core import opindex
     from sgt.core.lens import current_ideal, get
-    from sgt.lens.tree import assign_ops_to_leaves
+    from sgt.lens.tree import _anchor_entity_of, _member_leaf_for, leaf_member_index
     from sgt.lens.tree import load as load_tree
 
     delta = get(repo).op_ids - current_ideal(repo).op_ids
@@ -2047,22 +2053,32 @@ def save_preview_view(repo) -> dict:
 
     tree_result = load_tree(repo)
     nodes = tree_result["nodes"] if tree_result else {}
-    op_leaf = assign_ops_to_leaves(nodes, uncommitted) if nodes else {}
+    member_leaf = leaf_member_index(nodes) if nodes else {}
 
-    by_feature: dict[str, list[str]] = {}
+    by_feature: dict[str, dict] = {}
+    unowned = 0
     for op in uncommitted:
-        leaf = op_leaf.get(op.id)
-        if leaf is not None:
-            by_feature.setdefault(leaf, []).append(op.id)
+        hit = False
+        for sym in op.footprint:
+            leaf = _member_leaf_for(sym, member_leaf)
+            if leaf is None:
+                continue
+            hit = True
+            row = by_feature.setdefault(leaf, {"op_ids": set(), "symbols": set()})
+            row["op_ids"].add(op.id)
+            row["symbols"].add(_anchor_entity_of(sym) or sym)
+        if not hit:
+            unowned += 1
 
     affected = [
-        {"feature_id": fid, "op_count": len(ids), "op_ids": sorted(ids)}
-        for fid, ids in sorted(by_feature.items())
+        {"feature_id": fid, "op_count": len(row["op_ids"]),
+         "op_ids": sorted(row["op_ids"]), "symbols": sorted(row["symbols"])}
+        for fid, row in by_feature.items()
     ]
-    attributed = sum(len(ids) for ids in by_feature.values())
+    affected.sort(key=lambda r: (-len(r["symbols"]), -r["op_count"], r["feature_id"]))
     return {
         "affected": affected,
-        "new_work_count": len(uncommitted) - attributed,
+        "new_work_count": unowned,
         "total_op_count": len(delta),
     }
 

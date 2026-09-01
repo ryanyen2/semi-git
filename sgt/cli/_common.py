@@ -110,3 +110,49 @@ def _add_view_flags(p, *, paged: bool = False) -> None:
     if paged:
         p.add_argument("--limit", type=int, default=None)
         p.add_argument("--offset", type=int, default=0)
+
+
+import contextlib
+
+
+@contextlib.contextmanager
+def busy(text: str, *, delay: float = 0.4):
+    """A single dim spinner line on stderr while a slow verb works, erased when it finishes.
+
+    The verbs that mine or recluster (`save`, `revert`, `restore`, `log --refresh`) can sit
+    silent for several seconds, and a silent prompt reads as a hang -- the study's pilots
+    re-typed the command or killed it. Shows nothing at all for fast calls (`delay` passes
+    first), for non-ttys, and for `--json` pipelines (stderr piped): the machine contract and
+    the scrollback stay byte-identical."""
+    import sys
+    import threading
+
+    if not sys.stderr.isatty():
+        yield
+        return
+    stop = threading.Event()
+    drew = threading.Event()
+
+    def run():
+        if stop.wait(delay):
+            return
+        frames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+        i = 0
+        while not stop.is_set():
+            drew.set()
+            sys.stderr.write(f"\r\x1b[2m{frames[i % len(frames)]} {text}\x1b[0m\x1b[K")
+            sys.stderr.flush()
+            i += 1
+            if stop.wait(0.1):
+                break
+
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        t.join(timeout=1)
+        if drew.is_set():
+            sys.stderr.write("\r\x1b[K")
+            sys.stderr.flush()
