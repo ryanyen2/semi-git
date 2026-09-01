@@ -25,7 +25,7 @@ You will work through four stages on a small web dashboard:
 
 You will complete these stages twice. Each round uses a different project and a different way of working with project history.
 
-At the end, we will open a history view for one of your repositories if you chose to provide one. Otherwise, we will use a prepared public repository.
+At the end, we will open a history view for one of your repositories if you chose to provide one. Otherwise, we will use a prepared public one: EasyOCR, an open-source library that reads text out of images.
 
 ## Think out loud
 
@@ -559,7 +559,7 @@ For the final part of the session, we will look at the history of a real reposit
 
 If you brought a repository and gave consent to use it, your facilitator will open the history view created during setup.
 
-If you chose the prepared repository, your facilitator will open that instead.
+If you chose the prepared repository, your facilitator will open EasyOCR instead — an open-source library that reads text out of images. Nobody in the room wrote it, which is the point: the question is whether what the view says about it makes sense to you.
 
 This part is an open interview without a timer. Walk us through what you see. Tell us:
 

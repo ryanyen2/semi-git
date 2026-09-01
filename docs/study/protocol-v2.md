@@ -513,6 +513,24 @@ happened. Nothing quantitative is computed from anyone's own repository; the
 walkthrough is interview material only, and no content from it leaves the
 session except the participant's recorded words.
 
+The prepared repository is **EasyOCR** (`JaidedAI/EasyOCR`), pinned, mined and
+warm before the session; `scripts/demo/build-easyocr-demo.sh` builds it and
+`docs/study/interview-demo-easyocr.md` is the walkthrough the facilitator reads.
+OCR was chosen because the domain needs no explanation -- a picture of text goes
+in and text comes out, detection finds the boxes and recognition reads them --
+so the minutes go on the representation rather than on the codebase. Expect the
+fallback to be the common path rather than the exception: most participants will
+not have a checkout of their own on the study laptop.
+
+The two paths produce different material and the paper says so. On the
+participant's own repository they know the ground truth and we do not, which is
+the point; on EasyOCR neither party does, so what the walkthrough can show is
+whether the representation reads as sensible to somebody who knows the domain but
+not the code. The walkthrough document also lists, before the session, what is
+rough on that repository -- sgt's symbol coverage there is 19%, because EasyOCR
+renamed two directories in 2020 and the post-rename chain never gets a creation
+op. A facilitator has to know that before a participant finds it.
+
 ## 8. What the machine records
 
 The recording machinery is version 1's with the assistant hooks removed:

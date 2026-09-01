@@ -2572,6 +2572,26 @@ left with no visible descendant, and counts what it prints; the dead renderer is
 gone and its test now runs against the live one. The tree and the map now agree
 on nine and eight.
 
-`scripts/check_graph_integrity.py` did not catch it. Its husk test is "has
-members, all of them sentinels", and these leaves have no members at all, so they
-pass. Widened to fail on a leaf with edits and no real symbol either way.
+`scripts/check_graph_integrity.py` did not catch it. Its husk test was "has
+members, all of them sentinels", and these leaves carry a plausible member list
+while owning nothing, so they passed. It now asks `sgt.api.map_view` -- the same
+projection every surface reads -- whether a leaf with edits owns a symbol, and
+reports what it finds on every build. It reports rather than blocks: with every
+view filtering them, a lane nothing shows and nothing can name is a build
+artifact rather than a lie, and both shipped bundles have one (footfall's
+`Daily CSV Export`, bikecount's three), so blocking would stop the study over
+rows no participant can see.
+
+**What is still not aligned: `map_view`'s own `feature_count`.** It counts every
+leaf, husks included, so the JSON says 10 where footfall's map and tree both draw
+9, and 11 where bikecount draws 8. The VS Code extension reads that field. Tried
+and reverted: narrowing it to leaves that own a symbol breaks
+`test_map_view_renders_a_shared_feature_under_its_one_canonical_parent`, which
+asserts the count agrees with the `kind` a node is emitted with -- a borrower-only
+node is `kind: "feature"` with no ops of its own, and consumers (VS Code tree
+actions and collapsibility, TUI expand, timeline recursion) gate on that pair. So
+two defensible invariants are in tension: the count as "how many feature nodes"
+and the count as "how many lanes you will see". Nothing in the study depends on
+the number, so it is left disagreeing rather than changed a week before the first
+participant. On a mined EasyOCR the same gap is 67 against 29
+(`docs/study/interview-demo-easyocr.md`), which is where it stops being cosmetic.

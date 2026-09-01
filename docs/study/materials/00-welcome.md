@@ -13,7 +13,7 @@ You will work through four stages on a small web dashboard:
 
 You will complete these stages twice. Each round uses a different project and a different way of working with project history.
 
-At the end, we will open a history view for one of your repositories if you chose to provide one. Otherwise, we will use a prepared public repository.
+At the end, we will open a history view for one of your repositories if you chose to provide one. Otherwise, we will use a prepared public one: EasyOCR, an open-source library that reads text out of images.
 
 ## Think out loud
 

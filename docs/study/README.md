@@ -86,6 +86,7 @@ There are three roles:
 | `participant-materials.md` | The facilitator's script and answer keys |
 | `answer-key.json` | Ground-truth data loaded into the web console for scoring |
 | `remote-setup.md` | How to run sessions on a participant's own laptop |
+| `interview-demo-easyocr.md` | The prepared repository for the closing interview, its walkthrough, and its pre-flight checklist |
 | `materials/` | Printed copies of what participants see: the welcome, and one practice sheet and one task sheet per condition-and-project pair (four of each, because both now quote that project's own files and that arm's own commands). Generated from `web/src/study/`, so edit the copy there and run `npm run gen:materials` in `web/`; `npm test` fails if a file here has drifted |
 | `testbed-spec.md` | How the two study projects were built |
 | `build-log-*.md` | Ground truth for each project's commit history |
