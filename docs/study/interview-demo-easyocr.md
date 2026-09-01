@@ -111,10 +111,20 @@ with the key                                  without it
 ```
 
 **The tell is the scores: uniform `0.50` and `0.25` means the fallback is running.** So does an
-answer with no `symbol` rows near the top. Fix it before the session:
+answer with no `symbol` rows near the top.
+
+The demo repo now carries its own `.env` with just the key in it, mode 600, and `sgt` reads a `.env`
+from the repository root (`sgt/config.py`), so this works with nothing exported — which matters
+because a VS Code launched from Finder has no key in its environment and the workbench's search box
+would fall back silently. EasyOCR's own `.gitignore` already lists `.env`, so it cannot be
+committed; `git status` stays clean. If the file is missing, either recreate it or export the key by
+hand:
 
 ```bash
-export OPENAI_API_KEY=…      # or: set -a; . /Users/r4yen/repos/semi-git/.env; set +a
+grep '^OPENAI_API_KEY=' /Users/r4yen/repos/semi-git/.env > ~/repos/sgt-demo/EasyOCR/.env
+chmod 600 ~/repos/sgt-demo/EasyOCR/.env
+# or, for one shell only:
+set -a; . /Users/r4yen/repos/semi-git/.env; set +a
 ```
 
 `sgt find` is also the only command that talks to the network during the demo. Nothing is cached,

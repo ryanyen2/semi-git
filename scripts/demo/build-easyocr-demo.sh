@@ -387,6 +387,17 @@ say "the feature tree the facilitator will open on:"
 echo
 "$SGT" log --tree --no-color | sed 's/^/    /'
 echo
+# The key, in the repo rather than in the operator's shell. `sgt` reads a `.env` from the repository
+# root (`sgt/config.py`), and `sgt find` embeds its query at call time -- so without this, a VS Code
+# opened from Finder has no key in its environment and the workbench's search box falls back to word
+# matching WITHOUT SAYING SO. EasyOCR's own `.gitignore` already lists `.env`, so it cannot be
+# committed and the tree stays clean. Mode 600, and only the one line.
+if [ -f "$SGT_SOURCE/.env" ] && grep -q '^OPENAI_API_KEY=' "$SGT_SOURCE/.env"; then
+    grep '^OPENAI_API_KEY=' "$SGT_SOURCE/.env" > "$target/.env"
+    chmod 600 "$target/.env"
+    say "wrote $target/.env (the key only, mode 600, ignored by the repo's own .gitignore)"
+fi
+
 say "built: $target"
 say "walkthrough: $SGT_SOURCE/docs/study/interview-demo-easyocr.md"
 # The index built above is embedded, but `sgt find` embeds the QUERY at call time too, so the
