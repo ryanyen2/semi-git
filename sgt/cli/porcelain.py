@@ -239,6 +239,7 @@ def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool =
         # Guarded: a lane-assignment hiccup must never fail the save. Local import keeps the path light.
         from sgt.core.store import Store
         from sgt.lens import ledger
+        prev_head = gb.head()  # the previous save: seeds the first capture window's start (weave P1)
         with busy("recording the save…"):
             pre = _snapshot_cascade_tables(repo)
             try:
@@ -310,6 +311,24 @@ def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool =
             from sgt.intent.rationale import auto_retire_open
             auto_retire_open(repo)
         except Exception:  # noqa: BLE001 -- draining the residual is subordinate to the save
+            pass
+        # Close the capture window (weave P1, design doc 2026-09-01 §4b): fold everything captured
+        # since the previous save -- turns, activity events -- plus the new ops' footprint anchors
+        # into one durable per-commit manifest. The save beat is the only moment this join is
+        # cheap: the window is small and the ops are in hand. After this, the activity ring
+        # buffer's trim loses nothing. Guarded like every capture side-effect: never fail a save.
+        try:
+            import time as _time
+
+            from sgt.core import opindex
+            from sgt.intent.manifest import load_manifests, record_manifest
+            prev_ts = None
+            if not load_manifests(repo) and prev_head:  # first window ever: seed its start edge
+                prev_ts = gb.commit_times().get(prev_head)
+            record_manifest(repo, sha=sha,
+                            ops=[op for op in opindex.index_ops(repo) if op.id in new_op_ids],
+                            end=_time.time(), prev_save_ts=prev_ts)
+        except Exception:  # noqa: BLE001 -- the manifest is subordinate to the save
             pass
     words = _echo_words(repo, message, plan) if saved else None
     why = _aligned_why(repo, new_op_ids, words) if saved else None  # pure read; the ledger already

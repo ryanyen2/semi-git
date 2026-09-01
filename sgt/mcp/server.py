@@ -161,6 +161,28 @@ def _verb_with_feature_fallback(repo_path: str, verb: str, ref: str, emit: bool)
     return result
 
 
+def _carry_prompt(repo_path: str, args: dict, *, key: str | None = None,
+                  key_kind: str = "chat") -> None:
+    """Carry the user's ask into the turn store (capture weave P1, design doc 2026-09-01 §4a):
+    an MCP client has no `UserPromptSubmit` hook, so the relaying agent is the only channel the
+    driving prompt can arrive through. Recorded as channel `"agent"` -- an agent's claim of the
+    user's verbatim words, trust-tiered below a harness capture (`hook`) and above a paraphrase
+    (`note`) -- keyed by the agent's chat session id, or by whatever key the caller supplies when
+    no session id was passed. Content-addressing dedupes the hook-captured twin. Guarded like
+    every capture side-effect: never fail the verb it rides on."""
+    try:
+        prompt = (args.get("prompt") or "").strip()
+        chat = (args.get("claude_session_id") or "").strip()
+        if chat:
+            key, key_kind = chat, "chat"
+        if prompt and key:
+            from sgt.intent.turns import record_turn
+            record_turn(repo_path, key=key, key_kind=key_kind, actor="human", channel="agent",
+                        text=prompt)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def tool_revert(repo_path: str, args: dict) -> dict:
     """`I \\ ↑X`: remove an op and everything built on it. `emit=true` previews with no write."""
     from sgt.core.lens import get
@@ -168,6 +190,8 @@ def tool_revert(repo_path: str, args: dict) -> dict:
     ref = (args.get("ref") or "").strip()
     if not ref:
         return {"error": "missing 'ref'"}
+    if not args.get("emit"):  # a preview is a read; only the applying call carries intent
+        _carry_prompt(repo_path, args)
     get(repo_path)  # mine-on-contact before planning/applying the edit (R9)
     return _verb_with_feature_fallback(repo_path, "revert", ref, bool(args.get("emit", False)))
 
@@ -179,6 +203,8 @@ def tool_restore(repo_path: str, args: dict) -> dict:
     ref = (args.get("ref") or "").strip()
     if not ref:
         return {"error": "missing 'ref'"}
+    if not args.get("emit"):
+        _carry_prompt(repo_path, args)
     get(repo_path)
     return _verb_with_feature_fallback(repo_path, "restore", ref, bool(args.get("emit", False)))
 
@@ -318,9 +344,19 @@ def tool_save(repo_path: str, args: dict) -> dict:
     it safe to hand over."""
     from sgt.cli.porcelain import save
 
-    return save(repo_path,
-                message=(args.get("message") or "").strip() or None,
-                as_label=(args.get("as_feature") or "").strip() or None)
+    # Carry the driving prompt (weave P1): with a chat key, record it BEFORE the save so it lands
+    # inside the capture window this save is about to close; without one, record it after, keyed
+    # by the new commit sha -- a key `_atom_prompt` already joins by directly, so the words still
+    # reach every read surface, just not through the manifest.
+    chat = (args.get("claude_session_id") or "").strip()
+    if chat:
+        _carry_prompt(repo_path, args)
+    out = save(repo_path,
+               message=(args.get("message") or "").strip() or None,
+               as_label=(args.get("as_feature") or "").strip() or None)
+    if not chat and out.get("saved") and out.get("commit"):
+        _carry_prompt(repo_path, args, key=out["commit"], key_kind="sha")
+    return out
 
 
 def tool_now(repo_path: str, args: dict) -> dict:
@@ -412,6 +448,24 @@ def _schema(props: dict, required: list[str]) -> dict:
 # The caller's own Claude Code session id, used by the plan tools to tell agents apart. Declared once
 # because it now appears on several tools and its guidance (which env var, and why not the bridge
 # one) must not drift between them.
+# The capture-weave carry pair (P1, design doc 2026-09-01 §4a): an MCP client has no
+# `UserPromptSubmit` hook, so a mutating verb is the only door the user's ask can arrive through.
+_DRIVING_PROMPT_PROP = {
+    "type": "string",
+    "description": "the user's ask that drove this work, verbatim as you received it (optional "
+                   "but valuable): it is recorded as capture evidence, so `sgt why` and the "
+                   "checkpoint labels can answer with the user's own words instead of a guess. "
+                   "Pass their words, not your paraphrase.",
+}
+_CHAT_KEY_PROP = {
+    "type": "string",
+    "description": "your Claude Code session id (read $CLAUDE_CODE_SESSION_ID via Bash -- the "
+                   "per-session UUID; do NOT use $CLAUDE_CODE_BRIDGE_SESSION_ID, which can carry "
+                   "a parent session's id in nested runs). Keys the carried prompt to your "
+                   "conversation so the work it produced can be traced back -- and resumed -- "
+                   "from the checkpoint it lands in.",
+}
+
 _OWN_SESSION_PROP = {
     "type": "string",
     "description": "your Claude Code session id (read $CLAUDE_CODE_SESSION_ID via Bash -- the "
@@ -466,7 +520,9 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         "they become the save's subject and the recorded intent, and a feature born from this work "
         "is named from them rather than by a model. Additive and reversible (`sgt undo`).",
         _schema({"message": {"type": "string", "description": "what this work was, in your words"},
-                 "as_feature": {"type": "string", "description": "name the feature this work lands in (optional)"}},
+                 "as_feature": {"type": "string", "description": "name the feature this work lands in (optional)"},
+                 "prompt": _DRIVING_PROMPT_PROP,
+                 "claude_session_id": _CHAT_KEY_PROP},
                 []),
         tool_save,
     ),
@@ -515,14 +571,16 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         "Remove a symbol-level edit and everything built on top of it from the current state. "
         "`ref` is an op-id, an op-id prefix, or a `file::name` symbol (resolves to its latest edit). "
         "Pass emit=true for a dry-run preview -- writes nothing.",
-        _schema({"ref": {"type": "string"}, "emit": {"type": "boolean", "description": "dry-run preview only"}}, ["ref"]),
+        _schema({"ref": {"type": "string"}, "emit": {"type": "boolean", "description": "dry-run preview only"},
+                 "prompt": _DRIVING_PROMPT_PROP, "claude_session_id": _CHAT_KEY_PROP}, ["ref"]),
         tool_revert,
     ),
     "sgt_restore": (
         "Bring a symbol-level edit back, along with everything it needs -- revert's inverse. "
         "`ref` is an op-id, an op-id prefix, or a `file::name` symbol. Pass emit=true for a "
         "dry-run preview -- writes nothing.",
-        _schema({"ref": {"type": "string"}, "emit": {"type": "boolean", "description": "dry-run preview only"}}, ["ref"]),
+        _schema({"ref": {"type": "string"}, "emit": {"type": "boolean", "description": "dry-run preview only"},
+                 "prompt": _DRIVING_PROMPT_PROP, "claude_session_id": _CHAT_KEY_PROP}, ["ref"]),
         tool_restore,
     ),
     "sgt_advanced_oracle_run": (

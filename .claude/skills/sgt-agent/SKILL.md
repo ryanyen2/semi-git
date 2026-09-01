@@ -133,12 +133,18 @@ Yours: reading (`sgt_show`, `sgt_recall`, `sgt_log`, `sgt_now`, `sgt_drift`), th
 (`sgt_plan_intake` → work → `sgt_checkpoint` → `sgt_plan_done`), and **`sgt_save`**. See the
 `sgt-plan` skill for the loop and for how ownership works when several agents share a repo.
 
-Saving is yours on purpose, and it comes with one obligation. `sgt_save` asks for your own words, and
-they become the save's subject, the recorded intent, and the name of any feature born from the work —
-so write the sentence you would have put in a commit message. That sentence is the thing only you
-have at that moment, and it is what makes the history answer "why" later. The verb is additive and
-`sgt undo` reverses it, which is what makes it safe to hand over; the alternative was a human
-relaying every save by hand at a terminal, which is the loop sgt exists to remove.
+Saving is yours on purpose, and it comes with two obligations. First, `sgt_save` asks for your own
+words (`message`), and they become the save's subject, the recorded intent, and the name of any
+feature born from the work — so write the sentence you would have put in a commit message. Second,
+pass along the *user's* words too: `prompt` takes the ask that drove this work, verbatim as you
+received it (their words, not your paraphrase), and `claude_session_id` takes your session UUID
+(read `$CLAUDE_CODE_SESSION_ID` via Bash; never `$CLAUDE_CODE_BRIDGE_SESSION_ID`, which can carry a
+parent's id). Together they let `sgt why` and the checkpoint history answer with what the user
+actually asked for — and let the conversation that produced a checkpoint be found and resumed from
+it later. The same two fields ride `sgt_revert`/`sgt_restore` when the user asked for the removal
+or return in so many words. The verb is additive and `sgt undo` reverses it, which is what makes it
+safe to hand over; the alternative was a human relaying every save by hand at a terminal, which is
+the loop sgt exists to remove.
 
 Theirs, and deliberately not exposed to you as tools:
 

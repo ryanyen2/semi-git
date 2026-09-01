@@ -19,9 +19,11 @@ sha), so the same fallback join reaches them, but they differ in three deliberat
 
 Content-addressed by (key_kind, key, actor, channel, text): capturing the identical utterance twice
 under the same key is a no-op, so a retried verb or a re-run hook never double-records. `channel`
-distinguishes capture provenance -- `hook` is verbatim human input, `note` is an agent's paraphrase
-of the human, `cli` is a command/tool argument -- because downstream weighting must not treat an
-agent's "per your request..." note as the user's own voice. `Op`/`Attribution` stay untouched: turns
+distinguishes capture provenance -- `hook` is verbatim human input, `agent` is an agent's *claim*
+of the user's verbatim words relayed over MCP (capture weave P1: trusted below a harness capture,
+above a paraphrase), `note` is an agent's paraphrase of the human, `cli` is a command/tool
+argument -- because downstream weighting must not treat an agent's "per your request..." note as
+the user's own voice. `Op`/`Attribution` stay untouched: turns
 attach to a plan/session, never per-op, and free conversational text has no business in the frozen,
 content-addressed `Op`.
 """
