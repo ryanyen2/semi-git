@@ -86,7 +86,7 @@ export const STEPS: Step[] = [
   {
     id: 'background',
     phase: 'Getting started',
-    title: 'About you',
+    title: 'Pre-Study Questionnaire',
     kind: 'form',
     half: null,
     instrumentId: 'background',

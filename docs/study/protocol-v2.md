@@ -439,7 +439,10 @@ model receives code excerpts over the network, and the option to decline and
 use a prepared public repository instead. Declining costs the participant
 nothing and is recorded.
 
-Background is unchanged. The closing preference block (`preference-v3`) asks,
+Background is now the pre-study questionnaire (`background-v2`, section 5.2
+of version 1): the recruitment questionnaire's own demographic and
+experience items, plus a git confidence item. The closing preference block
+(`preference-v3`) asks,
 for each of the four jobs the stages exercised (recording the assistant's
 work, finding a piece of work, removing one, putting one back), "which setup
 would you rather use for this", on the −2 to +2 scale with "no real
