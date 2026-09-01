@@ -39,11 +39,12 @@ key.
 Go to **Setup → Answer key → Load answer key JSON** and select the file
 `docs/study/answer-key.json` from this repository.
 
-The key holds, per project: every commit in each testbed's history; the measured
-behaviour set the two scored checklists share (stage 2 predicts it, stage 3
-reports it, so `gain` compares like with like); the accepted-strings list for
-stage 2's locate; and the pages stages 3 and 4 are scored against. There is no
-entry for stage 1 — it asks nothing with a right answer. It is stored where only
+The key holds, per project: every commit in each testbed's history; the
+accepted-strings list for stage 2's locate; and the pages stages 3 and 4 are
+scored against (`s3.markers`). It also still holds the measured behaviour reach
+sets, which no stage reads any more — they are ground truth about the testbeds
+and they score the halves collected before the checklist was removed. There is
+no entry for stage 1. It is stored where only
 signed-in experimenters can read it, and is deliberately *not* compiled into the
 website JavaScript: the questions ship in the bundle the participant's browser
 downloads, so answers living beside them would be readable from the page source.
@@ -282,12 +283,13 @@ No checklist, no key. It ends on three rating statements, which the console
 records and rolls up as one mean. What stage 1 produces beyond that is your
 notes; `participant-materials.md` lists what to watch for.
 
-### Stages 2 and 3 score themselves
+### Stage 2
 
-Both end in the eleven-item checklist, which the console scores as set F1
-against `answer-key.json` and pairs with the confidence rating to compute
-calibration. There is nothing to grade. **If the panel shows a checklist
-unscored, the answer key is not loaded** — go back to section 1.
+The eleven-item checklist is gone from stages 2 and 3 (see `protocol-v2.md`
+section 4 — P01 left it unanswered three times out of four). What stage 2 ends
+with is a recognition question ("which of these is the work you found"), a
+confidence rating about the task, and two rating statements. None of it is
+scored against the key.
 
 Stage 2 also asks the participant to name the work they found. Scoring that is
 yours: the console shows their answer beside the list of strings the key accepts,

@@ -29,13 +29,15 @@ describe('the shipped answer key', () => {
         r.scoredLocate || !!r.identify || r.quiz.some((q) => q.kind !== 'text' && q.scored)
       if (scored) {
         expect(key.requestKeys[r.id], `${r.id} is scored but the key has no entry`).toBeDefined()
-      } else if (r.quiz.length === 0 && !r.scoredLocate) {
-        expect(
-          key.requestKeys[r.id]?.reach,
-          `${r.id} asks no checklist but the key still carries a reach set for it`,
-        ).toBeUndefined()
       }
+      // The converse is deliberately NOT asserted. Stages 2 and 3 stopped asking
+      // the reach checklist, and their measured reach sets stay in the key: they
+      // are ground truth about the built testbeds, the pilot and P01 halves that
+      // answered are still scorable against them, and `s3.markers` (the pages the
+      // scorer diffs) lives in the same entry. Only stage 1 must have no entry --
+      // it never had a measurement behind it.
     }
+    expect(key.requestKeys['s1']).toBeUndefined()
   })
 
   it('accepts an answer for every locate step, in both projects', () => {
@@ -136,10 +138,15 @@ describe('the validation itself', () => {
     expect(() => validateGroundTruth(empty)).toThrow(/accepts nothing for s2/)
   })
 
-  it('rejects a key with no behaviour set for a scored checklist', () => {
+  // No stage asks a behaviours checklist any more, so a MISSING reach set is no
+  // longer a rejection -- there is nothing it would leave unscored. This used to
+  // assert the throw; it asserts the absence of one, so that the day a stage asks
+  // again the rule has a test that changes with it rather than a deleted one.
+  it('accepts a key with no behaviour set, now that no stage asks one', () => {
     const noReach = clone()
     delete noReach.requestKeys.s2.reach
-    expect(() => validateGroundTruth(noReach)).toThrow(/no behaviour set for s2/)
+    expect(() => validateGroundTruth(noReach)).not.toThrow()
+    expect(REQUESTS.some((r) => r.quiz.some((q) => q.kind === 'behaviours'))).toBe(false)
   })
 
   it('rejects a behaviour set naming a behaviour the checklist does not offer', () => {

@@ -73,27 +73,13 @@ export function figure2Panels(dataset: Dataset): PairedPanel[] {
       [0, 1],
       'found it',
     ),
-    // The stage 2 prediction against the stage 3 outcome report, both F1
-    // against the same measured key. `gain` is what doing the removal taught
-    // them beyond what the representation had already shown.
-    build(
-      'blind',
-      'Predicted before operating',
-      'reach guessed from the representation alone, F1',
-      (p, c) => conditionValue(p, c, (m) => m.reach?.blind ?? null, 'mean', ['s3']),
-      true,
-      [0, 1],
-      'F1',
-    ),
-    build(
-      'gain',
-      'What operating taught',
-      'F1 after the removal, minus F1 predicted',
-      (p, c) => conditionValue(p, c, (m) => m.reach?.gain ?? null, 'mean', ['s3']),
-      true,
-      [-0.5, 1],
-      'F1 gained',
-    ),
+    // The stage 2 prediction and the stage 3 outcome report -- `blind` and `gain`
+    // -- were panels here. Both came from the eleven-option reach checklist, and
+    // that checklist is gone from both stages (see tasks.ts): P01 left it
+    // untouched three of the four times it was asked. The pipeline still computes
+    // `reach` and `quizPicksF1` so the pilot halves that DID answer can be scored
+    // after the fact, but a panel that draws an empty column for every participant
+    // from here on claims a measure the study no longer collects.
     build(
       's3',
       'S3 removal',
