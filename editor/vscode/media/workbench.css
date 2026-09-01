@@ -2445,3 +2445,69 @@ svg.railsvg {
   font-size: 11px;
   flex: none;
 }
+
+/* ── Cross-feature spines: one piece of work across lanes, drawn as one object ─────────────────
+   Quiet by default (the lanes carry the data; the spine annotates), bright on hover and under a
+   focus. The label halos against the plot with paint-order, so it stays readable over bars. */
+.theme-spine-hit {
+  fill: transparent;
+  pointer-events: all;
+  cursor: pointer;
+}
+
+.theme-spine-line {
+  stroke: var(--fg);
+  stroke-width: 1.5;
+  stroke-dasharray: 1.5 3;
+  opacity: 0.5;
+}
+
+.theme-spine-elbow {
+  stroke: var(--fg);
+  stroke-width: 1;
+  stroke-dasharray: 1.5 3;
+  opacity: 0.45;
+}
+
+.theme-spine-dot {
+  fill: var(--fg);
+  opacity: 0.6;
+}
+
+.theme-spine-label {
+  font-size: 10px;
+  fill: var(--fg);
+  opacity: 0.75;
+  stroke: var(--bg);
+  stroke-width: 3;
+  paint-order: stroke;
+  pointer-events: none;
+}
+
+.theme-spine-label-hover {
+  display: none;
+}
+
+.theme-spine-hot .theme-spine-line,
+.theme-spine-focused .theme-spine-line {
+  stroke: var(--accent);
+  opacity: 0.9;
+}
+
+.theme-spine-hot .theme-spine-elbow,
+.theme-spine-focused .theme-spine-elbow {
+  stroke: var(--accent);
+  opacity: 0.8;
+}
+
+.theme-spine-hot .theme-spine-dot,
+.theme-spine-focused .theme-spine-dot {
+  fill: var(--accent);
+  opacity: 1;
+}
+
+.theme-spine-hot .theme-spine-label,
+.theme-spine-focused .theme-spine-label {
+  display: block;
+  opacity: 1;
+}

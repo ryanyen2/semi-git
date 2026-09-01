@@ -349,6 +349,36 @@ try {
           byId.rail.querySelectorAll(".glane-quiet").length === 0);
   }
 
+  // Cross-feature spines: the spanning work draws IN the graph as one linked object. Folds are
+  // expanded first so both member lanes are visible rows (a spine links visible lanes only).
+  console.log("cross-feature spines:");
+  let unfoldGuard = 0;
+  for (;;) {
+    const metaFold = byId.rail.querySelectorAll(".glane").find((n) => {
+      const id = n.getAttribute("data-id") || "";
+      return id && !id.startsWith("f-");
+    });
+    if (!metaFold || !metaFold._listeners.click || unfoldGuard++ > 10) break;
+    metaFold._listeners.click.forEach((fn) => fn({}));
+  }
+  const spines = byId.rail.querySelectorAll(".theme-spine");
+  check("the spanning work draws as a spine in the graph", spines.length > 0, `${spines.length} spines`);
+  if (spines.length) {
+    const spine = spines[0];
+    check("the spine links at least two lanes",
+          spine.querySelectorAll(".theme-spine-dot").length >= 2,
+          `${spine.querySelectorAll(".theme-spine-dot").length} dots`);
+    check("the spine carries its name", spine.querySelectorAll(".theme-spine-label").length === 1);
+    if (spine._listeners.click) {
+      spine._listeners.click.forEach((fn) => fn({ stopPropagation() {} }));
+      check("clicking the spine enters the focus",
+            byId.themeBanner && byId.themeBanner.hidden === false);
+      const spineClear = byId.themeBanner.querySelectorAll("button");
+      const spineCb = spineClear[spineClear.length - 1];
+      if (spineCb && spineCb._listeners.click) spineCb._listeners.click.forEach((fn) => fn({}));
+    }
+  }
+
   // Selecting a feature: simulate a click on the first feature lane -> inspector populates.
   const featureLane = lanes.find((n) => n.getAttribute("data-id") && n.getAttribute("data-id").startsWith("f-"));
   if (featureLane && featureLane._listeners.click) {

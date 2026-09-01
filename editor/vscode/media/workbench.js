@@ -683,6 +683,15 @@ function episodeRailLayout(epView) {
     return { id: t.theme_id, label: t.label, tier: t.tier,
              featureIds: new Set(t.feature_span || []), commitIdx };
   }
+  // The spanning work worth showing: multi-feature, and genuinely NAMED. The "(unwitnessed)"
+  // rollup is the catch-all for commits outside any theme -- it spans most of the repo by
+  // construction and reads as a work item called "(unwitnessed)", which is noise on every
+  // surface that lists work by name.
+  function spanningThemes() {
+    return ((((compose || {}).intent) || {}).themes || [])
+      .filter((t) => (t.feature_span || []).length > 1 && t.label && t.label !== "(unwitnessed)");
+  }
+
   function laneInThemeFocus(l) {
     if (!themeMarks) return true;
     return themeMarks.featureIds.has(l.id) || (l.leaves || []).some((f) => themeMarks.featureIds.has(f));
@@ -690,6 +699,11 @@ function episodeRailLayout(epView) {
 
   // A save picked in find: its chapters flash across every lane it touched, then the flash clears.
   let saveFlashIdx = null;
+
+  // Where each chapter was actually drawn this render (checkpoint -> {x, w, midY, laneId}).
+  // The cross-feature spines anchor on these exact rectangles rather than re-deriving the
+  // gap-fill tiling renderCars does -- one layout, two consumers.
+  let carRects = new Map();
 
   const rail = document.getElementById("rail");
   const inspector = document.getElementById("inspector");
@@ -1616,6 +1630,7 @@ function episodeRailLayout(epView) {
         class: "gcar-wrap" + (isBig ? " gcar-big" : "") + (selected ? " gcar-selected" : ""),
         "data-first": car.firstIndex, "data-checkpoint": car.checkpoint,
       });
+      carRects.set(car.checkpoint, { x, w, midY, laneId: l.id, subBins: car.subBins || [] });
       // Native tooltip: an SVG element ignores a `title` attribute, so the hover text has to be a
       // `<title>` child of the rect (not attrs.title) to actually show on hover.
       const tip = `${car.label}\n${car.tier}` +
@@ -1901,6 +1916,103 @@ function episodeRailLayout(epView) {
     }
   }
 
+  // ─── Cross-feature work, drawn IN the graph ─────────────────────────────────────────────────
+  // One task's work that landed on several lanes is one object, so it draws as one object: a thin
+  // vertical spine at its moment in time, an elbow to each member chapter, one name. An arc
+  // diagram folded onto the timeline -- the lanes are the nodes, the spine is the arc. This is
+  // the graph-native answer to "where is the group?": there is no separate list to map back, and
+  // no third noun -- these are checkpoints that landed across features, named once.
+  //
+  // Ink discipline: spines are quiet by default (they annotate, the lanes carry the data), the
+  // two widest carry their name inline, the rest name themselves on hover. Hovering rings every
+  // member chapter; clicking enters the same TableLens focus the panel offers. Under an active
+  // focus only that work's spine draws, bright.
+  function renderThemeSpines(layer, svg, geom) {
+    const themes = spanningThemes();
+    if (!themes.length) return;
+    const idxOf = new Map(((grid && grid.commits) || []).map((c) => [c.sha, c.index]));
+    const spines = [];
+    for (const t of themes) {
+      if (themeMarks && themeMarks.id !== t.theme_id) continue; // focused: one spine, bright
+      const cid = new Set((t.atom_shas || []).map((sh) => idxOf.get(sh)).filter((i) => i != null));
+      if (!cid.size) continue;
+      // ONE anchor per lane -- the chapter holding most of this work there. Marking every
+      // touched car drew a rash of dots down a busy fold; one dot per lane is the statement
+      // "this work landed here", which is all the link needs to carry.
+      const bestByLane = new Map();
+      for (const [chk, r] of carRects) {
+        const overlap = r.subBins.reduce((n, b) => n + (cid.has(b[0]) ? b[1] : 0), 0);
+        if (!overlap) continue;
+        const cur = bestByLane.get(r.laneId);
+        if (!cur || overlap > cur.overlap) bestByLane.set(r.laneId, { chk, overlap, ...r });
+      }
+      const members = [...bestByLane.values()];
+      const laneCount = members.length;
+      if (laneCount < 2) continue; // folded into one visible lane: nothing to link
+      const centers = members.map((m) => m.x + m.w / 2);
+      centers.sort((a, b) => a - b);
+      const x = centers[Math.floor(centers.length / 2)]; // median member: the spine sits where the work is
+      spines.push({ t, members, x, span: laneCount });
+    }
+    if (!spines.length) return;
+    // Widest span first for labeling; then left-to-right with a nudge so co-timed spines split.
+    spines.sort((a, b) => b.span - a.span);
+    const labelled = new Set(spines.slice(0, themeMarks ? 1 : 2).map((s) => s.t.theme_id));
+    spines.sort((a, b) => a.x - b.x);
+    let lastX = -Infinity;
+    for (const sp of spines) {
+      if (sp.x - lastX < 7) sp.x = lastX + 7;
+      lastX = sp.x;
+    }
+    for (const sp of spines) {
+      const ys = sp.members.map((m) => m.midY);
+      const y1 = Math.min(...ys);
+      const y2 = Math.max(...ys);
+      const g = mk("g", {
+        class: "theme-spine" + (themeMarks ? " theme-spine-focused" : ""),
+        "data-theme": sp.t.theme_id,
+      });
+      // A forgiving hit target: the visible line is 1.5px, nobody can hover that.
+      g.appendChild(mk("rect", {
+        x: sp.x - 5, y: y1 - 14, width: 10, height: y2 - y1 + 20, class: "theme-spine-hit",
+      }));
+      g.appendChild(mk("line", { x1: sp.x, x2: sp.x, y1: y1 - 8, y2, class: "theme-spine-line" }));
+      for (const m of sp.members) {
+        const cx = Math.max(geom.plotX0, Math.min(m.x + m.w / 2, geom.plotX0 + geom.plotW));
+        g.appendChild(mk("line", {
+          x1: sp.x, x2: cx, y1: m.midY, y2: m.midY, class: "theme-spine-elbow",
+        }));
+        g.appendChild(mk("circle", { cx, cy: m.midY, r: 2.5, class: "theme-spine-dot" }));
+      }
+      const named = labelled.has(sp.t.theme_id);
+      const label = mk("text", {
+        x: sp.x, y: Math.max(GANTT.padT + 8, y1 - 16), "text-anchor": "middle",
+        class: "theme-spine-label" + (named ? "" : " theme-spine-label-hover"),
+        text: sp.t.label,
+      });
+      g.appendChild(label);
+      g.appendChild(mk("title", {
+        text: `${sp.t.label}\none piece of work across ${sp.span} features — click to focus it`,
+      }));
+      const ring = (on) => {
+        for (const m of sp.members) {
+          svg.querySelectorAll(".gcar-wrap").forEach((w) => {
+            if (w.getAttribute("data-checkpoint") === m.chk) {
+              w.classList[on ? "add" : "remove"]("gcar-theme-member");
+            }
+          });
+        }
+      };
+      g.addEventListener("mouseenter", () => { g.classList.add("theme-spine-hot"); ring(true); });
+      g.addEventListener("mouseleave", () => {
+        g.classList.remove("theme-spine-hot");
+        if (!themeMarks) ring(false); // under a focus the rings are the state, not the hover
+      });
+      g.addEventListener("click", (ev) => { ev.stopPropagation(); setThemeFocus(sp.t.theme_id); });
+      layer.appendChild(g);
+    }
+  }
+
   function renderGraph() {
     if (state.view === "rail") { renderRail(); return; }
     if (!paneMeasurable()) return;
@@ -1928,6 +2040,8 @@ function episodeRailLayout(epView) {
     }
     svg.appendChild(bandLayer);
     svg.appendChild(laneLayer);
+    const spineLayer = mk("g", { class: "theme-spines" });
+    svg.appendChild(spineLayer); // above the lane bars, below the chips
 
     // SVG has no z-index -- paint order is document order -- so the chip layer is made before the
     // lanes (its handlers capture it) and appended after them, or a chip would be drawn under the
@@ -1943,7 +2057,9 @@ function episodeRailLayout(epView) {
     // (The real fix is virtualising on scroll; this bounds the damage until then.)
     const drawn = layout.lanes.slice(0, GANTT.maxLanes);
     const hiddenLanes = layout.lanes.length - drawn.length;
+    carRects = new Map();
     for (const l of drawn) laneLayer.appendChild(renderLane(l, geom, forecasts.get(l.id) || []));
+    renderThemeSpines(spineLayer, svg, geom); // after the lanes: anchors come from carRects
     if (hiddenLanes > 0) {
       svg.appendChild(mk("text", {
         x: GANTT.gutterPad, y: geom.rowY(drawn.length) + 12, class: "glane-overflow",
@@ -3460,10 +3576,10 @@ function episodeRailLayout(epView) {
     // Cross-feature themes: the one unit that spans lanes. Ranked slightly above features on a
     // tie -- a query matching a theme's name is usually asking about the work, not one lane.
     for (const t of themes || []) {
-      if ((t.feature_span || []).length < 2) continue;
+      if ((t.feature_span || []).length < 2 || !t.label || t.label === "(unwitnessed)") continue;
       const st = Math.max(score(t.label), score(t.theme_id));
       if (st > 0) {
-        hits.push({ kind: "group", label: t.label,
+        hits.push({ kind: "work", label: t.label,
                     detail: `across ${t.feature_span.length} features`, theme: t.theme_id, s: st + 0.3 });
       }
     }
@@ -3774,8 +3890,7 @@ function episodeRailLayout(epView) {
   // in the graph, so with nothing selected the panel lists the groups by name -- the same names
   // `sgt log` footers and `sgt revert "<name>"` take. Clicking one enters the TableLens focus.
   function renderThemesCard() {
-    const themes = ((((compose || {}).intent) || {}).themes || [])
-      .filter((t) => (t.feature_span || []).length > 1);
+    const themes = spanningThemes();
     if (!themes.length) return;
     themes.sort((a, b) => (b.feature_span || []).length - (a.feature_span || []).length);
     const wrap = document.createElement("div");
@@ -3785,7 +3900,7 @@ function episodeRailLayout(epView) {
     wrap.appendChild(h);
     const why = document.createElement("div");
     why.className = "detail-meta";
-    why.textContent = "one task, landed across lanes — click to see it on the graph";
+    why.textContent = "one task, landed across several rows — click to see it linked on the graph";
     wrap.appendChild(why);
     for (const t of themes.slice(0, 8)) {
       const row = document.createElement("button");
