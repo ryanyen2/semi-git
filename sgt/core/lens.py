@@ -1208,6 +1208,16 @@ def resync(repo: str | Path, *, reseed: bool = False) -> dict:
                 save_exclusions(repo, excl)
 
     ideal = get(repo)  # re-derive from current git reality (first-contact seed via provenance scan)
+    # A first contact is CHUNKED against a deadline, so one call can leave the backward walk
+    # mid-history -- and every consumer of resync (the study's stage resets above all) treats the
+    # return as "the record now matches HEAD". On that short record a save can answer "nothing to
+    # save" over a working copy full of changes, and whether it did depended on machine load at
+    # the moment of the reset. Contact until the sync reports itself complete: each call advances
+    # at least one chunk, so this terminates on history length; the bound is a stuck-walk guard.
+    for _ in range(64):
+        if sync_status(repo)["complete"]:
+            break
+        ideal = get(repo)
     # Remember that this HEAD has been re-derived, so `_history_rewritten` stops
     # advising a resync that has already run. Without it, a repo whose working
     # tree still holds content from commits the history no longer reaches -- the
