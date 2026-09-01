@@ -57,6 +57,8 @@ Run the command below first. It resets the project and prints the two numbers th
 
 **What happened:** The cycling team published a report last year saying that the average day in 2018 saw **2,882** crossings. The dashboard's by-year page now says **2,900** for the same year. The numbers disagree because a colleague changed the way the dashboard works out an average. Days on the project's list of unusual days, such as the February 2019 snowstorm and Christmas, are now left out of every average, and the report was written when every day still counted.
 
+![The by-year page, with the 2018 row marked — its average-day number is the one that disagrees with the report](/stages/bikecount-yearly.png)
+
 **Your job:** Find the piece of work in the project's history that made that change. You do not have to change any code.
 
 **You are done when:** You can name the piece of work — a commit hash, a named piece of work, or an id all count. The questions after this stage ask you which one you found. If you are not certain, choose what you have and say that you are not certain. That is more useful to us than a guess.
@@ -70,8 +72,7 @@ Commands that may help:
 
 - `sgt log` shows the history grouped by feature; `sgt log --rail` lists what happened, newest first.
 - `sgt find "the bit that works out the averages"` searches by description. Any wording will do.
-- `sgt intent list` prints every feature and checkpoint with the handle you can type back, and the groups that span several features at the bottom.
-- `sgt show "<name>"` shows what one piece of work covers.
+- `sgt log --focus "<name>"` opens one feature or group: the map stays, its chapters are listed underneath.
 
 ## Stage 3: Take that work out
 
@@ -85,6 +86,8 @@ Run the command below first. It resets the project and names the work you have t
 
 **Your job:** Take that work out of the project. Three things have to go: the list of unusual days the project keeps, the marks that flag those days on the daily and monthly charts, and the rule that leaves those days out of the averages. Everything else the dashboard shows has to keep working.
 
+![The monthly page today: the coloured bars flag months containing an unusual day. After the removal, no bar is coloured and the note under the chart is gone.](/stages/bikecount-monthly.png)
+
 **You are done when:** `./check 3` says the program still runs and the by-year page reads **2,882** for 2018 again. Run it as often as you like. It prints the same words for everyone, it does not mark you, and a red line in it is information rather than a verdict.
 
 When you run `./stage 3`, it will:
@@ -96,7 +99,7 @@ Commands that may help:
 
 - `sgt revert "<name>"` shows you what the removal would do and changes nothing.
 - Add `--yes` to actually do it: `sgt revert "<name>" --yes`.
-- The name is the one `./stage 3` printed. `sgt intent list` prints it too, at the bottom, with the groups that span several features.
+- The name is the one `./stage 3` printed. `sgt log` names it under the map too, with the other work that spans features, and `sgt log --focus "<name>"` shows exactly what is in it.
 - `sgt undo` reverses whatever you last did, and `sgt now` says where things stand.
 
 ## Stage 4: Put it back
@@ -110,6 +113,8 @@ Run the command below first. It puts the project into the state where the work h
 **What happened:** The committee has changed its mind. Now that they have seen the averages with every day counted, they agree with your colleague that a snowstorm that shut the city says nothing about how many people cycle to work on an ordinary day, so those days should stay out of the averages after all.
 
 **Your job:** Put that work back into the project, exactly as it was before the removal.
+
+![The by-year page you are aiming for: the marked 2018 row reads its excluded-days number again](/stages/bikecount-yearly.png)
 
 **You are done when:** `./check 4` says the program still runs and the by-year page reads **2,900** for 2018 again.
 
