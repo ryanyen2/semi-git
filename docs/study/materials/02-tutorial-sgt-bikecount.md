@@ -76,6 +76,7 @@ The hour-of-day page carries two charts, weekdays and weekends, which are separa
 - `bikecount/charts.py` — draws the charts, including the marks on unusual days
 - `bikecount/events.py` — the project's list of unusual days
 - `bikecount/data.py` — reads `data/counts.csv`
+- `bikecount/window.py` — works out the date window every page respects
 - `check.py` — checks that every page can render successfully
 
 You can check the whole project at any time, in **Terminal 2**:
