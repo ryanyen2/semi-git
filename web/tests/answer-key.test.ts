@@ -44,6 +44,47 @@ describe('the shipped answer key', () => {
     }
   })
 
+  // The one checklist option no page-level diff can produce, kept out of every
+  // key on purpose. The reach sets are measured by removing a piece of work and
+  // diffing the rendered pages, and the date window is the same control on all of
+  // them -- so it is the option that makes the checklist discriminate at all. The
+  // event-day work reaches nine of the eleven parts in footfall; without at least
+  // one option outside every key, ticking everything would score close to
+  // perfect. If a future target does move the window, this fails and the
+  // generator needs a within-page probe (see write_answer_key.py).
+  it('keeps the date window out of every reach set', () => {
+    for (const [requestId, entry] of Object.entries(key.requestKeys)) {
+      if (!entry.reach) continue
+      const perProject = Array.isArray(entry.reach)
+        ? [['both', entry.reach as string[]] as const]
+        : Object.entries(entry.reach as Record<string, string[]>)
+      for (const [project, ids] of perProject) {
+        expect(ids, `${requestId} on ${project} names the date window`).not.toContain('dateWindow')
+      }
+    }
+  })
+
+  // A key whose reach set is most of the checklist scores a participant who ticks
+  // everything almost perfectly, which is a measure of nothing. This does not
+  // pick a threshold for what is acceptable -- the sets are measured and the
+  // study reports the tick-everything baseline alongside them -- it only refuses
+  // the degenerate end, which the validator also does.
+  it('leaves room in the checklist for a wrong answer', () => {
+    for (const [requestId, entry] of Object.entries(key.requestKeys)) {
+      if (!entry.reach) continue
+      const perProject = Array.isArray(entry.reach)
+        ? [['both', entry.reach as string[]] as const]
+        : Object.entries(entry.reach as Record<string, string[]>)
+      for (const [project, ids] of perProject) {
+        expect(ids.length, `${requestId} on ${project} is empty`).toBeGreaterThan(0)
+        expect(
+          ids.length,
+          `${requestId} on ${project} names ${ids.length} of ${BEHAVIOURS.length}`,
+        ).toBeLessThan(BEHAVIOURS.length)
+      }
+    }
+  })
+
   // Well-formedness only. That the strings are shaped like answers is checkable
   // here; that they name the RIGHT work is a claim about the built testbed repos
   // and cannot be settled from this side. The shas in particular are regenerated
@@ -98,11 +139,9 @@ describe('the validation itself', () => {
     expect(() => validateGroundTruth(everything)).toThrow(/placeholder/)
   })
 
-  // No stage carries a scored multiple choice today -- stage 1's job-count
-  // question was cut because neither setup answers it from the history. The
-  // validator still checks scored choices, so these stay and light up on their
-  // own if a stage adds one, rather than being deleted and rewritten later
-  // from memory.
+  // No stage carries a scored multiple choice today. The validator still checks
+  // them, so these stay and light up on their own if a stage adds one, rather
+  // than being deleted and rewritten later from memory.
   const scoredChoice = REQUESTS.flatMap((r) =>
     r.quiz.filter((q) => q.kind === 'choice' && q.scored).map((q) => [r.id, q.id] as const),
   )[0]

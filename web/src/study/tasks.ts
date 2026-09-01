@@ -54,12 +54,23 @@ export interface Behaviour {
 }
 
 /**
- * Ten, and the same ten on every checklist in the block.
+ * Eleven, and the same eleven on every checklist in the block.
  *
  * One list learned once, so the later checklists cost no reading and the
  * answers are directly comparable. The keys have to sit well inside it, so
  * neither "tick everything" nor "tick nothing" is close to right; the key
- * upload refuses a key naming zero or all ten (`answerKey.ts`).
+ * upload refuses a key naming zero or all of them (`answerKey.ts`).
+ *
+ * The list is also the study's join between what a participant SEES and what
+ * their setup NAMES. Every leaf feature the shipped bundles cluster is the
+ * target of at least one option here, and every option is produced by at least
+ * one of those features -- measured off the bundles by
+ * `scripts/study/measure_orientation.py`, which is also where stage 1's
+ * mapping table comes from. The date window was the one cluster with no option
+ * ("Date Window Filtering" in both projects), so a participant reading the
+ * feature map found a lane the checklist could not express; it is the last row
+ * below. Nothing here names a git or an sgt verb, and the labels stay in
+ * product language, so the two arms read the same eleven things.
  */
 export const BEHAVIOURS: Behaviour[] = [
   {
@@ -142,6 +153,19 @@ export const BEHAVIOURS: Behaviour[] = [
     },
     command: { bikecount: '/daily.csv', footfall: '/daily.csv' },
   },
+  // Not a figure or a chart, and the only option that is the same control on
+  // every page. It is here because the feature map has a lane for it in both
+  // projects and the checklist had no way to say so, and because it is the one
+  // option the work stages 2 to 4 are about does not reach -- a checklist whose
+  // every option is in the key measures nothing.
+  {
+    id: 'dateWindow',
+    label: {
+      bikecount: 'The date window at the top of every page',
+      footfall: 'The date window at the top of every page',
+    },
+    command: { bikecount: '/', footfall: '/' },
+  },
 ]
 
 /**
@@ -165,8 +189,21 @@ export type QuizItem =
       /** Same wording in both projects on purpose: the checklist is the
        * measurement, and two wordings would be two measurements. */
       prompt: string
-      /** Scored as set F1 against the measured key in answer-key.json. */
-      scored: true
+      /**
+       * True: scored as set F1 against the measured key in answer-key.json.
+       * False: no key, and what comes out is the raw set of ticks.
+       *
+       * Every scored checklist needs a target whose removal leaves the app
+       * running, because that is how the key is measured -- remove it on a copy,
+       * re-render every page, map what moved. Only two of the eighteen groups in
+       * each bundle qualify: the event-day work (stages 2 and 3) and the
+       * rounding work (stage 1). Every other selection exits zero, prints
+       * `✓ revert applied`, and leaves the dashboard dead
+       * (docs/study/sgt-findings.md, finding 85). That is why the two targets are
+       * the ones they are, and it is checked at key-generation time rather than
+       * assumed.
+       */
+      scored: boolean
     }
   | {
       kind: 'choice'
@@ -289,10 +326,24 @@ export const PROJECT_WORDS: Record<
     unusualDays: string
     ordinaryDay: string
     precision: string
-    /** Stage screenshots (web/public/stages/): the by-year table with the 2018 row marked, and
-     * the monthly chart whose coloured bars flag event days. Captured from the shipped bundle's
-     * own dashboard, so what the card shows is exactly what the participant's browser shows. */
-    img: { yearly: string; monthly: string }
+    /** The python package, so a card can name a file without naming a project twice. */
+    pkg: string
+    /** What this project's own nav calls the two-sensor page. */
+    sidesPage: string
+    /**
+     * Stage screenshots (web/public/stages/), captured from the shipped bundle's own dashboard by
+     * `scripts/study/capture-page-shots.mjs`, so what a card shows is exactly what the
+     * participant's browser shows -- and so a testbed rebuild can regenerate all of them in one
+     * command instead of leaving the cards quoting last month's numbers.
+     */
+    img: {
+      yearly: string
+      monthly: string
+      hourly: string
+      hourlySplit: string
+      sides: string
+      window: string
+    }
   }
 > = {
   bikecount: {
@@ -305,7 +356,16 @@ export const PROJECT_WORDS: Record<
     ordinaryDay:
       'a snowstorm that shut the city says nothing about how many people cycle to work on an ordinary day',
     precision: 'one-bike precision',
-    img: { yearly: '/stages/bikecount-yearly.png', monthly: '/stages/bikecount-monthly.png' },
+    pkg: 'bikecount',
+    sidesPage: 'east against west',
+    img: {
+      yearly: '/stages/bikecount-yearly.png',
+      monthly: '/stages/bikecount-monthly.png',
+      hourly: '/stages/bikecount-hourly.png',
+      hourlySplit: '/stages/bikecount-hourly-split.png',
+      sides: '/stages/bikecount-sides.png',
+      window: '/stages/bikecount-window.png',
+    },
   },
   footfall: {
     reported: '42,436',
@@ -317,7 +377,16 @@ export const PROJECT_WORDS: Record<
     ordinaryDay:
       'a public holiday when the offices are shut says nothing about how many people walk to work on an ordinary day',
     precision: 'single-person precision',
-    img: { yearly: '/stages/footfall-yearly.png', monthly: '/stages/footfall-monthly.png' },
+    pkg: 'footfall',
+    sidesPage: 'north against south',
+    img: {
+      yearly: '/stages/footfall-yearly.png',
+      monthly: '/stages/footfall-monthly.png',
+      hourly: '/stages/footfall-hourly.png',
+      hourlySplit: '/stages/footfall-hourly-split.png',
+      sides: '/stages/footfall-sides.png',
+      window: '/stages/footfall-window.png',
+    },
   },
 }
 
@@ -329,38 +398,23 @@ function forEachProject(write: (w: (typeof PROJECT_WORDS)['bikecount']) => strin
   }
 }
 
-const MECHANISM_REMOVE = [
-  { value: 'clean', label: 'It applied cleanly in one step.' },
-  { value: 'conflicts', label: 'I had to resolve conflicts along the way.' },
-  { value: 'hand', label: 'I ended up editing files by hand.' },
-  { value: 'unfinished', label: 'I did not finish.' },
-]
-
-const MECHANISM_RESTORE = [
-  { value: 'undid', label: 'I undid the removal in one step.' },
-  { value: 'history', label: 'I brought it back from the history another way.' },
-  { value: 'hand', label: 'I re-made the change by hand.' },
-  { value: 'unfinished', label: 'I did not finish.' },
-]
-
-// NOTE for the testbed build: stage 1's story below must match the recorded
-// session that `./stage 1` replays, and the build gate in scripts/study/
-// re-checks that the replayed change spans at least two files and contains
-// exactly two distinguishable jobs (the requested one and one smaller
-// unrequested fix). If the gate selects a different session, this wording is
-// what changes. The quiz key for s1 is measured by rendering every page
-// before and after the replay, never written by hand.
 export const REQUESTS: RequestSpec[] = [
   {
     id: 's1',
     heading: 'Stage 1',
-    capMin: 4,
+    // Five, where the other three get four. Orienting in a project nobody has
+    // seen before is the one stage whose work is reading rather than doing, and
+    // it is the one every stage after it depends on: they all assume the
+    // participant knows what the dashboard shows. Five and not six because the
+    // welcome page promises an hour and a half and the schedule test holds the
+    // total to it (`web/tests/schedule.test.ts`).
+    capMin: 5,
     optional: false,
-    archetype: 'read a multi-file assistant change and record it',
+    archetype: 'orient in an unfamiliar project: which work in its history put which part of the product there',
     serves: 'RQ1, claim C1',
     title: {
-      bikecount: 'Record what the assistant did',
-      footfall: 'Record what the assistant did',
+      bikecount: 'Get to know the project',
+      footfall: 'Get to know the project',
     },
     body: forEachProject(
       (w) => `
@@ -368,51 +422,44 @@ Run the command below first. It puts the project into this stage's starting stat
 
     ./stage 1
 
-**What happened:** Earlier today you asked the coding assistant to round the numbers on the dashboard's front page to the nearest ten, so that they stop implying ${w.precision}. The assistant has finished. Its changes are in your working copy, and none of them are recorded in the project's history yet.
+**What happened:** You have just joined this project. Nothing is wrong with it, and there is nothing to fix in this stage.
 
-**Your job:** Read what the assistant changed, in the editor or in the terminal, until you could describe it to a colleague. Then record all of it, the way this setup records finished work.
+**Your job:** Work out what this project is made of. Put the dashboard beside your setup's view of the history, and fill in the map below — for each part of the dashboard, where it lives in the code and which piece of work in the history put it there. The first row is filled in as an example.
 
-**You are done when:** Every one of the assistant's changes is recorded in the project's history, with a message in your own words, and nothing is left unrecorded.
+| Part of the dashboard | Where it lives in the code | The work that put it there |
+|---|---|---|
+| **The busiest hour, and the hour-of-day chart under it** ![The hourly page: the busiest hour, and the average count by hour of day](${w.img.hourly}) | \`${w.pkg}/pages/hourly.py\` draws it; \`${w.pkg}/metrics.py\` works out the averages | *(example)* the work that added the hour-of-day page |
+| **The month-by-month chart** ![The monthly page](${w.img.monthly}) | | |
+| **The one-row-per-year table** ![The by-year page](${w.img.yearly}) | | |
+| **The ${w.sidesPage} comparison** ![The two-sensor comparison page](${w.img.sides}) | | |
+
+The date window at the top of every page is the one control on the dashboard. The pages open on the most recent year; set it to 2018 if you want to see the whole of a year.
+
+**You are done when:** you could point at any part of the dashboard and say which piece of work in the history put it there, and roughly where in the code that work lives. Nothing in the map has to be written down — the questions after this stage are about one piece of work in particular.
 `,
     ),
     tips: {
       git: [
-        '`git status` lists the files that have changed but are not recorded yet.',
-        '`git diff` shows what changed inside them.',
-        '`git add <file>` then `git commit -m "your words"` records the change. `git add -A` stages everything at once.',
-        'In the editor, the Source Control panel shows the same files and commits them.',
+        '`git log --oneline` lists the commits, newest first — one line per piece of work.',
+        '`git show <hash>` shows what one of them changed.',
+        '`git log --oneline -- <file>` narrows the list to one file, and `git blame <file>` says which commit last touched each line.',
+        'In the editor, the Graph shows the same history, and the Timeline at the bottom of the Explorer shows the commits that touched the open file.',
       ],
-      // `git diff` is named in the sgt arm on purpose, and it is not a leak.
-      //
-      // Nothing is recorded yet at this point in the stage, and sgt has very
-      // little to say about an unrecorded change: `sgt now` reports the whole
-      // eleven-file replay as "1 edit(s) in 5 features" (symbol-granular since
-      // the save-preview fix; it said "1 feature" when this note was written),
-      // and `sgt status` lists seven of the eleven files -- the four it leaves
-      // out are the ones whose edits its ideal already reproduces byte-for-byte.
-      // A participant told to read the change with
-      // those alone is stuck, and being stuck is not the difference this study
-      // is trying to measure -- the difference is what each setup RECORDS, one
-      // line further down. Both arms have git, both stage bodies say "in the
-      // editor or in the terminal", and the git arm's tips name the same two
-      // reading commands.
       sgt: [
-        '`sgt now` says where things stand.',
-        '`git diff` shows the change line by line, and `git status` lists the files it touches. Nothing is recorded yet, so this is where the detail is.',
-        'In the editor, the Changes view and the diff view show the same edits.',
-        '`sgt save -m "your words"` records the change and prints each feature it went under with the files it touched — `pages/<name>.py` is the page of the same name.',
+        '`sgt log` is the feature map: one row per part of the project, edits over time. `sgt log --rail` lists what happened, newest first.',
+        '`sgt show "<name>"` says what one part covers — the files and the code inside it. `sgt show <file>::<name>` answers the other direction, for one function.',
+        '`sgt find "the bit that works out the averages"` searches by description. Any wording will do.',
+        '`sgt log --focus "<name>"` opens one row, or one ◆ piece of work that spans several rows.',
       ],
     },
     run: {
       script: { bikecount: './stage 1', footfall: './stage 1' },
       does: {
         bikecount: [
-          "resets the project to this stage's starting state",
-          "replays the assistant's changes into your working copy, unrecorded",
+          "resets the project to its full recorded history, with nothing of anyone else's left in it",
         ],
         footfall: [
-          "resets the project to this stage's starting state",
-          "replays the assistant's changes into your working copy, unrecorded",
+          "resets the project to its full recorded history, with nothing of anyone else's left in it",
         ],
       },
     },
@@ -420,26 +467,39 @@ Run the command below first. It puts the project into this stage's starting stat
       {
         kind: 'behaviours',
         id: 'behaviours',
-        prompt: "Which parts of the dashboard did the assistant's work change?",
+        // The target is named by its position in the history, not by what it
+        // did, because naming what it did ("the work that rounded the front page
+        // numbers") would answer the question. Both arms read the position the
+        // same way: it is the top line of `git log --oneline`, and the newest
+        // block on the map / the top of `sgt log --rail`.
+        //
+        // Both arms then get its subject for free, and that subject says "front
+        // page". What it does not say is WHICH parts of the front page, and the
+        // checklist offers the busiest-day figure and the last-fortnight chart
+        // separately -- so the judgement the stage measures is whether the
+        // representation showed what the work reached, not whether the
+        // participant could find it.
+        prompt:
+          'The most recent piece of work in this project is one of the pieces you have just been looking at. Which parts of the dashboard does it affect? Tick the ones you would check if it were taken out.',
         scored: true,
       },
-      // The follow-up about what the record "joined" is gone entirely. It was
-      // rewritten once and still read as a riddle -- the study's own author
-      // could not say what it was asking -- and an experimenter sits with every
-      // participant, so an unscored comprehension probe that needs explaining
-      // costs more than it returns. The scored parts question above already
-      // covers whether they read where the work landed.
     ],
     quizConfidence: true,
     ratings: [
       {
-        id: 'understandChange',
-        label: 'I understand the changes the assistant made to this codebase.',
+        id: 'understandProject',
+        label: 'I understand what this project does and how it is put together.',
         serves: 'C1',
       },
       {
-        id: 'understandEffects',
-        label: 'I understand the downstream effects of those changes on this codebase.',
+        id: 'understandOrigins',
+        label: 'I understand which piece of work in this project put which part of the dashboard there.',
+        serves: 'C1',
+      },
+      {
+        id: 'wouldNeedHelp',
+        label: 'I would need someone to walk me through this project before I changed anything in it.',
+        reverse: true,
         serves: 'C1',
       },
     ],
@@ -615,13 +675,11 @@ Set the date window to 2018 while you check the pages — the marks only show wh
           'Which parts of the dashboard changed when the work came out? Tick the ones you saw change.',
         scored: true,
       },
-      {
-        kind: 'choice',
-        id: 'mechanism',
-        prompt: 'How did the removal go?',
-        options: MECHANISM_REMOVE,
-        scored: false,
-      },
+      // "How did the removal go?" is gone. The three answers it could take --
+      // applied cleanly, hit conflicts, edited by hand -- are all in the
+      // telemetry already, in more detail and without asking the participant to
+      // summarise four minutes of work into one line while the memory of it is
+      // the thing the ratings below are measuring.
     ],
     quizConfidence: true,
     ratings: [
@@ -694,31 +752,12 @@ Run the command below first. It puts the project into the state where the work h
         ],
       },
     },
-    quiz: [
-      {
-        kind: 'choice',
-        id: 'mechanism',
-        prompt: 'How did you put it back?',
-        options: MECHANISM_RESTORE,
-        scored: false,
-      },
-      // Was "how would you convince a colleague, without showing them the
-      // code". A good interview question and a bad quiz question: it asked for
-      // a paragraph at the end of the block, and most pilots wrote one clause.
-      {
-        kind: 'choice',
-        id: 'evidence',
-        prompt: 'What convinced you that the work is back?',
-        options: [
-          { value: 'check', label: 'The check script said the number matched.' },
-          { value: 'history', label: "The project's history says the work is back." },
-          { value: 'pages', label: 'I opened the dashboard and looked at the pages.' },
-          { value: 'code', label: 'I read the code and the files look right.' },
-          { value: 'unsure', label: 'I am not sure that it is back.' },
-        ],
-        scored: false,
-      },
-    ],
+    // No quiz. Both questions this stage used to ask -- how did you put it back,
+    // and what convinced you it was back -- were self-reports of things already
+    // recorded: the mechanism is in the telemetry, and what the participant
+    // trusted is what the three rating statements below ask, one construct at a
+    // time. The stage ends on the ratings.
+    quiz: [],
     quizConfidence: false,
     ratings: [
       {

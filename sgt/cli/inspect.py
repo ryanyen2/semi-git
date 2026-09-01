@@ -606,56 +606,6 @@ def _diff(repo: str, ref_a: str, ref_b: str, as_json: bool = False) -> int:
     return 0
 
 
-def _print_map_tree(view: dict) -> None:
-    """Indented `label (handle) · N symbol(s)` tree, DFS from `roots` via each node's `children`.
-    The handle is the same minimal-unique prefix every other surface prints (typeable back into
-    `revert`/`restore`/`--focus`); internal cluster nodes show no handle -- they aren't operable
-    targets. A feature leaf with no live members is a clustering-algorithm artifact (an empty split
-    child), not a real feature -- same "drop what has nothing to show" filter `graph_layout` applies
-    to lanes with no ops (`sgt/tui/graph.py`) -- so it and any subsystem left with no other visible
-    descendant are skipped here. Display-only: the underlying tree/clustering is untouched."""
-    from sgt.tui.graph import _min_unique_prefixes, plural
-
-    by_id = {n["id"]: n for n in view["nodes"]}
-    leaves = [n["id"] for n in view["nodes"] if not n["children"]]
-    prefix_len = _min_unique_prefixes(leaves)
-
-    def live(n: dict) -> list:
-        """What this feature's own ops touch -- the same set `sgt show` counts. `members` is the
-        clustering's assignment, which prints `Section Waitlist · 5 symbol(s)` for a feature
-        `sgt show` reports as `0 symbols in 0 files` and whose revert removes nothing: two
-        surfaces disagreeing about one id, with the wrong one on the map a reader picks a revert
-        target from."""
-        return n.get("own_symbols", n["members"])
-
-    def handle(nid: str) -> str:
-        body = nid[2:] if nid.startswith("f-") else nid
-        k = max(3, prefix_len.get(nid, 8) - (2 if nid.startswith("f-") else 0))
-        return body[:max(k, 8)]
-
-    def is_visible(nid: str) -> bool:
-        n = by_id[nid]
-        if not n["children"]:
-            return bool(live(n))
-        return any(is_visible(c) for c in n["children"])
-
-    def visit(nid: str, depth: int) -> None:
-        n = by_id[nid]
-        if n["children"]:
-            print(f"{'  ' * depth}{n['label']}")
-        else:
-            print(f"{'  ' * depth}{n['label']} ({handle(nid)}) · {plural(len(live(n)), 'symbol')}")
-        for child in n["children"]:
-            if is_visible(child):
-                visit(child, depth + 1)
-
-    for root in view["roots"]:
-        if is_visible(root):
-            visit(root, 0)
-    shown = sum(1 for n in view["nodes"] if not n["children"] and live(n))
-    print(plural(shown, "feature"))
-
-
 def _map(repo: str, as_json: bool = False, rebuild: bool = False, *,
          color: bool = True) -> int:
     """`sgt log --tree` (formerly `sgt map`, plan U13/U14): (re)build the feature tree from the live

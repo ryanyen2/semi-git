@@ -84,6 +84,22 @@ def corpus(repo: str | Path) -> list[dict]:
         # the top hit would have been the one result you can do nothing with.
         if node.get("kind") != "feature":
             continue
+        # And only leaves that own something, which is the same rule for the same
+        # reason: a lane whose own ops touch no symbol answers `sgt show` with
+        # "0 symbols in 0 files" and a revert that removes nothing, and the map
+        # and the tree both drop it. Indexing it put a row nothing else shows at
+        # the top of a search -- footfall's empty `Daily CSV Export` was the third
+        # hit for "the csv download of daily totals", above the two functions
+        # that actually write the csv (finding 86). Skipped before its members
+        # are indexed too, so those symbols are attributed to the lane that does
+        # own them rather than to the empty one.
+        # `own_symbols` when the projection carries it, `members` when it does not
+        # -- the same fallback `views.tree_lines` uses, so a hand-built view (a
+        # test's, or an older persisted tree's) is not read as a repo full of
+        # husks. A husk has the key present and empty, which is the case this
+        # skips.
+        if not [m for m in (node.get("own_symbols", node.get("members")) or []) if "__" not in m]:
+            continue
         members = [m for m in (node.get("members") or []) if "__" not in m]
         label = str(node.get("label") or node.get("id") or "")
         why = str(node.get("why") or "")

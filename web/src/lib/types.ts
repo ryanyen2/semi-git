@@ -96,9 +96,9 @@ export interface ResponseDoc {
  */
 export type RequestId =
   /**
-   * The live set: the four stages of protocol v2. Record what the assistant
-   * changed, find the work behind a wrong number, take that work out, and put
-   * it back. Each stage starts from a scripted state.
+   * The live set: the four stages of protocol v2. Get to know the project, find
+   * the work behind a wrong number, take that work out, and put it back. Each
+   * stage starts from a scripted state.
    */
   | 's1' | 's2' | 's3' | 's4'
   /**

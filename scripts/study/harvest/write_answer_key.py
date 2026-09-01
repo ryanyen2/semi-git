@@ -7,11 +7,19 @@ rebuilt, and a stale key scores every participant against work that no longer
 exists.
 
     python3 scripts/study/harvest/write_answer_key.py <bikecount-repo> <footfall-repo> <out.json>
+
+Point it at the two SGT BUNDLES' `work/` directories, not at the source testbeds: the bundle build
+finishes with `sgt log --rebuild`, so the graph a participant navigates is not necessarily the one
+the source repo carries, and the key has to name the one they will see. `ANSWER_KEY_BASELINES` says
+where the two `baseline-<project>` git-arm repos live (default: beside the first argument), and
+`ANSWER_KEY_WORK` where to do the reverting (default: a fresh temp directory).
 """
 import json
+import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
@@ -74,6 +82,36 @@ def event_theme(repo):
     if best is None:
         return None
     return {"theme_id": best[0], "label": best[1], "atoms": best[2]}
+
+
+def newest_theme(repo):
+    """The group covering the most recent piece of work in the history.
+
+    Stage 1's checklist names its target by POSITION -- "the most recent piece of work in this
+    project" -- because naming what it did would answer the question. So the key is read off the
+    same position: the newest non-bookkeeping commit, and the group whose atoms contain it. In both
+    harvested testbeds that is the rounding session, and it is the only group other than the
+    event-day one whose removal leaves the app running (see `usable_target`).
+    """
+    from sgt import state
+
+    newest = subject = None
+    for line in subprocess.run(["git", "log", "--format=%H%x00%s", "--no-merges"], cwd=repo,
+                               capture_output=True, text=True).stdout.splitlines():
+        sha, _, text = line.partition("\x00")
+        if "sgt land" in text:
+            continue
+        newest, subject = sha, text
+        break
+    if newest is None:
+        return None
+    themes = state.load_json(repo, "intent_themes", default={}) or {}
+    for tid, entry in themes.items():
+        for atom in (entry or {}).get("atom_shas") or ():
+            if atom.startswith(newest[:7]) or newest.startswith(atom[:7]):
+                return {"theme_id": tid, "label": (entry or {}).get("label") or tid,
+                        "sha": newest[:7], "subject": subject}
+    return None
 
 
 def try_selector(repo, selector, work):
@@ -315,7 +353,7 @@ def measured_reach(repo, selector, work):
     return moved
 
 
-# Page name -> the options the reach trial offers. Two spellings per row where the two harvested
+# Page name -> the options the reach checklist offers. Two spellings per row where the two harvested
 # apps named the same page differently ("/years" against "/yearly"): the agents chose their own
 # routes, and a map that knew only one of them silently produced an empty reach key for that
 # project, which scores every participant on it zero for a prediction they actually made.
@@ -332,19 +370,37 @@ PAGE_TO_BEHAVIOUR = {
     "daily.csv": ["csv"],
 }
 
+# `dateWindow` is deliberately absent. It is the one checklist option that is not a page -- the same
+# control at the top of all of them -- so no page-level diff can name it and no measured reach set
+# can contain it. That is correct for both of this study's targets, neither of which touches the
+# window, and it is why the option exists at all: a checklist whose every option is in the key
+# measures nothing. A future target that DOES move the window would need a within-page probe here,
+# and `web/tests/answer-key.test.ts` asserts the option stays out of every reach set so the
+# assumption cannot rot quietly.
+
 
 def main(bike, foot, out_path):
     # The git arm of each project, rendered by render_git_arm.sh. Optional: if it is not built yet
     # the key still generates, without that arm's shas, and says so.
+    #
+    # Sibling of the sgt repo by default, overridable because the repo this runs against is now an
+    # UNPACKED BUNDLE rather than the source testbed. The bundle build ends with `sgt log --rebuild`,
+    # which can renumber features and rename groups, so a key generated from the source repo can
+    # name work by an id the shipped bundle does not use. The bundle is what a participant runs, so
+    # the bundle is what the key is measured against -- and an unpacked bundle has no `baseline-*`
+    # beside it.
+    default_baselines = Path(os.environ.get("ANSWER_KEY_BASELINES") or Path(bike).resolve().parent)
     baselines = {
-        "bikecount": str(Path(bike).resolve().parent / "baseline-bikecount"),
-        "footfall": str(Path(foot).resolve().parent / "baseline-footfall"),
+        "bikecount": str(default_baselines / "baseline-bikecount"),
+        "footfall": str(default_baselines / "baseline-footfall"),
     }
-    work = Path("/private/tmp/claude-501/-Users-r4yen-repos-semi-git/"
-                "98ec4b59-83fc-485f-855a-1a547335d911/scratchpad/key")
+    # A scratch directory, not a session-scoped one: this used to be hardcoded to one agent
+    # session's scratchpad, which no longer exists, so the script could not be re-run by anybody.
+    work = Path(os.environ.get("ANSWER_KEY_WORK") or tempfile.mkdtemp(prefix="sgt-answer-key-"))
     work.mkdir(parents=True, exist_ok=True)
+    print(f"working in {work}", file=sys.stderr)
 
-    locate, reach_by_project = {}, {}
+    locate, reach_by_project, first_by_project = {}, {}, {}
     for project, repo in (("bikecount", bike), ("footfall", foot)):
         repo = str(Path(repo).resolve())
         chapter = usable_target(repo, work / project)
@@ -379,58 +435,113 @@ def main(bike, foot, out_path):
         ids = sorted({b for page in pages for b in PAGE_TO_BEHAVIOUR.get(page, [])})
         reach_by_project[project] = {"pages": pages, "behaviours": ids, "chapter": chapter}
 
-    for project, rec in reach_by_project.items():
-        unmapped = [p for p in rec["pages"] if p not in PAGE_TO_BEHAVIOUR]
-        if unmapped:
-            sys.exit(f"{project}: pages {unmapped} are not in PAGE_TO_BEHAVIOUR, so the reach key "
-                     f"would silently omit them and score everyone short. Add them.")
-        if not rec["behaviours"]:
-            sys.exit(f"{project}: the target reaches no option the trial offers.")
+        # Stage 1's target, measured the same way and held to the same bar. Its checklist names
+        # "the most recent piece of work in this project", so if the newest group cannot be removed
+        # cleanly there is no key for it and the stage would score every participant against
+        # nothing -- which looks exactly like a stage that did not ask the question.
+        first = newest_theme(repo)
+        if first is None:
+            sys.exit(f"{project}: no group covers the newest save, so stage 1 has no target.")
+        first_pages = try_selector(repo, first["theme_id"], work / project / "s1")
+        if first_pages is None:
+            sys.exit(f"{project}: the newest piece of work ({first['label']!r}) does not revert "
+                     f"cleanly, keep the app running and restore exactly, so stage 1's checklist "
+                     f"cannot be scored. Re-harvest, or change what stage 1 asks about.")
+        first_ids = sorted({b for page in first_pages for b in PAGE_TO_BEHAVIOUR.get(page, [])})
+        first_by_project[project] = {"pages": first_pages, "behaviours": first_ids, "target": first}
+
+    for label, table in (("s2/s3", reach_by_project), ("s1", first_by_project)):
+        for project, rec in table.items():
+            unmapped = [p for p in rec["pages"] if p not in PAGE_TO_BEHAVIOUR]
+            if unmapped:
+                sys.exit(f"{project} {label}: pages {unmapped} are not in PAGE_TO_BEHAVIOUR, so "
+                         f"the reach key would silently omit them and score everyone short. Add "
+                         f"them.")
+            if not rec["behaviours"]:
+                sys.exit(f"{project} {label}: the target reaches no option the checklist offers.")
+
+    # The two projects are meant to be isomorphic, and the checklist is the same eleven options in
+    # both. A stage whose measured reach differs between them is measuring two different things
+    # under one name, which is exactly the failure the isomorphism claim exists to rule out. Stage
+    # 2's sets are allowed to differ (they are measured, and the harvested apps put the same job on
+    # different pages -- footfall's comparison page reads averages, bikecount's does not); stage
+    # 1's rounding target must not, because it touches one page in both.
+    if len({tuple(r["behaviours"]) for r in first_by_project.values()}) != 1:
+        sys.exit("s1: the two projects' newest work reaches different parts of the dashboard "
+                 + str({p: r["behaviours"] for p, r in first_by_project.items()}))
 
     key = {
-        "version": "answer-key-v4",
+        "version": "answer-key-v6",
         "episodes": {p: episodes_of(str(Path(r).resolve())) for p, r in
                      (("bikecount", bike), ("footfall", foot))},
         "_note": ("Generated by scripts/study/harvest/write_answer_key.py from the built "
                   "testbeds. Regenerate it whenever either testbed is rebuilt: chapter indexes "
                   "and commit shas both move, and a key that names work the repository no "
                   "longer contains scores everyone as wrong."),
-        "reachKeyVersion": "reach-key-v2",
+        "reachKeyVersion": "reach-key-v4",
         "requestKeys": {
-            # Every card the study asks gets an entry, including the two that are scored by a
-            # person rather than by a string match. A key that simply omits them reads to the
-            # upload check as a key from an older design.
-            "d1": {
-                "_note": ("Observation only, nothing scored. The participant is asked which days "
-                          "the averages leave out and why. Any wording that names the unusual "
-                          "days and the reason on the page is right."),
+            # One entry per stage the study still asks, under the stage's own id. They were d1..d4
+            # through two redesigns of what sat under them; the ids are s1..s4 now, and a key
+            # carrying the old ones uploads clean and scores nothing.
+            "s1": {
+                "reach": {p: r["behaviours"] for p, r in first_by_project.items()},
+                "_reachNote": (
+                    "Stage 1's checklist asks what the MOST RECENT piece of work in the history "
+                    "affects. Measured the same way as stage 2's: the newest group was reverted on "
+                    "a copy, every page re-rendered, and the pages that moved mapped onto the "
+                    "checklist's options. It is one of only two groups per testbed whose removal "
+                    "leaves the app running, which is why stage 1 asks about this one."),
+                "bikecount": first_by_project["bikecount"]["pages"],
+                "footfall": first_by_project["footfall"]["pages"],
+                "_target": {p: {"label": r["target"]["label"], "sha": r["target"]["sha"],
+                                "subject": r["target"]["subject"]}
+                            for p, r in first_by_project.items()},
             },
-            "d4": {
-                "_note": ("Scored from the repository, not from a string: the removed work is "
-                          "back and every page matches the state at the start. Run "
-                          "scripts/study/score_dashboard.py against the original snapshot."),
-            },
-            "d2": {
+            "s2": {
                 "bikecount": reach_by_project["bikecount"]["chapter"]["label"],
                 "footfall": reach_by_project["footfall"]["chapter"]["label"],
                 "_locateNote": ("Accepted answers, not one correct string. The two arms name work "
                                 "differently, so a commit sha and a chapter name are both right. "
                                 "The match is provisional and the experimenter reads the answer."),
                 "locate": locate,
-            },
-            "d3": {
                 "reach": {p: r["behaviours"] for p, r in reach_by_project.items()},
-                "_reachNote": ("Measured, not written: each testbed was copied, the target chapter "
+                "_reachNote": ("Measured, not written: each testbed was copied, the target group "
                                "reverted, every page re-rendered, and the pages that moved mapped "
-                               "onto the options the trial offers."),
-                "bikecount": reach_by_project["bikecount"]["pages"],
-                "footfall": reach_by_project["footfall"]["pages"],
+                               "onto the options the checklist offers. Stage 2's checklist (what "
+                               "the found work reaches) and stage 3's (what the removal changed) "
+                               "are scored against this same set, so `gain` compares like with "
+                               "like."),
+            },
+            "s3": {
+                "reach": {p: r["behaviours"] for p, r in reach_by_project.items()},
+                "_reachNote": ("Identical to s2's by construction: one measurement, written to "
+                               "both, so the prediction and the outcome report are scored against "
+                               "the same truth."),
+                "markers": {p: r["pages"] for p, r in reach_by_project.items()},
+                "_note": ("Also scored from the repository, not from a string: ./check 3 and "
+                          "scripts/study/score_dashboard.py compare every rendered page against "
+                          "the post-removal snapshot. Collateral damage is pages moved and checks "
+                          "failing outside the target."),
+            },
+            "s4": {
+                "_note": ("Scored from the repository: the removed work is back and every page "
+                          "matches the pre-removal snapshot. Run "
+                          "scripts/study/score_dashboard.py against the original snapshot."),
             },
         },
         "rubrics": {
-            "d4": [
-                {"id": "back", "label": "The work is back and the dashboard matches the start", "points": 1},
-                {"id": "intact", "label": "Nothing else changed, and the smoke check passes", "points": 1},
+            "s3": [
+                {"id": "back",
+                 "label": ("The averages count every day again: the number the report quotes is "
+                           "what the dashboard shows"),
+                 "points": 1},
+                {"id": "intact", "label": "Nothing else changed, and the smoke check passes",
+                 "points": 1},
+            ],
+            "s4": [
+                {"id": "restored",
+                 "label": "The work is back and every page matches the pre-removal snapshot",
+                 "points": 1},
             ],
         },
     }
@@ -438,7 +549,11 @@ def main(bike, foot, out_path):
     print(f"wrote {out_path}")
     for project, rec in reach_by_project.items():
         c = rec["chapter"]
-        print(f"  {project}: {c['feature_label']}@{c['label']} -> pages {rec['pages']}")
+        print(f"  {project} s2/s3: {c['feature_label']}@{c['label']} -> pages {rec['pages']}"
+              f" -> {rec['behaviours']}")
+    for project, rec in first_by_project.items():
+        print(f"  {project} s1:    {rec['target']['label']} ({rec['target']['sha']})"
+              f" -> pages {rec['pages']} -> {rec['behaviours']}")
 
 
 if __name__ == "__main__":

@@ -320,7 +320,33 @@ if [ -d "$here/work/.git" ]; then
     # rather than the session shell's environment, because pilots also typed
     # git into the editor's terminal and their own shell, which that
     # environment never reaches.
-    git -C "$here/work" config core.pager cat
+    #
+    # The pager is `sed`, not `cat`, and the one line it drops is the reason.
+    # `sgt save` records which ops a commit embodies as `Sgt-Op:` trailers in the
+    # commit message, and they are load-bearing -- resync and sync read them back
+    # as the tree-witnessed record of what the tip contains -- so they cannot be
+    # stripped from the history. What they also do is bury the author's words:
+    # footfall's newest commit is a six-line message followed by 125 lines of
+    # hex, and the whole sgt-arm history carries 2,050 such lines. The git arm's
+    # repositories are rendered without them, so leaving them in place makes
+    # plain `git log` harder to read in the sgt arm than in the git arm -- a bias
+    # in sgt's own favour, on the one surface both arms share.
+    #
+    # Set in BOTH arms, identically, so it is not a condition difference: the git
+    # arm has no such lines, so the same filter is a no-op there. It drops only
+    # a whole line that is nothing but `Sgt-Op:` and a long hex id, so a diff
+    # line (`+Sgt-Op: …`) survives and nothing an author wrote is touched. The
+    # message body is indented four spaces by `git log`, hence the leading
+    # `[[:space:]]*`. `sed` rather than `grep -v` because grep exits non-zero
+    # when it matches nothing and git reports that as the pager failing.
+    # Measured on the shipped footfall bundle: `git log -1` on its newest commit
+    # goes from 134 lines to 12, and the six-line message survives whole.
+    #
+    # This covers the terminal only -- git does not page when its output is
+    # piped, and the editor's own git views render the message themselves.
+    # `protocol-v2.md` section 11 discloses what is left.
+    git -C "$here/work" config core.pager \
+        "sed -E '/^[[:space:]]*Sgt-Op: [0-9a-f]{16,}$/d'"
     git -C "$here/work" config core.editor "$here/bin/study-git-editor"
 fi
 

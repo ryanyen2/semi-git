@@ -12,6 +12,9 @@ import { BLOCK_ESTIMATE_MIN, REQUESTS, STAGE_COUNT } from '../src/study/tasks'
 import { STEPS, TOTAL_ESTIMATE_MIN, stepById } from '../src/study/flow'
 import { DEBRIEF_MD, PLAN_FOR, TASK_PREAMBLE, WELCOME_MD, spell } from '../src/study/content'
 import { SHEETS } from '../scripts/gen-materials'
+import { existsSync } from 'node:fs'
+import { PROJECTS } from '../src/lib/types'
+import { tutorialFor } from '../src/study/content'
 
 describe('the session schedule', () => {
   it('estimates a task block as the caps plus the answering', () => {
@@ -69,6 +72,38 @@ describe('the session schedule', () => {
 // Writing the files is the same test, because `vite-node` is not a dependency and
 // a generator nobody can run is worse than none: the drift is then reported by a
 // failure with no fix attached. `npm run gen:materials` sets the flag.
+// Every image the participant is shown, checked against the directory the site
+// serves it from.
+//
+// A stage card whose screenshot 404s is a broken image on the one page a
+// participant is reading under a clock, and nothing else would catch it: the
+// paths are strings, the sheets regenerate happily around a missing file, and a
+// testbed rebuild changes the pages the shots are of without changing their
+// names. `scripts/study/capture-page-shots.mjs` regenerates all of them from a
+// built bundle.
+describe('the screenshots the study shows', () => {
+  const referenced = new Set<string>()
+  const collect = (text: string) => {
+    for (const m of text.matchAll(/!\[[^\]]*\]\((\/[^)]+)\)/g)) referenced.add(m[1])
+  }
+  for (const r of REQUESTS) for (const project of PROJECTS) collect(r.body[project])
+  for (const condition of ['git', 'sgt'] as const) {
+    for (const project of PROJECTS) collect(tutorialFor(condition, project))
+  }
+
+  it('still references screenshots at all', () => {
+    // A floor, not a count: the point is that the images did not silently stop
+    // being referenced, which is what a bad find-and-replace looks like.
+    expect(referenced.size).toBeGreaterThanOrEqual(8)
+  })
+
+  for (const path of [...referenced].sort()) {
+    it(`serves ${path}`, () => {
+      expect(existsSync(`public${path}`), `web/public${path} is missing`).toBe(true)
+    })
+  }
+})
+
 describe('the printed sheets', () => {
   const update = process.env.UPDATE_MATERIALS === '1'
 

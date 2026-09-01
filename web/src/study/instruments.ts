@@ -703,7 +703,13 @@ export const PREFERENCE: Instrument = {
       label: 'Setup A was the one you used first. Setup B was the one you used second.',
     },
     section('secJobs', 'The tasks you just did'),
-    pref('jobRecord', 'Recording the assistant\'s work and knowing what was included', 'C1'),
+    // Was "Recording the assistant's work and knowing what was included", which
+    // is a job no stage asks for any more. A comparison item has to name
+    // something the participant actually did in both halves, or the answer is
+    // about which setup they imagine would be better at it. Id changed with the
+    // wording, so pilot answers under the old item are not read as answers to
+    // this one.
+    pref('jobOrient', 'Working out what an unfamiliar project is made of', 'C1'),
     pref('jobFind', 'Finding the piece of work behind a wrong behavior', 'C2'),
     pref('jobRemove', 'Removing one piece of work without breaking the rest', 'C3'),
     pref('jobPutBack', 'Restoring work you had removed', 'C3'),

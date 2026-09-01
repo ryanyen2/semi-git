@@ -126,7 +126,8 @@ def graph_layout(
     # `sgt show` with "0 symbols in 0 files", and reverting it removes nothing. A pilot participant
     # read one of those rows ("Section Waitlist") as the waitlist and reverted it, which silently
     # did nothing while the live waitlist sat in a feature this filter had crowded off the map.
-    # Same "drop what has nothing to show" rule `_print_map_tree` applies, on the same set.
+    # Same "drop what has nothing to show" rule `sgt log --tree` applies (`views.tree_lines`),
+    # on the same set, so the two views of one hierarchy never disagree about how many there are.
     lanes = []
     for v in visible:
         # Husks leave the leaf SET, not just the listing. `(N)` on a folded row, a header's

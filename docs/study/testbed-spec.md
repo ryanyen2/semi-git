@@ -1,7 +1,18 @@
 # Study testbed: two codebases, one episode script
 
 Date: 2026-08-09
-Status: Build blueprint for the CHI study testbed repositories.
+Status: SUPERSEDED. Kept for the record.
+
+This is the blueprint for the two command-line scheduling applications
+(`coursecraft` and `confplan`) the study was first built on. The study runs on
+two web dashboards over public sensor data (`bikecount` and `footfall`) whose
+histories were **harvested from recorded agent sessions** rather than written to
+an episode script -- see `scripts/study/harvest/` and
+`2026-08-23-harvested-testbed-result.md`. What is still true here is the
+reasoning: why the two projects have to be isomorphic, why the removal target has
+to be work that later work landed on, and why ground truth is measured off the
+built repository rather than written by hand.
+
 Related: `docs/design/2026-08-09-chi-user-study-design.md`
 
 ## 1. The two applications
@@ -201,8 +212,10 @@ Capture these details at build time for the answer keys:
   name (`ranges_clash`), the feature name under sgt, and the full set of
   accepted locate strings for the answer key (sha, sha prefix, function name,
   commit message, feature label, episode id). Also: the reach key, which
-  behaviors the reversal touches (cancel, promote, register, rooms), generated
-  by `scripts/study/measure_reach_key.py` rather than written by hand.
+  behaviors the reversal touches, generated rather than written by hand -- by
+  `scripts/study/harvest/write_answer_key.py` for the two dashboard testbeds this
+  study now runs, and formerly by a call-graph script for the command-line pair
+  described here.
 - **Episode 11 chain (W1–W3 target):** the feature ID of F, the full set of
   dependents as `sgt show` reports it, and the expected impact numbers that
   participants should discover in card W1.

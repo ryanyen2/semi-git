@@ -6,7 +6,7 @@ Thanks for taking part. Plan for an hour and a half, including breaks. Your faci
 
 You will work through four stages on a small web dashboard:
 
-1. Record changes made earlier by an AI coding assistant.
+1. Get to know the project: what work it is made of, and which part of the dashboard each piece of work put there.
 2. Find the work that caused a wrong result.
 3. Remove that work.
 4. Restore it.
@@ -28,10 +28,10 @@ We record your screen and voice during the session.
 | 4 | Consent and background questions |
 | 6 | Set up the first project |
 | 5 | Practice with the first setup |
-| 20 | Four stages with the first setup |
+| 21 | Four stages with the first setup |
 | 2 | Questions about the first setup |
 | 6 | Set up and practice with the second setup |
-| 20 | Four stages with the second setup |
+| 21 | Four stages with the second setup |
 | 2 | Questions about the second setup |
 | 3 | Compare the two setups |
 | 15 | Repository walkthrough and interview |
