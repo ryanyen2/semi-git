@@ -27,7 +27,7 @@ import {
   type ClassifyContext,
   type Specificity,
 } from '../study/taxonomy'
-import { gitExpertise, tlxScore, tlxSubscales, umuxLiteScore } from '../lib/stats'
+import { tlxScore, tlxSubscales, umuxLiteScore } from '../lib/stats'
 import { AFTER_HALF, HLAC } from '../study/instruments'
 
 export interface CategorizedEvent {
@@ -332,7 +332,8 @@ export interface ParticipantAnalysis {
   label: string
   ordinal: number
   group: number
-  gitExpertise: number | null
+  /** Background self-rating, 1 to 5. The covariate the models control for. */
+  gitConfidence: number | null
   events: CategorizedEvent[]
   requests: RequestMetrics[]
   halves: HalfSummary[]
@@ -809,7 +810,7 @@ export function analyzeParticipant(
     label: participant.label,
     ordinal: participant.ordinal,
     group: participant.group,
-    gitExpertise: background ? gitExpertise(background) : null,
+    gitConfidence: typeof background?.gitConfidence === 'number' ? background.gitConfidence : null,
     events: categorized,
     requests: metrics,
     halves,

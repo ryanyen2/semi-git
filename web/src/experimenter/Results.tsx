@@ -467,7 +467,7 @@ function Exports({ dataset }: { dataset: Dataset }) {
                     condition: c,
                     order: p.firstCondition === c ? 'first' : 'second',
                     project: h?.project ?? '',
-                    gitExpertise: p.gitExpertise ?? '',
+                    gitConfidence: p.gitConfidence ?? '',
                     score: conditionValue(p, c, (m) => m.score, 'sum', ['w2', 'w3']),
                     d2Correct: conditionValue(p, c, (m) => (m.locateCorrect ? 1 : 0), 'sum', ['d2']),
                     d3Calibration: conditionValue(p, c, (m) => m.calibration, 'mean', ['d3']),
