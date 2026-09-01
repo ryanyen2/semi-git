@@ -1,6 +1,6 @@
 # Practice: git, footfall
 
-Take a few minutes to practice on the project before the timed stages begin. Your facilitator can answer questions about the setup during this practice.
+Take a few minutes to practice on the project before the timed stages begin.
 
 This practice covers the Git actions you will use during the timed stages: reading history, finding earlier work, and reverting it.
 
@@ -80,7 +80,7 @@ In **Terminal 2**, run:
 ./stage 0
 ```
 
-This prepares the project for practice. When the first timed stage begins, `./stage 1` puts the project back to this same state, so nothing you try during practice can carry into a stage.
+This prepares the project for practice. `./stage 1` puts it back to this same state, so nothing you try here carries into a stage.
 
 ## The editor
 

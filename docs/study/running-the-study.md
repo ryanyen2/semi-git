@@ -40,9 +40,10 @@ Go to **Setup → Answer key → Load answer key JSON** and select the file
 `docs/study/answer-key.json` from this repository.
 
 The key holds, per project: every commit in each testbed's history; the measured
-behaviour set for each of the two scored checklists (stages 1 and 3, with stage 2
-scored against the same set as stage 3); the accepted-strings list for stage 2's
-locate; and the pages stages 3 and 4 are scored against. It is stored where only
+behaviour set the two scored checklists share (stage 2 predicts it, stage 3
+reports it, so `gain` compares like with like); the accepted-strings list for
+stage 2's locate; and the pages stages 3 and 4 are scored against. There is no
+entry for stage 1 — it asks nothing with a right answer. It is stored where only
 signed-in experimenters can read it, and is deliberately *not* compiled into the
 website JavaScript: the questions ship in the bundle the participant's browser
 downloads, so answers living beside them would be readable from the page source.
@@ -275,7 +276,13 @@ The full answer key, and what each stage's numbers mean, is
 `participant-materials.md` under "Scoring guide". This section is only the
 mechanics.
 
-### Stages 1 and 2 score themselves
+### Stage 1 has nothing to score
+
+No checklist, no key. It ends on three rating statements, which the console
+records and rolls up as one mean. What stage 1 produces beyond that is your
+notes; `participant-materials.md` lists what to watch for.
+
+### Stages 2 and 3 score themselves
 
 Both end in the eleven-item checklist, which the console scores as set F1
 against `answer-key.json` and pairs with the confidence rating to compute
@@ -358,9 +365,9 @@ as text, not outlines):
    and 95% bootstrap confidence intervals. Reverse-keyed items are recoded so
    that agreement always means better, and marked. Anything collected as a check
    on the design rather than as an outcome is left out.
-2. **What people managed to do.** Paired estimation plots for the scored
-   outcomes: stage 1's checklist F1, stage 2's locate, `gain`, and collateral
-   damage. Every participant is a line connecting their score in each condition.
+2. **What people managed to do.** Paired estimation plots, one panel per
+   measure: stage 1's rating mean (its only outcome — it asks nothing scored),
+   stage 2's locate, `gain`, stage 3 and stage 4, and collateral damage. Every participant is a line connecting their score in each condition.
    Showing all twelve slopes individually is the honest way to visualize twelve
    people.
 3. **How the work was done.** Where time was spent across normalized stage time,

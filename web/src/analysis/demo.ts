@@ -160,16 +160,26 @@ export function demoDataset(seed = 4242): Dataset {
             }
           : null
 
-        // s1's measured key is two of the eleven options, so the plausible band
-        // is wide and centred lower than the eight-or-nine-option stages: a
-        // participant who ticks a third option drops to 0.8, and one who ticks
-        // everything scores 0.31.
+        // The two scored checklists: s2 predicts what the found work reaches,
+        // s3 reports what the removal changed. Both keys are eight or nine of
+        // eleven options, so the band sits high -- ticking everything already
+        // scores 0.86.
         const quizPicksF1 =
-          rid === 's1' ? clamp(0.55 + (sgt ? 0.2 : 0) + ability * 0.12 + gauss() * 0.18, 0, 1) : null
+          rid === 's2'
+            ? clamp(0.62 + (sgt ? 0.12 : 0) + ability * 0.1 + gauss() * 0.12, 0, 1)
+            : rid === 's3'
+              ? clamp(0.78 + (sgt ? 0.08 : 0) + ability * 0.08 + gauss() * 0.1, 0, 1)
+              : null
+
+        // Every stage ends on its rating statements, so every stage has one of
+        // these. Stage 1 has nothing else, and the figure's first panel draws
+        // one line per participant from it.
+        const ratingsMean = clamp(4.1 + (sgt ? 0.5 : 0) + ability * 0.8 + gauss() * 0.7, 1, 7)
 
         requests.push({
           reach,
           quizPicksF1,
+          ratingsMean,
           // No stage asks a scored multiple choice, so the demo does not invent
           // one: a column of synthetic values under a question nobody is asked
           // reads as a real measure on the dashboard.

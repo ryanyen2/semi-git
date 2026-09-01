@@ -19,8 +19,23 @@ describe('the shipped answer key', () => {
     expect(() => validateGroundTruth(key)).not.toThrow()
   })
 
-  it('covers every request the study still asks', () => {
-    for (const r of REQUESTS) expect(key.requestKeys[r.id]).toBeDefined()
+  // Every stage that has a right answer, and only those. Stage 1 is orientation
+  // and asks nothing scored, so a key carrying an `s1` entry is a key generated
+  // before that change -- and one that still holds a two-option reach set the
+  // study no longer collects an answer for.
+  it('covers every stage that is scored against it, and no others', () => {
+    for (const r of REQUESTS) {
+      const scored =
+        r.scoredLocate || !!r.identify || r.quiz.some((q) => q.kind !== 'text' && q.scored)
+      if (scored) {
+        expect(key.requestKeys[r.id], `${r.id} is scored but the key has no entry`).toBeDefined()
+      } else if (r.quiz.length === 0 && !r.scoredLocate) {
+        expect(
+          key.requestKeys[r.id]?.reach,
+          `${r.id} asks no checklist but the key still carries a reach set for it`,
+        ).toBeUndefined()
+      }
+    }
   })
 
   it('accepts an answer for every locate step, in both projects', () => {

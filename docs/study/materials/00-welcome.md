@@ -38,9 +38,3 @@ We record your screen and voice during the session.
 | 2 | Send the study data and clean up |
 
 The study contains about 85 minutes of activities, with breaks during the remaining time.
-
-Each stage has a visible timer for the task itself. The questions after each stage are untimed. When the timer ends, move on to the questions and then continue to the next stage.
-
-## During the stages
-
-- Each stage starts from a prepared project state, so your work in one stage does not affect the next.

@@ -135,36 +135,6 @@ def state_of(repo):
     return state
 
 
-def newest_theme(repo):
-    """The group covering the most recent piece of work in the history.
-
-    Stage 1's checklist names its target by POSITION -- "the most recent piece of work in this
-    project" -- because naming what it did would answer the question. So the key is read off the
-    same position: the newest non-bookkeeping commit, and the group whose atoms contain it. In both
-    harvested testbeds that is the rounding session, and it is the only group other than the
-    event-day one whose removal leaves the app running (see `usable_target`).
-    """
-    from sgt import state
-
-    newest = subject = None
-    for line in subprocess.run(["git", "log", "--format=%H%x00%s", "--no-merges"], cwd=repo,
-                               capture_output=True, text=True).stdout.splitlines():
-        sha, _, text = line.partition("\x00")
-        if "sgt land" in text:
-            continue
-        newest, subject = sha, text
-        break
-    if newest is None:
-        return None
-    themes = state.load_json(repo, "intent_themes", default={}) or {}
-    for tid, entry in themes.items():
-        for atom in (entry or {}).get("atom_shas") or ():
-            if atom.startswith(newest[:7]) or newest.startswith(atom[:7]):
-                return {"theme_id": tid, "label": (entry or {}).get("label") or tid,
-                        "sha": newest[:7], "subject": subject}
-    return None
-
-
 def try_selector(repo, selector, work):
     """Revert it, run the checks, render, restore. Returns the pages that moved, or None."""
     copy = work / "try"
@@ -451,7 +421,7 @@ def main(bike, foot, out_path):
     work.mkdir(parents=True, exist_ok=True)
     print(f"working in {work}", file=sys.stderr)
 
-    locate, reach_by_project, first_by_project = {}, {}, {}
+    locate, reach_by_project = {}, {}
     for project, repo in (("bikecount", bike), ("footfall", foot)):
         repo = str(Path(repo).resolve())
         chapter = usable_target(repo, work / project)
@@ -488,40 +458,16 @@ def main(bike, foot, out_path):
         ids = sorted({b for page in pages for b in PAGE_TO_BEHAVIOUR.get(page, [])})
         reach_by_project[project] = {"pages": pages, "behaviours": ids, "chapter": chapter}
 
-        # Stage 1's target, measured the same way and held to the same bar. Its checklist names
-        # "the most recent piece of work in this project", so if the newest group cannot be removed
-        # cleanly there is no key for it and the stage would score every participant against
-        # nothing -- which looks exactly like a stage that did not ask the question.
-        first = newest_theme(repo)
-        if first is None:
-            sys.exit(f"{project}: no group covers the newest save, so stage 1 has no target.")
-        first_pages = try_selector(repo, first["theme_id"], work / project / "s1")
-        if first_pages is None:
-            sys.exit(f"{project}: the newest piece of work ({first['label']!r}) does not revert "
-                     f"cleanly, keep the app running and restore exactly, so stage 1's checklist "
-                     f"cannot be scored. Re-harvest, or change what stage 1 asks about.")
-        first_ids = sorted({b for page in first_pages for b in PAGE_TO_BEHAVIOUR.get(page, [])})
-        first_by_project[project] = {"pages": first_pages, "behaviours": first_ids, "target": first}
-
-    for label, table in (("s2/s3", reach_by_project), ("s1", first_by_project)):
-        for project, rec in table.items():
-            unmapped = [p for p in rec["pages"] if p not in PAGE_TO_BEHAVIOUR]
-            if unmapped:
-                sys.exit(f"{project} {label}: pages {unmapped} are not in PAGE_TO_BEHAVIOUR, so "
-                         f"the reach key would silently omit them and score everyone short. Add "
-                         f"them.")
-            if not rec["behaviours"]:
-                sys.exit(f"{project} {label}: the target reaches no option the checklist offers.")
-
-    # The two projects are meant to be isomorphic, and the checklist is the same eleven options in
-    # both. A stage whose measured reach differs between them is measuring two different things
-    # under one name, which is exactly the failure the isomorphism claim exists to rule out. Stage
-    # 2's sets are allowed to differ (they are measured, and the harvested apps put the same job on
-    # different pages -- footfall's comparison page reads averages, bikecount's does not); stage
-    # 1's rounding target must not, because it touches one page in both.
-    if len({tuple(r["behaviours"]) for r in first_by_project.values()}) != 1:
-        sys.exit("s1: the two projects' newest work reaches different parts of the dashboard "
-                 + str({p: r["behaviours"] for p, r in first_by_project.items()}))
+    # Stages 2 and 3 are the only scored checklists. Stage 1 used to be a third, against the newest
+    # piece of work in the history; it is orientation now and asks no checklist, so nothing here
+    # measures it and `requestKeys` carries no `s1`.
+    for project, rec in reach_by_project.items():
+        unmapped = [p for p in rec["pages"] if p not in PAGE_TO_BEHAVIOUR]
+        if unmapped:
+            sys.exit(f"{project} s2/s3: pages {unmapped} are not in PAGE_TO_BEHAVIOUR, so the "
+                     f"reach key would silently omit them and score everyone short. Add them.")
+        if not rec["behaviours"]:
+            sys.exit(f"{project} s2/s3: the target reaches no option the checklist offers.")
 
     key = {
         "version": "answer-key-v6",
@@ -533,23 +479,10 @@ def main(bike, foot, out_path):
                   "longer contains scores everyone as wrong."),
         "reachKeyVersion": "reach-key-v4",
         "requestKeys": {
-            # One entry per stage the study still asks, under the stage's own id. They were d1..d4
-            # through two redesigns of what sat under them; the ids are s1..s4 now, and a key
-            # carrying the old ones uploads clean and scores nothing.
-            "s1": {
-                "reach": {p: r["behaviours"] for p, r in first_by_project.items()},
-                "_reachNote": (
-                    "Stage 1's checklist asks what the MOST RECENT piece of work in the history "
-                    "affects. Measured the same way as stage 2's: the newest group was reverted on "
-                    "a copy, every page re-rendered, and the pages that moved mapped onto the "
-                    "checklist's options. It is one of only two groups per testbed whose removal "
-                    "leaves the app running, which is why stage 1 asks about this one."),
-                "bikecount": first_by_project["bikecount"]["pages"],
-                "footfall": first_by_project["footfall"]["pages"],
-                "_target": {p: {"label": r["target"]["label"], "sha": r["target"]["sha"],
-                                "subject": r["target"]["subject"]}
-                            for p, r in first_by_project.items()},
-            },
+            # One entry per stage that is scored against a key, under the stage's own id. They
+            # were d1..d4 through two redesigns of what sat under them; the ids are s1..s4 now, and
+            # a key carrying the old ones uploads clean and scores nothing. There is no `s1`: stage
+            # 1 is orientation and asks nothing with a right answer.
             "s2": {
                 "bikecount": reach_by_project["bikecount"]["chapter"]["label"],
                 "footfall": reach_by_project["footfall"]["chapter"]["label"],
@@ -604,9 +537,6 @@ def main(bike, foot, out_path):
         c = rec["chapter"]
         print(f"  {project} s2/s3: {c['feature_label']}@{c['label']} -> pages {rec['pages']}"
               f" -> {rec['behaviours']}")
-    for project, rec in first_by_project.items():
-        print(f"  {project} s1:    {rec['target']['label']} ({rec['target']['sha']})"
-              f" -> pages {rec['pages']} -> {rec['behaviours']}")
 
 
 if __name__ == "__main__":

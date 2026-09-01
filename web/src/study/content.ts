@@ -50,12 +50,6 @@ We record your screen and voice during the session.
 | 2 | Send the study data and clean up |
 
 The study contains about ${TOTAL_ESTIMATE_MIN} minutes of activities, with breaks during the remaining time.
-
-Each stage has a visible timer for the task itself. The questions after each stage are untimed. When the timer ends, move on to the questions and then continue to the next stage.
-
-## During the stages
-
-- Each stage starts from a prepared project state, so your work in one stage does not affect the next.
 `.trim()
 
 export const HANDOUT_MD = `# Welcome\n\n${WELCOME_MD}\n`
@@ -195,7 +189,7 @@ In **Terminal 2**, run:
 ./stage 0
 \`\`\`
 
-This prepares the project for practice. When the first timed stage begins, \`./stage 1\` puts the project back to this same state, so nothing you try during practice can carry into a stage.
+This prepares the project for practice. \`./stage 1\` puts it back to this same state, so nothing you try here carries into a stage.
 `
 
 const GIT_OPENING = `
@@ -490,8 +484,7 @@ export function tutorialFor(condition: Condition, project: Project): string {
 }
 
 export const TUTORIAL_LEDE =
-  'Take a few minutes to practice on the project before the timed stages begin. ' +
-  'Your facilitator can answer questions about the setup during this practice.'
+  'Take a few minutes to practice on the project before the timed stages begin.'
 
 export function sheetTutorialMd(condition: Condition, project: Project): string {
   return `# Practice: ${condition}, ${project}\n\n${TUTORIAL_LEDE}\n\n${tutorialFor(condition, project)}\n`
@@ -509,18 +502,9 @@ You just practiced on this project. Keep using the same folder and the same term
 
 You will complete ${spell(STAGE_COUNT)} stages in order.
 
-Each stage tells you:
-
-- what happened
-- what you need to do
-- how to tell when you are finished
-- which commands may help
-
 Start each stage by running the \`./stage\` command shown on the card. This prepares the correct starting state. The timer begins after that command finishes.
 
 The task itself is timed. The questions after the task are untimed. When the timer ends, continue to the questions and then move to the next stage.
-
-Please say what you are thinking as you work.
 `.trim()
 
 export function sheetTasksMd(project: Project, condition: Condition): string {
@@ -529,8 +513,6 @@ export function sheetTasksMd(project: Project, condition: Condition): string {
     `# Your stages: ${project}, ${condition}`,
     '',
     TASK_PREAMBLE(app, maintainer, blurb),
-    '',
-    'After each stage, answer the short questions on the screen. These questions are untimed.',
   ]
 
   for (const r of REQUESTS) {
@@ -582,9 +564,7 @@ In the study terminal, run:
 study-sync --final
 \`\`\`
 
-The status indicator will turn green when the upload finishes.
-
-If it stays red for more than a minute, tell your facilitator. The local copy remains on the machine until cleanup.
+The status indicator will turn green when the upload finishes. If it stays red for more than a minute, tell your facilitator.
 
 ## 2. Remove the study files
 
@@ -615,7 +595,7 @@ During the study, you used ordinary Git and our experimental history tool on the
 
 We compare how the two setups support these tasks.
 
-The changes in the first stage were created earlier by an AI coding assistant and replayed onto the study project. Every participant receives the same changes.
+The study project's history was written by an AI coding assistant before the session, from a list of written requests, so every participant reads exactly the same history.
 
 ## What happens to your data
 
