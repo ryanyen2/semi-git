@@ -2498,3 +2498,80 @@ message should at least say why those specific files differ, since the user's fi
 what four files they never touched have to do with the edit.
 
 `scripts/demo/check-revert.sh` now refuses to run against a build that fails the check.
+
+## Found while rebuilding stage 1 on the shipped bundles (2026-09-01)
+
+Every feature and every cross-feature group in both shipped sgt bundles
+(`20260901-b`, toolBuild `664cbda8`) was reverted on a copy, `check.py` run, and
+every page re-rendered. That sweep was looking for a second cleanly-removable
+piece of work, to give the rebuilt stage 1 a measured reach key. There is only
+one.
+
+### Finding 85 (open): reverting a feature rolls shared code back past work it keeps
+
+Of the nine features and nine groups in the footfall bundle, exactly one — the
+`Event Day Handling` group, which is stage 3's target — reverts and leaves a
+dashboard that still renders. Every other selection exits 0, prints `✓ revert
+applied`, and leaves the program dead.
+
+```
+$ sgt revert "North South Comparison" --yes
+ ● Hourly Side Comparisons       loses 5 edits, re-draft
+ ● North-South Comparison        loses 10 edits, re-draft
+ removes 20 edits across 11 symbols · 7 files: footfall/metrics.py, ...
+  subtracted from shared code (later work kept): footfall/metrics.py::hourly_averages,
+    footfall/pages/hourly.py::render, footfall/pages/monthly.py::render,
+    footfall/pages/overview.py::render, footfall/pages/yearly.py::render
+  ✓ revert applied — 20 edits removed, 11 added.
+
+$ python3 check.py
+TypeError: render() takes 1 positional argument but 3 were given
+```
+
+The mechanism is in the preview's own words. Those five `render` functions are
+shared code, so the revert subtracts this group's contribution and keeps later
+work — except that the later work it keeps includes the date-window session,
+which is what gave every `render` its `start, end` parameters. The subtraction
+rolls the signature back to `render(readings)` while `server.py` and `check.py`,
+untouched, still call it with three arguments. The unit of subtraction is the
+symbol's body; the unit that has to stay consistent is the symbol's interface
+and its callers, and nothing checks the second.
+
+The preview does say `subtracted from shared code (later work kept)` and names
+the five functions, which is exactly the right information — it just does not say
+that the result will not run, and the `✓` after it says the opposite. A ⚠ line
+already exists for "remaining code still depends on something being removed";
+this case should raise it.
+
+Not on any participant's guided path: stage 3 names the group, and `./stage 3`
+prints that name. It is one wrong click away from it, because `sgt log` draws the
+features above the ◆ groups, and the recovery (`sgt undo`, in the stage's tips)
+does work — verified, the tree and every page come back exactly.
+
+Consequence for the study, recorded in protocol v2 section 4: stage 1's checklist
+cannot be scored against a measured key, because a measured key needs a target
+whose removal leaves the app running and the only one is stage 2's answer.
+
+### Finding 86 (fixed): the feature tree counted lanes its own map dropped
+
+`sgt log --tree` listed ten features in the footfall bundle where `sgt log` drew
+nine, and eleven against eight in bikecount. The extra rows own no symbols:
+`Daily CSV Export` reads `6 edits · 0 symbols in 0 files` and offers a revert,
+while the code it is named after (`server.py::_daily_csv`) sits in `Footfall
+Summary Pages`. `sgt find "the csv download of daily totals"` ranked that empty
+lane third, so a participant asking the obvious question was handed it.
+
+Finding 72's husk filter was never lost — `graph_layout` still applies it, and so
+did the tree's old renderer, `_print_map_tree`. The live renderer replaced that
+one and did not carry the filter over. The old renderer stayed in the file,
+unreachable, with the test for the filter pointing at it, so the test passed for
+months while every real tree printed the phantom rows.
+
+Fixed: `sgt.tui.views.tree_lines` drops leaves that own no symbol and subsystems
+left with no visible descendant, and counts what it prints; the dead renderer is
+gone and its test now runs against the live one. The tree and the map now agree
+on nine and eight.
+
+`scripts/check_graph_integrity.py` did not catch it. Its husk test is "has
+members, all of them sentinels", and these leaves have no members at all, so they
+pass. Widened to fail on a leaf with edits and no real symbol either way.

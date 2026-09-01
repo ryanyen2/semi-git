@@ -55,7 +55,15 @@ There is also a CSV download at `/daily.csv`.
 
 Leave the server running in Terminal 1.
 
-The pages are plain reports. The one control on them is the date window at the top of every page.
+The pages are plain reports. The one control on them is the date window at the top of every page:
+
+![The nav and the date window, which every page carries](/stages/bikecount-window.png)
+
+The pages open on the most recent year. Two of the timed stages are about 2018, so set the window when you get there.
+
+The hour-of-day page carries two charts, weekdays and weekends, which are separate things on the checklists you will be asked to fill in:
+
+![The hour-of-day page's weekday and weekend charts, side by side](/stages/bikecount-hourly-split.png)
 
 **Every page is one file, and file names map to pages.** When any view — a diff, a save's echo, a feature's card — names a file, this list says which part of the dashboard it is:
 
@@ -84,7 +92,7 @@ In **Terminal 2**, run:
 ./stage 0
 ```
 
-This prepares the project for practice. When the first timed stage begins, `./stage 1` will replace anything you changed during practice with the correct starting state.
+This prepares the project for practice. When the first timed stage begins, `./stage 1` puts the project back to this same state, so nothing you try during practice can carry into a stage.
 
 ## The editor
 
@@ -106,7 +114,7 @@ The **workbench** panel at the bottom is the history as a map:
 
 You can click features and checkpoints to inspect them, and right-click for actions such as **Revert** and **Restore**.
 
-## 1. Read a change
+## 1. Read what the project is made of
 
 Click a checkpoint in **Features** or in the workbench.
 
@@ -141,21 +149,9 @@ To list what happened one save at a time, newest first:
 sgt log --rail
 ```
 
-## 2. Record some work
+The first timed stage asks you to do this across the whole project: which piece of work put which part of the dashboard there.
 
-Open `README.md` and change one word.
-
-The **Changes** view will show the edit.
-
-Record it with:
-
-```
-sgt save -m "reword a line in the readme"
-```
-
-The first timed stage asks you to record changes in the same way.
-
-## 3. Find earlier work
+## 2. Find earlier work
 
 Search in your own words:
 
@@ -181,7 +177,7 @@ f-08915a9f@1
 
 The third timed stage refers to one of the ◆ rows `sgt log` draws under the lanes — one piece of work across several features.
 
-## 4. Remove work and restore it
+## 3. Remove work and restore it
 
 Pick any checkpoint from the map — `sgt log --focus "<feature name>"` lists a feature's checkpoints with their handles.
 

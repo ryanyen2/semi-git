@@ -1,318 +1,339 @@
 # Running a session
 
-> **Out of date (2026-08-25).** This guide still describes the protocol v1
-> cards. The study was redesigned as the four-stage comparison in
-> `protocol-v2.md`, and this document needs rewriting against it before the
-> next session: the stage scripts, the per-stage quizzes, the own-repository
-> interview, and the new answer key (`answer-key.json`, v5 draft) all change
-> what the facilitator says and scores.
-
 This is the facilitator's copy. It contains the answers, so do not screen-share it.
 
-The study now runs from a website. The mechanical steps (setting up machines,
-managing participants, uploading data) have moved to `running-the-study.md`.
-The research design, measures and statistical models are in `protocol.md`.
+The study runs from a website. The mechanical steps — setting up machines,
+managing participants, uploading data — are in `running-the-study.md`. The
+research design, every measure and the analysis plan are in `protocol-v2.md`.
 
 What remains here is what the website cannot do for you: what to say to each
-participant, what to watch during the session, and the answer key for scoring.
+participant, what to watch during the session, and what the answers are.
 
-The web console handles clocks, records questionnaire answers, applies the
-scoring rubrics listed below, and stores your interview notes. The answer keys
-below also live in `docs/study/answer-key.json`, which the console loads so
-the correct answer appears next to each card while you score.
+The web console handles the clocks, records every questionnaire answer, scores
+the two checklists against the answer key, and stores your interview notes. The
+key itself is `docs/study/answer-key.json`, which the console loads so the
+correct answer appears beside each stage while you score.
 
-Participant handouts live in `materials/`, as printed copies. The wording itself
-lives in `web/src/study/content.ts` (welcome, project briefs, practice sheets)
-and `web/src/study/tasks.ts` (the task cards), which is what the website renders
-and what the participant actually reads. If the two ever disagree, the code is
-right and the copy in `materials/` needs updating.
+Participant handouts live in `materials/`, as printed copies. The wording lives
+in `web/src/study/content.ts` (welcome, project tour, practice sheets) and
+`web/src/study/tasks.ts` (the four stages), which is what the website renders and
+what the participant actually reads. If the two disagree, the code is right and
+`materials/` needs regenerating — `npm run gen:materials` in `web/`, and
+`npm test` fails until you do.
 
 ## Quick overview
 
 - Each participant completes two halves: one with git and one with sgt, on two
-  different projects.
-- Each half has the same four cards, worded for someone who has never seen the
-  project before, and 24 minutes to work through them. The cards walk from
-  observing a defect, to locating its cause, to reversing it with a reach
-  prediction, to removing a whole feature.
-- Before the cards, and with no clock running, they read a page describing
-  what the program is for. Let them take as long as they want on it.
-- You are testing the two setups, not the person. Say this out loud, and say it
-  often.
-- A session takes about 90 minutes per participant. The exact per-step estimates
-  are in `web/src/study/flow.ts`.
+  different projects (`bikecount` and `footfall`).
+- Each half is the same four stages. Every stage begins with `./stage N`, which
+  resets the project, so a stage that goes badly cannot spoil the next one.
+- The stages are: get to know the project (5 min), find the work behind a wrong
+  number (4), take that work out (4), put it back (4). A short untimed quiz and
+  two or three rating statements follow each stage.
+- Before the stages, practice on the same project with no clock running. Let
+  them take the time.
+- You are testing the two setups, not the person. Say this out loud, and often.
+- A session is about 90 minutes. The per-step estimates are computed in
+  `web/src/study/flow.ts` and shown on the welcome page.
 
 ## Before the participant arrives
 
-**Remote sessions (the default):** send the participant their link one day
-early and let the website walk them through consent, background questions and
-setup. See `running-the-study.md` section 2 for details.
+**Remote sessions (the default):** send the participant their link a day early
+and let the website walk them through consent, the pre-study questionnaire and
+setup. `running-the-study.md` section 2 has the detail.
 
-**In-person sessions on a machine you control:**
+**In-person, on a machine you control:**
 
 ```bash
-scripts/setup-study-session.sh p07 sgt coursecraft
+scripts/setup-study-session.sh p07 sgt footfall
 ```
 
-This script creates a fresh copy of the project, builds the test environment,
-and refuses to hand over a copy whose tests do not pass. For the sgt condition
-it also installs the exact sgt build being tested and refreshes the history
-view. Never reuse a copy between participants.
+This creates a fresh copy of the project, installs the exact sgt build being
+tested, refreshes the history view, and refuses to hand over a copy whose
+dashboard does not render. Never reuse a copy between participants.
 
-Before the session, also check:
+Also check, before the session:
 
 - Screen and audio recording works.
-- The `.env` file is present in `work/` for the sgt half (plain-English
-  commands need it).
-- Claude Code is logged in. See `remote-setup.md` for instructions.
+- `study-doctor` passes in the participant's session shell.
+- The dashboard starts: `python3 -m <project>.server`, then
+  <http://localhost:8000>.
+- For the closing interview: either the participant's own repository has been
+  built (setup does this in the background when they tick the consent line), or
+  the prepared repository is warm. See `interview-demo-easyocr.md` for its
+  pre-flight checklist.
 
 ## Counterbalancing: which condition, which project
 
-Twelve participants, divided into four groups of three. Each group gets a
-different ordering of conditions and projects, so every combination appears
-and ordering effects wash out.
+Twelve participants in four groups of three, assigned round-robin so that any
+prefix of the cohort is balanced. The authority is `groupForOrdinal` in
+`web/src/study/flow.ts`; this table is a copy of it.
 
 | Group | First half | Second half |
 |---|---|---|
-| 1 | git, coursecraft | sgt, confplan |
-| 2 | sgt, coursecraft | git, confplan |
-| 3 | git, confplan | sgt, coursecraft |
-| 4 | sgt, confplan | git, coursecraft |
+| 1 | git, bikecount | sgt, footfall |
+| 2 | sgt, bikecount | git, footfall |
+| 3 | git, footfall | sgt, bikecount |
+| 4 | sgt, footfall | git, bikecount |
+
+The participant only ever hears "Setup A" and "Setup B", in the order they use
+them. Never say which is which, and never say "ours".
 
 ## Session timing
 
 | Minutes | What happens |
 |---|---|
-| 5 | Consent and background questions |
-| 10 | First setup and practice |
-| 2 | Reading about the first project. No clock |
-| 24 | First half: four cards |
-| 5 | Three questionnaires: workload, usability, the history |
-| 8 | Second setup and practice |
-| 2 | Reading about the second project. No clock |
-| 24 | Second half: the same four cards on the other project |
-| 5 | The same three questionnaires |
-| 5 | Comparing the two setups, then the interview |
+| 4 | Consent and the pre-study questionnaire |
+| 6 | First setup |
+| 4 | Practice with the first setup. No clock |
+| 21 | First half: the four stages, with their quizzes |
+| 2 | UMUX-Lite and NASA-TLX for the first setup |
+| 2 | Second project's setup |
+| 3 | Practice with the second setup. No clock |
+| 21 | Second half: the same four stages on the other project |
+| 2 | The same two questionnaires |
+| 3 | Comparing the two setups |
+| 15 | Repository walkthrough and interview |
+| 2 | Send the data and clean up |
 
-These are rounded groupings. The exact per-step estimates are in `flow.ts`.
-
-The two reading pages are not timed and are not a formality. Pilots used to meet
-the codebase for the first time with a countdown already running and spent a
-third of the first card working out what the program was for.
+Rounded groupings. The exact numbers are in `flow.ts`, and the welcome page is
+generated from them.
 
 ## What to say to the participant
 
-- Call them "the first setup" and "the second setup". Never say "ours" or
-  imply that one is better.
+- "Setup A" and "Setup B". Never "ours", never a hint that one is newer.
 - "We are testing the setups, not you."
 - "Keep talking. Tell me what you expect before you run it."
 - When they stall: "That's useful, tell me what you're thinking." Do not help
   unless something is actually broken.
-- Call the time at the halfway mark and at two minutes left for each card. The
-  four cards have different caps (3, 5, 6, and 10 minutes), so check which card
-  is up before calling.
+- The stages have different caps — 5, 4, 4, 4 — so check which stage is up
+  before calling the time. The website shows the countdown; call the halfway
+  mark and two minutes left.
+- When the clock runs out, move to the questions. The questions are untimed and
+  the participant should not rush them.
 
 ## What to watch for (qualitative observations)
 
 Write these down as they happen. This is your qualitative data.
 
-- The moment they stop trusting a number or message the tool printed.
+- The moment they stop trusting a number or a message the tool printed.
 - Any command they run twice because the first result did not make sense.
-- Whether they check their work, and how (tests, running the program, or
-  neither).
-- What they hand to the AI assistant versus what they insist on doing
-  themselves.
+- Whether they check their work, and how: the dashboard, the check script, the
+  history, or not at all.
 - Where they say "I don't know what that means."
-- Any point where they give up on a tool feature and fall back to doing it
-  by hand.
+- Any point where they give up on a tool feature and do it by hand.
+- In stage 1, which surface they reach for first, and whether they ever open
+  the dashboard beside the history.
 
 ## Scoring guide
 
-### Card 1 (d1): observe the defect
+Two of the four stages score themselves against the key. Two are scored from the
+repository afterwards. Nothing needs grading by hand.
 
-Nothing to score. The participant runs `./show-the-problem.sh` and writes down
-what they see. Their notes are recorded for qualitative analysis.
+### Stage 1 (s1): get to know the project
 
-Watch what they focus on: the enrollment rejection, the room audit message, or
-the green tests. A participant who notices all three, and especially one who
-notices that the tests pass over a broken program, is telling you something
-about their model of the codebase.
+No task output. The card asks the participant to build a map of the project —
+for each part of the dashboard, where it lives in the code and which piece of
+work put it there — and the first row is worked as an example. Nothing is written
+down.
 
-### Card 2 (d2): locate the work
+The quiz is the eleven-item checklist, asked about **the most recent piece of
+work in the history**. The console scores it as set F1 against the key, and
+computes calibration from the confidence rating beside it.
 
-The participant types what they think caused the defect into a free-text box.
-Do not score this live. The analysis pipeline scores it post-session against
-the accepted-strings list in `requestKeys.d2.locate` in the answer key.
+The answer, measured on the shipped bundles and identical in both projects:
 
-Accepted answers include the commit sha, the feature name (under sgt),
-"ranges_clash", "slot comparison", "normalize slot comparison", "E17", and
-several others. The match is case-insensitive, strips punctuation, and accepts
-sha prefixes from 7+ characters.
-
-**What happened.** Episode 17 ("normalize slot comparison") added a function
-`ranges_clash` that uses `<` where the original `overlaps` uses `<=`, then
-repointed callers. Back-to-back slots that share an endpoint are now rejected.
-The test `test_back_to_back_is_fine` still passes because it calls `overlaps`
-directly, not through the app.
-
-| Project | Commit | sgt feature |
+| | The work | What it reaches |
 |---|---|---|
-| coursecraft | `25e91a9` | E17 (normalize slot comparison) |
-| confplan | `704e7a4` | E17 (normalize slot comparison) |
+| footfall | `round front page numbers to the nearest 10` | the busiest-day figure and the last-fortnight chart, both on the front page |
+| bikecount | `round bike counts on the overview page to the nearest 10` | the same two |
 
-These are here for your own orientation. Do not read them out.
+Two of eleven. Someone who ticks everything scores about 0.31 here, which is the
+point of asking about this one: the reach is narrow enough that the checklist
+discriminates. Watch for the sgt arm being pulled toward the hourly charts — the
+rounding checkpoint sits on a lane named after them — and note it if it happens;
+that is a finding about the representation either way.
 
-### Card 3 (d3): reverse it + reach prediction
+Do not read the answer out. If the participant asks afterwards, tell them after
+the second half.
 
-Three things are measured.
+### Stage 2 (s2): find the work behind the wrong number
 
-**1. Behavioral probe.** Did the reversal fix the defect? After the participant
-finishes, run:
+Two things are recorded.
+
+**The recognition question** — "which of these is the work you found" — is
+unscored. It is there for the participant who found the work but could not write
+a handle for it.
+
+**The checklist** — what that work affects — is scored as set F1 against the key.
+
+You score the locate itself, from what they say aloud and from the recognition
+answer. The target, in each arm's own words:
+
+| | Accepted |
+|---|---|
+| footfall | the group `Event Day Handling`; or any of the three commits it spans; or their subjects |
+| bikecount | the group `Event Day Handling`; or any of the three commits it spans; or their subjects |
+
+`answer-key.json` carries the full accepted-strings list for each project,
+including the git arm's own shas — the two arms are separate builds, so the sha a
+git participant reads is not the sha the sgt repo holds. The console shows the
+list beside their answer.
+
+The measured reach, which stages 2 and 3 are both scored against:
+
+| | Parts of the dashboard the event-day work reaches |
+|---|---|
+| footfall | busiest day, last-fortnight chart, both hour-of-day charts, busiest hour, month-by-month chart, event marks, by-year table, north–south comparison (9 of 11) |
+| bikecount | the same, minus the east–west comparison (8 of 11) |
+
+Nine and eight of eleven, so ticking everything scores about 0.86. Report that
+baseline with the result; it is in `protocol-v2.md` section 11.
+
+### Stage 3 (s3): take that work out
+
+`./stage 3` names the work in that arm's own vocabulary, so a participant who
+failed stage 2 does not fail this one for the same reason.
+
+The participant verifies with `./check 3`, which prints the same words in both
+arms and does not mark them. You score from the repository afterwards:
 
 ```bash
-python3 scripts/score_study_repo.py ~/study/p07/work \
-    --baseline ~/repos/sgt-study/coursecraft \
-    --expect-behaviour back-to-back-allowed
+python3 scripts/study/score_dashboard.py ~/study/p07/work \
+    --expect ~/repos/sgt-study/footfall/.study/removed-pages \
+    --target-pages hourly,monthly,overview,sides,yearly
 ```
 
-This checks whether back-to-back enrollment now works by driving the CLI, not
-just whether tests pass. Tests alone do not catch the fix, because the orphaned
-test (`test_back_to_back_is_fine`) calls `overlaps` directly while the app calls
-`ranges_clash`.
+Three results come back separately, and they must stay separate:
 
-**2. Reach prediction.** Scored automatically by the analysis pipeline. The key
-says the reversal reaches four of twelve behaviors: cancel, promote, register,
-rooms. `blind` and `checked` are both F1 against this key. `gain = checked -
-blind` is the primary measure.
+1. **runs** — whether the app starts at all. A repository that will not render is
+   a different kind of outcome, not a wrong answer.
+2. **target** — whether the pages the removal was supposed to reach now match.
+3. **collateral** — whether every other page is untouched. This is the one the
+   study is really about.
 
-**3. Collateral damage.** Tests failing outside the target area. The scorer
-reports the count.
+The target pages are `hourly, monthly, overview, sides, yearly` for footfall and
+`hourly, monthly, overview, years` for bikecount (bikecount routes its by-year
+page at `/years`). Both lists are in `answer-key.json` under `s3.markers`.
 
-### Card 4 (w1/w2/w3): remove the waitlist, keep drops
+The quiz is the same checklist again, asked as what changed when the work came
+out. `gain` — this answer minus the stage 2 prediction, both F1 against the same
+measured set — is the primary measure for C3.
 
-Three stages on one card with one 10-minute clock: see the waitlist in action,
-remove it, then make sure drops still work without promotion.
+### Stage 4 (s4): put it back
 
-Run the scorer after the participant finishes:
+`./stage 4` puts everyone into the removed state, whether or not their own
+removal worked, so this stage is a clean paired comparison.
+
+There is no quiz. Three rating statements only, and the reverse-keyed one — "I
+would want to re-check everything by hand before I trusted it" — is the honesty
+valve of the whole design. If a participant restores correctly and still says
+they would re-check, that is a finding, not noise.
+
+Scored from the repository: every page has to match the pre-removal snapshot
+exactly.
 
 ```bash
-python3 scripts/score_study_repo.py ~/study/p07/work \
-    --baseline ~/repos/sgt-study/coursecraft \
-    --expect-removed waitlist,promotion,notify \
-    --expect-gone waitlist,notices \
-    --expect-behaviour back-to-back-allowed
+python3 scripts/study/score_dashboard.py ~/study/p07/work \
+    --expect <the original snapshot>
 ```
 
-Record which of these four outcomes happened:
-
-1. **Waitlist gone, everything else passes.** This is the target outcome.
-2. **Something else broke.** Count the broken features. This is collateral
-   damage.
-3. **Waitlist still there.** The removal did not happen.
-4. **Tests pass but the program will not start.** Record this separately.
-
-The fourth outcome is why the scorer starts the program. In pilot 1 the
-participant finished with 29 passing tests and an application that raised an
-error on startup, because no test in the suite exercises the command-line
-parser.
-
-The rubric in the answer key is three points: waitlist gone (1), everything else
-still passing and the app still starting (1), and drops working with no
-promotion (1).
+`./check 4` tells the participant whether the by-year page reads its
+excluded-days number again; that is necessary and not sufficient, which is why
+the scorer compares every page.
 
 ## After each half
 
-Three questionnaires, all administered by the console, immediately after the
-participant finishes: **workload** (NASA-TLX), **usability** (UMUX-Lite, two
-items), and **the history** (the twelve HLAC items, then two questions about
-the cards themselves). Five minutes in total. Nothing here is scored by you.
+Two published instruments, both administered by the console, immediately after
+the stages: **UMUX-Lite** and **raw NASA-TLX**, pointed at the four stages just
+finished. About two minutes. Nothing here is scored by you.
 
-Two things to leave alone while they answer. The workload scales are clicked on
-a line of tick marks with no number anywhere, and one of the six runs the other
-way from the rest, "Failure" on the left, "Perfect" on the right. That is the
-published instrument, not a bug, and it is marked on the page. If someone asks,
-point at the two words at the ends of the line and say nothing else; telling
-them which end is the good one is telling them what to answer.
+Two things to leave alone while they answer. The workload scales are marked on a
+rule of tick marks with no number anywhere, and one of the six runs the other way
+from the rest — "Failure" on the left, "Perfect" on the right. That is the
+published instrument, and the page marks those two words in a different colour
+for exactly this reason. If someone asks, point at the two words at the ends and
+say nothing else; telling them which end is the good one is telling them what to
+answer.
 
-The two questions at the end, whether the cards felt realistic and how much
-time pressure they felt, are checks on our design, not on the setups. They are
-the only place the study can find out whether the time caps bit harder in one
-half than the other, so it matters that the answer is theirs. Do not apologize
-for the clock before they answer it.
+Do not apologise for the clock before they answer temporal demand.
 
 ## At the end of the session
 
-- The console administers the comparison block: seven comparisons over jobs they
-  actually did, why, two "where would each earn its keep" scenarios, an overall
-  comparison, and what would put them off. Each comparison offers five options,
-  A clearly, A slightly, no real difference, B slightly, B clearly. "No real
-  difference" is a real answer and we want it where it is true, so do not nudge
-  anyone off it.
-- Interview prompts:
-  - "What did you trust, and what did you check?"
-  - "Where were you lost?"
-  - "What did the history hide, and what did it show?"
-  - "What did you wish you could ask the history?" Ask this *before* they
-    compare the two setups. Both pilot participants answered with something
-    close to what sgt does, one of them from inside the git half.
-- Collect the AI assistant transcript paths.
-- Revoke the API key if you issued one. See `remote-setup.md` for steps.
+- The console administers the comparison block: one comparison per job the
+  stages exercised (getting to know a project, finding a piece of work, removing
+  one, putting one back), then an overall comparison, then "would you put the
+  second setup on a repository you own", then one open box. Each comparison
+  offers five options — A clearly, A slightly, no real difference, B slightly, B
+  clearly. "No real difference" is a real answer and we want it where it is true,
+  so do not nudge anyone off it.
+- The interview runs over the participant's own repository, or over the prepared
+  one (`interview-demo-easyocr.md`). The guide is `protocol-v2.md` section 6.4.
+  Ask the question about what they would want the history to tell them **before**
+  they compare the two setups: in two pilots, participants answered it with
+  something close to what sgt does, one of them from inside the git half.
+- Note on the roster which interview path was taken. The website cannot know.
+- Watch them run `study-sync --final` and then `study-cleanup`.
 
 ## Analysis
 
-The console collects all data and exports it. Use **Results > Compute from
-data** to build the analysis from the raw event stream. This produces three
-figures and three CSV files:
+The console collects everything and exports it. **Results → Compute from data**
+builds the analysis from the raw event stream: the figures, plus one row per
+participant per condition, one row per stage, and the coded action stream.
 
-- One row per participant per condition (for the mixed-effects models).
-- One row per card.
-- The coded action stream.
+For each participant per half you should have:
 
-See `protocol.md` section 7 for the statistical models and
-`running-the-study.md` section 5 for the export buttons.
-
-For each participant per half, you should have:
-
-- Card 1 (d1): observation notes (qualitative only).
-- Card 2 (d2): locate answer, scored correct or incorrect against the key.
-- Card 3 (d3): behavioral probe result (back-to-back works or not), collateral
-  damage count, reach prediction scores (blind, checked, gain).
-- Card 4 (w1/w2/w3): scorer output, which of the four outcomes, rubric points.
-- Time per card, and whether the cap was hit.
-- Workload, usability, and history scores.
-- Your qualitative observation notes.
+- Stage 1: checklist F1 against the key, confidence, three ratings, time, and
+  whether the cap was hit.
+- Stage 2: locate correct or not (your reading is the authority), checklist F1,
+  confidence, two ratings, time.
+- Stage 3: runs / target / collateral from the scorer, checklist F1, `gain`,
+  confidence, three ratings, time.
+- Stage 4: fidelity from the scorer, three ratings, time.
+- UMUX-Lite and NASA-TLX per half.
+- Your qualitative notes.
 
 When analysing:
 
-- Compare within participants, not between them. Every participant does both
-  setups.
-- Report effect sizes and confidence intervals. With twelve participants you
-  cannot support claims about small differences. Say that directly rather
-  than reaching for a p-value.
-- Pair every number with the recording that explains it. A time difference
-  means nothing until you can point to what the person was actually doing.
-- Code the recordings with two people and agree on a codebook first.
+- Compare within participants, not between them. Everyone does both setups.
+- Report effect sizes and intervals. Twelve participants cannot support claims
+  about small differences; say that rather than reaching for a p-value.
+- Report the tick-everything baseline beside every checklist mean.
+- Pair every number with the recording that explains it. A time difference means
+  nothing until you can point at what the person was doing.
+- Code the recordings with two people and agree the codebook first.
+
+The statistical models are `protocol-v2.md` section 10; the export buttons are
+`running-the-study.md` section 5.
 
 ## Notes
 
-- If a copy gets into a state the participant cannot recover from, note the
-  time, restore from a fresh copy, move to the next card, and mark it as
-  stopped by a tool failure.
-- The `year` and `speaker` leftovers in the code are deliberate. If a
-  participant asks, say the history will tell them.
-- The git copies were cleaned so nothing in them mentions sgt. The sgt copies
-  keep their own commits, which is correct. See `pilot-02-findings.md` for
-  why.
+- If a copy reaches a state the participant cannot recover from, note the time,
+  run `./stage N` for the next stage, and mark the stage as stopped by a tool
+  failure. Every stage resets, so nothing is lost beyond that stage.
+- The `quiet sensor` note on the two-sensor page is deliberate, and so is the
+  partial-year caveat under the by-year table. If a participant asks, say the
+  history will tell them.
+- The git copies were rendered with every mention of sgt stripped. The sgt copies
+  keep their own commits, which is correct. `pilot-02-findings.md` says why.
+- One sgt defect is worth knowing before it happens on screen: reverting a
+  *feature* rather than the named group usually leaves the dashboard dead, and
+  says `✓ revert applied` while doing it (`sgt-findings.md`, finding 85). `sgt
+  undo` recovers exactly, and it is in the stage's own tips. Stage 3 names the
+  group, so this is off the guided path — but note it if someone wanders there.
 
 ## Other files in this directory
 
 - `README.md` — the one-page overview. Give this to a new experimenter first.
-- `remote-setup.md` — how to set up a participant's laptop, API keys, and
-  Claude Code.
+- `protocol-v2.md` — the protocol and the pre-registration text.
+- `running-the-study.md` — the mechanical steps, console and bundles.
+- `remote-setup.md` — setting up a participant's laptop and API keys.
+- `interview-demo-easyocr.md` — the prepared repository for the closing
+  interview, and its pre-flight checklist.
 - `testbed-spec.md` — how the two study projects were built.
 - `build-log-*.md` — the ground truth for each project's history.
 - `pilot-01-findings.md`, `pilot-02-findings.md`, `pilot-03-findings.md` — what
-  the pilot sessions found. They describe the six-request study, because that is
-  what was piloted.
-- `sgt-findings.md` — the running list of known sgt problems discovered during
-  the study.
+  the pilot sessions found. They describe earlier designs of the task block,
+  because that is what was piloted.
+- `sgt-findings.md` — the running list of known sgt problems found during the
+  study.

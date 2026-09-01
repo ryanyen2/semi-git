@@ -21,31 +21,39 @@ Please say what you are thinking as you work.
 
 After each stage, answer the short questions on the screen. These questions are untimed.
 
-## Stage 1: Record what the assistant did
+## Stage 1: Get to know the project
 
-You have 4 minutes for this task.
+You have 5 minutes for this task.
 
 Run the command below first. It puts the project into this stage's starting state.
 
     ./stage 1
 
-**What happened:** Earlier today you asked the coding assistant to round the numbers on the dashboard's front page to the nearest ten, so that they stop implying one-bike precision. The assistant has finished. Its changes are in your working copy, and none of them are recorded in the project's history yet.
+**What happened:** You have just joined this project. Nothing is wrong with it, and there is nothing to fix in this stage.
 
-**Your job:** Read what the assistant changed, in the editor or in the terminal, until you could describe it to a colleague. Then record all of it, the way this setup records finished work.
+**Your job:** Work out what this project is made of. Put the dashboard beside your setup's view of the history, and fill in the map below — for each part of the dashboard, where it lives in the code and which piece of work in the history put it there. The first row is filled in as an example.
 
-**You are done when:** Every one of the assistant's changes is recorded in the project's history, with a message in your own words, and nothing is left unrecorded.
+| Part of the dashboard | Where it lives in the code | The work that put it there |
+|---|---|---|
+| **The busiest hour, and the hour-of-day chart under it** ![The hourly page: the busiest hour, and the average count by hour of day](/stages/bikecount-hourly.png) | `bikecount/pages/hourly.py` draws it; `bikecount/metrics.py` works out the averages | *(example)* the work that added the hour-of-day page |
+| **The month-by-month chart** ![The monthly page](/stages/bikecount-monthly.png) | | |
+| **The one-row-per-year table** ![The by-year page](/stages/bikecount-yearly.png) | | |
+| **The east against west comparison** ![The two-sensor comparison page](/stages/bikecount-sides.png) | | |
 
-When you run `./stage 1`, it will:
+The date window at the top of every page is the one control on the dashboard. The pages open on the most recent year; set it to 2018 if you want to see the whole of a year.
 
-- resets the project to this stage's starting state
-- replays the assistant's changes into your working copy, unrecorded
+**You are done when:** you could point at any part of the dashboard and say which piece of work in the history put it there, and roughly where in the code that work lives. Nothing in the map has to be written down — the questions after this stage are about one piece of work in particular.
+
+What `./stage 1` does:
+
+- resets the project to its full recorded history, with nothing of anyone else's left in it
 
 Commands that may help:
 
-- `git status` lists the files that have changed but are not recorded yet.
-- `git diff` shows what changed inside them.
-- `git add <file>` then `git commit -m "your words"` records the change. `git add -A` stages everything at once.
-- In the editor, the Source Control panel shows the same files and commits them.
+- `git log --oneline` lists the commits, newest first — one line per piece of work.
+- `git show <hash>` shows what one of them changed.
+- `git log --oneline -- <file>` narrows the list to one file, and `git blame <file>` says which commit last touched each line.
+- In the editor, the Graph shows the same history, and the Timeline at the bottom of the Explorer shows the commits that touched the open file.
 
 ## Stage 2: Find the work behind the wrong number
 
@@ -65,7 +73,7 @@ The pages open on the most recent year. Set the date window at the top to cover 
 
 **You are done when:** You can name the piece of work — a commit hash, a named piece of work, or an id all count. The questions after this stage ask you which one you found. If you are not certain, choose what you have and say that you are not certain. That is more useful to us than a guess.
 
-When you run `./stage 2`, it will:
+What `./stage 2` does:
 
 - puts the project back to its full history, discarding anything from the last stage
 - prints the number the report quotes next to the number the dashboard shows
@@ -95,7 +103,7 @@ Set the date window to 2018 while you check the pages — the marks only show wh
 
 **You are done when:** `./check 3` says the program still runs and the by-year page reads **2,882** for 2018 again. Run it as often as you like. It prints the same words for everyone, it does not mark you, and a red line in it is information rather than a verdict.
 
-When you run `./stage 3`, it will:
+What `./stage 3` does:
 
 - puts the project back to its full history, discarding anything from the last stage
 - names the work to take out, in the words this setup uses for it
@@ -123,7 +131,7 @@ Run the command below first. It puts the project into the state where the work h
 
 **You are done when:** `./check 4` says the program still runs and the by-year page reads **2,900** for 2018 again.
 
-When you run `./stage 4`, it will:
+What `./stage 4` does:
 
 - puts the project in the state where that work has already been taken out, the same for everyone
 

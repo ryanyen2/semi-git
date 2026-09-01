@@ -870,47 +870,53 @@ input[type='range'] {
   font-weight: 640;
 }
 
+/* The rule the ticks stand on. `border-right` is the closing tick at 100, which
+   the cells cannot draw: each cell draws the tick on its own LEFT edge, so the
+   twenty-first cell leaves the right end open. */
 .tlx-track {
+  position: relative;
   display: flex;
   flex: 1 1 auto;
   min-width: 0;
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  overflow: hidden;
-  background: var(--bg);
+  height: 2.4rem;
+  border-bottom: 1px solid var(--line);
+  border-right: 1px solid var(--line);
 }
 
 .tlx-tick {
+  position: relative;
   flex: 1 1 0;
   min-width: 0;
-  height: 2.6rem;
   cursor: pointer;
-  border-right: 1px solid var(--line-2);
   transition: background 0.08s ease;
 }
 
-.tlx-tick:last-child {
-  border-right: 0;
+/* One tick per answer, on the cell's left edge, standing on the baseline. */
+.tlx-tick::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 1px;
+  height: 77%;
+  background: var(--line);
 }
 
-/* Landmarks at 0, 50 and 100: full-height dividers where the rest are faint,
-   so the middle of the scale is findable at a glance. Deliberately unlabelled
-   -- a labelled midpoint reads as a neutral option, which this scale does not
-   have. */
-.tlx-tick.landmark {
-  border-right-color: var(--muted);
+/* Tall ticks at 0, 25, 50, 75 and 100, so the scale reads as a ruler and its
+   middle is findable at a glance. Deliberately unlabelled -- a labelled
+   midpoint reads as a neutral option, which this scale does not have. */
+.tlx-tick.landmark::before {
+  height: 100%;
 }
 
-.tlx-tick.landmark:first-child {
-  border-left: 1px solid var(--muted);
-}
-
-.tlx-tick:hover {
-  background: var(--good-soft);
+/* The answer is shaded between its two ticks, up to the short ticks' height, so
+   the tall ticks stay readable through it. */
+.tlx-tick:hover:not(.on) {
+  background: linear-gradient(to top, var(--bg-sink) 77%, transparent 77%);
 }
 
 .tlx-tick.on {
-  background: var(--good);
+  background: linear-gradient(to top, var(--good-soft) 77%, transparent 77%);
 }
 
 /* The radio itself is the accessible control; the bar is what you see. Hidden by
@@ -924,8 +930,9 @@ input[type='range'] {
 }
 
 .tlx-track:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 2px;
 }
 
 @media (max-width: 640px) {

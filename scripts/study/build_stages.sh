@@ -13,8 +13,13 @@
 #   study/full      the whole history, clean. Stages 2 and 3 start here.
 #   study/removed   the same history with the target work taken out. Stage 4
 #                   starts here, and putting the work back is the task.
-#   study/stage1    the history one piece of work short of `study/full`; the
-#                   missing work is left in `.study/stage1.patch` for the tree.
+#
+# There used to be a third, `study/stage1`: the history one piece of work short
+# of `study/full`, with the missing work left in `.study/stage1.patch` for the
+# working tree, because stage 1 replayed recorded agent work as an unrecorded
+# change and asked the participant to record it. Stage 1 asks what the project is
+# made of instead, so stages 0 and 1 both start from `study/full` and the tag and
+# the patch are gone.
 #
 # THE TWO ARMS HAVE TO END UP SHOWING THE SAME THING, AND RECORDING IT DIFFERENTLY.
 #
@@ -116,37 +121,11 @@ git rev-parse --verify HEAD >/dev/null
 git tag -f study/full HEAD >/dev/null
 say "study/full = $(git rev-parse --short HEAD)"
 
-# --- stage 1: the last two pieces of work, left in the tree unrecorded -------
-#
-# Two, not one, and the reason is what stage 1 measures. The card asks how many
-# separate jobs the change was, and whether the participant could tell what it
-# touched without reading every line -- so the change has to span several files
-# and contain more than one job, which is the shape agent work actually arrives
-# in. The newest commit alone is a two-line edit to one file: legible at a
-# glance in either setup, and therefore incapable of separating them.
-#
-# sgt's own materialization commits are skipped when counting. Landing one is
-# not a piece of the developer's work, and a participant asked to record it
-# would be reading sgt's plumbing.
-STAGE1_JOBS="${STAGE1_JOBS:-2}"
-reals=()
-while read -r sha; do
-    case "$(git log -1 --format='%s' "$sha")" in
-        "sgt land: "*|"sgt revert "*|"sgt restore "*|"sgt undo:"*) continue ;;
-    esac
-    reals+=("$sha")
-    [ "${#reals[@]}" -ge "$STAGE1_JOBS" ] && break
-done < <(git rev-list HEAD)
-[ "${#reals[@]}" -ge "$STAGE1_JOBS" ] || { echo "fewer than $STAGE1_JOBS real commits" >&2; exit 1; }
-
-oldest="${reals[${#reals[@]}-1]}"
-git diff "$oldest^" study/full > "$repo/.study/stage1.patch"
-git tag -f study/stage1 "$oldest^" >/dev/null
-files=$(git diff --name-only "$oldest^" study/full | wc -l | tr -d ' ')
-say "study/stage1 = $(git rev-parse --short "$oldest^") (+ stage1.patch: $STAGE1_JOBS jobs, $files files)"
-# The card claims the change spans more than one file. Checked, because a
-# testbed rebuild could quietly make it one again.
-[ "$files" -ge 2 ] || { echo "stage 1's change touches only $files file(s)" >&2; exit 1; }
+# A repo prepared by an older version of this script carries a stage-1 patch that
+# nothing applies now. Removed rather than left, so `./stage 1` and the bundle
+# build never see a file whose only meaning was the stage that is gone.
+rm -f "$repo/.study/stage1.patch"
+git tag -d study/stage1 >/dev/null 2>&1 || true
 
 # --- a pristine copy of sgt's own state, taken BEFORE anything is removed ----
 #

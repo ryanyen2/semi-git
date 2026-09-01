@@ -90,18 +90,16 @@ chmod +x "$staging/work/stage" "$staging/work/check"
 # this repo recorded making), so it has no such tag and must not have one -- a
 # reachable build-time revert is what made restore resolve against the wrong
 # removal.
-needed=(study/full study/stage1)
+needed=(study/full)
 [ "$condition" = git ] && needed+=(study/removed)
 for tag in "${needed[@]}"; do
     git -C "$staging/work" rev-parse --verify "$tag" >/dev/null 2>&1 || {
         echo "$source_repo has no $tag -- run scripts/study/prep-stages.sh first" >&2; exit 1; }
 done
-[ -f "$staging/work/.study/stage1.patch" ] || {
-    echo "$source_repo has no .study/stage1.patch -- run scripts/study/prep-stages.sh first" >&2; exit 1; }
 # The `cp -R` above copies the source repo's WORKING TREE, so whatever branch it
 # was left on is the branch the participant gets. Rehearsing the stages in a
-# source repo leaves it wherever the last `./stage N` put it -- `study/stage1`,
-# or the three revert commits of `study/removed` -- and a bundle built from that
+# source repo leaves it wherever the last `./stage N` put it -- at the three
+# revert commits of `study/removed`, say -- and a bundle built from that
 # ships a project already one or two pieces of work short, with nothing saying
 # so. Every stage still "works", because each one resets first; what breaks is
 # the participant reading a history that is missing the end of itself.
@@ -125,6 +123,11 @@ if [ "$condition" = sgt ]; then
     # they are several hundred KB of text. They do not travel.
     rm -rf "$staging/work/.study/removed-pages"
 fi
+# Stage 1 stopped replaying an unrecorded agent change, so nothing applies this
+# any more. Removed here as well as in `build_stages.sh`, because a source repo
+# prepared before that change still carries one and a rebuild would ship it.
+rm -f "$staging/work/.study/stage1.patch"
+
 # The stage script needs these to survive its own `git clean`; the source repo's
 # `.git/info/exclude` does not travel through `cp -R` of the working tree alone.
 mkdir -p "$staging/work/.git/info"

@@ -174,12 +174,15 @@ function SliderRow({
  * work reports it as both 20-point and 21-point. Twenty-one is the number of
  * answers a participant can give. `tlxScore` and its tests are untouched.
  *
- * The dividers at 0, 50 and 100 are darkened, so the middle of the scale is
- * findable at a glance. Deliberately unlabelled -- a labelled midpoint reads as
- * a neutral option, which this scale does not have. The reference implementation
- * draws its landmarks as full-height tick marks against half-height ones; this
- * is a row of cells rather than ticks on a rule, so it marks the same three
- * positions the way this shape allows.
+ * It is drawn the way the paper instrument draws it: a baseline rule with a tick
+ * standing on it at every answer, tall ticks every five and short ticks between
+ * them, and the chosen answer shaded between its two ticks. It was a bordered
+ * box of twenty-one cells with three of the dividers darkened, which put two
+ * heavy lines inside an otherwise even row -- one after the first cell and one
+ * after the eleventh -- and read as though the scale were split into three
+ * unequal sections. The tall ticks now fall at 0, 25, 50, 75 and 100, evenly, so
+ * they read as a ruler rather than as a division. Deliberately unlabelled: a
+ * labelled midpoint reads as a neutral option, which this scale does not have.
  */
 function TlxScale({
   item,
@@ -207,7 +210,7 @@ function TlxScale({
           <label
             key={v}
             className={
-              `tlx-tick${selected === v ? ' on' : ''}${v % 50 === 0 ? ' landmark' : ''}`
+              `tlx-tick${selected === v ? ' on' : ''}${v % 25 === 0 ? ' landmark' : ''}`
             }
             title={item.anchors ? `${item.anchors[0]} … ${item.anchors[1]}` : undefined}
           >

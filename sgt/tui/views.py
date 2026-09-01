@@ -966,11 +966,32 @@ def tree_lines(view: dict, *, color: bool = True, width: int | None = None,
     The same `├─ └─ │` guides the map uses, so the two views of one hierarchy read as one view. The
     old renderer indented with bare spaces and appended `(hash) · N symbols` inline, which put the
     one number worth comparing across rows at a different column on every row.
+
+    Husks are dropped, the same rule `graph_layout` applies to the lanes: a feature whose own ops
+    touch no real symbol answers `sgt show` with "0 symbols in 0 files" and offers a revert that
+    removes nothing, so it is not a row anyone can act on. It came back when this renderer replaced
+    the old one, which had the filter -- and the study bundles shipped with it: footfall's tree
+    listed ten features where its own map drew nine, and the extra one ("Daily CSV Export") was a
+    lane whose symbols live in "Footfall Summary Pages". A subsystem left with no visible descendant
+    goes with them. Display-only: the tree and the clustering underneath are untouched.
     """
     width = width or term_width()
     con = console(color=color, width=width)
     by_id = {n["id"]: n for n in view.get("nodes", [])}
     roots = view.get("roots") or [n["id"] for n in view.get("nodes", []) if not n.get("parent")]
+
+    def own(n: dict) -> int:
+        """What this feature's own ops touch -- the number `sgt show` reports. `members` is the
+        clustering's assignment, which is a different question and disagrees on exactly the rows
+        this filter is about."""
+        return len(n.get("own_symbols", n.get("members") or ()) or ())
+
+    def visible(node_id: str) -> bool:
+        n = by_id.get(node_id)
+        if n is None:
+            return False
+        kids = [k for k in (n.get("children") or []) if k in by_id]
+        return any(visible(k) for k in kids) if kids else bool(own(n))
 
     rows: list[tuple[int, dict, bool]] = []
 
@@ -979,12 +1000,13 @@ def tree_lines(view: dict, *, color: bool = True, width: int | None = None,
         if n is None:
             return
         rows.append((depth, n, last))
-        kids = [k for k in (n.get("children") or []) if k in by_id]
+        kids = [k for k in (n.get("children") or []) if k in by_id and visible(k)]
         for i, k in enumerate(kids):
             walk(k, depth + 1, i == len(kids) - 1)
 
-    for i, r in enumerate(roots):
-        walk(r, 0, i == len(roots) - 1)
+    shown_roots = [r for r in roots if visible(r)]
+    for i, r in enumerate(shown_roots):
+        walk(r, 0, i == len(shown_roots) - 1)
 
     n_feat = sum(1 for _, n, _ in rows if n.get("kind") != "subsystem")
     def own_n(n: dict) -> int:

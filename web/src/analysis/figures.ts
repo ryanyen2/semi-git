@@ -47,12 +47,13 @@ export function figure2Panels(dataset: Dataset): PairedPanel[] {
   })
 
   return [
-    // Stage 1: how legibly the assistant's change read at the moment it was
-    // recorded, as F1 of the ticked behaviours against the measured key.
+    // Stage 1: after five minutes of orienting in the project, what the newest
+    // piece of work in it reaches -- F1 of the ticked behaviours against the
+    // measured key.
     build(
       's1',
-      'S1 record',
-      'what the recorded change touched, F1',
+      'S1 orient',
+      'what the newest work reaches, F1',
       (p, c) => conditionValue(p, c, (m) => m.quizPicksF1, 'mean', ['s1']),
       true,
       [0, 1],

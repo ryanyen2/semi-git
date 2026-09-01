@@ -39,19 +39,42 @@ key.
 Go to **Setup → Answer key → Load answer key JSON** and select the file
 `docs/study/answer-key.json` from this repository.
 
-The answer key contains 22 history episodes, the ground truth for each request,
-the rubrics for requests 2 and 3, and — under `requestKeys.r1.choices` — which
-option is correct for each of request 1's three closed questions. It is stored
-where only signed-in experimenters can read it. It is deliberately *not*
-compiled into the website JavaScript: the questions themselves ship in the
-bundle the participant's browser downloads, so a participant with developer
-tools open would be able to read the answers out of the page source if they
-lived beside the questions.
+The key holds, per project: every commit in each testbed's history; the measured
+behaviour set for each of the two scored checklists (stages 1 and 3, with stage 2
+scored against the same set as stage 3); the accepted-strings list for stage 2's
+locate; and the pages stages 3 and 4 are scored against. It is stored where only
+signed-in experimenters can read it, and is deliberately *not* compiled into the
+website JavaScript: the questions ship in the bundle the participant's browser
+downloads, so answers living beside them would be readable from the page source.
 
-Without the answer key loaded, request 1 is not scored at all. It shows as
-unscored rather than as wrong, which is deliberate — a request answered before
-the key was loaded is a different thing from three wrong answers — but it means
-the figures have a hole in them until you load it.
+The upload validates before it stores. It refuses a key with no behaviour set
+for a scored checklist, one that answers only one of the two projects, one naming
+a behaviour the checklist does not offer, and one naming every behaviour. Those
+are the shapes that upload clean and score nothing, which is indistinguishable
+from a study that did not ask the question.
+
+**Regenerate the key whenever the bundles are rebuilt.** Feature ids, group ids
+and commit shas all move, and a key naming work the repository no longer contains
+scores everyone as wrong. It is generated, not written:
+
+```bash
+# against the two sgt bundles' work/ directories, not the source testbeds:
+# the bundle build ends with `sgt log --rebuild`, and the key has to name the
+# graph a participant will actually see
+ANSWER_KEY_BASELINES=~/repos/sgt-study \
+python3 scripts/study/harvest/write_answer_key.py \
+    <unpacked-bikecount-b>/work <unpacked-footfall-b>/work docs/study/answer-key.json
+```
+
+It measures both targets for real — removes each on a copy, runs the app's own
+check, re-renders every page, and maps what moved onto the eleven options — and
+exits non-zero rather than writing a key for a target whose removal kills the
+app.
+
+Without the key loaded, the checklists are not scored at all. They show as
+unscored rather than as wrong, which is deliberate — a stage answered before the
+key was loaded is a different thing from a wrong answer — but it means the
+figures have a hole in them until you load it.
 
 ### Issue the session API keys
 
@@ -116,6 +139,11 @@ identified later.
 Use `--site` when you have only changed the website (not sgt or the bundles).
 Use `--dry-run` to build everything without actually deploying.
 
+**After a bundle rebuild, regenerate the answer key and load it again.** The
+bundle build finishes with `sgt log --rebuild`, which can renumber features and
+rename groups, so a key generated before it can name work by an id the shipped
+bundle does not use. The command is in "Load the answer key" above.
+
 There are four bundles total, not one per participant. Everything specific to a
 person — which condition they are in and the API keys for their session — is
 fetched by the setup script using their participant code. Each bundle build
@@ -178,7 +206,7 @@ otherwise be invisible until the session starts.
 Keep **Live** open in the console. For each participant, it shows:
 
 - Which step they are on
-- The countdown timer for their current request
+- The countdown timer for their current stage
 - Whether their browser is connected
 - Whether their machine is still reporting (with the last two dozen recorded
   actions)
@@ -196,7 +224,7 @@ out loud. The website handles the clock; you handle the conversation.
 
 If you need to interrupt them, or if something breaks, have them press **Pause
 the clock** and pick a reason from the list. The analysis uses active time only.
-In Pilot 1, a request was lost to a tool failure with no record of how long the
+In Pilot 1, a stage was lost to a tool failure with no record of how long the
 recovery took — this is why the pause feature exists.
 
 ### Locked-out links
@@ -211,7 +239,7 @@ in the console and press **Release link**.
 Each participant row in the roster has **Reset** and **Delete** buttons,
 available at any status.
 
-- **Reset** wipes everything the participant has done — responses, request data,
+- **Reset** wipes everything the participant has done — responses, stage data,
   recorded events, device records, keys, scores, and notes — and puts them back
   at step one. It keeps the *same link and the same condition order*, which
   preserves the cohort's counterbalancing. This is almost always what you want:
@@ -225,62 +253,78 @@ you confirm.
 
 ### Nothing is lost by leaving the site
 
-Questionnaire answers, request answers, and interview notes are saved to the
+Questionnaire answers, stage answers, and interview notes are saved to the
 browser on every keystroke and written to the server on a short delay (debounce).
 A closed tab, a page refresh, a browser crash, or a dropped network connection
 costs at most the last keystroke.
 
 The one exception: unsaved *scoring* work is kept locally in the browser but
 never written to the server automatically. This is intentional — a half-finished
-rubric must not enter the dataset. The next time you open that request, it
+rubric must not enter the dataset. The next time you open that stage, it
 offers to restore your in-progress scoring.
 
 ---
 
 ## 4. Scoring
 
-Open a participant's record, then go to **Requests & scoring**. Each request
-shows what the participant did, how long it took, whether they hit the time cap,
-their answer, and the ground truth beside it.
+Open a participant's record, then go to **Requests & scoring**. Each stage shows
+what the participant did, how long it took, whether they hit the cap, their
+answers, and the ground truth beside them.
 
-### Request 1 scores itself
+The full answer key, and what each stage's numbers mean, is
+`participant-materials.md` under "Scoring guide". This section is only the
+mechanics.
 
-Request 1 asks three multiple-choice questions and one confidence rating. The
-console scores the three against the answer key and computes calibration
-(confidence minus proportion correct) from them. There is nothing to grade. If
-the panel shows the questions unscored, the answer key is not loaded.
+### Stages 1 and 2 score themselves
 
-### Automated scoring for requests 2 and 3
+Both end in the eleven-item checklist, which the console scores as set F1
+against `answer-key.json` and pairs with the confidence rating to compute
+calibration. There is nothing to grade. **If the panel shows a checklist
+unscored, the answer key is not loaded** — go back to section 1.
 
-These two involve modifying code and share a single clock. Run the scoring
-script and paste its output into the scoring field:
+Stage 2 also asks the participant to name the work they found. Scoring that is
+yours: the console shows their answer beside the list of strings the key accepts,
+in both arms' vocabularies, and you mark it. The list is long on purpose — a
+commit sha and a group name are both right — and it is not a substitute for
+having listened to what they said aloud.
+
+### Stages 3 and 4 are scored from the repository
+
+Both change code, so neither can be scored from a form. Run the scorer against
+the participant's copy and paste its output into the scoring field; the output is
+kept verbatim as the evidence behind the score.
 
 ```bash
-python3 scripts/score_study_repo.py ~/study/p07/work \
-    --baseline ~/repos/sgt-study/coursecraft \
-    --expect-removed waitlist,promotion,notify \
-    --expect-gone waitlist,notices
+# stage 3: the work is out, and nothing else moved
+python3 scripts/study/score_dashboard.py ~/study/p07/work \
+    --expect ~/repos/sgt-study/footfall/.study/removed-pages \
+    --target-pages hourly,monthly,overview,sides,yearly
+
+# stage 4: every page matches the state before the removal
+python3 scripts/study/score_dashboard.py ~/study/p07/work \
+    --expect <the original snapshot>
 ```
 
-The script's output is kept verbatim as the evidence behind the score. Record
-which of the four possible outcomes happened. The outcomes include "tests pass
-but the application will not start" — which is why the scorer actually launches
-the program, not just runs the tests.
+Three results come back and stay separate: whether the app runs at all, whether
+the pages the change was meant to reach now match, and whether anything else
+moved. The third is the one the study is about. Do not fold them together — a
+repository that will not render is a different outcome from a wrong one, and
+version 1's scorer hid exactly that by counting passing tests.
+
+`--target-pages` differs by project: `hourly,monthly,overview,sides,yearly` for
+footfall, `hourly,monthly,overview,years` for bikecount. Both lists are in
+`answer-key.json` under `s3.markers`, so read them from there rather than from
+here.
 
 ### The post-half questionnaires
 
-Nothing to score. Workload (NASA-TLX), usability (UMUX-Lite) and the history
-block are recorded as the participant answers them and go straight into the
-analysis. The history block is fourteen seven-point items followed by two
-questions about the requests themselves — whether they were realistic, and how
-much time pressure the participant felt. Those two are checks on the design, not
-outcomes: they are reported separately and stay out of Figure 1 and the block
-means (`protocol.md` §5.5).
+Nothing to score. UMUX-Lite and raw NASA-TLX are recorded as the participant
+answers them and go straight into the analysis.
 
-A five-question quiz and a three-minute written summary used to sit here and be
-graded against the 22-episode checklist. Both were removed on 2026-08-17 —
-`protocol.md` §5.6 has the reasoning. If you are looking at an older console
-build with a **Quiz & summary** section, it is out of date.
+One thing to leave alone: the workload scales are marked on a rule of tick marks
+with no number anywhere, and one of the six runs the other way from the rest.
+That is the published instrument. If someone asks, point at the two words at the
+ends of the rule and say nothing else.
 
 ### Interview scoring
 
@@ -309,28 +353,27 @@ not a lost measurement.
 Each figure can be exported to SVG at publication quality (with fonts rendered
 as text, not outlines):
 
-1. **What the two setups felt like.** The fourteen seven-point history and agent
-   items shown as diverging stacked bars, one panel per condition, with paired
-   mean differences and 95% bootstrap confidence intervals. Reverse-keyed items
-   are recoded so that agreement always means better, and marked. The two
-   five-point checks at the end of that block are not part of this figure.
-2. **What people managed to do.** Paired estimation plots for three outcomes:
-   request 1's closed questions (out of 3), the requests 2 and 3 rubric, and
-   collateral damage. Every participant is a line connecting their score in each
-   condition. Showing all twelve slopes individually is the honest way to
-   visualize twelve people.
-3. **How the work was done.** Where time was spent across normalized request
-   time, plus the action bigrams (two-step sequences) that most distinguish the
-   two conditions, ranked by weighted log-odds ratio. This is the figure that
-   answers "did they just use the AI more, or did they actually work
-   differently?"
+1. **What the two setups felt like.** The per-stage rating statements as
+   diverging stacked bars, one panel per condition, with paired mean differences
+   and 95% bootstrap confidence intervals. Reverse-keyed items are recoded so
+   that agreement always means better, and marked. Anything collected as a check
+   on the design rather than as an outcome is left out.
+2. **What people managed to do.** Paired estimation plots for the scored
+   outcomes: stage 1's checklist F1, stage 2's locate, `gain`, and collateral
+   damage. Every participant is a line connecting their score in each condition.
+   Showing all twelve slopes individually is the honest way to visualize twelve
+   people.
+3. **How the work was done.** Where time was spent across normalized stage time,
+   plus the action bigrams (two-step sequences) that most distinguish the two
+   conditions, ranked by weighted log-odds ratio. This is the figure that answers
+   "did they work differently, or just slower?"
 
 ### Data exports
 
 Three CSV exports are available underneath the figures:
 
 - One row per participant per condition — for the mixed-effects models
-- One row per request — for request-level analysis
+- One row per stage — for stage-level analysis
 - The coded action stream — for the qualitative analysis pass
 
 ### Testing with synthetic data
@@ -470,8 +513,9 @@ check exists.
   test it yourself first.
 - **The participant wedges the project** (gets it into an unrecoverable state).
   Note the time, pause the clock with reason "tool failure", have them unpack a
-  spare copy of the bundle, skip to the next request, and mark that request as
-  stopped by a tool failure. Keep one spare bundle per condition ready.
+  spare copy of the bundle, run `./stage N` for the next stage, and mark that
+  stage as stopped by a tool failure. Every stage resets, so nothing is lost
+  beyond the one they were in. Keep one spare bundle per condition ready.
 - **Nothing arrives from their machine.** The log on their disk is complete
   regardless. Collect the file `telemetry/events.jsonl` from their machine by
   hand — it can be imported into the database later.
@@ -487,4 +531,5 @@ check exists.
   reused.
 - [ ] Save the screen recording under the participant's label (e.g., P07), not
   their name.
-- [ ] Score requests 1 and 4 while the session is still fresh in your mind.
+- [ ] Score stage 2's locate and stages 3 and 4 while the session is still
+      fresh in your mind.

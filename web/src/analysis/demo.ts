@@ -160,13 +160,20 @@ export function demoDataset(seed = 4242): Dataset {
             }
           : null
 
+        // s1's measured key is two of the eleven options, so the plausible band
+        // is wide and centred lower than the eight-or-nine-option stages: a
+        // participant who ticks a third option drops to 0.8, and one who ticks
+        // everything scores 0.31.
         const quizPicksF1 =
-          rid === 's1' ? clamp(0.45 + (sgt ? 0.18 : 0) + ability * 0.1 + gauss() * 0.15, 0, 1) : null
+          rid === 's1' ? clamp(0.55 + (sgt ? 0.2 : 0) + ability * 0.12 + gauss() * 0.18, 0, 1) : null
 
         requests.push({
           reach,
           quizPicksF1,
-          quizChoiceCorrect: rid === 's1' ? rand() < (sgt ? 0.75 : 0.5) : null,
+          // No stage asks a scored multiple choice, so the demo does not invent
+          // one: a column of synthetic values under a question nobody is asked
+          // reads as a real measure on the dashboard.
+          quizChoiceCorrect: null,
           requestId: rid,
           half: block.half,
           condition: block.condition,

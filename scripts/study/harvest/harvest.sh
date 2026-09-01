@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
-# Run every job in roles.json through its own work session, in order.
+# Run every job in a roles file through its own work session, in order.
 #
-#   harvest.sh <repo-dir> [roles.json]
+#   harvest.sh <repo-dir> <roles.json>
+#
+# The roles file is required. It used to default to `roles.json`, a single-project
+# file from before the study had two, and running the command with no second
+# argument then built the wrong history in silence.
 #
 # Each job gets a fresh agent that has never seen the others. It reads whatever
 # the previous jobs left behind, does its one thing, and saves. Nothing tells it
@@ -9,7 +13,12 @@
 set -euo pipefail
 REPO="$1"
 HERE="$(cd "$(dirname "$0")" && pwd)"
-ROLES="${2:-$HERE/roles.json}"
+ROLES="${2:-}"
+[ -n "$ROLES" ] || {
+    echo "usage: harvest.sh <repo-dir> <roles.json>" >&2
+    echo "  the two study projects are roles-bikecount.json and roles-footfall.json" >&2
+    exit 2
+}
 
 count=$(python3 -c "import json,sys;print(len(json.load(open(sys.argv[1]))))" "$ROLES")
 

@@ -33,9 +33,10 @@ four short stages. Each stage starts from a scripted repository state, tells
 the participant exactly what has happened and what to do, and asks them to do
 one thing through the tool. A short quiz and three rating items follow each
 stage. Nothing in a stage depends on how the previous stage went, because a
-script resets the state between stages. The live assistant is gone from the
-task block; the agent's work is replayed from a recording instead, so every
-participant meets byte-identical changes.
+script resets the state between stages. The live assistant is gone from the task
+block, and so is the replayed agent change that replaced it: stage 1 is now
+orientation in the finished project (section 4), so every participant reads the
+same committed history and nothing has to be replayed.
 
 What the trade costs, stated here so the paper can say it. The study no longer
 measures whether people choose a good strategy, whether they find the history
@@ -52,12 +53,13 @@ sgt records history at the level of intents rather than lines. The paper's
 claim is not about capability. Both git and sgt can perform every action in
 this study, and the paper says so in a parity table. The claim is that the
 intent-level representation helps a person at three specific moments: when
-they record work an agent did, when they look for the work behind a defect,
-and when they operate on history at the level the task is stated at.
+they arrive at a project they have never seen, when they look for the work
+behind a defect, and when they operate on history at the level the task is
+stated at.
 
 | RQ | Question | Stage | Instrument |
 |---|---|---|---|
-| RQ1: Reading a change at save time | When an AI agent has changed several files, does intent-aligned history change how accurately a developer can say what the change touched, and what they know about the record once it is made? | S1 | Post-stage checklist scored against a measured key, time to record, confidence |
+| RQ1: Orienting in an unfamiliar project | Given a project nobody has seen before, does intent-aligned history change how much of what the product does a developer can trace back to the work that produced it, and how well they understand the project afterwards? | S1 | Post-stage coverage checklist (how many of the eleven dashboard parts they can account for), time on task, telemetry of which surfaces they used, three rating items |
 | RQ2: Locating work | Given a described defect, does intent-aligned history change how accurately and how quickly a developer finds the piece of work that caused it? | S2 | Free-text identifier scored against an accepted-strings list, time, confidence |
 | RQ3: Operating at the level of the task | When the task names a piece of work ("remove what your colleague did", "put it back"), can the developer carry out the operation at that level, with what success, what collateral damage, and what foresight about the operation's reach? | S2, S3, S4 | Reach prediction (S2) against outcome report (S3), behavioural check scripts, restore fidelity, mechanism self-report |
 
@@ -65,7 +67,7 @@ Each RQ carries a falsifiable claim:
 
 | Claim | How it would be falsified |
 |---|---|
-| C1. Intent-aligned recording makes a multi-file agent change more legible at the moment it is saved. | S1 checklist accuracy is equal or worse under sgt, with no time advantage. |
+| C1. Intent-aligned history makes an unfamiliar project's parts traceable to the work that produced them. | S1 coverage is equal or lower under sgt, and its two comprehension ratings are equal or lower. |
 | C2. Intent-aligned history makes it cheaper and more reliable to locate the work behind a described defect. | S2 locate accuracy is equal or worse under sgt, with no time advantage. |
 | C3. Intent-aligned history lets people remove and restore a piece of work at the level the task names, with less damage. | S3 outcome or collateral damage is equal or worse under sgt, or S4 restore fidelity is equal or worse, or `gain` (S3 outcome report minus S2 reach prediction, both F1) is at or below zero. |
 
@@ -117,12 +119,16 @@ missing.
 
 There is no live assistant in the task block. In version 1 the assistant was
 part of the condition. Here every stage must start from an identical state for
-every participant, and a live agent cannot guarantee that. The change the
-"agent" makes in stage 1 is a replayed recording of a real agent session, so
-what the participant reads is genuine agent output, held constant. One model
-still runs per session: sgt's labeller (pinned, checked with a real API call
-before the session), because every feature name a participant reads in the sgt
-condition came from it.
+every participant, and a live agent cannot guarantee that. Every stage now starts
+from a committed state a script resets to, so there is nothing to hold constant
+by replay. One model still runs per session: sgt's labeller (pinned, checked with
+a real API call before the session), because every feature name a participant
+reads in the sgt condition came from it.
+
+The two testbeds are themselves agent output. Their histories were harvested from
+real recorded agent sessions building the two dashboards (`scripts/study/harvest/`),
+so the work a participant reads in every stage is work an agent did -- it is
+committed rather than in flight, which is the part that changed.
 
 ### Scripted states, and why stages are independent
 
@@ -150,69 +156,76 @@ operation.
 
 ## 4. The four stages
 
-Each stage has a 4-minute working cap with a visible countdown, followed by an
-untimed quiz and three rating items (about one minute). The caps come to 16
-minutes of timed work per half; with the quizzes, a task block is about 20
-minutes. Wording is fixed in `web/src/study/tasks.ts`; the footfall wording is
-the bikecount wording with the nouns swapped per the isomorphism map. Nothing
-on a card names a git or sgt verb; the participant chooses the mechanism
-inside the tool they were given.
+Each stage has a working cap with a visible countdown -- five minutes for stage
+1, four for the rest -- followed by an untimed quiz and two or three rating
+items (about one minute). The caps come to 17 minutes of timed work per half;
+with the quizzes, a task block is about 21 minutes. Wording is fixed in
+`web/src/study/tasks.ts`; the footfall wording is the bikecount wording with the
+nouns swapped per the isomorphism map. Nothing on a card names a git or sgt
+verb; the participant chooses the mechanism inside the tool they were given.
 
-The stages follow one workflow in order: record what an agent just did, find
-the work behind a defect, take that work out, put it back. Codoban et al.'s
-taxonomy covers the last three (rationale recovery and change impact); the
-first is the moment their taxonomy predates, where the developer is the
-reviewer of a machine's work rather than the author.
+The stages follow one workflow in order: arrive at the project and work out what
+it is made of, find the work behind a defect, take that work out, put it back.
+Codoban et al.'s taxonomy covers the last three (rationale recovery and change
+impact); the first is program comprehension in Sillito et al.'s sense -- the
+questions a developer asks on first contact -- asked of the history rather than
+of the code.
 
-### Stage 1. Record what the agent did (RQ1, C1)
+Stage 1 used to be a different stage: the agent replayed a recorded multi-file
+change into the working tree and the participant recorded it. It is gone, and
+what replaced it is orientation. Two reasons. Pilots arrived at stage 2 without
+knowing what the dashboard showed, and spent their four minutes learning the
+product rather than looking for work in it -- the cost landed on every stage
+after it. And the recording stage's own measurement had already been eroded to
+one checklist (protocol v1's job-count question was cut because sgt groups work
+only once it is in the history, so both arms answered it from the diff). What is
+lost is real and is stated in section 11: the study no longer exercises `sgt
+save` or `git commit` at all.
 
-`./stage 1` pins the history to the point just before the last harvested
-session landed and replays recorded agent work into the working tree,
-uncommitted. The replayed state contains exactly two distinguishable jobs: the
-change the story says was requested (the harvest's `rounding` session) and one
-smaller unrequested piece of work replayed with it, so that "how many separate
-jobs was this" has a right answer the tool did or did not surface. Both are
-real agent output from the harvest that built the testbed; the pairing is
-selected and verified by a build-time gate in `scripts/study/`, not by hand,
-and if the gate picks a different pairing, the card wording in
-`web/src/study/tasks.ts` is what changes.
+### Stage 1. Get to know the project (RQ1, C1)
 
-The card: "You asked the coding assistant to make a change. It has finished,
-and nothing is recorded in the history yet. Look at what it changed, then
-record all of it the way this setup records work." The git arm stages and
-commits (writing its own message); the sgt arm saves (sgt words the record).
+`./stage 1` resets to the full committed history, the same state the practice
+step ran on, and points at the dashboard. Nothing is wrong with the project and
+there is nothing to fix.
 
-The quiz, answered after recording:
+The card: "You have just joined this project. Work out what it is made of." It
+then shows a four-row map to fill in -- for each part of the dashboard, where it
+lives in the code and which piece of work in the history put it there -- with the
+first row worked as an example (the hour-of-day charts, `pages/hourly.py` and
+`metrics.py`, the work that added the hour-of-day page). Each row carries a
+cropped screenshot of that part of the participant's own dashboard, captured from
+the shipped bundle by `scripts/study/capture-page-shots.mjs`. The rows are the
+same in both arms and both projects; nothing is written down, and the map is
+there so that "what the project is made of" is a concrete question rather than an
+instruction to browse.
 
-- Which parts of the dashboard did the work change? Checkbox list of the ten
-  page behaviours, scored as set F1 against a measured key.
-- What else is in the same piece of work, if you can tell? Free text, never
-  scored, kept for the interview.
-- In one sentence, what does the history now say happened? Free text, same.
+The quiz, answered after the work: the eleven-item behaviour checklist, with the
+prompt "tick every part of the dashboard you could now name the piece of work
+behind." What comes out is a count out of eleven, comparable between the two
+setups, plus time on task and the telemetry of which surfaces were used. Three
+rating items follow: whether they understand the project, whether they
+understand which work put which part there, and (reverse-keyed) whether they
+would want someone to walk them through it before changing anything.
 
-**What this stage does not ask, and why.** An earlier draft asked how many
-separate jobs the change was, scored against a key of two. Running the stage in
-both arms showed the question does not separate them, and the reason is a real
-property of the tool rather than a fixable defect: sgt groups work into pieces
-*once it is in the history*. An uncommitted change has not been grouped yet, so
-sgt files it against whichever features the touched code already belongs to and
-reports "1 edit in 1 feature" for an eleven-file change. Both arms therefore
-answer a job-count question from the diff, which is the thing the study is
-supposed to be comparing against.
+**Why this checklist is not scored against a key, when stage 2's and stage 3's
+are.** A measured reach key needs a piece of work whose removal leaves the app
+running, because the key is produced by removing it and re-rendering every page.
+Every feature and every cross-feature group in both shipped bundles was tried
+that way -- eighteen selections in footfall, eighteen in bikecount -- and exactly
+one survives: the event-day group, which is stage 2's answer and cannot be named
+here. The rest exit zero, print `✓ revert applied`, and leave the dashboard dead,
+because subtracting a group's contribution to a shared function rolls its
+signature back past later work that is kept (docs/study/sgt-findings.md, finding
+85). So the honest options were a self-reported count or a key written by hand,
+and this study does not ship keys written by hand. The count is a weaker measure
+than S2's and S3's F1, and section 11 says so.
 
-What sgt does answer at this moment, and git has no equivalent for, is what the
-change *joined*: the save names the piece of work the edits landed in, what
-else is in it, and what removing it would now cost. That is what the free-text
-question and the stage's rating items ask about, and it is the honest form of
-C1. If S1 shows no difference, the paper reports that the representation did
-not make an unrecorded change more legible in four minutes.
-
-What this stage measures is the legibility of an unreviewed multi-file change
-at the moment of recording. The git arm reads a diff; the sgt arm reads the
-same diff plus sgt's decomposition of it. The commit message the git arm
-writes and the record sgt produces are both kept and reported descriptively;
-neither is graded, because version 1's pilots showed that grading prose under
-time pressure measures the graders.
+**What this stage measures.** How much of a product a developer can attribute to
+the work that produced it, in five minutes, from the history alone. The git arm
+reads thirteen commit subjects and their diffs; the sgt arm reads a feature map
+whose rows are named after what they do, plus `sgt show` on a file or a function
+to go the other way. If S1 shows no difference, the paper reports that the
+representation did not help a newcomer account for the product in five minutes.
 
 ### Stage 2. Find the work behind the defect (RQ2, C2; reach prediction for C3)
 
@@ -380,16 +393,22 @@ scale behind it, and the two study-written checks that replaced it were not.
 Statements on the 7-point agree/disagree scale, answered with the quiz,
 immediately after the stage. Each stage's set is one comparison family.
 
-The two reading stages ask two statements each, of the same shape both times:
-did you understand the change, and did you understand what it reaches. The two
-operating stages ask three, the last of them reverse-keyed as the guard
-against straight-lining. An earlier draft of this version asked three
-everywhere, and two of stage 2's asked, in different words, what the
-confidence item directly above them already asked.
+Stage 2 asks two statements, of the same shape: did you understand the change,
+and did you understand what it reaches. Stages 1, 3 and 4 ask three, the last of
+them reverse-keyed as the guard against straight-lining. An earlier draft of this
+version asked three everywhere, and two of stage 2's asked, in different words,
+what the confidence item directly above them already asked.
 
-Stage 1 (serves C1):
-- "I understand the changes the assistant made to this codebase."
-- "I understand the downstream effects of those changes on this codebase."
+Stage 1 (serves C1). This stage's quiz has no right answer, so its three
+statements carry more of the claim than the other stages' do, and the
+reverse-keyed one is the substantive item rather than only a straight-lining
+guard: whether an hour in a project's history left somebody willing to change it
+unaccompanied is the thing C1 is finally about.
+- "I understand what this project does and how it is put together."
+- "I understand which piece of work in this project put which part of the
+  dashboard there."
+- (reverse) "I would need someone to walk me through this project before I
+  changed anything in it."
 
 Stage 2 (serves C2):
 - "I understand why my colleague made this change."
@@ -443,8 +462,8 @@ Background is now the pre-study questionnaire (`background-v2`, section 5.2
 of version 1): the recruitment questionnaire's own demographic and
 experience items, plus a git confidence item. The closing preference block
 (`preference-v3`) asks,
-for each of the four jobs the stages exercised (recording the assistant's
-work, finding a piece of work, removing one, putting one back), "which setup
+for each of the four jobs the stages exercised (getting to know a project,
+finding a piece of work, removing one, putting one back), "which setup
 would you rather use for this", on the −2 to +2 scale with "no real
 difference" as its own kept category, then the overall item, then "would you
 put the second setup on a repository you own" (the discriminant item), then
@@ -463,8 +482,9 @@ usual freedom to follow up:
    what it actually was? What is missing or wrong?
 3. In the session you removed a colleague's work and put it back. Where in
    this repository would you want that, and what would you be afraid of?
-4. Today, when an assistant changes several files and you save it, what do
-   you actually know about what you saved? What would you want to know?
+4. Today, when you join a project you have not seen, what do you do first, and
+   what would you want its history to tell you? Today, when an assistant changes
+   several files and you save it, what do you actually know about what you saved?
 5. Would you keep this view of your repository? What would it have to do
    before you trusted it?
 
@@ -517,26 +537,33 @@ Derived measures, computed per stage and condition:
 
 ## 9. Ground truth and keys
 
-`docs/study/answer-key.json` carries, per project and versioned:
+`docs/study/answer-key.json` carries, per project and versioned, and is
+generated by `scripts/study/harvest/write_answer_key.py` against the built
+testbeds -- never written by hand:
 
-- Stage 1: the behaviour set the replayed change touches, measured by
-  rendering every page before and after the replay and diffing
-  (`snap.py`); and the job count, verified by the build gate against the
-  recorded session's operation graph.
-- Stage 2: the accepted-strings list for the identifier, and the reach set
-  from `measure_reach_key.py`, which builds a call graph from each page
-  handler and refuses to write a key the two projects disagree on.
+- Stage 1: nothing to score. Its checklist is a coverage self-report, for the
+  reason given in section 4, and the key's entry for it says so.
+- Stage 2: the accepted-strings list for the identifier -- every way either arm
+  can name the target, including the other arm's commit shas -- and the reach
+  set, measured by copying the testbed, removing the target, re-rendering every
+  page (`snap.py`), and mapping the pages that moved onto the options the
+  checklist offers.
+- Stage 3: the same reach set by construction, written from the same
+  measurement, so `gain` (S3 outcome minus S2 prediction) compares like with
+  like; plus the pages the removal is supposed to reach.
 - Stages 3 and 4: the page snapshots before removal, after a correct removal,
-  and after a correct restore, which the scorer compares against.
+  and after a correct restore, which `score_dashboard.py` compares against.
 
 Key versions are separate from question versions, for the same reason as
 version 1: a key regenerated against a rebuilt testbed changes while the
 questions stay the same, and sessions scored against different keys are not
 comparable.
 
-The upload refuses a key with no reach answer, a reach answer naming zero or
-all ten behaviours, or a stage 1 behaviour set with the same degenerate
-shapes (`web/src/study/answerKey.ts`).
+The upload refuses a key with no reach answer for a scored checklist, a reach
+answer naming zero or every behaviour, a reach answer that covers only one of the
+two projects, or one naming a behaviour the checklist does not offer
+(`web/src/study/answerKey.ts`). The same validator runs in the test that checks
+the shipped key, rather than a second copy of its rules.
 
 ## 10. Analysis plan
 
@@ -549,9 +576,9 @@ paired comparisons, not imputed).
 
 | Tier | Measures |
 |---|---|
-| Primary | S1 quiz F1 and job-count accuracy; S2 locate accuracy (binary) and time; `gain`; S3 outcome (binary) and collateral damage; S4 fidelity (binary) |
-| Secondary | The four per-stage rating triplets, UMUX-Lite, the preference block |
-| Descriptive | Telemetry (surface mix, time to first operation, wrong turns), mechanism self-reports, calibration, the stage 1 records themselves (commit messages against sgt records), interview themes |
+| Primary | S2 locate accuracy (binary) and time; `gain`; S3 outcome (binary) and collateral damage; S4 fidelity (binary) |
+| Secondary | S1 coverage (parts accounted for, out of eleven) and its three ratings; the other stages' rating sets; UMUX-Lite; the preference block |
+| Descriptive | Telemetry (surface mix, time to first operation, wrong turns), calibration, interview themes |
 
 Every outcome is reported as a paired mean difference with a 95% bootstrap
 confidence interval, 10,000 resamples over participants, fixed seed. Wilcoxon
@@ -561,10 +588,17 @@ intervals and never instead of them. Rating items are shown as full
 distributions; composites may be treated parametrically, single ordinal items
 are not.
 
-Comparison families, named in advance: the four stage triplets and UMUX-Lite.
-All five are reported whether or not they moved, with no multiple-comparison
-correction, for version 1's reason: at this sample size the real risk is
-selective reporting, and a correction answers the wrong problem.
+Comparison families, named in advance: the four stages' rating sets and
+UMUX-Lite. All five are reported whether or not they moved, with no
+multiple-comparison correction, for version 1's reason: at this sample size the
+real risk is selective reporting, and a correction answers the wrong problem.
+
+S1 moved from primary to secondary in this revision, and the reason is a property
+of the testbeds rather than a preference: its outcome is a self-reported count
+because no second piece of work in either testbed can be removed without killing
+the app, and a count of what somebody says they could name is not the same kind of
+evidence as an F1 against a measured key. Reported with the same intervals as
+everything else, and read as weaker.
 
 ### Pre-commitments
 
@@ -573,9 +607,11 @@ selective reporting, and a correction answers the wrong problem.
    and the selection gate measured that the git-arm revert conflicts on this
    target. A null result on stage 3 counts against C3, not as something to
    set aside. The selection criteria are published with the result.
-2. Stage 1 is the novel measure and the least protected by precedent. If S1
-   shows no difference, the paper reports that the decomposition did not make
-   the change more legible in four minutes, and does not soften it.
+2. Stage 1 is the novel measure and the least protected by precedent, and its
+   outcome is self-reported. If S1 shows no difference, the paper reports that
+   the representation did not help a newcomer account for the product in five
+   minutes, and does not soften it. If it shows a difference, the paper reports
+   that it rests on a coverage claim and three rating items, not on a key.
 3. Predicted dissociation: scored fidelity on stage 4 and the trust item (the
    stage 4 reverse-keyed statement) may point different ways. Either way it
    is reported.
@@ -606,12 +642,39 @@ are fixed before the first participant of the new design.
 - The removal target was selected by a gate whose criteria include the git
   revert conflicting. The paper publishes the criteria and the parity table
   rather than presenting the target as arbitrary.
-- The behaviour checklists supply the answer space. Recognising which of ten
+- The behaviour checklists supply the answer space. Recognising which of eleven
   listed behaviours a change touches is easier than asking, unprompted, what
-  might break; `gain` is a difference within a supplied set.
+  might break; `gain` is a difference within a supplied set. The measured reach
+  sets are also broad -- the event-day work reaches nine of the eleven parts in
+  footfall and eight in bikecount -- so ticking everything scores an F1 of about
+  0.86, and the paper reports that tick-everything baseline alongside each
+  condition's mean rather than leaving the reader to work it out.
+- Stage 1's outcome is a count of what the participant says they could account
+  for, not an F1 against a key, because in both testbeds only one piece of work
+  can be removed without killing the app and it is stage 2's answer (section 4).
+- The study no longer exercises recording at all: no stage asks the participant
+  to run `sgt save` or `git commit`, so it says nothing about the moment a change
+  enters the history. That was stage 1's job in the earlier design of this
+  version, and it was traded for orientation because pilots were arriving at
+  stage 2 without knowing what the product did. The interview still asks about
+  it (section 6.4, question 4).
 - Four stages, one workflow, two small synthesized codebases, 4-minute caps.
   First-contact evidence only; the companion field deployment remains the
   design document's recommendation.
+- The sgt arm's commit messages carry sgt's own bookkeeping. `sgt save` records
+  which operations a commit embodies as `Sgt-Op:` trailers, and they are
+  load-bearing (resync and sync read them back), so they cannot be stripped from
+  the history. footfall's newest commit is a six-line message followed by 125
+  lines of hex; the whole sgt-arm history carries 2,050 such lines, and the git
+  arm's repositories are rendered without them. Left alone, that makes plain `git
+  log` harder to read in the sgt arm than in the git arm -- a bias in sgt's own
+  favour, on the one surface both arms share. Both bundles therefore set the same
+  repo-local git pager, which drops lines that are nothing but `Sgt-Op:` and a
+  hex id (`scripts/study-bundle/install/setup.sh`): 134 lines become 12, and
+  nothing an author wrote is touched. It is a no-op in the git arm, so it is not
+  a condition difference. What it does not cover is the editor's own git views,
+  which render the message themselves, and which a participant in the sgt arm can
+  open. The paper states this, with the numbers.
 - The own-repository walkthrough is interview material, not a measure. It is
   subject to whatever repository people bring, and its fallback path (a
   prepared public repository) produces different material than the primary

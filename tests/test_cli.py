@@ -803,12 +803,18 @@ def test_map_rebuild_forces_a_full_recluster(tmp_path, capsys):
     assert "feature" in out
 
 
-def test_print_map_tree_drops_phantom_empty_member_leaves(capsys):
-    """A feature leaf with no members is a clustering-split artifact (empty child), not a real
-    feature -- it and any subsystem left with nothing else to show must not print. A leaf with
-    real members but 0 ops (pre-existing code sgt never mined an op for) is still a real feature
-    and must still print -- `sgt map` shows what exists, not just what has history."""
-    from sgt.cli.inspect import _print_map_tree
+def test_tree_drops_phantom_empty_member_leaves():
+    """A feature leaf that owns no symbol is a clustering artifact (an empty split child, or a lane
+    whose ops touch only bookkeeping), not a real feature -- it and any subsystem left with nothing
+    else to show must not print, and must not be counted. A leaf with real members but 0 ops
+    (pre-existing code sgt never mined an op for) is still a real feature and must still print --
+    the tree shows what exists, not just what has history.
+
+    This is asserted against the renderer `sgt log --tree` actually calls. It used to be asserted
+    against a second, unreachable renderer that kept the filter after the live one lost it, so the
+    test passed for months while every real tree printed the phantom rows -- which is how the study
+    bundles shipped a tree listing ten features next to a map drawing nine."""
+    from sgt.tui.views import tree_lines
 
     view = {
         "roots": ["N0"],
@@ -824,8 +830,7 @@ def test_print_map_tree_drops_phantom_empty_member_leaves(capsys):
         ],
         "feature_count": 2,
     }
-    _print_map_tree(view)
-    out = capsys.readouterr().out
+    out = "\n".join(tree_lines(view, color=False, width=80))
     assert "Real Feature" in out
     assert "phantom subsystem" not in out and "F2" not in out
     assert "1 feature" in out  # not the inflated view["feature_count"] of 2

@@ -96,7 +96,9 @@ export const STEPS: Step[] = [
   // consent line ticked, starts building the view of the participant's own
   // repository in the background, so it is ready for the interview at the end.
   { id: 'setup-1', phase: 'First half', title: 'Set up your machine', kind: 'setup', half: 1, estimateMin: 6 },
-  { id: 'tutorial-1', phase: 'First half', title: 'Practice', kind: 'tutorial', half: 1, estimateMin: 5 },
+  // Four, and three for the second half. The practice used to have a fourth
+  // section on recording work, which no stage asks for any more.
+  { id: 'tutorial-1', phase: 'First half', title: 'Practice', kind: 'tutorial', half: 1, estimateMin: 4 },
   // The estimate for a task block IS the caps plus the answering, read from
   // the stages themselves. Written out as a number it drifts the moment a
   // stage is added, and the drift is invisible: the participant plans their
@@ -122,7 +124,7 @@ export const STEPS: Step[] = [
   // The second setup is short: the tooling is already on the machine, so this
   // is unpacking the second project and running its checks.
   { id: 'setup-2', phase: 'Second half', title: 'Set up the second project', kind: 'setup', half: 2, estimateMin: 2 },
-  { id: 'tutorial-2', phase: 'Second half', title: 'Practice', kind: 'tutorial', half: 2, estimateMin: 4 },
+  { id: 'tutorial-2', phase: 'Second half', title: 'Practice', kind: 'tutorial', half: 2, estimateMin: 3 },
   {
     id: 'tasks-2',
     phase: 'Second half',

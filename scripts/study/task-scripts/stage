@@ -154,23 +154,25 @@ fi
 
 case "$stage" in
 0)
-    # Deliberately `study/stage1` without its patch: the same starting point as
-    # stage 1, minus the assistant's work. Practising on the full history would
-    # mean reading the change stage 1 then presents as new.
-    reset_to study/stage1
+    # The full history, the same state stage 1 starts from. Practice used to run
+    # one piece of work short of it, because stage 1 then replayed that work into
+    # the working copy as an unrecorded change and practising on the finished
+    # version would have meant reading it early. Stage 1 asks what the project is
+    # MADE of now, so there is nothing left to hide and no second state to
+    # explain.
+    reset_to study/full
     echo
-    echo "This is the real project, as it stood before the assistant touched it."
+    echo "This is the real project, with its whole history."
     echo "Everything you do to it here is undone when you run \`./stage 1\`, so"
     echo "nothing you try now can go wrong."
     ;;
 1)
-    reset_to study/stage1
-    [ -f .study/stage1.patch ] || { echo "this project is missing .study/stage1.patch" >&2; exit 1; }
-    git apply .study/stage1.patch
+    reset_to study/full
     echo
-    echo "The assistant's changes are in your working copy. Nothing is recorded yet."
-    echo "${dim}Files it changed:${off}"
-    git status --short | sed 's/^/    /'
+    echo "The project is at its full history, with nothing of anyone else's left in it."
+    echo
+    echo "Start the dashboard in your other terminal if it is not running already:"
+    echo "    ${bold}python3 -m $(pkg).server${off}   then open http://localhost:8000"
     ;;
 2)
     reset_to study/full
