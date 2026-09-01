@@ -84,6 +84,57 @@ def event_theme(repo):
     return {"theme_id": best[0], "label": best[1], "atoms": best[2]}
 
 
+def theme_vocabulary(repo, theme_id):
+    """Every name the sgt arm can read off the screen for one group.
+
+    The group's own label and id are what `sgt log` prints on the ◆ row, and the saves' shas and
+    subjects are what `--rail` and `git log` print. Neither is the whole vocabulary: a participant
+    who runs `sgt log --focus "<group>"` is shown the group's CHECKPOINTS, listed under the map with
+    the feature each one sits on, and naming one of those is naming the work. A key without them
+    marks that answer wrong -- which is what the shipped key did until it was patched by hand, and
+    a hand-patched key goes stale at the next rebuild.
+
+    Derived rather than listed, and the rule is WHOLLY rather than partly: a checkpoint counts when
+    every op in it is one of the group's, which means the checkpoint is this group's work under
+    another name. Merely sharing an op is not enough -- the event-day work landed inside footfall's
+    `Monthly Totals Page` chapter (3 of its 30 ops) and bikecount's (2 of 17), and accepting those
+    would mark "Monthly Totals" a correct answer to "which work made the 2018 average wrong". On
+    both testbeds the rule selects exactly the event-day chapters and nothing else.
+
+    The feature labels those checkpoints sit on are deliberately NOT accepted, for the same reason:
+    a lane the work touches is a different granularity from the work.
+    """
+    from sgt.core.store import Store
+
+    themes = state_of(repo).load_json(repo, "intent_themes", default={}) or {}
+    entry = themes.get(theme_id) or {}
+    shas = {a[:7] for a in (entry.get("atom_shas") or ())}
+    if not shas:
+        return []
+    ops = set()
+    for op in Store(repo).all_ops():
+        for prov in op.provenance:
+            sha = prov if isinstance(prov, str) else getattr(prov, "sha", "")
+            if sha and sha[:7] in shas:
+                ops.add(op.id)
+                break
+    names = set()
+    for chapter in _all_chapters(repo):
+        held = set(chapter["op_ids"])
+        if held and held <= ops:
+            names.add(chapter["label"])
+    return sorted(n for n in names if n)
+
+
+def state_of(repo):
+    """`sgt.state`, imported late like every other sgt import in this file: the module is imported
+    against whichever checkout is on the path, and importing at module scope made this script
+    unusable from a bundle's own interpreter."""
+    from sgt import state
+
+    return state
+
+
 def newest_theme(repo):
     """The group covering the most recent piece of work in the history.
 
@@ -413,6 +464,8 @@ def main(bike, foot, out_path):
             accepted = [chapter["label"], chapter["feature_id"]]
             for save in _theme_saves(repo, chapter["feature_id"]):
                 accepted.extend([save["sha"], save["subject"]])
+            # The checkpoint and feature names the same group is listed under.
+            accepted.extend(theme_vocabulary(repo, chapter["feature_id"]))
         else:
             selector = f"{chapter['feature_id'][:10]}@{chapter['seg_index']}"
             accepted = [
