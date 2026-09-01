@@ -978,9 +978,36 @@ svg.railsvg {
   opacity: 1;
 }
 
+/* The target row, in the direction the verb moves it. It used to take a neutral --fg outline for
+   both verbs, which is why a restore preview and a revert preview looked the same on the one row
+   the user was actually looking at. The channels are the ones the roles already use: --blast for
+   work leaving, --land for work coming back. */
 .gantt.preview .preview-target .glane-swatch {
   stroke: var(--fg);
   stroke-width: 1.5px;
+}
+
+.gantt.preview .preview-target.preview-losing .glane-swatch {
+  stroke: var(--blast);
+}
+
+.gantt.preview .preview-target.preview-gaining .glane-swatch {
+  stroke: var(--land);
+}
+
+/* And the target's own chapters read as the state they will end in, the same way a dependency's do:
+   a revert drains its cars toward the hollow look a reverted car already has, a restore fills the
+   hollow ones back toward solid. Without this the row said "something happens here" and left the
+   direction to the count label. */
+.gantt.preview .preview-target.preview-losing .gcar {
+  fill-opacity: 0.12;
+  stroke-dasharray: 3 3;
+}
+
+.gantt.preview .preview-target.preview-gaining .gcar-reverted {
+  fill-opacity: 0.5;
+  stroke-dasharray: 3 3;
+  animation: gcar-pending-pulse var(--beat-slow) ease-in-out infinite;
 }
 
 .gantt.preview .preview-target .glane-label {
@@ -1632,6 +1659,7 @@ svg.railsvg {
   .skel-line,
   .gcar,
   .gcar-wrap.gcar-preview-in .gcar,
+  .gantt.preview .preview-target.preview-gaining .gcar-reverted,
   .glane.preview-pending,
   .rail-row.preview-pending,
   .preview-context-pill.pending,
