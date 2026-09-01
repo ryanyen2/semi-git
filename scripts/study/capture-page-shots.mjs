@@ -98,6 +98,20 @@ const CROPS = [
                height: bottom + 24 } })()`,
   },
   {
+    // The by-year page as it actually looks, for stage 1's map. The marked
+    // variant below is an annotation we add, and on a card that opens "nothing
+    // is wrong with it" a red outline round the 2018 row says the opposite.
+    name: 'yearly-plain',
+    paths: ['/yearly', '/years'],
+    what: 'the by-year table, unmarked',
+    clip: `(() => { const t = document.querySelector('main table').getBoundingClientRect();
+             const note = [...document.querySelectorAll('main p')]
+               .map((p) => p.getBoundingClientRect())
+               .filter((r) => r.top >= t.bottom - 1).pop();
+             return { x: 0, y: 0, width: document.documentElement.clientWidth,
+                      height: (note ? note.bottom : t.bottom) + 20 } })()`,
+  },
+  {
     name: 'yearly',
     // The harvest let each project's agent choose its own routes, and they chose
     // differently. Tried in order; the first that has a by-year table wins.

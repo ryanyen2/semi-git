@@ -31,14 +31,16 @@ Run the command below first. It puts the project into this stage's starting stat
 
 **What happened:** You have just joined this project. Nothing is wrong with it, and there is nothing to fix in this stage.
 
-**Your job:** Work out what this project is made of. Put the dashboard beside your setup's view of the history, and fill in the map below — for each part of the dashboard, where it lives in the code and which piece of work in the history put it there. The first row is filled in as an example.
+**Your job:** Work out what this project is made of. Put the dashboard beside your setup's view of the history, and fill in the map below, right to left: for each part of the dashboard, which piece of work in the history put it there and where in the code that work lives. The first row is filled in as an example.
 
-| Part of the dashboard | Where it lives in the code | The work that put it there |
+| The work | Where it lives in the code | What it puts on the dashboard |
 |---|---|---|
-| **The busiest hour, and the hour-of-day chart under it** ![The hourly page: the busiest hour, and the average count by hour of day](/stages/footfall-hourly.png) | `footfall/pages/hourly.py` draws it; `footfall/metrics.py` works out the averages | *(example)* the work that added the hour-of-day page |
-| **The month-by-month chart** ![The monthly page](/stages/footfall-monthly.png) | | |
-| **The one-row-per-year table** ![The by-year page](/stages/footfall-yearly.png) | | |
-| **The north against south comparison** ![The two-sensor comparison page](/stages/footfall-sides.png) | | |
+| *(example)* the work that added the hour-of-day page | `pages/hourly.py` draws it, `metrics.py` works out the averages | **The busiest hour, and the hour-of-day chart under it** ![The hourly page: the busiest hour, and the average count by hour of day](/stages/footfall-hourly.png) |
+| | | **The month-by-month chart** ![The monthly page](/stages/footfall-monthly.png) |
+| | | **The one-row-per-year table** ![The by-year page](/stages/footfall-yearly-plain.png) |
+| | | **The north against south comparison** ![The two-sensor comparison page](/stages/footfall-sides.png) |
+
+File names are relative to the project's package, the one the practice sheet lists — `pages/hourly.py` is the hour-of-day page.
 
 The date window at the top of every page is the one control on the dashboard. The pages open on the most recent year; set it to 2018 if you want to see the whole of a year.
 
