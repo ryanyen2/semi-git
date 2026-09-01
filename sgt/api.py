@@ -3101,6 +3101,63 @@ def show_view(repo, target: str, *, symbol_limit: int = 12, save_limit: int = 5,
 
     found = select_resolve.identify(repo, target)
     if found is None:
+        # A ◆ row is a thing `sgt log` draws, `sgt log --focus` opens, and `sgt revert`/`sgt restore`
+        # both act on by name -- and it was the one noun `show` could not answer for. Asked about the
+        # piece of work a task actually names ("Event Day Handling"), the verb whose whole job is
+        # "what is this and what would come with it" said it was not a known anything. That gap is
+        # felt exactly where it costs most: a ◆ carries no id in the log the way a lane does, so its
+        # label is the only handle a reader has, and this is the verb that turns a handle into an
+        # answer. Matched on the label the way the acting verbs match it, and on the theme id, which
+        # this view is now also the place to *find*.
+        theme = _theme_by_label(repo, target)
+        if theme is not None:
+            from types import SimpleNamespace
+
+            op_ids = frozenset(theme["op_ids"])
+            symbols, files = _show_footprint(repo, op_ids)
+            provenance = _show_provenance(repo, op_ids, save_limit)
+            # Real consequences, from the same `plan_revert_op_set` every other kind uses -- so
+            # "what would come out with it" is answered before stage 3 asks anyone to take it out.
+            shim = SimpleNamespace(target=theme["label"], op_ids=op_ids, kind="theme",
+                                   label=theme["label"], feature_id=None)
+            consequences = _show_consequences(repo, shim, core_verbs, symbol_limit)
+            quoted = f'"{theme["label"]}"'
+            return {
+                "ok": True,
+                "kind": "work across features",
+                "target": target,
+                "id": theme["theme_id"],
+                "handle": theme["theme_id"],
+                "label": theme["label"],
+                "rationale": theme["rationale"],
+                "across_features": len(theme["feature_span"]),
+                "feature": None,
+                "op_count": len(op_ids),
+                **({"ops": sorted(op_ids)} if include_ops else {}),
+                "symbols": symbols[:symbol_limit],
+                "symbol_count": len(symbols),
+                "files": files,
+                "saves": provenance["saves"],
+                "save_count": provenance["save_count"],
+                "span": provenance["span"],
+                "consequences": consequences,
+                "next": [
+                    {"cmd": f"sgt log --focus {quoted}",
+                     "why": "this work in the map, with the features it landed on"},
+                    # Which of the two acting verbs to offer depends on where the work currently
+                    # stands, and `removes == 0` is what says so: reverting it would take nothing
+                    # out, so it is not in the project now. Offering `revert` there points at the
+                    # verb that has already run -- and the participant reading this card in the
+                    # stage that asks them to put the work BACK would be handed the verb that took
+                    # it out, under a consequence line ("reverting this changes nothing") they have
+                    # to reason backwards from.
+                    ({"cmd": f"sgt restore {quoted}",
+                      "why": "it is not in the project now; this puts it back"}
+                     if consequences["removes"] == 0 and op_ids else
+                     {"cmd": f"sgt revert {quoted}",
+                      "why": "preview taking it out; add --yes to apply"}),
+                ],
+            }
         # A fourth such situation, and the only one where the token named something real: the
         # feature part of a `<feature>@<n>` resolved and the chapter index did not. "not a known
         # feature, checkpoint, op, or symbol" denies the feature the user can see in the tree.
@@ -3200,6 +3257,36 @@ def show_view(repo, target: str, *, symbol_limit: int = 12, save_limit: int = 5,
         "consequences": consequences,
         "next": _show_next(found, consequences),
     }
+
+
+def _theme_by_label(repo, target: str) -> dict | None:
+    """The ◆ row whose label (or theme id) is `target`, or None.
+
+    Label matching is deliberately the same shape the acting verbs use -- case-insensitive and blind
+    to punctuation -- so the two projects' spellings of the same work ("Event-Day Handling" and
+    "Event Day Handling") both land, and a name copied out of a stage card resolves whichever way it
+    was written. `show` still refuses a *phrase*: this is an exact-label rung, not the NL resolver
+    (`test_show_never_calls_the_nl_resolver` pins that), and a name that merely mentions the work
+    squashes to something different and misses."""
+    from sgt import state
+
+    squash = lambda t: "".join(c for c in t.casefold() if c.isalnum())
+    want = squash(target)
+    if not want:
+        return None
+    # Cheap gate first. This runs on every `show` miss -- a typo, a stale id -- and `intent_view`
+    # folds atoms, ops and the tree to build its answer. A repo with no ◆ rows at all (most of them,
+    # and every one before `sgt intent build` has run) pays one small JSON read instead.
+    persisted = state.load_json(repo, "intent_themes", default={})
+    if not persisted:
+        return None
+    if not any(squash(e.get("label", "")) == want or tid == target.strip()
+               for tid, e in persisted.items()):
+        return None
+    for theme in intent_view(repo)["themes"]:
+        if squash(theme["label"]) == want or theme["theme_id"] == target.strip():
+            return theme
+    return None
 
 
 def _show_handle(found) -> str:

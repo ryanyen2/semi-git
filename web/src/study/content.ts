@@ -375,6 +375,8 @@ You can also show a feature by its exact name:
 sgt show "<feature name>"
 \`\`\`
 
+The same command answers for a ◆ piece of cross-feature work. It says what that work was, which files it touches, the saves it spans, and what taking it out would remove.
+
 Find and read:
 
 - the work that added the CSV download

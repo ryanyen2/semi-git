@@ -77,6 +77,11 @@ def _print_show(view: dict) -> None:
     print(f'{view["kind"]} {view["handle"]}{label}')
 
     print(f"  {_extent(view)}")
+    # A ◆ row is the one kind that carries a sentence saying what the work WAS, written when the row
+    # was named. Everything else on this card is shape -- counts, symbols, saves -- and shape does
+    # not tell a reader coming to unfamiliar history what they are looking at. Only this kind has it.
+    if view.get("rationale"):
+        print(f'  {view["rationale"]}')
     if view["feature"]:
         print(f'  in feature   {view["feature"]["handle"]}  "{view["feature"]["label"]}"')
     # Suppressed when the list would only restate the header (a single-symbol selection *is* its
@@ -112,6 +117,10 @@ def _extent(view: dict) -> str:
     if view["symbol_count"] > 1 or view["kind"] in ("feature", "checkpoint", "save"):
         parts.append(f'{view["symbol_count"]} symbol' + ("s" if view["symbol_count"] != 1 else "")
                      + f' in {len(view["files"])} file' + ("s" if len(view["files"]) != 1 else ""))
+    # A ◆ row's defining property is the spread itself, and it is what `sgt log` labels the row
+    # with ("across 7 features"). Only present on that kind, so no other selection grows a clause.
+    if view.get("across_features"):
+        parts.append(f'across {view["across_features"]} features')
     last = view["span"]["last"]
     if last is not None:
         parts.append(f"last touched {_fmt_age(max(0.0, time.time() - last))}")

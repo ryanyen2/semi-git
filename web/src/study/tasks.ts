@@ -483,7 +483,7 @@ The pages open on the most recent year. Set the date window at the top to cover 
         '`sgt log` shows the history grouped by feature; `sgt log --rail` lists what happened, newest first.',
         '`sgt find "the bit that works out the averages"` searches by description. Any wording will do.',
         '`sgt log --focus "<name>"` opens one feature — or one ◆ piece of cross-feature work: the map stays, its chapters are listed underneath.',
-        'To answer "which parts of the dashboard": a feature\'s card in the workbench (and `sgt show "<name>"`) lists the files it touches, and `pages/<name>.py` is the page of the same name.',
+        'To answer "which parts of the dashboard": `sgt show "<name>"` lists the files a feature — or a ◆ piece of cross-feature work — touches, and what taking it out would remove. `pages/<name>.py` is the page of the same name, and the workbench shows the same card.',
       ],
     },
     run: {

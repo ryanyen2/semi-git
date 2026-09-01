@@ -431,3 +431,71 @@ def test_a_commit_shaped_miss_says_which_of_the_three_things_went_wrong(tmp_path
     assert "not a commit in this repo" in view["message"]
     assert "more than one" in view["message"]
     assert "recorded no edits" in view["message"]
+
+
+def test_show_answers_a_row_of_work_across_features(tmp_path, monkeypatch):
+    """F133. A ◆ row was the one noun `show` could not answer for.
+
+    `sgt log` draws it, `sgt log --focus` opens it, and `sgt revert`/`sgt restore` both act on it by
+    name -- but asked about the piece of work a task actually names, the verb whose whole job is
+    "what is this, and what would come with it" replied that it was not a known feature, checkpoint,
+    op, or symbol. It is felt exactly where it costs most: a ◆ carries no id in the log the way a
+    lane does, so its label is the only handle a reader has.
+
+    The answer has to carry the consequence too, from the same `plan_revert_op_set` every other kind
+    uses -- "what comes out with it" is the question the stage before the removal asks."""
+    from sgt import state
+    from sgt.intent import theme
+    from sgt.store.gitbind import init_store
+
+    monkeypatch.setattr(
+        theme, "get_client",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("no LLM in tests")))
+
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("track event days")
+    (tmp_path / "b.py").write_text("def bar():\n    return 2\n", encoding="utf-8")
+    gb.commit_all("keep event days out of the averages")
+    get(tmp_path)
+
+    themes = theme.build_themes(tmp_path)
+    tid, entry = next(iter(themes.items()))
+    entry["label"] = "Event Day Handling"
+    state.save_json(tmp_path, "intent_themes", {tid: entry})
+
+    view = api.show_view(tmp_path, "Event Day Handling")
+    assert view["ok"] is True, view.get("message")
+    assert view["kind"] == "work across features"
+    assert view["label"] == "Event Day Handling"
+    assert view["id"] == tid
+    assert view["op_count"] > 0
+    # The sentence saying what the work WAS. Everything else on the card is shape, and shape does
+    # not tell a reader coming to unfamiliar history what they are looking at.
+    assert view["rationale"] == entry["rationale"]
+    # Pinned against the source it is read from rather than a literal: this fixture is two commits
+    # in one feature, and the number that matters (7, on the study repo) is a property of the repo.
+    theme_row = next(t for t in api.intent_view(tmp_path)["themes"] if t["theme_id"] == tid)
+    assert view["across_features"] == len(theme_row["feature_span"])
+    assert view["consequences"]["live_op_count"] >= 0  # a real preview ran, not a stub
+    # The `next:` steps are the two verbs that take this name, spelled the way they must be typed.
+    cmds = [s["cmd"] for s in view["next"]]
+    assert any('sgt log --focus "Event Day Handling"' == c for c in cmds), cmds
+    assert any('sgt revert "Event Day Handling"' == c for c in cmds), cmds
+
+    # Which acting verb the card offers depends on where the work stands. With it in, `revert`;
+    # with it already out, `restore` -- the stage that asks for it back must not be handed the verb
+    # that took it away, under a consequence line it has to reason backwards from.
+    monkeypatch.chdir(tmp_path)
+    assert main(["revert", "Event Day Handling", "--yes"]) == 0
+    out_view = api.show_view(tmp_path, "Event Day Handling")
+    assert out_view["consequences"]["removes"] == 0, "the revert did not take it out"
+    assert any(c["cmd"] == 'sgt restore "Event Day Handling"' for c in out_view["next"]), \
+        [c["cmd"] for c in out_view["next"]]
+
+    # The two projects spell the same work differently, and a name copied off a stage card has to
+    # land either way -- the acting verbs already match it blind to case and punctuation.
+    assert api.show_view(tmp_path, "event-day handling")["id"] == tid
+
+    # Still not a phrase resolver: a name that merely mentions the work misses, as `show` promises.
+    assert api.show_view(tmp_path, "the bit that handles event days")["ok"] is False
