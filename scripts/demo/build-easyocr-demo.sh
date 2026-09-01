@@ -301,6 +301,16 @@ rm -f "$rebuild_log"
 # history and not this build. The 67 leaf features are also worth reading against the 29 the
 # rendered tree below prints -- the render drops the 38 zero-symbol lanes, but every `--json`
 # surface (and therefore the VS Code workbench) still reports 67.
+#
+# `sgt advanced resync` is deliberately NOT run here, and this is the note that stops the next
+# person adding it. It is the obvious candidate -- `sgt save`'s own failure message on this repo
+# recommends it by name -- and it does recover ops: measured on this build it ran 6m16s and
+# re-derived `refs/heads/master` from 2,066 to 2,181 ops (+115), taking the reported working-tree
+# drift from 81 files to 71. It changed nothing anyone can see. `sgt save` failed afterwards with
+# the identical message, no walkthrough step behaves differently, and every op count in the
+# walkthrough (including its step-8 reset check, `2319`) shifts. Six minutes for a number nobody
+# reads. If you want the fuller ideal for some other reason, run it by hand and re-take the doc's
+# numbers; do not put it in the build.
 say "checking the feature graph (advisory -- read the output)"
 "$SGT_PY" "$SGT_SOURCE/scripts/check_graph_integrity.py" "$target" 2>&1 \
     | /usr/bin/grep -v '^    ' | sed 's/^/  /' || true
