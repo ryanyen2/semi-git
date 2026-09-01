@@ -244,7 +244,7 @@ export function demoDataset(seed = 4242): Dataset {
       label: `P${String(ordinal).padStart(2, '0')}`,
       ordinal,
       group,
-      gitExpertise: clamp(Math.round(13 + ability * 3 + gauss() * 3), 0, 24),
+      gitConfidence: clamp(Math.round(3.5 + ability * 0.7 + gauss() * 0.7), 1, 5),
       events,
       requests,
       halves,

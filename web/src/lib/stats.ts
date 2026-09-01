@@ -317,15 +317,3 @@ export function umuxLiteScore(values: Record<string, unknown>): number | null {
   if (typeof capability !== 'number' || typeof easy !== 'number') return null
   return ((capability - 1 + (easy - 1)) / 12) * 100
 }
-
-/** Background git-verb grid, 0 to 24. */
-export function gitExpertise(values: Record<string, unknown>): number | null {
-  const verbs = ['log', 'blame', 'bisect', 'revert', 'reset', 'rebasei', 'reflog', 'cherrypick']
-  let sum = 0
-  for (const v of verbs) {
-    const raw = values[`gitVerbs.${v}`]
-    if (raw == null) return null
-    sum += Number(raw)
-  }
-  return sum
-}
