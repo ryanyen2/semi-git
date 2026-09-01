@@ -57,6 +57,8 @@ Run the command below first. It resets the project and prints the two numbers th
 
 **What happened:** The transport committee published a paper last year saying that the average day in 2018 saw **42,436** people walk past. The dashboard's by-year page now says **42,545** for the same year. The numbers disagree because a colleague changed the way the dashboard works out an average. Days on the project's list of unusual days, such as Grand Final Friday and Christmas, are now left out of every average, and the paper was written when every day still counted.
 
+![The by-year page, with the 2018 row marked — its average-day number is the one that disagrees with the paper](/stages/footfall-yearly.png)
+
 **Your job:** Find the piece of work in the project's history that made that change. You do not have to change any code.
 
 **You are done when:** You can name the piece of work — a commit hash, a named piece of work, or an id all count. The questions after this stage ask you which one you found. If you are not certain, choose what you have and say that you are not certain. That is more useful to us than a guess.
@@ -85,6 +87,8 @@ Run the command below first. It resets the project and names the work you have t
 
 **Your job:** Take that work out of the project. Three things have to go: the list of unusual days the project keeps, the marks that flag those days on the daily and monthly charts, and the rule that leaves those days out of the averages. Everything else the dashboard shows has to keep working.
 
+![The monthly page today: the coloured bars flag months containing an unusual day. After the removal, no bar is coloured and the note under the chart is gone.](/stages/footfall-monthly.png)
+
 **You are done when:** `./check 3` says the program still runs and the by-year page reads **42,436** for 2018 again. Run it as often as you like. It prints the same words for everyone, it does not mark you, and a red line in it is information rather than a verdict.
 
 When you run `./stage 3`, it will:
@@ -110,6 +114,8 @@ Run the command below first. It puts the project into the state where the work h
 **What happened:** The committee has changed its mind. Now that they have seen the averages with every day counted, they agree with your colleague that a public holiday when the offices are shut says nothing about how many people walk to work on an ordinary day, so those days should stay out of the averages after all.
 
 **Your job:** Put that work back into the project, exactly as it was before the removal.
+
+![The by-year page you are aiming for: the marked 2018 row reads its excluded-days number again](/stages/footfall-yearly.png)
 
 **You are done when:** `./check 4` says the program still runs and the by-year page reads **42,545** for 2018 again.
 

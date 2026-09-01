@@ -289,6 +289,10 @@ export const PROJECT_WORDS: Record<
     unusualDays: string
     ordinaryDay: string
     precision: string
+    /** Stage screenshots (web/public/stages/): the by-year table with the 2018 row marked, and
+     * the monthly chart whose coloured bars flag event days. Captured from the shipped bundle's
+     * own dashboard, so what the card shows is exactly what the participant's browser shows. */
+    img: { yearly: string; monthly: string }
   }
 > = {
   bikecount: {
@@ -301,6 +305,7 @@ export const PROJECT_WORDS: Record<
     ordinaryDay:
       'a snowstorm that shut the city says nothing about how many people cycle to work on an ordinary day',
     precision: 'one-bike precision',
+    img: { yearly: '/stages/bikecount-yearly.png', monthly: '/stages/bikecount-monthly.png' },
   },
   footfall: {
     reported: '42,436',
@@ -312,6 +317,7 @@ export const PROJECT_WORDS: Record<
     ordinaryDay:
       'a public holiday when the offices are shut says nothing about how many people walk to work on an ordinary day',
     precision: 'single-person precision',
+    img: { yearly: '/stages/footfall-yearly.png', monthly: '/stages/footfall-monthly.png' },
   },
 }
 
@@ -414,28 +420,12 @@ Run the command below first. It puts the project into this stage's starting stat
         prompt: "Which parts of the dashboard did the assistant's work change?",
         scored: true,
       },
-      // Was a free-text box asking what else was in the same piece of work.
-      // Pilots answered it with a shrug or a sentence about the diff, and it
-      // cost a minute of an untimed quiz that people were already tired of. The
-      // same thing as four options is answerable in five seconds and comparable
-      // across participants.
-      // Asks whether they READ where the record landed (the save echo / the commit in the log),
-      // not what they did -- a participant who recorded without looking picks "I could not tell",
-      // and that is the signal. The old wording ("What did it join?") assumed the sgt arm's
-      // vocabulary and read as a riddle in the git arm.
-      {
-        kind: 'choice',
-        id: 'joined',
-        prompt:
-          'When you recorded the work, did the setup connect it to any earlier work in the project?',
-        options: [
-          { value: 'alone', label: 'No — it stands on its own.' },
-          { value: 'same', label: 'Yes — earlier work on the same part of the dashboard.' },
-          { value: 'other', label: 'Yes — earlier work on a different part of the dashboard.' },
-          { value: 'unsure', label: 'I could not tell.' },
-        ],
-        scored: false,
-      },
+      // The follow-up about what the record "joined" is gone entirely. It was
+      // rewritten once and still read as a riddle -- the study's own author
+      // could not say what it was asking -- and an experimenter sits with every
+      // participant, so an unscored comprehension probe that needs explaining
+      // costs more than it returns. The scored parts question above already
+      // covers whether they read where the work landed.
     ],
     quizConfidence: true,
     ratings: [
@@ -470,6 +460,8 @@ Run the command below first. It resets the project and prints the two numbers th
 
 **What happened:** ${w.publisher} published a ${w.document} last year saying that the average day in 2018 saw **${w.reported}** ${w.body}. The dashboard's by-year page now says **${w.dashboard}** for the same year. The numbers disagree because a colleague changed the way the dashboard works out an average. Days on the project's list of unusual days, such as ${w.unusualDays}, are now left out of every average, and the ${w.document} was written when every day still counted.
 
+![The by-year page, with the 2018 row marked — its average-day number is the one that disagrees with the ${w.document}](${w.img.yearly})
+
 **Your job:** Find the piece of work in the project's history that made that change. You do not have to change any code.
 
 **You are done when:** You can name the piece of work — a commit hash, a named piece of work, or an id all count. The questions after this stage ask you which one you found. If you are not certain, choose what you have and say that you are not certain. That is more useful to us than a guess.
@@ -485,8 +477,7 @@ Run the command below first. It resets the project and prints the two numbers th
       sgt: [
         '`sgt log` shows the history grouped by feature; `sgt log --rail` lists what happened, newest first.',
         '`sgt find "the bit that works out the averages"` searches by description. Any wording will do.',
-        '`sgt intent list` prints every feature and checkpoint with the handle you can type back, and the groups that span several features at the bottom.',
-        '`sgt show "<name>"` shows what one piece of work covers.',
+        '`sgt log --focus "<name>"` opens one feature or group: the map stays, its chapters are listed underneath.',
       ],
     },
     run: {
@@ -576,6 +567,8 @@ Run the command below first. It resets the project and names the work you have t
 
 **Your job:** Take that work out of the project. Three things have to go: the list of unusual days the project keeps, the marks that flag those days on the daily and monthly charts, and the rule that leaves those days out of the averages. Everything else the dashboard shows has to keep working.
 
+![The monthly page today: the coloured bars flag months containing an unusual day. After the removal, no bar is coloured and the note under the chart is gone.](${w.img.monthly})
+
 **You are done when:** \`./check 3\` says the program still runs and the by-year page reads **${w.reported}** for 2018 again. Run it as often as you like. It prints the same words for everyone, it does not mark you, and a red line in it is information rather than a verdict.
 `,
     ),
@@ -589,7 +582,7 @@ Run the command below first. It resets the project and names the work you have t
       sgt: [
         '`sgt revert "<name>"` shows you what the removal would do and changes nothing.',
         'Add `--yes` to actually do it: `sgt revert "<name>" --yes`.',
-        'The name is the one `./stage 3` printed. `sgt intent list` prints it too, at the bottom, with the groups that span several features.',
+        'The name is the one `./stage 3` printed. `sgt log` names it under the map too, with the other work that spans features, and `sgt log --focus "<name>"` shows exactly what is in it.',
         '`sgt undo` reverses whatever you last did, and `sgt now` says where things stand.',
       ],
     },
@@ -662,6 +655,8 @@ Run the command below first. It puts the project into the state where the work h
 **What happened:** The committee has changed its mind. Now that they have seen the averages with every day counted, they agree with your colleague that ${w.ordinaryDay}, so those days should stay out of the averages after all.
 
 **Your job:** Put that work back into the project, exactly as it was before the removal.
+
+![The by-year page you are aiming for: the marked 2018 row reads its excluded-days number again](${w.img.yearly})
 
 **You are done when:** \`./check 4\` says the program still runs and the by-year page reads **${w.dashboard}** for 2018 again.
 `,

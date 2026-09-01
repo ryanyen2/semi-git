@@ -4,13 +4,15 @@ Take a few minutes to practice on the project before the timed stages begin. You
 
 ## What sgt records
 
-`sgt` works on top of a Git repository. It organizes history around functions, classes, and the pieces of work they belong to.
+`sgt` works on top of a Git repository. It organizes history around the parts of the project, not around commits.
 
-Two terms appear throughout the interface:
+Three words appear throughout the interface, and every view draws the same picture with them:
 
-A **feature** is a larger body of work, such as "hourly charts."
+A **feature** is one part of the project, such as "hourly charts." Each feature is one row in the history views.
 
-A **checkpoint** is one step within a feature, such as "split weekday and weekend averages." Some screens call checkpoints **chapters**. Both words refer to the same thing.
+A **checkpoint** is one stretch of work on one feature, such as "split weekday and weekend averages." Checkpoints are the blocks along a feature's row. Some screens call them **chapters**.
+
+A **group** is one piece of work that touched several features at once — one task, landed across rows. `sgt log` names the groups under the map, and revert and restore take a group's name directly.
 
 This practice covers the commands used in the timed stages. Most commands also print suggested next steps.
 
@@ -24,7 +26,7 @@ study-code
 
 Leave the session shell window open in the background for the whole half — it keeps recording the session.
 
-Everything else happens inside the editor. Open a terminal with **Terminal → New Terminal**, then open a second one with the **+** button on the terminal panel. Both record your commands, exactly like the session shell.
+Everything else happens inside the editor. Open a terminal with **Terminal → New Terminal**, then open a second one with the **+** button on the terminal panel.
 
 Use the two terminals like this:
 
@@ -51,7 +53,7 @@ Open http://localhost:8000 and look through these pages:
 
 There is also a CSV download at `/daily.csv`.
 
-Leave the server running in Terminal 1. The pages always show the project as it stands, so you can come back to them after any change.
+Leave the server running in Terminal 1.
 
 The main files are:
 
@@ -66,8 +68,6 @@ You can check the whole project at any time, in **Terminal 2**:
 ```
 python3 check.py
 ```
-
-The stages only require reading code.
 
 ## Start the practice state
 
@@ -87,9 +87,16 @@ The editor carries the **semi-git** extension. Click the semi-git icon in the le
 - **Features** shows features and their checkpoints.
 - **Changes** shows edits that have not been saved into the history.
 
-The **workbench** panel at the bottom shows features as rows across time. The chips on each row are checkpoints.
+The **workbench** panel at the bottom is the history as a map:
 
-You can click features and checkpoints to inspect them. You can also right-click them to find actions such as **Revert** and **Restore**.
+![The sgt workbench: one row per feature, its checkpoints as blocks along the row, time running left to right](/materials/sgt_workbench.png)
+
+- One row per **feature**; the row's colour is that feature's identity everywhere in the panel.
+- The blocks along a row are its **checkpoints**. Hover one to see its name; click it to select it.
+- A hollow block is work that was reverted. A dashed block right of the "now" line is work on disk that has not been saved yet.
+- The panel's detail pane lists the **groups** that span several features; clicking one shows it across the rows.
+
+You can click features and checkpoints to inspect them, and right-click for actions such as **Revert** and **Restore**.
 
 ## 1. Read a change
 
@@ -148,12 +155,12 @@ sgt find "the bit that works out the averages"
 
 The results can include functions, features, and individual saves.
 
-The search box in the workbench performs the same kind of search.
+The search box in the workbench performs the same kind of search — it also finds saves by their message or hash, and groups by their name.
 
-To see the complete names and handles for features and checkpoints, run:
+To open one feature or group — the map stays, and its checkpoints are listed underneath with their handles:
 
 ```
-sgt intent list
+sgt log --focus "<name>"
 ```
 
 A checkpoint handle looks like:
@@ -162,13 +169,13 @@ A checkpoint handle looks like:
 f-08915a9f@1
 ```
 
-The bottom of `sgt intent list` can also contain groups that combine work from several features. The third timed stage may refer to one of these groups.
+The third timed stage refers to one of the groups `sgt log` names under the map.
 
 ## 4. Remove work and restore it
 
-Choose a checkpoint from somewhere in the middle of `sgt intent list`.
+Pick any checkpoint from the map — `sgt log --focus "<feature name>"` lists a feature's checkpoints with their handles.
 
-Use its handle to preview a revert:
+Use a handle to preview a revert:
 
 ```
 sgt revert "<checkpoint handle>"
@@ -214,23 +221,4 @@ sgt now
 - `sgt now` shows the current state.
 
 The third and fourth timed stages ask you to remove and restore work.
-
-## 5. Help
-
-For command help, run:
-
-```
-sgt --help
-sgt <command> --help
-```
-
-## Before the timed stages
-
-Run:
-
-```
-python3 check.py
-```
-
-Make sure the project passes the check. Tell the facilitator if any command or output was unclear.
 

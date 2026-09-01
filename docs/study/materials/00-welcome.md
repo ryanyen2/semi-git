@@ -43,8 +43,4 @@ Each stage has a visible timer for the task itself. The questions after each sta
 
 ## During the stages
 
-- The AI changes were made before the study. Every participant sees the same changes.
 - Each stage starts from a prepared project state, so your work in one stage does not affect the next.
-- If you get stuck, say what you are trying to do and continue as far as you can.
-- The study software stays inside the study folder and uses its own Python environment.
-- A repository you provide for the final interview is read to build its history view. The study does not edit it.

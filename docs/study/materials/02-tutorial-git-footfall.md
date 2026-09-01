@@ -14,7 +14,7 @@ study-code
 
 Leave the session shell window open in the background for the whole half — it keeps recording the session.
 
-Everything else happens inside the editor. Open a terminal with **Terminal → New Terminal**, then open a second one with the **+** button on the terminal panel. Both record your commands, exactly like the session shell.
+Everything else happens inside the editor. Open a terminal with **Terminal → New Terminal**, then open a second one with the **+** button on the terminal panel.
 
 Use the two terminals like this:
 
@@ -41,7 +41,7 @@ Open http://localhost:8000 and look through these pages:
 
 There is also a CSV download at `/daily.csv`.
 
-Leave the server running in Terminal 1. The pages always show the project as it stands, so you can come back to them after any change.
+Leave the server running in Terminal 1.
 
 The main files are:
 
@@ -56,8 +56,6 @@ You can check the whole project at any time, in **Terminal 2**:
 ```
 python3 check.py
 ```
-
-The stages only require reading code.
 
 ## Start the practice state
 
@@ -90,14 +88,10 @@ git log --oneline
 git show <commit hash>
 ```
 
-On this machine, Git prints directly in the terminal, so long output stays in the terminal history.
-
 Find and read:
 
 - the commit that added the CSV download
 - the commit that added the by-year table
-
-These commits show how most of the project is organized.
 
 ## 2. Record some work
 
@@ -201,14 +195,4 @@ git revert --abort
 ```
 
 The third timed stage also asks you to remove work that later commits depend on.
-
-## Before the timed stages
-
-Run:
-
-```
-python3 check.py
-```
-
-Make sure the project passes the check. Tell the facilitator if any command behaved differently from the instructions.
 
