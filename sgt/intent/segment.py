@@ -368,6 +368,71 @@ def resolve_checkpoint(repo: str | Path, spec: str) -> tuple[frozenset[str], str
     return seg.op_ids, f"{label}@{idx}: {seg.label}"
 
 
+def resolve_checkpoint_label(repo: str | Path, label: str) -> tuple[frozenset[str], str] | None:
+    """Resolve a BARE chapter name -- no `<feature>@` prefix -- to `(op_ids, display_label)`.
+
+    Every surface prints chapter names on their own: `sgt log --rail` shows `@1 Mark Event Days`,
+    the map writes the name inside the block, the workbench's chapter rows and its Restore button
+    are labelled with it, and `sgt show` lists them in a column. Typing one back was the one thing
+    none of the deterministic rungs could resolve, so `sgt revert "Mark Event Days"` and
+    `sgt restore "Monthly Totals Page"` fell all the way through to the natural-language rung and
+    answered `set OPENAI_API_KEY to enable natural-language targets` -- for a name the tool had
+    just printed, about an object it could see. That is F94's defect (a deterministic reference
+    refused with a remedy that would not have helped), on the label instead of the handle.
+
+    Matched on `checkpoint_slug`, so punctuation and case do not have to be reproduced. Ambiguity
+    does not resolve: two features can carry a chapter of the same name (both `Footfall Dashboard`
+    in the shipped study bundles), and picking one of them silently would revert work the caller
+    did not name. `<feature>@n` stays the disambiguator, which is what `resolve_checkpoint` is for.
+    """
+    from sgt import state
+    from sgt.lens.tree import load as load_tree
+
+    want = checkpoint_slug(label)
+    if not want:
+        return None
+    tree_result = load_tree(repo)
+    if tree_result is None:
+        return None
+    runs_by_feature = feature_runs(repo, tree_result["op_leaf"])
+    persisted = state.load_json(repo, "intent_segments", default={})
+    nodes = tree_result["nodes"]
+    hits: list[tuple[frozenset[str], str]] = []
+    for feature_id, runs in runs_by_feature.items():
+        if not runs:
+            continue
+        for idx, seg in enumerate(overlay_persisted(runs, persisted.get(feature_id))):
+            if checkpoint_slug(seg.label) != want:
+                continue
+            flabel = nodes.get(feature_id, {}).get("label", feature_id)
+            hits.append((seg.op_ids, f"{flabel}@{idx}: {seg.label}"))
+    return hits[0] if len(hits) == 1 else None
+
+
+def checkpoint_label_candidates(repo: str | Path, label: str) -> list[str]:
+    """The `<feature>@n` handles a bare chapter name matched, when it matched more than one.
+
+    So an ambiguous name answers with the two things to choose between rather than with silence --
+    the same shape `checkpoint_miss` gives an unknown selector.
+    """
+    from sgt import state
+    from sgt.lens.tree import load as load_tree
+
+    want = checkpoint_slug(label)
+    tree_result = load_tree(repo) if want else None
+    if tree_result is None:
+        return []
+    runs_by_feature = feature_runs(repo, tree_result["op_leaf"])
+    persisted = state.load_json(repo, "intent_segments", default={})
+    out: list[str] = []
+    for feature_id, runs in runs_by_feature.items():
+        for idx, seg in enumerate(overlay_persisted(runs, persisted.get(feature_id)) if runs else []):
+            if checkpoint_slug(seg.label) == want:
+                short = feature_id[2:10] if feature_id.startswith("f-") else feature_id[:8]
+                out.append(f"{short}@{idx}")
+    return sorted(out)
+
+
 def _checkpoint_parts(
     repo: str | Path, spec: str,
 ) -> tuple[str, bool, str, str, list[Segment]] | None:

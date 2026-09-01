@@ -541,9 +541,30 @@ export async function patchRequest(
   half: Half,
   patch: Partial<RequestDoc>,
 ): Promise<void> {
-  await setDoc(doc(db, 'participants', pid, 'requests', requestDocId(requestId, half)), patch, {
+  await setDoc(doc(db, 'participants', pid, 'requests', requestDocId(requestId, half)), defined(patch), {
     merge: true,
   })
+}
+
+/**
+ * Drop keys whose value is `undefined`.
+ *
+ * Firestore rejects the whole write when any field is `undefined` -- not the
+ * field, the write -- and a rejected write on this path is a participant who
+ * cannot submit a stage. That happened on the first live session: the answer
+ * state seeds `confidenceScale: doc?.confidenceScale`, which is `undefined`
+ * until the confidence slider is touched, and stages 1 and 4 never show one. So
+ * every autosave and every Submit on those stages threw
+ * `Unsupported field value: undefined (found in field confidenceScale)` and the
+ * button did nothing, with the reason only in the browser console.
+ *
+ * An optional field on a document is normal and will happen again; the fix
+ * belongs at the boundary rather than at each call site. TypeScript cannot catch
+ * this -- `{confidenceScale: undefined}` type-checks against
+ * `{confidenceScale?: 7}` -- so nothing but the write itself ever objected.
+ */
+function defined<T extends object>(patch: T): T {
+  return Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)) as T
 }
 
 /**
