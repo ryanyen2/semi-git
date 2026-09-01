@@ -29,9 +29,11 @@
 // follow are untimed: they are measurements of what the person took away, not
 // more work to race through.
 //
-// There is no live AI assistant in the block. Stage 1's "assistant work" is a
-// recorded agent session replayed by `./stage 1`, so every participant reads
-// byte-identical changes. See protocol v2 section 3 for what that trades away.
+// There is no live AI assistant in the block, and no stage asks the participant
+// to record one working. The project's whole history was written by an assistant
+// before the session, from `scripts/study/harvest/roles-<project>.json`, so every
+// participant reads byte-identical history. Protocol v2 section 3 says what that
+// trades away.
 
 import type { Condition, Project, RequestId } from '../lib/types'
 
@@ -62,15 +64,14 @@ export interface Behaviour {
  * upload refuses a key naming zero or all of them (`answerKey.ts`).
  *
  * The list is also the study's join between what a participant SEES and what
- * their setup NAMES. Every leaf feature the shipped bundles cluster is the
- * target of at least one option here, and every option is produced by at least
- * one of those features -- measured off the bundles by
- * `scripts/study/measure_orientation.py`, which is also where stage 1's
- * mapping table comes from. The date window was the one cluster with no option
- * ("Date Window Filtering" in both projects), so a participant reading the
- * feature map found a lane the checklist could not express; it is the last row
- * below. Nothing here names a git or an sgt verb, and the labels stay in
- * product language, so the two arms read the same eleven things.
+ * their setup NAMES. Every option is produced by at least one piece of work in
+ * the shipped bundles' history, and stage 1's map (PROJECT_WORDS.story) says
+ * which -- both sides read off `git log --name-only` in the built bundle, not
+ * off a description of it. The date window is the one row of that map the
+ * checklist had no option for, so a participant reading the map found work the
+ * checklist could not express; it is the last option below. Nothing here names
+ * a git or an sgt verb, and the labels stay in product language, so the two
+ * arms read the same eleven things.
  */
 export const BEHAVIOURS: Behaviour[] = [
   {
@@ -135,7 +136,11 @@ export const BEHAVIOURS: Behaviour[] = [
       bikecount: 'The one-row-per-year table',
       footfall: 'The one-row-per-year table',
     },
-    command: { bikecount: '/yearly', footfall: '/yearly' },
+    // Different paths, because the two projects' agents chose different routes
+    // for the same page. It read `/yearly` for both, so every bikecount
+    // participant was shown a path that 404s (`pages/yearly.py` has
+    // `PATH = "/years"`), on the one option whose page is hardest to guess at.
+    command: { bikecount: '/years', footfall: '/yearly' },
   },
   {
     id: 'sideSplit',
@@ -203,7 +208,7 @@ export type QuizItem =
        * the ones they are, and it is checked at key-generation time rather than
        * assumed.
        */
-      scored: boolean
+      scored: true
     }
   | {
       kind: 'choice'
@@ -315,6 +320,53 @@ export const SCENARIO: Record<Project, { app: string; maintainer: string; blurb:
  * was asked to reach a number the dashboard could not print, and the reset script
  * printed a different pair beside it.
  */
+/**
+ * Stage screenshots (web/public/stages/), captured from the shipped bundle's own dashboard by
+ * `scripts/study/capture-page-shots.mjs`, so what a card shows is exactly what the
+ * participant's browser shows -- and so a testbed rebuild can regenerate all of them in one
+ * command instead of leaving the cards quoting last month's numbers.
+ */
+export interface StageShots {
+  /** The front page: the busiest-day figure and the last-fortnight chart under it. */
+  overview: string
+  yearly: string
+  /** The same page unmarked. Stage 1's map shows the dashboard as it is; the
+   * red outline round the 2018 row is an annotation stages 2 and 4 add, and
+   * on a card that opens "nothing is wrong with it" it says the opposite. */
+  yearlyPlain: string
+  monthly: string
+  hourly: string
+  hourlySplit: string
+  sides: string
+  window: string
+}
+
+/**
+ * One piece of work in a project's history, as stage 1's map reads it.
+ *
+ * `work` is what it did in product terms -- never the commit subject and never
+ * an sgt label. Commit subjects are the git arm's own words for these rows and
+ * the sgt labels are the sgt arm's, and a card both arms read cannot use
+ * either: the bundles ship no `.sgt` store, so every participant's install
+ * mines and names the features afresh and no two get quite the same labels.
+ * Naming the work in neither vocabulary is what leaves the participant with
+ * something to do -- putting the map beside their own view and matching them up.
+ *
+ * `code` is the row's files, straight out of `git log --name-only` in the built
+ * bundle rather than a description of it, relative to the project's package.
+ * The two projects' agents solved the same requests in different files
+ * (bikecount keeps the date window in `window.py`, footfall in `data.py`), so
+ * this cannot be written once and shared. The bundle rehearsal gate checks that
+ * every file named here exists in the repository it ships.
+ */
+export interface StoryRow {
+  work: string
+  code: string
+  shows: string
+  /** Which screenshot goes in the last column, if the row has a page of its own. */
+  shot?: keyof StageShots
+}
+
 export const PROJECT_WORDS: Record<
   Project,
   {
@@ -328,24 +380,9 @@ export const PROJECT_WORDS: Record<
     precision: string
     /** What this project's own nav calls the two-sensor page. */
     sidesPage: string
-    /**
-     * Stage screenshots (web/public/stages/), captured from the shipped bundle's own dashboard by
-     * `scripts/study/capture-page-shots.mjs`, so what a card shows is exactly what the
-     * participant's browser shows -- and so a testbed rebuild can regenerate all of them in one
-     * command instead of leaving the cards quoting last month's numbers.
-     */
-    img: {
-      yearly: string
-      /** The same page unmarked. Stage 1's map shows the dashboard as it is; the
-       * red outline round the 2018 row is an annotation stages 2 and 4 add, and
-       * on a card that opens "nothing is wrong with it" it says the opposite. */
-      yearlyPlain: string
-      monthly: string
-      hourly: string
-      hourlySplit: string
-      sides: string
-      window: string
-    }
+    img: StageShots
+    /** The whole history, oldest first. Stage 1's map is this list. */
+    story: StoryRow[]
   }
 > = {
   bikecount: {
@@ -360,6 +397,7 @@ export const PROJECT_WORDS: Record<
     precision: 'one-bike precision',
     sidesPage: 'east against west',
     img: {
+      overview: '/stages/bikecount-overview.png',
       yearly: '/stages/bikecount-yearly.png',
       yearlyPlain: '/stages/bikecount-yearly-plain.png',
       monthly: '/stages/bikecount-monthly.png',
@@ -368,6 +406,80 @@ export const PROJECT_WORDS: Record<
       sides: '/stages/bikecount-sides.png',
       window: '/stages/bikecount-window.png',
     },
+    story: [
+      {
+        work: 'the first version of the dashboard',
+        code: "`data.py` reads the counter's file, `metrics.py` adds it up, `charts.py` draws, `pages/overview.py` is the front page",
+        shows: '**The front page: the busiest day, and the last fortnight chart**',
+        shot: 'overview',
+      },
+      {
+        work: 'the hour-of-day page',
+        code: '`pages/hourly.py` draws it, `metrics.py` works out the averages',
+        shows: '**The busiest hour, and the hour-of-day chart under it**',
+        shot: 'hourly',
+      },
+      {
+        work: 'splitting that page into weekdays and weekends',
+        code: '`pages/hourly.py`, `metrics.py`',
+        shows: '**The weekday chart and the weekend chart, side by side**',
+        shot: 'hourlySplit',
+      },
+      {
+        work: 'the list of unusual days the project keeps',
+        code: '`events.py`',
+        shows: 'Nothing on its own. It is the list the next two rows read.',
+      },
+      {
+        work: 'the month-by-month page',
+        code: '`pages/monthly.py`, `metrics.py`',
+        shows: '**The month-by-month chart**',
+        shot: 'monthly',
+      },
+      {
+        work: 'marking the unusual days on the charts',
+        code: '`charts.py`, `events.py`, `pages/monthly.py`, `pages/overview.py`',
+        shows: '**The coloured bars on the daily and the month-by-month charts, and the note under each**',
+      },
+      {
+        work: 'the east vs west page',
+        code: '`pages/sides.py`, `metrics.py`',
+        shows: '**The east against west comparison**',
+        shot: 'sides',
+      },
+      {
+        work: 'the by-year table',
+        code: '`pages/yearly.py`, `metrics.py`',
+        shows: '**The one-row-per-year table**',
+        shot: 'yearlyPlain',
+      },
+      {
+        work: 'leaving the unusual days out of the averages',
+        code: '`metrics.py`',
+        shows: "No page of its own. It moves every average the dashboard shows, the by-year table's included.",
+      },
+      {
+        work: 'the csv download',
+        code: '`server.py`, `pages/__init__.py`',
+        shows: '**The daily totals csv link in the nav**',
+      },
+      {
+        work: 'the finding that the quieter sensor is real, not a fault',
+        code: '`metrics.py`, `pages/sides.py`, `pages/yearly.py`',
+        shows: 'Two more charts on the east vs west page, and the caveat under the by-year table.',
+      },
+      {
+        work: 'the date window',
+        code: '`window.py`, `metrics.py`, `server.py`, `pages/__init__.py`, and every page under `pages/`',
+        shows: '**The date window at the top of every page**',
+        shot: 'window',
+      },
+      {
+        work: 'rounding the front page numbers — the newest work in the project',
+        code: '`pages/overview.py`',
+        shows: 'The busiest-day figure and the last-fortnight table, to the nearest 10.',
+      },
+    ],
   },
   footfall: {
     reported: '42,436',
@@ -381,6 +493,7 @@ export const PROJECT_WORDS: Record<
     precision: 'single-person precision',
     sidesPage: 'north against south',
     img: {
+      overview: '/stages/footfall-overview.png',
       yearly: '/stages/footfall-yearly.png',
       yearlyPlain: '/stages/footfall-yearly-plain.png',
       monthly: '/stages/footfall-monthly.png',
@@ -389,15 +502,110 @@ export const PROJECT_WORDS: Record<
       sides: '/stages/footfall-sides.png',
       window: '/stages/footfall-window.png',
     },
+    story: [
+      {
+        work: 'the first version of the dashboard',
+        code: "`data.py` reads the counter's file, `metrics.py` adds it up, `charts.py` draws, `pages/overview.py` is the front page",
+        shows: '**The front page: the busiest day, and the last fortnight chart**',
+        shot: 'overview',
+      },
+      {
+        work: 'the hour-of-day page',
+        code: '`pages/hourly.py` draws it, `metrics.py` works out the averages',
+        shows: '**The busiest hour, and the hour-of-day chart under it**',
+        shot: 'hourly',
+      },
+      {
+        work: 'splitting that page into weekdays and weekends',
+        code: '`pages/hourly.py`, `charts.py`',
+        shows: '**The weekday chart and the weekend chart, side by side**',
+        shot: 'hourlySplit',
+      },
+      {
+        work: 'the list of unusual days the project keeps',
+        code: '`events.py`',
+        shows: 'Nothing on its own. It is the list the next two rows read.',
+      },
+      {
+        work: 'the month-by-month page',
+        code: '`pages/monthly.py`, `metrics.py`',
+        shows: '**The month-by-month chart**',
+        shot: 'monthly',
+      },
+      {
+        work: 'marking the unusual days on the charts',
+        code: '`charts.py`, `events.py`, `pages/monthly.py`, `pages/overview.py`',
+        shows: '**The coloured bars on the daily and the month-by-month charts, and the note under each**',
+      },
+      {
+        work: 'the north v south page',
+        code: '`pages/sides.py`, `metrics.py`',
+        shows: '**The north against south comparison**',
+        shot: 'sides',
+      },
+      {
+        work: 'the by-year table',
+        code: '`pages/yearly.py`, `metrics.py`',
+        shows: '**The one-row-per-year table**',
+        shot: 'yearlyPlain',
+      },
+      {
+        work: 'leaving the unusual days out of the averages',
+        code: '`metrics.py`',
+        shows: "No page of its own. It moves every average the dashboard shows, the by-year table's included.",
+      },
+      {
+        work: 'the csv download',
+        code: '`server.py`, `pages/__init__.py`',
+        shows: '**The daily totals csv link in the nav**',
+      },
+      {
+        work: 'the finding that the quieter sensor is real, not a fault',
+        code: '`metrics.py`, `pages/sides.py`',
+        shows: 'The note under the two totals on the north v south page.',
+      },
+      {
+        work: 'the date window',
+        code: '`data.py`, `server.py`, `pages/__init__.py`, and every page under `pages/`',
+        shows: '**The date window at the top of every page**',
+        shot: 'window',
+      },
+      {
+        work: 'rounding the front page numbers — the newest work in the project',
+        code: '`metrics.py`, `pages/overview.py`',
+        shows: 'The busiest-day figure and the last-fortnight table, to the nearest 10.',
+      },
+    ],
   },
 }
 
 /** The same body text in both projects, with that project's words in it. */
-function forEachProject(write: (w: (typeof PROJECT_WORDS)['bikecount']) => string): Record<Project, string> {
+function forEachProject(
+  write: (w: (typeof PROJECT_WORDS)['bikecount'], project: Project) => string,
+): Record<Project, string> {
   return {
-    bikecount: write(PROJECT_WORDS.bikecount).trim(),
-    footfall: write(PROJECT_WORDS.footfall).trim(),
+    bikecount: write(PROJECT_WORDS.bikecount, 'bikecount').trim(),
+    footfall: write(PROJECT_WORDS.footfall, 'footfall').trim(),
   }
+}
+
+/**
+ * Stage 1's map: the project's whole history as a markdown table, oldest first.
+ *
+ * Rendered from `story` rather than written out, because the rows are the built
+ * bundle's own commits and their own files -- thirteen of them, in two projects,
+ * and the pair drifted apart the last time they were two hand-written strings.
+ */
+function storyTable(w: (typeof PROJECT_WORDS)['bikecount']): string {
+  // Empty alt: the cell already says what the screenshot shows, in the words
+  // right beside it, and repeating that as alt text reads it twice to anyone on
+  // a screen reader.
+  const rows = w.story.map((r) => {
+    const shot = r.shot ? ` ![](${w.img[r.shot]})` : ''
+    return `| ${r.work} | ${r.code} | ${r.shows}${shot} |`
+  })
+  return ['| The work | Where it lives in the code | What it puts on the dashboard |',
+          '|---|---|---|', ...rows].join('\n')
 }
 
 export const REQUESTS: RequestSpec[] = [
@@ -419,27 +627,20 @@ export const REQUESTS: RequestSpec[] = [
       footfall: 'Get to know the project',
     },
     body: forEachProject(
-      (w) => `
+      (w, project) => `
 Run the command below first. It puts the project into this stage's starting state.
 
     ./stage 1
 
 **What happened:** You have just joined this project. Nothing is wrong with it, and there is nothing to fix in this stage.
 
-**Your job:** Work out what this project is made of. Put the dashboard beside your setup's view of the history, and fill in the map below, right to left: for each part of the dashboard, which piece of work in the history put it there and where in the code that work lives. The first row is filled in as an example.
+**How it got here:** ${SCENARIO[project].maintainer} built the first version over the counter's own data file, and then asked for one change at a time until the dashboard was what you see now. An assistant did all of that later work, which is why every piece of it sits under a single name in the history.
 
-| The work | Where it lives in the code | What it puts on the dashboard |
-|---|---|---|
-| *(example)* the work that added the hour-of-day page | \`pages/hourly.py\` draws it, \`metrics.py\` works out the averages | **The busiest hour, and the hour-of-day chart under it** ![The hourly page: the busiest hour, and the average count by hour of day](${w.img.hourly}) |
-| | | **The month-by-month chart** ![The monthly page](${w.img.monthly}) |
-| | | **The one-row-per-year table** ![The by-year page](${w.img.yearlyPlain}) |
-| | | **The ${w.sidesPage} comparison** ![The two-sensor comparison page](${w.img.sides}) |
+**Your job:** Read the map below. It is the whole project, oldest work first. Then put it beside your setup's view of the history and work out what your setup calls each row.
 
-File names are relative to the project's package, the one the practice sheet lists — \`pages/hourly.py\` is the hour-of-day page.
+${storyTable(w)}
 
-The date window at the top of every page is the one control on the dashboard. The pages open on the most recent year; set it to 2018 if you want to see the whole of a year.
-
-**You are done when:** you could point at any part of the dashboard and say which piece of work in the history put it there, and roughly where in the code that work lives. Nothing in the map has to be written down — the questions after this stage are about one piece of work in particular.
+**You are done when:** you can point at a row and say what your setup calls it, and point at a part of the dashboard and say which row put it there.
 `,
     ),
     tips: {
@@ -450,7 +651,7 @@ The date window at the top of every page is the one control on the dashboard. Th
         'In the editor, the Graph shows the same history, and the Timeline at the bottom of the Explorer shows the commits that touched the open file.',
       ],
       sgt: [
-        '`sgt log` is the feature map: one row per part of the project, edits over time. `sgt log --rail` lists what happened, newest first.',
+        '`sgt log` is the feature map: one row per feature, its checkpoints as blocks along it. `sgt log --rail` lists what happened, newest first.',
         '`sgt show "<name>"` says what one part covers — the files and the code inside it. `sgt show <file>::<name>` answers the other direction, for one function.',
         '`sgt find "the bit that works out the averages"` searches by description. Any wording will do.',
         '`sgt log --focus "<name>"` opens one row, or one ◆ piece of work that spans several rows.',
@@ -467,28 +668,16 @@ The date window at the top of every page is the one control on the dashboard. Th
         ],
       },
     },
-    quiz: [
-      {
-        kind: 'behaviours',
-        id: 'behaviours',
-        // The target is named by its position in the history, not by what it
-        // did, because naming what it did ("the work that rounded the front page
-        // numbers") would answer the question. Both arms read the position the
-        // same way: it is the top line of `git log --oneline`, and the newest
-        // block on the map / the top of `sgt log --rail`.
-        //
-        // Both arms then get its subject for free, and that subject says "front
-        // page". What it does not say is WHICH parts of the front page, and the
-        // checklist offers the busiest-day figure and the last-fortnight chart
-        // separately -- so the judgement the stage measures is whether the
-        // representation showed what the work reached, not whether the
-        // participant could find it.
-        prompt:
-          'The most recent piece of work in this project is one of the pieces you have just been looking at. Which parts of the dashboard does it affect? Tick the ones you would check if it were taken out.',
-        scored: true,
-      },
-    ],
-    quizConfidence: true,
+    // No quiz. Stage 1 is orientation, and the map on the card is the answer:
+    // asking afterwards which parts of the dashboard the newest piece of work
+    // reaches turned reading into a test of the reading. It was also the weakest
+    // of the three scored checklists -- two of eleven options in the measured
+    // key, so ticking everything scored 0.31 and the score said as much about a
+    // participant's ticking habit as about the map. The three statements below
+    // are what the stage measures now, and `answer-key.json` carries no `s1`
+    // reach set.
+    quiz: [],
+    quizConfidence: false,
     ratings: [
       {
         id: 'understandProject',
@@ -641,7 +830,7 @@ Run the command below first. It resets the project and names the work you have t
 
 Set the date window to 2018 while you check the pages — the marks only show when the window contains an unusual day, and the pages open on the most recent year.
 
-**You are done when:** \`./check 3\` says the program still runs and the by-year page reads **${w.reported}** for 2018 again. Run it as often as you like. It prints the same words for everyone, it does not mark you, and a red line in it is information rather than a verdict.
+**You are done when:** \`./check 3\` says the program still runs and the by-year page reads **${w.reported}** for 2018 again. Run it as often as you like — it does not mark you.
 `,
     ),
     tips: {
@@ -718,7 +907,7 @@ Set the date window to 2018 while you check the pages — the marks only show wh
     },
     body: forEachProject(
       (w) => `
-Run the command below first. It puts the project into the state where the work has already been taken out. Everyone starts stage 4 from this same state, whether or not their own removal in the last stage worked.
+Run the command below first. It puts the project into the state where the work has already been taken out — the same state for everyone, whatever happened in the last stage.
 
     ./stage 4
 

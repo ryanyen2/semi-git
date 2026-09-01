@@ -29,6 +29,7 @@ import {
 } from '../study/taxonomy'
 import { tlxScore, tlxSubscales, umuxLiteScore } from '../lib/stats'
 import { AFTER_HALF, HLAC } from '../study/instruments'
+import { requestById } from '../study/tasks'
 
 export interface CategorizedEvent {
   id: string
@@ -100,16 +101,28 @@ export interface RequestMetrics {
   reach: ReachMetrics | null
   /**
    * F1 of a stage quiz's behaviour checklist against the measured key, where
-   * the stage has one (s1: what the newest piece of work reaches; s2: what the
-   * found work reaches; s3: what the removal changed). Null when the stage
-   * has no checklist, the key has no entry, or the quiz was never submitted.
+   * the stage has one (s2: what the found work reaches; s3: what the removal
+   * changed). Null when the stage has no checklist, the key has no entry, or
+   * the quiz was never submitted -- which is every s1 and s4, neither of which
+   * asks one.
    *
-   * The three are not equally hard, and the analysis says so rather than
-   * averaging them: s1's measured set is two of the eleven options, s2's and
-   * s3's are eight or nine, so ticking everything scores about 0.31 on s1 and
-   * about 0.86 on s2 and s3.
+   * Both measured sets are eight or nine of the eleven options, so ticking
+   * everything scores about 0.86 and the analysis reports that baseline beside
+   * them. Stage 1 used to be a third checklist, against a two-option key where
+   * the same habit scored 0.31; it asks nothing now, and `ratingsMean` is what
+   * that stage reports.
    */
   quizPicksF1: number | null
+  /**
+   * The stage's rating statements as one number: mean agreement on the 1-to-7
+   * scale they are asked on, with reverse-keyed statements flipped so high is
+   * always the better direction.
+   *
+   * Null unless every statement was answered. A mean over whichever subset a
+   * participant happened to fill in is not comparable with one over all of
+   * them, and stage 1 has no other measure to fall back on.
+   */
+  ratingsMean: number | null
   /** Whether a scored multiple-choice quiz item matched the key. No stage asks
    * one today; the field stays because the key and the validator still carry
    * them. Null when unasked, unanswered, or unkeyed. */
@@ -621,6 +634,22 @@ function metricsFor(
 
   const reach = reachMetricsFor(req, keys.reach)
 
+  // The rating statements, meaned. `reverse` is read off the stage spec rather
+  // than a list here, so a statement that changes direction cannot go on being
+  // scored the old way.
+  const asked = requestById(req.requestId)?.ratings ?? []
+  const given = req.ratings
+  const rated = given
+    ? asked.map((r) => {
+        const v = given[r.id]
+        return typeof v === 'number' ? (r.reverse ? 8 - v : v) : null
+      })
+    : []
+  const ratingsMean =
+    rated.length && rated.every((v) => v != null)
+      ? (rated as number[]).reduce((a, b) => a + b, 0) / rated.length
+      : null
+
   // The stage quiz, where the request has one. An absent `quiz` field means a
   // v1 document or an unfinished stage, and stays unscored; a present
   // behaviours array is scored even when empty, because ticking nothing is a
@@ -642,6 +671,7 @@ function metricsFor(
   return {
     reach,
     quizPicksF1,
+    ratingsMean,
     quizChoiceCorrect,
     requestId: req.requestId,
     half: req.half,

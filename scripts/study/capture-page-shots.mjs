@@ -49,6 +49,20 @@ const CROPS = [
              return { x: 0, y: 0, width: h.width, height: h.bottom + 1 } })()`,
   },
   {
+    // The front page, which stage 1's map opens on: the busiest-day figure, the
+    // last-fortnight chart, and the note about the coloured bars under it. Three
+    // of the eleven checklist options live in this one crop.
+    name: 'overview',
+    paths: ['/'],
+    what: 'the front page: the busiest day and the last fortnight chart',
+    clip: `(() => { const c = document.querySelector('main svg').getBoundingClientRect();
+             const note = [...document.querySelectorAll('main p')]
+               .map((r) => r.getBoundingClientRect())
+               .filter((r) => r.top >= c.bottom - 1)[0];
+             return { x: 0, y: 0, width: document.documentElement.clientWidth,
+                      height: (note ? note.bottom : c.bottom) + 16 } })()`,
+  },
+  {
     name: 'hourly',
     paths: ['/hourly'],
     what: 'the busiest hour and the hour-of-day chart under it',

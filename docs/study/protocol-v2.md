@@ -59,7 +59,7 @@ stated at.
 
 | RQ | Question | Stage | Instrument |
 |---|---|---|---|
-| RQ1: Orienting in an unfamiliar project | Given a project nobody has seen before, does intent-aligned history change how much of what the product does a developer can trace back to the work that produced it, and how well they understand the project afterwards? | S1 | Post-stage coverage checklist (how many of the eleven dashboard parts they can account for), time on task, telemetry of which surfaces they used, three rating items |
+| RQ1: Orienting in an unfamiliar project | Given a project nobody has seen before, does intent-aligned history change how much of what the product does a developer can trace back to the work that produced it, and how well they understand the project afterwards? | S1 | Three rating items, time on task, telemetry of which surfaces they used, and what the participant says aloud while matching the card's map onto their setup's view |
 | RQ2: Locating work | Given a described defect, does intent-aligned history change how accurately and how quickly a developer finds the piece of work that caused it? | S2 | Free-text identifier scored against an accepted-strings list, time, confidence |
 | RQ3: Operating at the level of the task | When the task names a piece of work ("remove what your colleague did", "put it back"), can the developer carry out the operation at that level, with what success, what collateral damage, and what foresight about the operation's reach? | S2, S3, S4 | Reach prediction (S2) against outcome report (S3), behavioural check scripts, restore fidelity, mechanism self-report |
 
@@ -67,7 +67,7 @@ Each RQ carries a falsifiable claim:
 
 | Claim | How it would be falsified |
 |---|---|
-| C1. Intent-aligned history makes an unfamiliar project's parts traceable to the work that produced them. | S1 coverage is equal or lower under sgt, and its two comprehension ratings are equal or lower. |
+| C1. Intent-aligned history makes an unfamiliar project's parts traceable to the work that produced them. | S1's three rating items are equal or lower under sgt. This is a self-report and the weakest claim in the set; section 10 says so in advance. |
 | C2. Intent-aligned history makes it cheaper and more reliable to locate the work behind a described defect. | S2 locate accuracy is equal or worse under sgt, with no time advantage. |
 | C3. Intent-aligned history lets people remove and restore a piece of work at the level the task names, with less damage. | S3 outcome or collateral damage is equal or worse under sgt, or S4 restore fidelity is equal or worse, or `gain` (S3 outcome report minus S2 reach prediction, both F1) is at or below zero. |
 
@@ -188,44 +188,49 @@ save` or `git commit` at all.
 step ran on, and points at the dashboard. Nothing is wrong with the project and
 there is nothing to fix.
 
-The card: "You have just joined this project. Work out what it is made of." It
-then shows a four-row map to fill in -- for each part of the dashboard, where it
-lives in the code and which piece of work in the history put it there -- with the
-first row worked as an example (the hour-of-day charts, `pages/hourly.py` and
-`metrics.py`, the work that added the hour-of-day page). Each row carries a
-cropped screenshot of that part of the participant's own dashboard, captured from
-the shipped bundle by `scripts/study/capture-page-shots.mjs`. The rows are the
-same in both arms and both projects; nothing is written down, and the map is
-there so that "what the project is made of" is a concrete question rather than an
-instruction to browse.
+The card gives the participant the project, rather than asking them to
+reconstruct it. A paragraph says who wrote it and in what order: the maintainer
+built the first version over the counter's own data file and then asked for one
+change at a time, and an assistant did all of that later work, which is why it
+sits under a single name in the history. Then the whole history as a map, oldest
+work first, one row per commit: what the work did, which files it lives in, and
+what it puts on the dashboard, with a cropped screenshot of that part of the
+participant's own dashboard on the rows that have a page of their own
+(`scripts/study/capture-page-shots.mjs`, from the shipped bundle). The middle
+column is read off the built bundle's own `git log --name-only`, and the bundle
+build refuses to finish if a file the map names is not in the repository it ships
+(the rehearsal gate in `scripts/make-study-bundle.sh`).
 
-The quiz, answered after the work: the eleven-item behaviour checklist, with the
-prompt "tick every part of the dashboard you could now name the piece of work
-behind." What comes out is a count out of eleven, comparable between the two
-setups, plus time on task and the telemetry of which surfaces were used. Three
-rating items follow: whether they understand the project, whether they
-understand which work put which part there, and (reverse-keyed) whether they
-would want someone to walk them through it before changing anything.
+The job is the matching: put the map beside the setup's view of the history and
+work out what that setup calls each row. The map deliberately names the work in
+neither arm's vocabulary -- not the commit subjects, not the sgt labels -- which
+is what keeps one card fair in both arms, and is also forced: the bundles ship no
+`.sgt` store, so every install mines and names the features afresh and no two
+participants see identical labels.
 
-**Why this checklist is not scored against a key, when stage 2's and stage 3's
-are.** A measured reach key needs a piece of work whose removal leaves the app
-running, because the key is produced by removing it and re-rendering every page.
-Every feature and every cross-feature group in both shipped bundles was tried
-that way -- eighteen selections in footfall, eighteen in bikecount -- and exactly
-one survives: the event-day group, which is stage 2's answer and cannot be named
-here. The rest exit zero, print `✓ revert applied`, and leave the dashboard dead,
-because subtracting a group's contribution to a shared function rolls its
-signature back past later work that is kept (docs/study/sgt-findings.md, finding
-85). So the honest options were a self-reported count or a key written by hand,
-and this study does not ship keys written by hand. The count is a weaker measure
-than S2's and S3's F1, and section 11 says so.
+**Why this stage has no quiz.** It had one until the first participant: the
+eleven-item behaviour checklist, asked about "the most recent piece of work in
+this project", scored against a measured key. Completing the map made it
+unanswerable-by-anything-but-reading -- the newest row is on the card, and so is
+what it puts on the dashboard -- so what the checklist would have measured is
+whether the participant read the row, not what the representation showed. It was
+also the weakest of the three: its key is two of the eleven options (the busiest-
+day figure and the last-fortnight chart), so ticking everything already scored an
+F1 of about 0.31, against 0.86 on stages 2 and 3.
 
-**What this stage measures.** How much of a product a developer can attribute to
-the work that produced it, in five minutes, from the history alone. The git arm
-reads thirteen commit subjects and their diffs; the sgt arm reads a feature map
-whose rows are named after what they do, plus `sgt show` on a file or a function
-to go the other way. If S1 shows no difference, the paper reports that the
-representation did not help a newcomer account for the product in five minutes.
+Two pieces of work per testbed can be removed with the app still running -- the
+event-day group and the rounding group -- so a scored third checklist was
+available in principle. It is not worth what it costs here: stage 1's five
+minutes are the foundation every later stage stands on, and a test at the end of
+them changes how the five minutes are spent.
+
+**What this stage measures.** Three rating items, time on task, the telemetry of
+which surfaces were used, and what the participant says while doing the matching.
+The git arm reads thirteen commit subjects and their diffs; the sgt arm reads a
+feature map whose rows are named after what they do, plus `sgt show` on a file or
+a function to go the other way. If S1's ratings show no difference, the paper
+reports that the representation did not help a newcomer account for the product
+in five minutes.
 
 ### Stage 2. Find the work behind the defect (RQ2, C2; reach prediction for C3)
 
@@ -248,8 +253,9 @@ names, which is whether the representation makes the responsible work findable.
 
 After the identifier box, the reach prediction: "Which parts of the dashboard
 run through the code that work touches, the ones you would re-check if it were
-taken out?" The same ten-behaviour checklist as stage 1, scored as set F1
-against a key measured by `scripts/study/measure_reach_key.py`. Answered
+taken out?" The eleven-behaviour checklist (`BEHAVIOURS` in
+`web/src/study/tasks.ts`), scored as set F1 against a key measured by
+`scripts/study/harvest/write_answer_key.py`. Answered
 before anything is operated on, so it reflects the representation alone. It is
 untimed within the stage, unlike version 1's hard 60 seconds, because version
 1 worried that extra time let people reason from general knowledge of
@@ -395,13 +401,16 @@ immediately after the stage. Each stage's set is one comparison family.
 
 Stage 2 asks two statements, of the same shape: did you understand the change,
 and did you understand what it reaches. Stages 1, 3 and 4 ask three, the last of
-them reverse-keyed as the guard against straight-lining. An earlier draft of this
+them reverse-keyed as the guard against straight-lining. They are the only
+measure stage 1 has, so `web/src/analysis/pipeline.ts` carries them as one number
+per stage (`ratingsMean`, reverse-keyed items flipped, null unless every
+statement was answered) and Figure 2's first panel draws it. An earlier draft of this
 version asked three everywhere, and two of stage 2's asked, in different words,
 what the confidence item directly above them already asked.
 
-Stage 1 (serves C1). This stage's quiz has no right answer, so its three
-statements carry more of the claim than the other stages' do, and the
-reverse-keyed one is the substantive item rather than only a straight-lining
+Stage 1 (serves C1). This stage asks no quiz, so its three statements are the
+whole of its outcome and carry more of the claim than any other stage's do; the
+reverse-keyed one is a substantive item rather than only a straight-lining
 guard: whether an hour in a project's history left somebody willing to change it
 unaccompanied is the thing C1 is finally about.
 - "I understand what this project does and how it is put together."
@@ -559,8 +568,10 @@ Derived measures, computed per stage and condition:
 generated by `scripts/study/harvest/write_answer_key.py` against the built
 testbeds -- never written by hand:
 
-- Stage 1: nothing to score. Its checklist is a coverage self-report, for the
-  reason given in section 4, and the key's entry for it says so.
+- Stage 1: no entry at all. It asks nothing with a right answer, and a key that
+  still carries an `s1` reach set was generated before that change --
+  `web/tests/answer-key.test.ts` fails on one, rather than letting it upload
+  clean and score a question nobody was asked.
 - Stage 2: the accepted-strings list for the identifier -- every way either arm
   can name the target, including the other arm's commit shas -- and the reach
   set, measured by copying the testbed, removing the target, re-rendering every
@@ -595,7 +606,7 @@ paired comparisons, not imputed).
 | Tier | Measures |
 |---|---|
 | Primary | S2 locate accuracy (binary) and time; `gain`; S3 outcome (binary) and collateral damage; S4 fidelity (binary) |
-| Secondary | S1 coverage (parts accounted for, out of eleven) and its three ratings; the other stages' rating sets; UMUX-Lite; the preference block |
+| Secondary | S1's three ratings; the other stages' rating sets; UMUX-Lite; the preference block |
 | Descriptive | Telemetry (surface mix, time to first operation, wrong turns), calibration, interview themes |
 
 Every outcome is reported as a paired mean difference with a 95% bootstrap
@@ -611,12 +622,12 @@ UMUX-Lite. All five are reported whether or not they moved, with no
 multiple-comparison correction, for version 1's reason: at this sample size the
 real risk is selective reporting, and a correction answers the wrong problem.
 
-S1 moved from primary to secondary in this revision, and the reason is a property
-of the testbeds rather than a preference: its outcome is a self-reported count
-because no second piece of work in either testbed can be removed without killing
-the app, and a count of what somebody says they could name is not the same kind of
-evidence as an F1 against a measured key. Reported with the same intervals as
-everything else, and read as weaker.
+S1 is secondary, and it is the one measure in the study whose outcome is entirely
+self-report: three rating items, no key. It was a scored checklist for one
+revision; giving the participant the finished map -- which is what makes the
+stage worth its five minutes -- also puts the answer on the card, so the
+checklist went rather than the map (section 4). Reported with the same intervals
+as everything else, and read as weaker than any of the keyed measures.
 
 ### Pre-commitments
 
@@ -625,11 +636,12 @@ everything else, and read as weaker.
    and the selection gate measured that the git-arm revert conflicts on this
    target. A null result on stage 3 counts against C3, not as something to
    set aside. The selection criteria are published with the result.
-2. Stage 1 is the novel measure and the least protected by precedent, and its
-   outcome is self-reported. If S1 shows no difference, the paper reports that
-   the representation did not help a newcomer account for the product in five
-   minutes, and does not soften it. If it shows a difference, the paper reports
-   that it rests on a coverage claim and three rating items, not on a key.
+2. Stage 1 is the novel measure, the least protected by precedent, and the only
+   one whose outcome is entirely self-reported. If S1 shows no difference, the
+   paper reports that the representation did not help a newcomer account for the
+   product in five minutes, and does not soften it. If it shows a difference, the
+   paper reports that it rests on three rating items and the think-aloud, not on
+   a key.
 3. Predicted dissociation: scored fidelity on stage 4 and the trust item (the
    stage 4 reverse-keyed statement) may point different ways. Either way it
    is reported.
@@ -667,9 +679,11 @@ are fixed before the first participant of the new design.
   footfall and eight in bikecount -- so ticking everything scores an F1 of about
   0.86, and the paper reports that tick-everything baseline alongside each
   condition's mean rather than leaving the reader to work it out.
-- Stage 1's outcome is a count of what the participant says they could account
-  for, not an F1 against a key, because in both testbeds only one piece of work
-  can be removed without killing the app and it is stage 2's answer (section 4).
+- Stage 1 has no keyed outcome at all -- three rating items and the think-aloud.
+  The card hands the participant the map the stage is about, which is what makes
+  five minutes enough to orient in a project, and also what leaves nothing with a
+  right answer to ask afterwards (section 4). RQ1 rests on self-report, and any
+  result on it is reported as such.
 - The study no longer exercises recording at all: no stage asks the participant
   to run `sgt save` or `git commit`, so it says nothing about the moment a change
   enters the history. That was stage 1's job in the earlier design of this

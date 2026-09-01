@@ -47,17 +47,19 @@ export function figure2Panels(dataset: Dataset): PairedPanel[] {
   })
 
   return [
-    // Stage 1: after five minutes of orienting in the project, what the newest
-    // piece of work in it reaches -- F1 of the ticked behaviours against the
-    // measured key.
+    // Stage 1: orientation, which asks no checklist -- the map is on the card,
+    // and asking afterwards what it said tested the reading rather than the
+    // representation. What the stage reports is the three C1 statements it ends
+    // on, meaned with the reverse-keyed one flipped. Self-report, and the only
+    // self-report in the primary tier; protocol v2 section 11 says so.
     build(
       's1',
       'S1 orient',
-      'what the newest work reaches, F1',
-      (p, c) => conditionValue(p, c, (m) => m.quizPicksF1, 'mean', ['s1']),
+      'understood the project and where its parts came from, 1-7',
+      (p, c) => conditionValue(p, c, (m) => m.ratingsMean, 'mean', ['s1']),
       true,
-      [0, 1],
-      'F1',
+      [1, 7],
+      'agreement',
     ),
     // Stage 2: scored from the answer key rather than by a person, so it has
     // no rubric. One work to find, so the bar is a proportion of participants

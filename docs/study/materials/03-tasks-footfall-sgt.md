@@ -6,20 +6,9 @@ You just practiced on this project. Keep using the same folder and the same term
 
 You will complete four stages in order.
 
-Each stage tells you:
-
-- what happened
-- what you need to do
-- how to tell when you are finished
-- which commands may help
-
 Start each stage by running the `./stage` command shown on the card. This prepares the correct starting state. The timer begins after that command finishes.
 
 The task itself is timed. The questions after the task are untimed. When the timer ends, continue to the questions and then move to the next stage.
-
-Please say what you are thinking as you work.
-
-After each stage, answer the short questions on the screen. These questions are untimed.
 
 ## Stage 1: Get to know the project
 
@@ -31,20 +20,27 @@ Run the command below first. It puts the project into this stage's starting stat
 
 **What happened:** You have just joined this project. Nothing is wrong with it, and there is nothing to fix in this stage.
 
-**Your job:** Work out what this project is made of. Put the dashboard beside your setup's view of the history, and fill in the map below, right to left: for each part of the dashboard, which piece of work in the history put it there and where in the code that work lives. The first row is filled in as an example.
+**How it got here:** Dana Whitfield built the first version over the counter's own data file, and then asked for one change at a time until the dashboard was what you see now. An assistant did all of that later work, which is why every piece of it sits under a single name in the history.
+
+**Your job:** Read the map below. It is the whole project, oldest work first. Then put it beside your setup's view of the history and work out what your setup calls each row.
 
 | The work | Where it lives in the code | What it puts on the dashboard |
 |---|---|---|
-| *(example)* the work that added the hour-of-day page | `pages/hourly.py` draws it, `metrics.py` works out the averages | **The busiest hour, and the hour-of-day chart under it** ![The hourly page: the busiest hour, and the average count by hour of day](/stages/footfall-hourly.png) |
-| | | **The month-by-month chart** ![The monthly page](/stages/footfall-monthly.png) |
-| | | **The one-row-per-year table** ![The by-year page](/stages/footfall-yearly-plain.png) |
-| | | **The north against south comparison** ![The two-sensor comparison page](/stages/footfall-sides.png) |
+| the first version of the dashboard | `data.py` reads the counter's file, `metrics.py` adds it up, `charts.py` draws, `pages/overview.py` is the front page | **The front page: the busiest day, and the last fortnight chart** ![](/stages/footfall-overview.png) |
+| the hour-of-day page | `pages/hourly.py` draws it, `metrics.py` works out the averages | **The busiest hour, and the hour-of-day chart under it** ![](/stages/footfall-hourly.png) |
+| splitting that page into weekdays and weekends | `pages/hourly.py`, `charts.py` | **The weekday chart and the weekend chart, side by side** ![](/stages/footfall-hourly-split.png) |
+| the list of unusual days the project keeps | `events.py` | Nothing on its own. It is the list the next two rows read. |
+| the month-by-month page | `pages/monthly.py`, `metrics.py` | **The month-by-month chart** ![](/stages/footfall-monthly.png) |
+| marking the unusual days on the charts | `charts.py`, `events.py`, `pages/monthly.py`, `pages/overview.py` | **The coloured bars on the daily and the month-by-month charts, and the note under each** |
+| the north v south page | `pages/sides.py`, `metrics.py` | **The north against south comparison** ![](/stages/footfall-sides.png) |
+| the by-year table | `pages/yearly.py`, `metrics.py` | **The one-row-per-year table** ![](/stages/footfall-yearly-plain.png) |
+| leaving the unusual days out of the averages | `metrics.py` | No page of its own. It moves every average the dashboard shows, the by-year table's included. |
+| the csv download | `server.py`, `pages/__init__.py` | **The daily totals csv link in the nav** |
+| the finding that the quieter sensor is real, not a fault | `metrics.py`, `pages/sides.py` | The note under the two totals on the north v south page. |
+| the date window | `data.py`, `server.py`, `pages/__init__.py`, and every page under `pages/` | **The date window at the top of every page** ![](/stages/footfall-window.png) |
+| rounding the front page numbers — the newest work in the project | `metrics.py`, `pages/overview.py` | The busiest-day figure and the last-fortnight table, to the nearest 10. |
 
-File names are relative to the project's package, the one the practice sheet lists — `pages/hourly.py` is the hour-of-day page.
-
-The date window at the top of every page is the one control on the dashboard. The pages open on the most recent year; set it to 2018 if you want to see the whole of a year.
-
-**You are done when:** you could point at any part of the dashboard and say which piece of work in the history put it there, and roughly where in the code that work lives. Nothing in the map has to be written down — the questions after this stage are about one piece of work in particular.
+**You are done when:** you can point at a row and say what your setup calls it, and point at a part of the dashboard and say which row put it there.
 
 What `./stage 1` does:
 
@@ -52,7 +48,7 @@ What `./stage 1` does:
 
 Commands that may help:
 
-- `sgt log` is the feature map: one row per part of the project, edits over time. `sgt log --rail` lists what happened, newest first.
+- `sgt log` is the feature map: one row per feature, its checkpoints as blocks along it. `sgt log --rail` lists what happened, newest first.
 - `sgt show "<name>"` says what one part covers — the files and the code inside it. `sgt show <file>::<name>` answers the other direction, for one function.
 - `sgt find "the bit that works out the averages"` searches by description. Any wording will do.
 - `sgt log --focus "<name>"` opens one row, or one ◆ piece of work that spans several rows.
@@ -103,7 +99,7 @@ Run the command below first. It resets the project and names the work you have t
 
 Set the date window to 2018 while you check the pages — the marks only show when the window contains an unusual day, and the pages open on the most recent year.
 
-**You are done when:** `./check 3` says the program still runs and the by-year page reads **42,436** for 2018 again. Run it as often as you like. It prints the same words for everyone, it does not mark you, and a red line in it is information rather than a verdict.
+**You are done when:** `./check 3` says the program still runs and the by-year page reads **42,436** for 2018 again. Run it as often as you like — it does not mark you.
 
 What `./stage 3` does:
 
@@ -121,7 +117,7 @@ Commands that may help:
 
 You have 4 minutes for this task.
 
-Run the command below first. It puts the project into the state where the work has already been taken out. Everyone starts stage 4 from this same state, whether or not their own removal in the last stage worked.
+Run the command below first. It puts the project into the state where the work has already been taken out — the same state for everyone, whatever happened in the last stage.
 
     ./stage 4
 

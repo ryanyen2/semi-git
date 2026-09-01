@@ -123,47 +123,37 @@ Write these down as they happen. This is your qualitative data.
 - Where they say "I don't know what that means."
 - Any point where they give up on a tool feature and do it by hand.
 - In stage 1, which surface they reach for first, and whether they ever open
-  the dashboard beside the history.
+  the dashboard beside the history. Stage 1 has no scored output, so these notes
+  are its data.
 
 ## Scoring guide
 
 Two of the four stages score themselves against the key. Two are scored from the
-repository afterwards. Nothing needs grading by hand.
+repository afterwards. Stage 1 is not scored at all. Nothing needs grading by
+hand.
 
 ### Stage 1 (s1): get to know the project
 
-No task output. The card asks the participant to build a map of the project —
-for each part of the dashboard, where it lives in the code and which piece of
-work put it there — and the first row is worked as an example. Nothing is written
-down.
+**Nothing to score.** No task output, no quiz, no key. The card carries the
+project's whole history as a map — one row per piece of work, its files, and what
+it puts on the dashboard — and asks the participant to put that beside their
+setup's view of the history and work out what their setup calls each row. What
+comes out is three rating statements, the time, and whatever they say while doing
+it.
 
-The quiz is the eleven-item checklist, asked about **the most recent piece of
-work in the history**. The console scores it as set F1 against the key, and
-computes calibration from the confidence rating beside it.
+So this is the stage where your notes are the data. Worth writing down:
 
-The answer, measured on the shipped bundles and identical in both projects:
+- Which they open first, the dashboard or the history, and whether they ever have
+  both on screen at once.
+- Whether they work down the map or jump around it.
+- In the sgt arm: whether they talk about the work using the lane and checkpoint
+  names their install rolled, or keep using the map's words. Either is a finding.
+- Any row they cannot place, and what they tried.
 
-| | The work | What it reaches |
-|---|---|---|
-| footfall | `round front page numbers to the nearest 10` | the busiest-day figure and the last-fortnight chart, both on the front page |
-| bikecount | `round bike counts on the overview page to the nearest 10` | the same two |
-
-Two of eleven. Someone who ticks everything scores about 0.31 here, which is the
-point of asking about this one: the reach is narrow enough that the checklist
-discriminates.
-
-One thing to watch in the sgt arm. The rounding checkpoint sits on some lane, and
-that lane is named after whatever else is in it — not after rounding. On the
-`20260901` bundles it is `Daily and Hourly Charts` in footfall and
-`Counter Dashboard` in bikecount, so a participant reading the lane name could be
-pulled toward the hourly charts or the front-page charts generally. **Read the
-current name yourself before the session** — `sgt log --rail` in the bundle, top
-row, right-hand column — because a rebuild re-rolls every label. If someone ticks
-a part because the lane is called after it, note it; that is a finding about the
-representation either way.
-
-Do not read the answer out. If the participant asks afterwards, tell them after
-the second half.
+The map does not name any sgt feature or checkpoint, deliberately: the bundles
+ship no `.sgt` store, so every install names the features afresh and no two
+participants get the same labels. There is nothing for you to look up beforehand
+and nothing to withhold — the answers are printed on the card.
 
 ### Stage 2 (s2): find the work behind the wrong number
 
@@ -291,8 +281,8 @@ participant per condition, one row per stage, and the coded action stream.
 
 For each participant per half you should have:
 
-- Stage 1: checklist F1 against the key, confidence, three ratings, time, and
-  whether the cap was hit.
+- Stage 1: three ratings (also rolled up as one mean, reverse-keyed item
+  flipped), time, and whether the cap was hit. No checklist and no key.
 - Stage 2: locate correct or not (your reading is the authority), checklist F1,
   confidence, two ratings, time.
 - Stage 3: runs / target / collateral from the scorer, checklist F1, `gain`,

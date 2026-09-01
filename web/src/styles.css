@@ -164,12 +164,13 @@ hr {
 }
 
 /* A screenshot inside a table cell is a thumbnail beside its row, not a figure
-   in its own right. Stage 1's map puts one in every row so that a row names a
+   in its own right. Stage 1's map puts one in most rows so that a row names a
    thing the participant can see rather than a phrase they have to match, and the
-   column it sits in gets the width -- the two columns they fill in hold a
-   filename and a sentence and need much less. Without the width rule the browser
-   split three columns evenly and the screenshots came out 275px wide, which is
-   too small to recognise a page from. */
+   column it sits in gets the width -- the other two hold a short phrase and a
+   list of filenames. Without the width rule the browser split three columns
+   evenly and the screenshots came out 275px wide, too small to recognise a page
+   from; with it alone the first column squeezed to four wrapped lines, and that
+   column is the row's name, which is the part being matched against the tool. */
 .markdown td .md-img {
   margin: 0.4rem 0 0.15rem;
   max-height: 260px;
@@ -177,6 +178,10 @@ hr {
 
 .markdown td:has(.md-img) {
   min-width: 20rem;
+}
+
+.markdown table:has(.md-img) td:first-child {
+  min-width: 11rem;
 }
 
 blockquote {

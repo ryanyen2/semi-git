@@ -60,8 +60,19 @@ function inline(text: string, keyBase: string): ReactNode[] {
     else if (tok.startsWith('![')) {
       // Screenshots in the stage cards: `![what it shows](/stages/....png)`.
       // The alt text doubles as the caption for anyone who cannot see the image.
+      // Empty alt is deliberate where the cell beside the image already says what
+      // it shows -- stage 1's map does -- and then there is no title either,
+      // rather than an empty tooltip on every screenshot in the table.
       const mm = /!\[([^\]]*)\]\(([^)]+)\)/.exec(tok)!
-      out.push(<img key={key} className="md-img" src={mm[2]} alt={mm[1]} title={mm[1]} />)
+      out.push(
+        <img
+          key={key}
+          className="md-img"
+          src={mm[2]}
+          alt={mm[1]}
+          title={mm[1] || undefined}
+        />,
+      )
     } else {
       const mm = /\[([^\]]+)\]\(([^)]+)\)/.exec(tok)!
       out.push(

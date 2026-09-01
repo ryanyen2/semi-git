@@ -475,9 +475,8 @@ tar czf "$OUT/$name.tgz" -C "$(dirname "$staging")" \
 # Stage 1 has nothing to perform since it became orientation, so what it checks
 # is what the participant is told to read: that the reset leaves a clean tree and
 # a dashboard that renders, that the map draws lanes, that `sgt find` answers by
-# meaning rather than by word overlap, and that the group covering the newest
-# save resolves by its own label -- which is the target stage 1's answer key is
-# measured against, and the one thing a rebuild can rename underneath it.
+# meaning rather than by word overlap, that a group resolves by its own label,
+# and that every file stage 1's map names is in the repository being shipped.
 if [ "$condition" = sgt ]; then
     echo "  Rehearsing the stages on the packed bundle."
     rehearsal="$(mktemp -d)"
@@ -563,11 +562,24 @@ NEWEST
         # failed resolve prints is the thing to look for.
         show_out="$(sgt show "$newest" 2>&1)" || true
         if printf '%s\n' "$show_out" | grep -q "is not a known"; then
-            echo "  REHEARSAL: sgt show cannot resolve stage 1's target by name ($newest)." >&2
-            echo "  That name is what the answer key for stage 1 is measured against." >&2
+            echo "  REHEARSAL: sgt show cannot resolve the newest group by name ($newest)." >&2
+            echo "  Stage 1 tells the participant to run it on a name off the map." >&2
             printf '%s\n' "$show_out" | head -3 >&2
             exit 1
         fi
+
+        # Stage 1's map is the stage. A path in it the repository does not carry
+        # is unfalsifiable from the participant's side -- it reads as a file they
+        # cannot find rather than as a mistake on the card -- and the two
+        # projects' file lists genuinely differ, so neither can be checked by
+        # eye against the other.
+        for f in $(node "$SGT_SOURCE/scripts/study/stage1-map-files.mjs" "$project"); do
+            [ -f "$project/$f" ] || {
+                echo "  REHEARSAL: stage 1's map names $project/$f, which this bundle does not" >&2
+                echo "  contain. Fix PROJECT_WORDS.$project.story in web/src/study/tasks.ts." >&2
+                exit 1
+            }
+        done
 
         ./stage 3 >/dev/null
         revert_out="$(sgt revert "$theme" --yes 2>&1)" || {
