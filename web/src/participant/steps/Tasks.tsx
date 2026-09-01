@@ -427,7 +427,10 @@ function StageAnswers({
       quiz: doc?.quiz ?? {},
       ratings: doc?.ratings ?? {},
       confidence: doc?.confidence ?? null,
-      confidenceScale: doc?.confidenceScale,
+      // Only when there is one. Seeding the key with `undefined` put it in every
+      // patch, and Firestore refuses a write containing an undefined field --
+      // see `defined()` in lib/db.ts, which is the backstop for this class.
+      ...(doc?.confidenceScale ? { confidenceScale: doc.confidenceScale } : {}),
     }
   })
   const [dirty, setDirty] = useState(false)

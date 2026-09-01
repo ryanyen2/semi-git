@@ -745,6 +745,38 @@ def _kernel_edit_verb(
                 focus_fid = resolved_feature[1]
                 preview = plan_feature(repo, target)
             elif "::" not in target:
+                # A bare CHAPTER name, before any prose rung. Every surface prints these on their
+                # own -- `@1 Mark Event Days` in the rail, the name inside the block on the map, the
+                # workbench's Restore button -- and typing one back reached the NL rung and was
+                # answered `set OPENAI_API_KEY`, for a name the tool had just printed. Ambiguity
+                # answers with the handles to choose between instead of guessing.
+                from sgt.intent.segment import (
+                    checkpoint_label_candidates, resolve_checkpoint_label,
+                )
+
+                by_label = resolve_checkpoint_label(repo, target)
+                if by_label is not None:
+                    op_ids, chapter = by_label
+                    preview = (verbs.plan_revert_op_set(repo, target, op_ids,
+                                                        take_dependents=take_dependents)
+                               if cmd == "revert" else
+                               verbs.plan_restore_op_set(repo, target, op_ids))
+                    from sgt.lens.tree import load as load_tree
+
+                    op_leaf = (load_tree(repo) or {}).get("op_leaf", {})
+                    return _emit_verb_result(repo, preview, emit, as_json,
+                                             extra={"checkpoint": chapter}, yes=yes,
+                                             focus_fid=next((op_leaf[o] for o in op_ids
+                                                             if o in op_leaf), None),
+                                             out=out)
+                ambiguous = checkpoint_label_candidates(repo, target)
+                if len(ambiguous) > 1:
+                    return _fail_json(
+                        f"{target!r} names {len(ambiguous)} chapters: "
+                        + ", ".join(ambiguous)
+                        + f". Say which -- e.g. `sgt {cmd} {ambiguous[0]}`.",
+                        as_json,
+                    )
                 ledgered = _resolve_via_ledger(repo, cmd, target, emit, as_json, yes)
                 if ledgered is not None:
                     return ledgered
@@ -1128,7 +1160,22 @@ def _resolve_via_intent(repo: str, cmd: str, target: str, as_json: bool, yes: bo
 
     resolution = resolve_intent(repo, target, verb=cmd)
     if resolution is None:
+        # Two different failures wore one sentence. `resolve_intent` returns None when there is no
+        # credential AND when there is one and the call got nowhere, and the message named the key
+        # either way -- so a participant with a provisioned key was told to set the key they had,
+        # about a target the tool could not match. Ask the config which case this is.
+        try:
+            from sgt.config import load_env, resolve_api_key
+
+            load_env(repo)
+            keyed = bool(resolve_api_key(repo))
+        except Exception:  # noqa: BLE001 -- any config failure reads as "no usable credential"
+            keyed = False
         return _fail_json(
+            f"nothing in this repository matches {target!r}. Names that work: a feature or "
+            "chapter name exactly as a view prints it, `<feature>@<n>`, a commit sha, or "
+            "`file.py::Symbol`."
+            if keyed else
             f"could not resolve {target!r} to a ref; set OPENAI_API_KEY to enable "
             "natural-language targets",
             as_json,

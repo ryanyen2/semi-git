@@ -133,13 +133,33 @@ service cloud.firestore {
       // Telemetry from the participant's machine. Append-only for everyone
       // except admins: an event that has landed is never rewritten, which is
       // what makes re-running the sync safe.
+      //
+      // One exception, and it is the browser's own stage boundaries. The web app
+      // stamps `marker-{half}-{requestId}-{open|close}` when a stage opens and
+      // closes, and that id is deterministic -- so the FIRST time a participant
+      // opens a stage the write is a create and lands, and every time after it
+      // is an update and was refused. Re-entering a stage is ordinary (the card
+      // is re-rendered, the participant steps back, `./stage N` is re-run), so
+      // the first live session filled its console with
+      // "Missing or insufficient permissions" from a boundary stamp nobody could
+      // see fail. The stamp is idempotent by construction and the browser owns
+      // it; letting the claimant rewrite one is narrower than making the id
+      // unique per open, which would change what the analysis counts.
+      //
+      // Machine telemetry stays append-only: this permits an update only on a
+      // doc that is already a marker and stays one.
       match /events/{eventId} {
         allow read: if isAdmin();
         allow create: if signedIn()
           && participantExists(pid)
           && request.resource.data.keys().hasAll(['ts', 'kind'])
           && request.resource.data.size() <= 24;
-        allow update, delete: if isAdmin();
+        allow update: if isAdmin()
+          || (isClaimant(pid)
+              && resource.data.kind == 'marker'
+              && request.resource.data.kind == 'marker'
+              && request.resource.data.size() <= 24);
+        allow delete: if isAdmin();
       }
 
       // One doc per machine that has reported, with a heartbeat. The setup
