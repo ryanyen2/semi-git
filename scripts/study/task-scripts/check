@@ -80,6 +80,16 @@ if [ -n "$gitdir" ]; then
     if [ -n "$conflicted" ]; then
         unfinished="yes"
     fi
+    # Markers that survived a resolution. `git add` on a file whose conflict was never actually
+    # edited out marks it resolved, and `git revert --continue` then commits the markers: git is
+    # satisfied, nothing is unmerged, no *_HEAD is left, and the file is a syntax error. Found
+    # walking the git arm, by making the mistake. Only `<<<<<<<` and `>>>>>>>` are looked for --
+    # `=======` is an ordinary underline in Markdown and would report every heading in the README.
+    markers="$(git grep -lE '^(<<<<<<< |>>>>>>> )' -- . 2>/dev/null || true)"
+    if [ -n "$markers" ]; then
+        unfinished="yes"
+        conflicted="$(printf '%s\n%s' "$conflicted" "$markers" | sed '/^$/d' | sort -u)"
+    fi
 fi
 if [ -n "$unfinished" ]; then
     echo "${bold}Is anything half-finished?${off}"

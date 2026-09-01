@@ -10831,3 +10831,21 @@ No renderer change was needed beyond one clause: `_print_show` reads `kind`,
 `handle`, `label` and the counts generically, and `across N features` prints only
 when the key is present. `show` still refuses a phrase -- this is an exact-label
 rung, not the NL resolver, and `test_show_never_calls_the_nl_resolver` still holds.
+
+### The half-finished probe, second pass
+
+Found by making the mistake. Resolving the git arm's second revert by hand, I
+edited one of two conflict blocks in `bikecount/pages/monthly.py`, `git add`-ed
+the file, and ran `git revert --continue`. Git was satisfied: adding a file marks
+it resolved whether or not the markers came out. So the commit landed with
+`<<<<<<<` still in it, nothing was unmerged, no `*_HEAD` was left, and the probe
+above -- which asks git what is in progress -- said nothing. `./check 3` then
+printed "Does the program still run? no" over "those match", the same split
+signal it was written to prevent.
+
+That is not an exotic slip. "Stage the file and continue" is what the hint text
+git prints tells you to do, and the study's own git-arm tip says it too. So the
+probe now also greps tracked files for surviving markers. Only `<<<<<<<` and
+`>>>>>>>` are looked for: `=======` is an ordinary Markdown underline and would
+report every heading in the project's README. Verified quiet on all four clean
+bundles, and loud on the state that produced this note.
