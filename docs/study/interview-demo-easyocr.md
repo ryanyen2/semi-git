@@ -665,15 +665,15 @@ codebase to find out what removing something costs — it asks."
 
 ## 7. The workbench (about 2 minutes)
 
-The visual surface is the VS Code extension (`editor/vscode`), version 0.6.1. It is **not part of
+The visual surface is the VS Code extension (`editor/vscode`), version 0.6.2. It is **not part of
 the sgt CLI** and needs a one-time install before a session.
 
-**One-time setup** (done on this machine; `code --list-extensions` shows `semi-git.semi-git@0.6.1`):
+**One-time setup** (done on this machine; `code --list-extensions` shows `semi-git.semi-git@0.6.2`):
 
 ```bash
 cd /Users/r4yen/repos/semi-git/editor/vscode
-npx --yes @vscode/vsce package --no-dependencies --out /tmp/semi-git-0.6.1.vsix
-code --install-extension /tmp/semi-git-0.6.1.vsix
+npx --yes @vscode/vsce package --no-dependencies --out /tmp/semi-git-0.6.2.vsix
+code --install-extension /tmp/semi-git-0.6.2.vsix
 ```
 
 (`vsce` runs the repo's own `vscode:prepublish` → `npm run package` for you, so there is no
