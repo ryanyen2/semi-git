@@ -102,12 +102,19 @@ There is also a CSV download at \`/daily.csv\`.
 
 Leave the server running in Terminal 1.
 
-The main files are:
+The pages are plain reports. The one control on them is the date window at the top of every page.
 
-- \`bikecount/pages/\` — one file for each page
-- \`bikecount/metrics.py\` — calculates the numbers shown on the pages
+**Every page is one file, and file names map to pages.** When any view — a diff, a save's echo, a feature's card — names a file, this list says which part of the dashboard it is:
+
+- \`bikecount/pages/overview.py\` — the front page: the busiest-day figure and the last-fortnight chart
+- \`bikecount/pages/hourly.py\` — the weekday and weekend hour-of-day charts
+- \`bikecount/pages/monthly.py\` — the month-by-month chart
+- \`bikecount/pages/sides.py\` — the east v west comparison
+- \`bikecount/pages/yearly.py\` — the one-row-per-year table
+- \`bikecount/metrics.py\` — works out every number the pages show
+- \`bikecount/charts.py\` — draws the charts, including the marks on unusual days
+- \`bikecount/events.py\` — the project's list of unusual days
 - \`bikecount/data.py\` — reads \`data/counts.csv\`
-- \`bikecount/charts.py\` — creates the charts
 - \`check.py\` — checks that every page can render successfully
 
 You can check the whole project at any time, in **Terminal 2**:
@@ -139,12 +146,19 @@ There is also a CSV download at \`/daily.csv\`.
 
 Leave the server running in Terminal 1.
 
-The main files are:
+The pages are plain reports. The one control on them is the date window at the top of every page.
 
-- \`footfall/pages/\` — one file for each page
-- \`footfall/metrics.py\` — calculates the numbers shown on the pages
+**Every page is one file, and file names map to pages.** When any view — a diff, a save's echo, a feature's card — names a file, this list says which part of the dashboard it is:
+
+- \`footfall/pages/overview.py\` — the front page: the busiest-day figure and the last-fortnight chart
+- \`footfall/pages/hourly.py\` — the weekday and weekend hour-of-day charts
+- \`footfall/pages/monthly.py\` — the month-by-month chart
+- \`footfall/pages/sides.py\` — the north v south comparison
+- \`footfall/pages/yearly.py\` — the one-row-per-year table
+- \`footfall/metrics.py\` — works out every number the pages show
+- \`footfall/charts.py\` — draws the charts, including the marks on unusual days
+- \`footfall/events.py\` — the project's list of unusual days
 - \`footfall/data.py\` — reads \`data/counts.csv\`
-- \`footfall/charts.py\` — creates the charts
 - \`check.py\` — checks that every page can render successfully
 
 You can check the whole project at any time, in **Terminal 2**:
@@ -332,6 +346,7 @@ The **workbench** panel at the bottom is the history as a map:
 ![The sgt workbench: one row per feature, its checkpoints as blocks along the row, time running left to right](/materials/sgt_workbench.png)
 
 - One row per **feature**; the row's colour is that feature's identity everywhere in the panel.
+- Click a row and its card lists the **files** that feature's work touches — \`pages/<name>.py\` is the page of the same name, so the card answers "which part of the dashboard is this" directly.
 - The blocks along a row are its **checkpoints**. Hover one to see its name; click it to select it.
 - A hollow block is work that was reverted. A dashed block right of the "now" line is work on disk that has not been saved yet.
 - A thin dotted vertical line links blocks that belong to one piece of work across several rows. Hover it for the name; click it to see (and revert) the whole thing.

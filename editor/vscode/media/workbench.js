@@ -3855,6 +3855,7 @@ function episodeRailLayout(epView) {
       inspector.appendChild(meta);
 
       if (node.kind === "feature") {
+        renderTouchedFiles(id, node);
         inspector.appendChild(renderActionBar(id));
         inspector.appendChild(renderCheckpoints(id));
       }
@@ -4748,6 +4749,49 @@ function episodeRailLayout(epView) {
     featureRow.appendChild(whole);
     wrap.appendChild(featureRow);
     return wrap;
+  }
+
+  // What this feature's own work touches, BY FILE -- the bridge from a lens to the running app.
+  // The study's quiz asks "which parts of the dashboard did this change", and the parts are files
+  // (one page per file under pages/); a participant staring at a lens called "Event Day Tracking"
+  // had no way to answer without reading code. Files answer it in one glance, so they come first
+  // on the card, page files ahead of the rest. Client-side over `own_symbols` -- what the lane's
+  // ops really touched, the same number every other surface reports -- never `members`.
+  function renderTouchedFiles(id, node) {
+    const own = node.own_symbols || [];
+    if (!own.length) return;
+    const perFile = new Map();
+    for (const sym of own) {
+      const file = String(sym).split("::")[0];
+      perFile.set(file, (perFile.get(file) || 0) + 1);
+    }
+    const shortName = (f) => {
+      const parts = f.split("/");
+      return parts.length > 1 ? parts.slice(1).join("/") : f;
+    };
+    const rows = [...perFile.entries()]
+      .map(([file, n]) => ({ file, n, page: /(^|\/)pages\//.test(file) }))
+      .sort((a, b) => (b.page - a.page) || (b.n - a.n) || a.file.localeCompare(b.file));
+    const wrap = document.createElement("div");
+    wrap.className = "touched-files";
+    const label = document.createElement("span");
+    label.className = "touched-files-label";
+    label.textContent = "touches";
+    wrap.appendChild(label);
+    for (const r of rows.slice(0, 8)) {
+      const chip = document.createElement("span");
+      chip.className = "chip file-chip" + (r.page ? " file-chip-page" : "");
+      chip.textContent = shortName(r.file);
+      chip.title = `${r.file} — ${r.n} symbol(s) of this feature's work`;
+      wrap.appendChild(chip);
+    }
+    if (rows.length > 8) {
+      const more = document.createElement("span");
+      more.className = "touched-files-more";
+      more.textContent = `+${rows.length - 8}`;
+      wrap.appendChild(more);
+    }
+    inspector.appendChild(wrap);
   }
 
   function renderActionBar(id) {

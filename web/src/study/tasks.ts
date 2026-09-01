@@ -397,7 +397,7 @@ Run the command below first. It puts the project into this stage's starting stat
         '`sgt now` says where things stand.',
         '`git diff` shows the change line by line, and `git status` lists the files it touches. Nothing is recorded yet, so this is where the detail is.',
         'In the editor, the Changes view and the diff view show the same edits.',
-        '`sgt save -m "your words"` records the change and prints which piece of work it went under.',
+        '`sgt save -m "your words"` records the change and prints each feature it went under with the files it touched — `pages/<name>.py` is the page of the same name.',
       ],
     },
     run: {
@@ -462,6 +462,8 @@ Run the command below first. It resets the project and prints the two numbers th
 
 ![The by-year page, with the 2018 row marked — its average-day number is the one that disagrees with the ${w.document}](${w.img.yearly})
 
+The pages open on the most recent year. Set the date window at the top to cover 2018 — the year both numbers are about.
+
 **Your job:** Find the piece of work in the project's history that made that change. You do not have to change any code.
 
 **You are done when:** You can name the piece of work — a commit hash, a named piece of work, or an id all count. The questions after this stage ask you which one you found. If you are not certain, choose what you have and say that you are not certain. That is more useful to us than a guess.
@@ -478,6 +480,7 @@ Run the command below first. It resets the project and prints the two numbers th
         '`sgt log` shows the history grouped by feature; `sgt log --rail` lists what happened, newest first.',
         '`sgt find "the bit that works out the averages"` searches by description. Any wording will do.',
         '`sgt log --focus "<name>"` opens one feature — or one ◆ piece of cross-feature work: the map stays, its chapters are listed underneath.',
+        'To answer "which parts of the dashboard": a feature\'s card in the workbench (and `sgt show "<name>"`) lists the files it touches, and `pages/<name>.py` is the page of the same name.',
       ],
     },
     run: {
@@ -568,6 +571,8 @@ Run the command below first. It resets the project and names the work you have t
 **Your job:** Take that work out of the project. Three things have to go: the list of unusual days the project keeps, the marks that flag those days on the daily and monthly charts, and the rule that leaves those days out of the averages. Everything else the dashboard shows has to keep working.
 
 ![The monthly page today: the coloured bars flag months containing an unusual day. After the removal, no bar is coloured and the note under the chart is gone.](${w.img.monthly})
+
+Set the date window to 2018 while you check the pages — the marks only show when the window contains an unusual day, and the pages open on the most recent year.
 
 **You are done when:** \`./check 3\` says the program still runs and the by-year page reads **${w.reported}** for 2018 again. Run it as often as you like. It prints the same words for everyone, it does not mark you, and a red line in it is information rather than a verdict.
 `,

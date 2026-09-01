@@ -45,7 +45,7 @@ Commands that may help:
 - `sgt now` says where things stand.
 - `git diff` shows the change line by line, and `git status` lists the files it touches. Nothing is recorded yet, so this is where the detail is.
 - In the editor, the Changes view and the diff view show the same edits.
-- `sgt save -m "your words"` records the change and prints which piece of work it went under.
+- `sgt save -m "your words"` records the change and prints each feature it went under with the files it touched — `pages/<name>.py` is the page of the same name.
 
 ## Stage 2: Find the work behind the wrong number
 
@@ -58,6 +58,8 @@ Run the command below first. It resets the project and prints the two numbers th
 **What happened:** The transport committee published a paper last year saying that the average day in 2018 saw **42,436** people walk past. The dashboard's by-year page now says **42,545** for the same year. The numbers disagree because a colleague changed the way the dashboard works out an average. Days on the project's list of unusual days, such as Grand Final Friday and Christmas, are now left out of every average, and the paper was written when every day still counted.
 
 ![The by-year page, with the 2018 row marked — its average-day number is the one that disagrees with the paper](/stages/footfall-yearly.png)
+
+The pages open on the most recent year. Set the date window at the top to cover 2018 — the year both numbers are about.
 
 **Your job:** Find the piece of work in the project's history that made that change. You do not have to change any code.
 
@@ -73,6 +75,7 @@ Commands that may help:
 - `sgt log` shows the history grouped by feature; `sgt log --rail` lists what happened, newest first.
 - `sgt find "the bit that works out the averages"` searches by description. Any wording will do.
 - `sgt log --focus "<name>"` opens one feature — or one ◆ piece of cross-feature work: the map stays, its chapters are listed underneath.
+- To answer "which parts of the dashboard": a feature's card in the workbench (and `sgt show "<name>"`) lists the files it touches, and `pages/<name>.py` is the page of the same name.
 
 ## Stage 3: Take that work out
 
@@ -87,6 +90,8 @@ Run the command below first. It resets the project and names the work you have t
 **Your job:** Take that work out of the project. Three things have to go: the list of unusual days the project keeps, the marks that flag those days on the daily and monthly charts, and the rule that leaves those days out of the averages. Everything else the dashboard shows has to keep working.
 
 ![The monthly page today: the coloured bars flag months containing an unusual day. After the removal, no bar is coloured and the note under the chart is gone.](/stages/footfall-monthly.png)
+
+Set the date window to 2018 while you check the pages — the marks only show when the window contains an unusual day, and the pages open on the most recent year.
 
 **You are done when:** `./check 3` says the program still runs and the by-year page reads **42,436** for 2018 again. Run it as often as you like. It prints the same words for everyone, it does not mark you, and a red line in it is information rather than a verdict.
 
