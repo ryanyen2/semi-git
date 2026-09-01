@@ -279,6 +279,17 @@ PY
         echo "  ships with half of its search."
         echo
     fi
+
+    # The pristine snapshot must be the SAME tree this bundle ships. build_stages
+    # tarred the source repo's .sgt before this staging rebuild existed, so the
+    # first `./stage N` flipped the participant onto an older tree with different
+    # feature names -- contradicting the tutorial, the answer key, and the search
+    # index embedded above (which indexes the rebuilt set). Re-tar from the
+    # just-rebuilt state: the staging copy sits at study/full and a rebuild
+    # records no removals, so stage 4's restore inverse is untouched.
+    echo "  Refreshing the pristine .sgt snapshot to the rebuilt tree."
+    rm -f "$staging/work/.study/sgt-pristine.tar"
+    tar -cf "$staging/work/.study/sgt-pristine.tar" -C "$staging/work" .sgt
 else
     # The assistant's guidance for the half without a history tool. The sgt half
     # ships three skills and an MCP server (installed at setup, above); with
