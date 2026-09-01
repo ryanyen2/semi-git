@@ -201,6 +201,14 @@ _ARTIFACTS: dict[str, _Artifact] = {
     # addressed (repeated edits to one file are distinct rows) and is trimmed to a fixed cap, so it
     # never grows unbounded. Never travels.
     "intent_activity": _Artifact(("local", "activity.json"), committed=False),
+    # local, gitignored per-save capture manifests (`sgt.intent.manifest`, capture weave P1,
+    # docs/design/2026-09-01-capture-weave.md §4b): {commit-sha: record} -- the durable copy of the
+    # capture window each save closed (its turns, its activity events, and the (sha, footprint)
+    # anchors of the ops it minted). Written once per save at the save beat, never rewritten; what
+    # makes the activity ring buffer's trim a liveness detail instead of data loss, and what the
+    # stint derivation (P2) reads instead of a batch aligner. Verbatim conversation, so local
+    # forever like `intent_turns`; compact -- it grows with every save.
+    "intent_manifests": _Artifact(("local", "manifests.json"), committed=False, compact=True),
     # local, gitignored record of scratch-tree sessions (`sgt session start`, U30/D5): name ->
     # branch/scratch path/target branch/base op-ids/owning pid/start time. Per-clone, never
     # travels -- a session's scratch tree is a `git worktree` of *this* clone's object store.

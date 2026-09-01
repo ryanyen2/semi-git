@@ -391,6 +391,45 @@ def test_save_records_the_agents_edits(tmp_path):
     assert payload.get("words") == "bump foo"
 
 
+def test_save_carries_the_driving_prompt_into_the_closing_manifest(tmp_path):
+    """Capture weave P1 (§4a): an MCP client has no `UserPromptSubmit` hook, so the save call is
+    the door the user's ask arrives through. With a chat key the turn is recorded *before* the
+    save, so the capture window this save closes carries it -- channel `agent`, the trust tier for
+    a relayed claim of the user's verbatim words."""
+    from sgt.intent.manifest import load_manifests
+    from sgt.intent.turns import turns_for
+
+    repo = _seed(tmp_path, 1)
+    (tmp_path / "a.py").write_text("def foo():\n    return 99\n", encoding="utf-8")
+
+    _, payload = _call(repo, "sgt_save", {"message": "bump foo", "prompt": "make foo return 99",
+                                          "claude_session_id": "cs-42"})
+
+    assert payload["saved"] is True
+    hits = turns_for(repo, "cs-42", key_kind="chat")
+    assert len(hits) == 1 and hits[0]["text"] == "make foo return 99"
+    assert hits[0]["channel"] == "agent" and hits[0]["actor"] == "human"
+    rec = load_manifests(repo)[payload["commit"]]
+    assert "make foo return 99" in [t["text"] for t in rec["turns"]]
+
+
+def test_save_without_a_chat_key_keys_the_prompt_by_the_new_commit(tmp_path):
+    """No session id, no pre-save key -- so the prompt is recorded after the save, keyed by the
+    commit sha it produced (the direct key `_atom_prompt` joins first). The words still reach
+    every read surface; they just don't ride the manifest."""
+    from sgt.intent.turns import turns_for
+
+    repo = _seed(tmp_path, 1)
+    (tmp_path / "a.py").write_text("def foo():\n    return 99\n", encoding="utf-8")
+
+    _, payload = _call(repo, "sgt_save", {"prompt": "make foo return 99"})
+
+    assert payload["saved"] is True
+    hits = turns_for(repo, payload["commit"], key_kind="sha")
+    assert [t["text"] for t in hits] == ["make foo return 99"]
+    assert hits[0]["channel"] == "agent"
+
+
 def test_save_on_a_clean_tree_says_so_rather_than_committing_nothing(tmp_path):
     repo = _seed(tmp_path, 1)
     _call(repo, "sgt_log")  # mine, so the ideal is current

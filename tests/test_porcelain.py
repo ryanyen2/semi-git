@@ -273,6 +273,38 @@ def test_save_without_a_message_harvests_no_turn(tmp_path):
     assert turns.load_turns(repo) == {}
 
 
+def test_save_closes_a_capture_manifest(tmp_path):
+    """The save beat closes the capture window (weave P1): everything captured since the previous
+    save -- here a hook turn and the `-m` turn the save itself harvests -- plus the new ops'
+    footprint anchors land in one durable manifest keyed by the witness commit. A second save
+    chains its window from the first's end, so nothing is harvested twice."""
+    from sgt.intent import manifest, turns
+    from sgt.store.gitbind import GitBinding
+
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    get(repo)
+    turns.record_turn(repo, key="cs-9", key_kind="chat", actor="human", channel="hook",
+                      text="add a quux helper")
+    (repo / "d.py").write_text("def quux():\n    return 42\n", encoding="utf-8")
+    with _in(repo):
+        assert cli.main(["save", "-m", "add quux helper"]) == 0
+
+    sha = GitBinding(repo).head()
+    rec = manifest.load_manifests(repo).get(sha)
+    assert rec is not None
+    assert sorted(t["channel"] for t in rec["turns"]) == ["cli", "hook"]
+    assert any("d.py::quux" in o["symbols"] for o in rec["ops"])
+
+    # the second save's window starts where the first ended: the first save's turns do not reappear
+    (repo / "d.py").write_text("def quux():\n    return 43\n", encoding="utf-8")
+    with _in(repo):
+        assert cli.main(["save", "-m", "bump quux"]) == 0
+    sha2 = GitBinding(repo).head()
+    rec2 = manifest.load_manifests(repo)[sha2]
+    assert rec2["start"] == rec["end"]
+    assert [t["text"] for t in rec2["turns"]] == ["bump quux"]
+
+
 def test_save_echo_reports_no_words_captured_without_a_message(tmp_path, capsys):
     """Save-echo legibility (intent-ledger P1): a bare save (no `-m`, no plan step) says so
     explicitly rather than staying silent or -- the failure the design forbids -- printing the
