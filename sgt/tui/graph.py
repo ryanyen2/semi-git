@@ -752,28 +752,39 @@ def resolve_focus_group(ref: str, map_view: dict, grid_view: dict, themes: dict 
 
 
 def theme_spans(themes: dict, map_view: dict, grid_view: dict) -> list[dict]:
-    """The cross-feature themes joined to the lanes they span, for the map's footer: each
-    multi-feature theme's label plus the LABELS (not hashes) of the features its commits touched,
-    widest span first. The join is the same commit->cell walk `resolve_focus_group` does, so what
-    the footer names and what `--focus` opens can never disagree. Single-feature themes are
-    dropped -- their lane already tells that story on its own row."""
+    """The cross-feature themes joined to the lanes they span, for the map's own rows: each
+    multi-feature theme's label, the LABELS (not hashes) of the features its commits touched,
+    and its per-commit edit density on the SHARED axis -- so the map can draw the spanning work
+    as rows whose marks line up column-for-column with the lane blocks above, instead of a prose
+    footer the reader has to join by hand. The join is the same commit->cell walk
+    `resolve_focus_group` does, so what these rows name and what `--focus` opens can never
+    disagree. Single-feature themes are dropped -- their lane already tells that story."""
     labels = {n["id"]: n.get("label", n["id"]) for n in map_view.get("nodes", [])}
     idx_of = {c["sha"]: c["index"] for c in grid_view.get("commits", [])}
-    cells_by_idx: dict[int, set[str]] = {}
+    cells_by_idx: dict[int, list[dict]] = {}
     for c in grid_view.get("cells", []):
-        cells_by_idx.setdefault(c["commit_index"], set()).add(c["feature_id"])
+        cells_by_idx.setdefault(c["commit_index"], []).append(c)
     out = []
     for t in (themes or {}).values():
         label = (t or {}).get("label", "").strip()
-        if not label:
+        # "(unwitnessed)" is the catch-all rollup for commits outside every theme -- it spans most
+        # of the repo by construction, so as a ◆ row it would read as the repo's biggest work item.
+        if not label or label == "(unwitnessed)":
             continue
         feats: set[str] = set()
+        per: dict[int, int] = {}
         for sha in t.get("atom_shas", []):
-            feats |= cells_by_idx.get(idx_of.get(sha, -1), set())
+            idx = idx_of.get(sha)
+            if idx is None:
+                continue
+            for cell in cells_by_idx.get(idx, []):
+                feats.add(cell["feature_id"])
+                per[idx] = per.get(idx, 0) + (cell.get("op_count") or len(cell.get("op_ids") or ()))
         if len(feats) < 2:
             continue
         out.append({"label": label, "feature_ids": feats,
-                    "feature_labels": sorted(labels.get(f, f) for f in feats)})
+                    "feature_labels": sorted(labels.get(f, f) for f in feats),
+                    "per_commit": per, "op_count": sum(per.values())})
     out.sort(key=lambda t: (-len(t["feature_ids"]), t["label"]))
     return out
 

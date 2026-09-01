@@ -110,10 +110,11 @@ def map_lines(
     stands out. This replaced the scoped views that dropped the map entirely: a focus that hides
     everything else answers "what is in this group" but loses "where does it sit".
 
-    `themes` (`[{"label", "feature_labels"}]`, span >= 2 only) is the cross-feature footer: work
-    that ran across lanes has no single row of its own, so without this the only place its NAME
-    appeared was `sgt intent list` -- which the study's participants (and its author) could not
-    connect back to this map at all.
+    `themes` (`theme_spans` rows, span >= 2 only) draw as rows IN this table, on the same axis:
+    one task's work that landed across lanes has no lane of its own, so it gets a ◆ row whose
+    density marks sit in the exact columns of its member commits -- the vertical alignment with
+    the lane blocks above is the join. A prose footer here before that, and `sgt intent list`
+    before THAT, both made the reader map names back onto the picture by hand.
 
     The row is three columns and only three: WHO (guides + glyph + name), WHEN (the density bar
     under its own `c0 … cN` ruler), and HOW MUCH (a right-aligned edit count). The `@n` checkpoint
@@ -220,6 +221,9 @@ def map_lines(
         per, _ = _per_commit(l["cars"])
         if per:
             scale_max = max(scale_max, max(per.values()))
+    for t in themes or []:
+        if t.get("per_commit"):
+            scale_max = max(scale_max, max(t["per_commit"].values()))
 
     # ── Header ───────────────────────────────────────────────────────────────────────────────────
     title = Text(" ", style=BODY)
@@ -242,8 +246,10 @@ def map_lines(
         banner = Text(" ", style=BODY)
         banner.append("◉ ", style=HEAD)
         banner.append(emphasis.get("label", ""), style=HEAD)
-        kind_note = ("feature" if emphasis.get("kind") == "feature"
-                     else f"{emphasis.get('kind', 'group')}, {plural(n_mem, 'feature')}")
+        kind = emphasis.get("kind")
+        kind_note = ("feature" if kind == "feature"
+                     else f"subsystem, {plural(n_mem, 'feature')}" if kind == "subsystem"
+                     else f"one piece of work across {plural(n_mem, 'feature')}")
         banner.append(f"  ·  {kind_note}"
                       "  ·  other lanes dimmed — bare `sgt log` shows everything", style=MUTE)
         emit(con, banner)
@@ -373,6 +379,41 @@ def map_lines(
         shown += 1
         lanes_drawn += 1
 
+    # ── Work across several features: rows in the SAME table, on the SAME axis ──────────────────
+    # One task's work that landed on several lanes has no lane of its own, so it draws here as a
+    # row whose density marks sit in the exact columns of its member commits -- the vertical
+    # alignment with the lane blocks above IS the join. This replaced a prose footer that named
+    # the same work and left the reader to map the names back onto the picture by hand, which is
+    # the `sgt intent list` mistake all over again. No third noun: these are checkpoints that
+    # landed across features, named once.
+    if themes and emphasis is None:
+        emit(con, rule(row_w - gutter, left=" " * gutter))
+        thead = Text(" " * gutter + "  ")
+        thead.append("↕ ", style=MUTE)
+        thead.append("work across several features", style=MUTE)
+        emit(con, thead)
+        for t in themes[:5]:
+            trow = Text(" " * gutter)
+            trow.append("  ")
+            trow.append("◆ ", style=HEAD)
+            tname = fit(t["label"], name_w - 2)
+            trow.append(tname.ljust(name_w - 2), style=BODY)
+            if id_w:
+                trow.append(" " * pad)
+                trow.append(" " * id_w)
+            trow.append(" " * pad)
+            trow.append_text(spark_bar(t.get("per_commit") or {}, axis_len=axis_len, width=bar_w,
+                                       scale_max=scale_max, hexc=None, color=color))
+            trow.append(" " * pad)
+            trow.append(f"{t.get('op_count', 0):,}".rjust(edits_w), style=MUTE)
+            if latest_w:
+                trow.append(" " * pad)
+                trow.append(fit(f"across {len(t['feature_ids'])} features", latest_w), style=MUTE)
+            emit(con, trow)
+        if len(themes) > 5:
+            emit(con, Text(" " * gutter + "    ", style=FAINT).append(
+                f"… and {len(themes) - 5} more", style=FAINT))
+
     # ── Footer ───────────────────────────────────────────────────────────────────────────────────
     emit(con, "")
     emit(con, Text(" ", style=MUTE).append_text(
@@ -380,29 +421,6 @@ def map_lines(
     for gh in (unplaced_ghosts or []):
         emit(con, Text(" ", style=FAINT).append(
             f"{GHOST} planned, no lane yet: {fit(gh.get('title', ''), 48)}", style=FAINT))
-    # Cross-feature work, named where the lanes are. A piece of work that ran across several
-    # features has no row of its own above, so this is the only place the map itself can say
-    # "these lanes changed together, and the group has a name you can focus or revert by".
-    if themes and emphasis is None:
-        emit(con, "")
-        emit(con, Text(" ", style=MUTE).append("work that spans several features:", style=MUTE))
-        label_w = min(36, max(len(t["label"]) for t in themes[:6]))
-        for t in themes[:6]:
-            trow = Text("   ", style=BODY)
-            trow.append("◈ ", style=HEAD)
-            trow.append(fit(t["label"], label_w).ljust(label_w), style=HEAD)
-            feats = t.get("feature_labels") or []
-            shown = ", ".join(feats[:3]) + (f" +{len(feats) - 3}" if len(feats) > 3 else "")
-            trow.append("  across ", style=MUTE)
-            trow.append(fit(shown, max(10, width - label_w - 16)), style=MUTE)
-            emit(con, trow)
-        if len(themes) > 6:
-            emit(con, Text("   ", style=FAINT).append(f"… and {len(themes) - 6} more", style=FAINT))
-        example_t = themes[0]["label"]
-        emit(con, Text(" ", style=FAINT).append(
-            fit(f'`sgt log --focus "{example_t}"` shows one group across its lanes  ·  '
-                f'`sgt revert "{example_t}"` removes one everywhere at once', width - 2),
-            style=FAINT))
     # The one thing the view cannot show about itself: that a bar's height is relative, and that the
     # chapters live one command away. Everything else -- that columns are time, that the hue is the
     # feature -- the ruler and the swatches now say on their own.
@@ -426,7 +444,12 @@ def map_lines(
     # in which case the loop above finds no feature to make an example of and this line is the only
     # thing on screen telling the reader how to get anywhere.
     if drew_meta:
-        clauses.append('`sgt log --focus "<name>"` opens a folded group')
+        clauses.append('`sgt log --focus "<name>"` opens a folded subsystem')
+    if themes and emphasis is None:
+        example_t = themes[0]["label"]
+        clauses.append(f'a ◆ row is one piece of work across several features, in the same '
+                       f'columns as the lanes it touched — `sgt log --focus "{example_t}"` '
+                       f'shows it on them; `sgt revert "{example_t}"` removes it everywhere')
     for clause in clauses:
         emit(con, Text(" ", style=FAINT).append(fit(clause, width - 2), style=FAINT))
     return to_lines(con, color=color)
