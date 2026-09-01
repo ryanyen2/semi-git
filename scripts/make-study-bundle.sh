@@ -290,6 +290,21 @@ PY
     echo "  Refreshing the pristine .sgt snapshot to the rebuilt tree."
     rm -f "$staging/work/.study/sgt-pristine.tar"
     tar -cf "$staging/work/.study/sgt-pristine.tar" -C "$staging/work" .sgt
+
+    # Freeze the names. The rebuild's LLM answers live in caches inside this
+    # staging copy, which is thrown away after packing -- so the NEXT build
+    # re-asked the LLM and every merged leaf's label re-rolled per publish
+    # ("Hourly Side Comparisons" one build, "Hourly Side Analysis" the next),
+    # silently drifting from the answer key and the printed sheets. Copying the
+    # caches back makes the next rebuild a cache hit: same clustering in, same
+    # names out. The one deliberate write a bundle build makes outside its own
+    # staging directory.
+    for cache in local/label_cache.json local/intent_cache.json; do
+        if [ -f "$staging/work/.sgt/$cache" ]; then
+            mkdir -p "$(dirname "$source_repo/.sgt/$cache")"
+            cp "$staging/work/.sgt/$cache" "$source_repo/.sgt/$cache"
+        fi
+    done
 else
     # The assistant's guidance for the half without a history tool. The sgt half
     # ships three skills and an MCP server (installed at setup, above); with

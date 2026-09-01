@@ -6,13 +6,13 @@ Take a few minutes to practice on the project before the timed stages begin. You
 
 `sgt` works on top of a Git repository. It organizes history around the parts of the project, not around commits.
 
-Three words appear throughout the interface, and every view draws the same picture with them:
+Two words appear throughout the interface, and every view draws the same picture with them:
 
 A **feature** is one part of the project, such as "hourly charts." Each feature is one row in the history views.
 
 A **checkpoint** is one stretch of work on one feature, such as "split weekday and weekend averages." Checkpoints are the blocks along a feature's row. Some screens call them **chapters**.
 
-A **group** is one piece of work that touched several features at once — one task, landed across rows. `sgt log` names the groups under the map, and revert and restore take a group's name directly.
+One piece of work can land on several features at once. The views draw those checkpoints linked together with one name for the whole thing, and `sgt revert` and `sgt restore` take that name directly.
 
 This practice covers the commands used in the timed stages. Most commands also print suggested next steps.
 
@@ -94,7 +94,7 @@ The **workbench** panel at the bottom is the history as a map:
 - One row per **feature**; the row's colour is that feature's identity everywhere in the panel.
 - The blocks along a row are its **checkpoints**. Hover one to see its name; click it to select it.
 - A hollow block is work that was reverted. A dashed block right of the "now" line is work on disk that has not been saved yet.
-- The panel's detail pane lists the **groups** that span several features; clicking one shows it across the rows.
+- A thin dotted vertical line links blocks that belong to one piece of work across several rows. Hover it for the name; click it to see (and revert) the whole thing.
 
 You can click features and checkpoints to inspect them, and right-click for actions such as **Revert** and **Restore**.
 
@@ -155,9 +155,9 @@ sgt find "the bit that works out the averages"
 
 The results can include functions, features, and individual saves.
 
-The search box in the workbench performs the same kind of search — it also finds saves by their message or hash, and groups by their name.
+The search box in the workbench performs the same kind of search — it also finds saves by their message or hash, and cross-feature work by its name.
 
-To open one feature or group — the map stays, and its checkpoints are listed underneath with their handles:
+To open one feature — or one piece of cross-feature work — with the map still on screen and its checkpoints listed underneath:
 
 ```
 sgt log --focus "<name>"
@@ -169,7 +169,7 @@ A checkpoint handle looks like:
 f-08915a9f@1
 ```
 
-The third timed stage refers to one of the groups `sgt log` names under the map.
+The third timed stage refers to one of the ◆ rows `sgt log` draws under the lanes — one piece of work across several features.
 
 ## 4. Remove work and restore it
 
