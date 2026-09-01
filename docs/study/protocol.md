@@ -429,27 +429,39 @@ Six checkboxes (all but the last are required), plus a typed name and date.
 5. I understand I can stop at any time, without a reason, and still be paid.
 6. *(optional)* I agree to short anonymized quotes from my session appearing in a publication.
 
-### 5.2 Background (`background-v1`)
+### 5.2 Pre-Study Questionnaire (`background-v2`)
 
 These are covariates (factors to control for), not screening criteria. Screening
 happened at recruitment.
 
 | Item | Format |
 |---|---|
-| Years writing code seriously | Integer |
-| Years using git | Integer |
-| How often you use each command: `log`, `blame`, `bisect`, `revert`, `reset`, `rebase -i`, `reflog`, `cherry-pick` | Never / Rarely / Sometimes / Often |
-| AI coding tools you have used in agent mode | Multi-select |
-| How often you work with an AI coding assistant | Daily … Never |
-| Share of code you shipped last month that an assistant wrote | 0-100 slider |
-| Primary programming languages | Free text |
-| Have you used sgt or semi-git before? | Yes / No |
+| What is your gender? | Woman / Man / Non-binary / Prefer not to disclose / Prefer to self-describe |
+| If you chose "Prefer to self-describe" above, please describe it here | Free text, optional |
+| What is your age? | Integer |
+| Educational background, or the level currently being pursued | Bachelor's / Master's / Doctoral / Professional / Trade school or vocational / Other |
+| If you chose "Other" above, please describe it here | Free text, optional |
+| How many years of programming experience do you have? | Integer |
+| How often did you use AI code generation tools (Claude Code, Cursor, GitHub Copilot, Codex, ChatGPT) for your programming tasks? | Rarely … Very frequently, plus "I do not know what this is" |
+| How familiar are you with AI code generation tools? | 1-5 |
+| I consider myself experienced in programming with Python | 1-5 |
+| I consider myself confident in using Git | 1-5 |
 
-The eight-command frequency grid produces a **git expertise composite score**
-(0-24, where never=0 and often=3) that goes into the statistical models as a
-covariate. We do not ask for self-rated expertise on a single 1-7 scale, because
-that correlates with confidence rather than actual skill. The last item is an
-exclusion check, not a covariate.
+The demographic items through to programming experience are administered as
+written on the recruitment questionnaire, so that this study's sample can be
+described in the same terms as the sample it was drawn from.
+
+The last item is not on that questionnaire. It is added here because both halves
+of the session are spent on version history, which makes git confidence the one
+covariate the outcome measures sit directly downstream of.
+
+Version 1 asked years-of-git, an eight-command frequency grid scored as a
+**git expertise composite** (0-24), an agent-tools multi-select, an AI share of
+shipped code slider, primary languages, and a prior-sgt exclusion check. The
+grid, the multi-select, the languages item, and the exclusion check were already
+disabled before this revision; the composite score is therefore not available
+for any participant, and models that would have used it as a covariate use the
+git confidence item instead.
 
 ### 5.3 NASA-TLX (Task Load Index), raw (`tlx-v3`), after each half
 

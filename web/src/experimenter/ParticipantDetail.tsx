@@ -22,7 +22,7 @@ import type {
 } from '../lib/types'
 import { REQUESTS, requestById } from '../study/tasks'
 import { HLAC, instrumentById } from '../study/instruments'
-import { gitExpertise, tlxScore, umuxLiteScore } from '../lib/stats'
+import { tlxScore, umuxLiteScore } from '../lib/stats'
 import { analyzeParticipant, keysFrom, locateMatches } from '../analysis/pipeline'
 import { Callout, Empty, Tabs, fmtAgo, fmtDuration } from '../ui/bits'
 import { CATEGORY_COLOR } from '../charts/theme'
@@ -230,22 +230,22 @@ function Overview({
         <h2>Background</h2>
         {background ? (
           <dl className="kv">
+            <dt>Age</dt>
+            <dd>{String(background.age ?? '—')}</dd>
+            <dt>Gender</dt>
+            <dd>{String(background.genderSelfDescribed || background.gender || '—')}</dd>
+            <dt>Education</dt>
+            <dd>{String(background.educationOther || background.education || '—')}</dd>
             <dt>Years coding</dt>
             <dd>{String(background.yearsCoding ?? '—')}</dd>
-            <dt>Years git</dt>
-            <dd>{String(background.yearsGit ?? '—')}</dd>
-            <dt>Git expertise</dt>
-            <dd>{gitExpertise(background) ?? '—'} / 24</dd>
-            <dt>Agent tools</dt>
-            <dd>{Array.isArray(background.agentTools) ? background.agentTools.join(', ') : '—'}</dd>
             <dt>Assistant use</dt>
             <dd>{String(background.agentFrequency ?? '—')}</dd>
-            <dt>AI share of shipped code</dt>
-            <dd>{String(background.aiShare ?? '—')}%</dd>
-            <dt>Languages</dt>
-            <dd>{String(background.languages ?? '—')}</dd>
-            <dt>Prior sgt</dt>
-            <dd>{String(background.priorSgt ?? '—')}</dd>
+            <dt>Assistant familiarity</dt>
+            <dd>{String(background.agentFamiliarity ?? '—')} / 5</dd>
+            <dt>Python confidence</dt>
+            <dd>{String(background.pythonConfidence ?? '—')} / 5</dd>
+            <dt>Git confidence</dt>
+            <dd>{String(background.gitConfidence ?? '—')} / 5</dd>
           </dl>
         ) : (
           <Empty>Not answered yet</Empty>

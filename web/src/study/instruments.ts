@@ -156,115 +156,121 @@ export const CONSENT: Instrument = {
 // Background
 // ---------------------------------------------------------------------------
 
-// Only used by the git-verb frequency grid, which is commented out below.
-// const FREQ: Option[] = [
-//   { value: '0', label: 'Never' },
-//   { value: '1', label: 'Rarely' },
-//   { value: '2', label: 'Sometimes' },
-//   { value: '3', label: 'Often' },
-// ]
+// A five-point agreement scale, the width the source questionnaire uses for its
+// self-rating items. Deliberately not the seven points UMUX-Lite runs on: these
+// are covariates read one participant at a time, not a scored battery, and
+// widening them here would misreport the instrument they came from.
+const selfRating = (id: string, label: string, anchors: [string, string]): Item => ({
+  id,
+  type: 'likert',
+  label,
+  anchors,
+  required: true,
+  min: 1,
+  max: 5,
+})
 
 export const BACKGROUND: Instrument = {
   id: 'background',
-  version: 'background-v1',
-  title: 'About you',
+  version: 'background-v2',
+  title: 'Pre-Study Questionnaire',
   perHalf: false,
-  estimateMin: 5,
+  estimateMin: 3,
   intro:
     'These questions help us describe the study participants and account for differences in prior experience.',
   items: [
     {
+      id: 'gender',
+      type: 'select',
+      required: true,
+      label: 'What is your gender?',
+      options: [
+        { value: 'woman', label: 'Woman' },
+        { value: 'man', label: 'Man' },
+        { value: 'nonbinary', label: 'Non-binary' },
+        { value: 'undisclosed', label: 'Prefer not to disclose' },
+        { value: 'self-describe', label: 'Prefer to self-describe' },
+      ],
+    },
+    // The source form asks for the self-description as its own numbered
+    // question rather than as text beside the option, and this form has no
+    // control that carries a write-in inside a choice. Same for education,
+    // below.
+    {
+      id: 'genderSelfDescribed',
+      type: 'text',
+      required: false,
+      label: 'If you chose "Prefer to self-describe" above, please describe it here.',
+    },
+    {
+      id: 'age',
+      type: 'number',
+      required: true,
+      label: 'What is your age?',
+      min: 18,
+      max: 99,
+    },
+    {
+      id: 'education',
+      type: 'select',
+      required: true,
+      label:
+        'What is your educational background? If applicable, select the level of education you are currently pursuing.',
+      options: [
+        { value: 'bachelors', label: "Bachelor's degree" },
+        { value: 'masters', label: "Master's degree" },
+        { value: 'doctoral', label: 'Doctoral degree' },
+        { value: 'professional', label: 'Professional degree' },
+        { value: 'trade', label: 'Trade school or vocational training' },
+        { value: 'other', label: 'Other' },
+      ],
+    },
+    {
+      id: 'educationOther',
+      type: 'text',
+      required: false,
+      label: 'If you chose "Other" above, please describe it here.',
+    },
+    {
       id: 'yearsCoding',
       type: 'number',
       required: true,
-      label: 'About how many years have you been programming?',
+      label: 'How many years of programming experience do you have?',
       min: 0,
       max: 50,
     },
     {
-      id: 'yearsGit',
-      type: 'number',
-      required: true,
-      label: 'About how many years have you used Git?',
-      min: 0,
-      max: 30,
-    },
-    // {
-    //   id: 'gitVerbs',
-    //   type: 'grid',
-    //   required: true,
-    //   label: 'How often do you use each of these Git commands?',
-    //   // help: 'There is no right answer here. Plenty of good engineers have never run bisect.',
-    //   options: FREQ,
-    //   serves: 'git expertise composite, 0-24',
-    //   rows: [
-    //     { id: 'log', label: 'git log' },
-    //     { id: 'blame', label: 'git blame' },
-    //     { id: 'bisect', label: 'git bisect' },
-    //     { id: 'revert', label: 'git revert' },
-    //     { id: 'reset', label: 'git reset' },
-    //     { id: 'rebasei', label: 'git rebase -i' },
-    //     { id: 'reflog', label: 'git reflog' },
-    //     { id: 'cherrypick', label: 'git cherry-pick' },
-    //   ],
-    // },
-    // {
-    //   id: 'agentTools',
-    //   type: 'multi',
-    //   required: true,
-    //   label: 'Which of these AI coding tools have you used in a mode where the tool edits files for you?',
-    //   options: [
-    //     { value: 'claude-code', label: 'Claude Code' },
-    //     { value: 'cursor', label: 'Cursor' },
-    //     { value: 'copilot', label: 'GitHub Copilot agent mode' },
-    //     { value: 'codex', label: 'Codex' },
-    //     { value: 'windsurf', label: 'Windsurf' },
-    //     { value: 'other', label: 'Something else' },
-    //     { value: 'none', label: 'None of these' },
-    //   ],
-    // },
-    {
       id: 'agentFrequency',
       type: 'select',
       required: true,
-      label: 'How often do you use an AI coding assistant?',
+      label:
+        'How often did you use AI code generation tools such as Claude Code, Cursor, GitHub Copilot, Codex, or ChatGPT for your programming tasks?',
       options: [
-        { value: 'daily', label: 'Most days' },
-        { value: 'weekly', label: 'Most weeks' },
-        { value: 'monthly', label: 'Some months' },
-        { value: 'rarely', label: 'Rarely' },
-        { value: 'never', label: 'Never' },
+        { value: 'rarely', label: 'Rarely — less than once a month' },
+        { value: 'occasionally', label: 'Occasionally — a few times a month' },
+        { value: 'sometimes', label: 'Sometimes — about once a week' },
+        { value: 'often', label: 'Often — multiple times a week' },
+        { value: 'very-frequently', label: 'Very frequently — almost daily' },
+        { value: 'unknown', label: 'I do not know what this is' },
       ],
     },
-    {
-      id: 'aiShare',
-      type: 'slider',
-      required: true,
-      label: 'About what percentage of the code you shipped last month was written by an AI coding assistant?',
-      min: 0,
-      max: 100,
-      step: 5,
-      anchors: ['None of it', 'All of it'],
-    },
-    // {
-    //   id: 'languages',
-    //   type: 'text',
-    //   required: true,
-    //   label: 'Which languages do you work in most?',
-    //   placeholder: 'Python, TypeScript, ...',
-    // },
-    // {
-    //   id: 'priorSgt',
-    //   type: 'select',
-    //   required: true,
-    //   label: 'Have you used a tool called sgt or semi-git before?',
-    //   help: 'If yes, say so. It does not disqualify you from anything, it just has to be recorded.',
-    //   options: [
-    //     { value: 'no', label: 'No' },
-    //     { value: 'heard', label: 'Heard of it, never used it' },
-    //     { value: 'yes', label: 'Yes, I have used it' },
-    //   ],
-    // },
+    selfRating(
+      'agentFamiliarity',
+      'How familiar are you with AI code generation tools (e.g., Cursor, Windsurf, Cline, GitHub Copilot, ChatGPT)?',
+      ['Very unfamiliar', 'Very familiar'],
+    ),
+    selfRating(
+      'pythonConfidence',
+      'I consider myself experienced in programming with Python.',
+      ['Very unconfident', 'Very confident'],
+    ),
+    // Not on the source form. Added because both halves of this study are spent
+    // on version history, so git confidence is the one covariate here that the
+    // outcome measures are directly downstream of.
+    selfRating('gitConfidence', 'I consider myself confident in using Git.', [
+      'Very unconfident',
+      'Very confident',
+    ]),
   ],
 }
 
