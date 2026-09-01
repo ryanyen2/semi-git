@@ -471,6 +471,13 @@ tar czf "$OUT/$name.tgz" -C "$(dirname "$staging")" \
 # person running the stages. So the build now runs them itself, on the exact
 # tgz that would be served, and refuses to finish if any stage's own success
 # check fails. Costs about a minute; the alternative costs a participant.
+#
+# Stage 1 has nothing to perform since it became orientation, so what it checks
+# is what the participant is told to read: that the reset leaves a clean tree and
+# a dashboard that renders, that the map draws lanes, that `sgt find` answers by
+# meaning rather than by word overlap, and that the group covering the newest
+# save resolves by its own label -- which is the target stage 1's answer key is
+# measured against, and the one thing a rebuild can rename underneath it.
 if [ "$condition" = sgt ]; then
     echo "  Rehearsing the stages on the packed bundle."
     rehearsal="$(mktemp -d)"
@@ -489,11 +496,66 @@ PY
 )"
         [ -n "$theme" ] || { echo "  REHEARSAL: no event-day theme in the bundle" >&2; exit 1; }
 
+        newest="$("$staging/toolenv/bin/python" - <<'NEWEST'
+import json, pathlib, subprocess, sys
+sha = None
+for line in subprocess.run(["git", "log", "--format=%H%x00%s", "--no-merges"],
+                           capture_output=True, text=True).stdout.splitlines():
+    h, _, subject = line.partition("\x00")
+    if "sgt land" in subject:
+        continue
+    sha = h
+    break
+if sha is None:
+    sys.exit("no non-bookkeeping commit")
+themes = json.loads(pathlib.Path(".sgt/intent/themes.json").read_text()).get("data", {})
+for entry in themes.values():
+    if not isinstance(entry, dict):
+        continue
+    for atom in entry.get("atom_shas") or ():
+        if atom.startswith(sha[:7]) or sha.startswith(atom[:7]):
+            print(entry.get("label") or "")
+            sys.exit(0)
+sys.exit("no group covers the newest save")
+NEWEST
+)"
+        [ -n "$newest" ] || {
+            echo "  REHEARSAL: stage 1 has no target -- no group covers the newest save" >&2
+            exit 1
+        }
+        echo "    stage 1 target: $newest"
+
         ./stage 1 >/dev/null
-        save_out="$(sgt save -m "rehearsal" --no-color 2>&1)"
-        printf '%s\n' "$save_out" | grep -q "✓ save" || {
-            echo "  REHEARSAL: stage-1 save recorded nothing:" >&2
-            printf '%s\n' "$save_out" | head -3 >&2
+        dirty="$(git status --porcelain | wc -l | tr -d ' ')"
+        [ "$dirty" = 0 ] || {
+            echo "  REHEARSAL: ./stage 1 left $dirty dirty path(s); it must reset to a clean tree" >&2
+            git status --short | sed 's/^/    /' >&2
+            exit 1
+        }
+        smoke="$(python3 check.py 2>&1 | tail -1)"
+        case "$smoke" in
+            ok:*) ;;
+            *) echo "  REHEARSAL: the dashboard does not render at stage 1: $smoke" >&2; exit 1 ;;
+        esac
+        # The reads stage 1's tips name. A map with no lanes, or a search that
+        # fell back to word overlap, is a stage nobody can do -- and both answer
+        # something, so neither says so on its own.
+        map_out="$(sgt log --no-color 2>&1)"
+        printf '%s\n' "$map_out" | grep -q "features" || {
+            echo "  REHEARSAL: sgt log drew no feature map:" >&2
+            printf '%s\n' "$map_out" | head -5 >&2
+            exit 1
+        }
+        find_out="$(sgt find "the bit that works out the averages" --no-color 2>&1)"
+        if printf '%s\n' "$find_out" | grep -q "matched on words"; then
+            echo "  REHEARSAL: sgt find fell back to word matching -- the search index has no" >&2
+            echo "  embeddings, so stages 1 and 2 both lose a command they are told to use." >&2
+            exit 1
+        fi
+        show_out="$(sgt show "$newest" --no-color 2>&1)" || true
+        printf '%s\n' "$show_out" | grep -q "edits" || {
+            echo "  REHEARSAL: sgt show cannot resolve stage 1's target by name ($newest):" >&2
+            printf '%s\n' "$show_out" | head -3 >&2
             exit 1
         }
 
@@ -524,7 +586,7 @@ PY
         }
     ) || { echo "REHEARSAL FAILED -- $OUT/$name.tgz is not fit to hand out"; rm -f "$OUT/$name.tgz"; rm -rf "$rehearsal"; exit 1; }
     rm -rf "$rehearsal"
-    echo "  Rehearsal passed: record, remove, check, restore, check."
+    echo "  Rehearsal passed: orient, remove, check, restore, check."
 fi
 
 echo
