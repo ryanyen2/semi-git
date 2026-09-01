@@ -210,10 +210,17 @@ function computeGraphLayout(map, grid, opts) {
   // `seed tray`) under the `Plant Discovery` swimlane, whose header says "6 feat" above nine rows.
   // Grouping is what lets the indent mean containment; inside a group, time still orders.
   // Mirrors `ordered_children` in sgt/tui/graph.py -- the two layouts stay behaviour-parallel.
+  //
+  // The halves split by NODE KIND, not by "is it a lane": a collapsed subsystem is a lane (one
+  // meta row) while an expanded one is a header, so splitting on lane-ness moved the whole block
+  // from the leaves half to the groups half whenever its fold state changed -- expanding a
+  // subsystem visibly teleported it below every flat feature and the reader lost the row they
+  // had just clicked. Kind is fold-invariant: a subsystem holds one slot, folded or open.
+  const isSubsystemNode = (c) => byId[c] && byId[c].kind === "subsystem";
   const orderedChildren = (ids) => {
     const present = ids.filter(isPresent);
-    return present.filter((c) => laneById[c]).sort(sortByFirst)
-      .concat(present.filter((c) => !laneById[c]).sort(sortByFirst));
+    return present.filter((c) => !isSubsystemNode(c)).sort(sortByFirst)
+      .concat(present.filter(isSubsystemNode).sort(sortByFirst));
   };
 
   let row = 0;
@@ -552,6 +559,7 @@ function episodeRailLayout(epView) {
   // default is gone (the host now gives subsystems an identity hue too, see workbench.ts), and a
   // flat list of leaves is how the study's pilots lost the hierarchy this surface exists to show.
   if (state.grouping !== "flat") state.grouping = "tree";
+  if (state.themeFocus === undefined) state.themeFocus = null; // a cross-feature theme under TableLens focus
   let compose = {
     map: { nodes: [], roots: [], edges: [] }, history: { commits: [], ops: [] },
     grid: { commits: [], cells: [] },
@@ -659,6 +667,29 @@ function episodeRailLayout(epView) {
   let prevPendingFeatures = new Set();
   let prevCarCounts = {};
   let landingFeatures = new Set(); // leaf lanes whose newest car should play the solidify anim
+
+  // Theme focus (the TableLens read): one cross-feature group emphasized. Resolved fresh from
+  // compose.intent.themes each recompute -- the payload is the authority, state holds only the id.
+  // While set, ganttGeom compresses every non-member lane to a thin density row and renderCars
+  // outlines the member chapters, so "one piece of work across five features" is one visible band
+  // instead of a footnote in `sgt intent list`.
+  let themeMarks = null; // {id, label, tier, featureIds:Set, commitIdx:Set} | null
+  function resolveThemeMarks() {
+    if (!state.themeFocus) return null;
+    const t = (((compose || {}).intent || {}).themes || []).find((x) => x.theme_id === state.themeFocus);
+    if (!t) return null;
+    const idxOf = new Map(((grid && grid.commits) || []).map((c) => [c.sha, c.index]));
+    const commitIdx = new Set((t.atom_shas || []).map((sh) => idxOf.get(sh)).filter((i) => i != null));
+    return { id: t.theme_id, label: t.label, tier: t.tier,
+             featureIds: new Set(t.feature_span || []), commitIdx };
+  }
+  function laneInThemeFocus(l) {
+    if (!themeMarks) return true;
+    return themeMarks.featureIds.has(l.id) || (l.leaves || []).some((f) => themeMarks.featureIds.has(f));
+  }
+
+  // A save picked in find: its chapters flash across every lane it touched, then the flash clears.
+  let saveFlashIdx = null;
 
   const rail = document.getElementById("rail");
   const inspector = document.getElementById("inspector");
@@ -848,6 +879,7 @@ function episodeRailLayout(epView) {
   function recompute() {
     // Full history: the frontier scrubber dims nodes/cars past its point (see applyFrontier)
     // rather than re-laying-out on every drag, so the layout stays stable while scrubbing.
+    themeMarks = resolveThemeMarks(); // before geometry: row heights depend on it
     layout = groupedLayout(map, grid, compose);
   }
 
@@ -1119,6 +1151,85 @@ function episodeRailLayout(epView) {
     renderGraph();
     renderInspector();
     renderPresence();
+    renderThemeBanner();
+  }
+
+  // Enter/exit the theme focus (a toggle: focusing the focused theme clears it). The state holds
+  // only the id; everything else re-derives from the payload on recompute.
+  function setThemeFocus(themeId) {
+    state.themeFocus = state.themeFocus === themeId ? null : themeId;
+    state.spotlight = null; // one lens at a time -- a spotlight under a theme focus double-dims
+    saveState();
+    recompute();
+    render();
+  }
+
+  // The theme-focus banner: what is focused, what the dimming means, and the two whole-group verbs.
+  // Lives above the plot (like the armed banner) because the focus recolors the whole field -- a
+  // mostly-thin map with no caption reads as a bug, not a lens.
+  function renderThemeBanner() {
+    const el = document.getElementById("themeBanner");
+    if (!el) return;
+    if (!themeMarks) { el.hidden = true; el.innerHTML = ""; return; }
+    el.hidden = false;
+    el.innerHTML = "";
+    const name = document.createElement("span");
+    name.className = "theme-banner-name";
+    name.textContent = `◈ ${themeMarks.label}`;
+    const note = document.createElement("span");
+    note.className = "theme-banner-note";
+    note.textContent = `one piece of work across ${themeMarks.featureIds.size} features — its chapters are ringed, other lanes compressed`;
+    el.append(name, note);
+    const mkBtn = (label, title, fn) => {
+      const b = document.createElement("button");
+      b.textContent = label;
+      b.title = title;
+      b.addEventListener("click", fn);
+      el.appendChild(b);
+      return b;
+    };
+    // The whole-group verbs take the theme's LABEL -- the same string `sgt revert "<name>"`
+    // resolves -- through the ordinary staged-confirm path, so the consequence is previewed and
+    // nothing runs until Apply.
+    const anchor = [...themeMarks.featureIds][0] || null;
+    mkBtn("Revert this work", `sgt revert "${themeMarks.label}" — previews first`, () =>
+      stageAction({ verb: "revert", ref: themeMarks.label, targetId: anchor,
+                    label: themeMarks.label, kind: "feature" }));
+    mkBtn("Restore", `sgt restore "${themeMarks.label}" — previews first`, () =>
+      stageAction({ verb: "restore", ref: themeMarks.label, targetId: anchor,
+                    label: themeMarks.label, kind: "feature" }));
+    mkBtn("✕ Show everything", "clear the focus", () => setThemeFocus(themeMarks.id));
+  }
+
+  // Reveal a save from find: flash its chapters on every lane that commit touched, unfolding any
+  // subsystem that hides one, and say what was highlighted. Clears itself -- a flash is an answer,
+  // not a mode.
+  let saveFlashTimer = null;
+  function revealSave(commitIndex, label) {
+    saveFlashIdx = commitIndex;
+    const touched = new Set(((grid && grid.cells) || [])
+      .filter((c) => c.commit_index === commitIndex).map((c) => c.feature_id));
+    let changed = false;
+    for (const fid of touched) {
+      let cur = byId(fid);
+      cur = cur ? byId(cur.parent) : null;
+      while (cur) {
+        const i = state.collapsed.indexOf(cur.id);
+        if (i >= 0) { state.collapsed.splice(i, 1); changed = true; }
+        cur = byId(cur.parent);
+      }
+    }
+    if (changed) { saveState(); recompute(); }
+    render();
+    const hit = rail.querySelector(".gcar-save-hit");
+    if (hit && hit.scrollIntoView) hit.scrollIntoView({ block: "center" });
+    setPreviewContext(`${label || "save"} — lit on ${touched.size} lane(s)`, "identity");
+    clearTimeout(saveFlashTimer);
+    saveFlashTimer = setTimeout(() => {
+      saveFlashIdx = null;
+      if (previewContext.classList.contains("identity")) setPreviewContext(null);
+      render();
+    }, 4000);
   }
 
   // The persistent "where am I" band (Stage C): composition · view · current selection + its live
@@ -1205,15 +1316,26 @@ function episodeRailLayout(epView) {
     const { car, color, x, w, midY, geom } = args;
     const name = car.label || `checkpoint ${car.segIndex}`;
     const detail = `  ${car.opCount} edit${car.opCount === 1 ? "" : "s"}`
-      + (car.reverted ? " · retired" : "");
+      + (car.reverted ? " · reverted" : "");
     const fit = fitText(name, CHIP.maxW, "gchip-name");
-    const cw = Math.min(
+    let cw = Math.min(
       CHIP.maxW + CHIP.padX * 2,
       textWidth(fit.text, "gchip-name") + textWidth(detail, "gchip-detail") + CHIP.padX * 2,
     );
     const plotR = geom.plotX0 + geom.plotW + geom.forecastW;
     const anchor = x + w / 2;                       // where the chapter actually is
-    const cx = Math.max(geom.plotX0, Math.min(anchor - cw / 2, plotR - cw));
+    // Hover must always read as GROWTH. On a car wider than its own name, a name-sized capsule
+    // painted over the middle visually REPLACED the wide bar with a narrower one -- the chapter
+    // looked like it shrank on hover. So the capsule never goes below the car's own width: on a
+    // wide car it is the car itself, lit, slightly outset, with the name centered inside it.
+    const snug = w >= cw;
+    let cx;
+    if (snug) {
+      cw = w + 6;
+      cx = x - 3;
+    } else {
+      cx = Math.max(geom.plotX0, Math.min(anchor - cw / 2, plotR - cw));
+    }
     const y = midY - CHIP.h / 2;
     const g = mk("g", { class: "gchip" + (pinned ? " gchip-pinned" : "") });
     // Container transform: the chip's first frame IS the bar. This maps the finished capsule
@@ -1236,7 +1358,9 @@ function episodeRailLayout(epView) {
       x: Math.max(cx + 2, Math.min(anchor - CHIP.tickW / 2, cx + cw - CHIP.tickW - 2)),
       y: y + CHIP.h, width: CHIP.tickW, height: 3, class: "gchip-tick", fill: color,
     }));
-    const t = mk("text", { x: cx + CHIP.padX, y: midY + 3, class: "gchip-name" });
+    const t = snug
+      ? mk("text", { x: anchor, y: midY + 3, class: "gchip-name", "text-anchor": "middle" })
+      : mk("text", { x: cx + CHIP.padX, y: midY + 3, class: "gchip-name" });
     t.appendChild(mk("tspan", { text: fit.text }));
     t.appendChild(mk("tspan", { class: "gchip-detail", text: detail }));
     g.appendChild(t);
@@ -1378,7 +1502,20 @@ function episodeRailLayout(epView) {
     const nowX = plotX0 + plotW;          // the `now` rule: right edge of measured time
     const forecastX0 = nowX + GANTT.nowPad;
     const w = paneW;
-    const rowsH = layout.rowCount * GANTT.rowH;
+    // Per-row heights (TableLens): a theme focus keeps every lane on screen but gives the
+    // emphasized lanes full rows and compresses the rest to thin density strips -- focus is a
+    // reallocation of ink, never a removal of context. With no focus this is the identity.
+    const ROW_DIM = 16;
+    const heights = new Array(layout.rowCount).fill(GANTT.rowH);
+    if (themeMarks) {
+      for (const l of layout.lanes || []) {
+        if (l.row != null && !laneInThemeFocus(l)) heights[l.row] = ROW_DIM;
+      }
+    }
+    const yTop = new Array(layout.rowCount + 1);
+    yTop[0] = GANTT.padT;
+    for (let i = 0; i < layout.rowCount; i++) yTop[i + 1] = yTop[i] + heights[i];
+    const rowsH = yTop[layout.rowCount] - GANTT.padT;
     // Rows stay top-anchored, but the axis pins to the bottom of the pane: the SVG grows to fill the
     // rail's viewport (minus its 8px padding each side) so a short timeline no longer leaves a dead
     // band of background below it -- the void becomes an honest empty plot with a full-height axis.
@@ -1396,8 +1533,12 @@ function episodeRailLayout(epView) {
       labelW, plotX0, plotW, w, h, axisY, maxCommit,
       forecastW, forecastSlots, nowX, forecastX0,
       xOf,
-      rowY: (row) => GANTT.padT + row * GANTT.rowH, // top of the row
-      midY: (row) => GANTT.padT + row * GANTT.rowH + GANTT.rowH / 2,
+      rowY: (row) => yTop[Math.max(0, Math.min(row, layout.rowCount))], // top of the row
+      midY: (row) => {
+        const r = Math.max(0, Math.min(row, layout.rowCount - 1));
+        return yTop[r] + heights[r] / 2;
+      },
+      rowH: (row) => heights[Math.max(0, Math.min(row, layout.rowCount - 1))] || GANTT.rowH,
       scrubX: (idx) => xOf(idx),
       xToCommit: (x) => Math.max(0, Math.min(maxCommit,
         Math.round(((x - plotX0) / Math.max(1, plotW)) * maxCommit))),
@@ -1418,14 +1559,17 @@ function episodeRailLayout(epView) {
   // so the frontier scrubber (applyFrontier) dims it in place without a relayout. Returns the x just
   // past the last car (or the plain lifetime track when the feature has no mined segments yet), so
   // the caller can place the op-count label and badges against it.
-  function renderCars(g, l, geom, color, barY, midY) {
+  function renderCars(g, l, geom, color, barY, midY, carOpts) {
+    carOpts = carOpts || {};
+    const barH = carOpts.barH || GANTT.barH;
+    const quiet = !!carOpts.quiet; // a compressed context lane: bars only, no labels or chips
     const laneNode = byId(l.id);
     const laneName = (laneNode && laneNode.label) || l.id;
     const cars = l.cars || [];
     if (!cars.length) {
       const x1 = geom.xOf(l.firstCommit), x2 = geom.xOf(l.lastCommit);
       g.appendChild(mk("rect", {
-        x: x1, y: barY, width: Math.max(GANTT.minBarW, x2 - x1), height: GANTT.barH, rx: 3,
+        x: x1, y: barY, width: Math.max(GANTT.minBarW, x2 - x1), height: barH, rx: 3,
         class: "gbar-track", fill: color,
       }));
       return x2;
@@ -1485,20 +1629,29 @@ function episodeRailLayout(epView) {
         // reader wants from a chapter they are pointing at is its size, its state, and the fact
         // that clicking does something.
         `\n${car.opCount} edit(s)` +
-        (car.reverted ? " · retired — click to select, then Restore" : " · click to select");
+        (car.reverted ? " · reverted — Restore brings it back" : " · click to select");
       // A reverted car is drawn hollow in its own identity hue: the edits are still recorded and
       // still addressable (`sgt restore`), they are just no longer in the ideal, so the car has to
       // stay in place and read as emptied rather than vanish or redraw as live. The inline stroke
       // is needed because `.gcar` sets `stroke: var(--bg)`, which a class rule cannot override
       // per-lane.
       const carRect = mk("rect", {
-        x, y: barY, width: w, height: GANTT.barH, rx: 3,
+        x, y: barY, width: w, height: barH, rx: 3,
         class: "gcar" + (car.tier === "thematic" ? " gcar-thematic" : "") + (isBig ? " gcar-big-rect" : "") +
           (car.reverted ? " gcar-reverted" : "") +
           (landing && i === cars.length - 1 ? " gcar-landing" : ""),
         fill: color, "data-checkpoint": car.checkpoint,
       }, [mk("title", { text: tip })]);
       if (car.reverted) carRect.style.stroke = color;
+      // A focused theme's member chapters carry a shared accent ring across every lane they sit
+      // on -- the one visual that makes "this work spans these lanes" a single object on screen.
+      if (themeMarks && !quiet && (car.subBins || []).some((b) => themeMarks.commitIdx.has(b[0]))) {
+        wrap.classList.add("gcar-theme-member");
+      }
+      // A save picked in find: flash its chapters wherever that commit landed, across lanes.
+      if (saveFlashIdx != null && (car.subBins || []).some((b) => b[0] === saveFlashIdx)) {
+        wrap.classList.add("gcar-save-hit");
+      }
       wrap.appendChild(carRect);
       // Within-car density texture: the chapter's own per-commit runs, opacity by sqrt(count /
       // that chapter's own max) -- a single-commit car (the common case) has nothing to spread
@@ -1527,7 +1680,7 @@ function episodeRailLayout(epView) {
         for (let j = 0; j < slots; j++) {
           if (buckets[j] <= 0) continue;   // a bucket nothing landed in is not ink
           const cell = mk("rect", {
-            x: x + j * cellW, y: barY, width: Math.max(0.5, cellW - GANTT.cellGap), height: GANTT.barH,
+            x: x + j * cellW, y: barY, width: Math.max(0.5, cellW - GANTT.cellGap), height: barH,
             class: "gcar-cell", fill: color,
           });
           cell.setAttribute("fill-opacity", (0.3 + 0.55 * Math.sqrt(buckets[j] / localMax)).toFixed(3));
@@ -1548,7 +1701,7 @@ function episodeRailLayout(epView) {
       // `Variety Side Panel` or `Varieties Grid`, so it names nothing while looking like it does.
       // The tooltip (and, for the lane's big event, the in-row tag) carries what doesn't fit.
       const inlineFit = car.label ? fitText(car.label, w - 6, "gcar-label") : null;
-      if (car.label && !echoesLane(car.label, laneName)) {
+      if (car.label && !quiet && !echoesLane(car.label, laneName)) {
         if (w >= GANTT.labelMinW && !inlineFit.clipped) {
           wrap.appendChild(mk("text", {
             x: x + w / 2, y: midY + 3, class: "gcar-label", text: inlineFit.text,
@@ -1590,15 +1743,19 @@ function episodeRailLayout(epView) {
       // The chapter's own name, on screen, under the cursor -- see drawCarChip for why this is an
       // overlay and not a wider bar.
       const chipArgs = { car, color, x, w, midY, geom };
-      if (selected) pinnedChip = chipArgs;
+      if (selected && !quiet) pinnedChip = chipArgs;
       wrap.addEventListener("mouseenter", () => {
         if (armedVerb || stagedAction) return;
         wrap.classList.add("gcar-hovered");
+        if (quiet) { // a compressed context lane has no room for the chip; the pill still names it
+          setPreviewContext(`${car.label} · ${car.opCount} edit(s)`, "identity");
+          return;
+        }
         // The highlight is instant (the affordance); the chip waits for the cursor to rest
         // (`chipIntent`), so sweeping the lane does not unfold a name per car crossed.
         chipIntent(() => showCarChip(chipArgs));
         setPreviewContext(`${car.label} · ${car.opCount} edit(s)`
-          + (car.reverted ? " · retired" : "") + " — click to select", "identity");
+          + (car.reverted ? " · reverted" : "") + " — click to select", "identity");
       });
       wrap.addEventListener("mouseleave", () => {
         wrap.classList.remove("gcar-hovered");
@@ -1668,7 +1825,8 @@ function episodeRailLayout(epView) {
   // `＋N` count once named cards are already on screen. That ordering matters: a reader should never
   // be shown a bare number as their only information about what is coming, which is the whole failure
   // of the badge this replaced.
-  function renderForecastCars(g, l, geom, color, barY, midY, ghosts) {
+  function renderForecastCars(g, l, geom, color, barY, midY, ghosts, barH) {
+    barH = barH || GANTT.barH;
     if (!ghosts.length || geom.forecastW <= 0) return;
     const slots = Math.max(1, geom.forecastSlots);
     const overflow = ghosts.length > slots;
@@ -1691,12 +1849,12 @@ function episodeRailLayout(epView) {
       // "several" -- and it survives at any width, where a count label would not.
       if (opts.stack) {
         wrap.appendChild(mk("rect", {
-          x: x + 2.5, y: barY - 2.5, width: Math.max(GANTT.minCarW, w - 2.5), height: GANTT.barH,
+          x: x + 2.5, y: barY - 2.5, width: Math.max(GANTT.minCarW, w - 2.5), height: barH,
           rx: 3, class: "gcar-ghost-stackback", stroke: color,
         }));
       }
       wrap.appendChild(mk("rect", {
-        x, y: barY, width: w, height: GANTT.barH, rx: 3,
+        x, y: barY, width: w, height: barH, rx: 3,
         class: "gcar gcar-ghost " + (isPlan ? "gcar-plan-ghost" : "gcar-pending"), fill: color,
       }, [mk("title", { text: opts.detail })]));
       // The same three-tier label rule history uses (renderCars): inline when the car can hold a few
@@ -1804,7 +1962,43 @@ function episodeRailLayout(epView) {
     rail.appendChild(scroller);
     rail.appendChild(axisSvg);
     scroller.scrollTop = prevScroll;
+    glideRows(svg, geom); // rows that moved glide to their new slot instead of teleporting
     applySpotlight(); // re-pin a label-click spotlight across the re-render
+  }
+
+  // FLIP row transitions: every re-render rebuilds the SVG from scratch, which reads as the whole
+  // map teleporting whenever anything folds, focuses or lands. Rows are the unit a reader tracks,
+  // so each row's PREVIOUS y is remembered across renders (keyed by lane/header id) and a row that
+  // moved starts at its old offset and glides to its new slot; a row that is genuinely new fades
+  // in in place. Pure view-side motion: layout stays exact, and reduced-motion gets the old cut.
+  let prevRowYById = new Map();
+  function glideRows(svg, geom) {
+    const next = new Map();
+    for (const l of layout.lanes || []) if (l.row != null) next.set("L:" + l.id, geom.rowY(l.row));
+    for (const hd of layout.headers || []) next.set("H:" + hd.collapsedId, geom.rowY(hd.row));
+    if (!prefersReducedMotion() && prevRowYById.size) {
+      const els = new Map();
+      svg.querySelectorAll(".glane").forEach((n) => els.set("L:" + n.getAttribute("data-id"), n));
+      svg.querySelectorAll(".swimlane").forEach((n) => els.set("H:" + n.getAttribute("data-id"), n));
+      for (const [key, newY] of next) {
+        const n = els.get(key);
+        if (!n) continue;
+        const oldY = prevRowYById.get(key);
+        if (oldY == null) {
+          n.classList.add("grow-enter");
+          n.addEventListener("animationend", () => n.classList.remove("grow-enter"), { once: true });
+          continue;
+        }
+        const dy = oldY - newY;
+        if (!dy) continue;
+        n.style.transform = `translateY(${dy}px)`;
+        n.getBoundingClientRect(); // commit the start frame before the transition class lands
+        n.classList.add("grow-glide");
+        n.style.transform = "";
+        n.addEventListener("transitionend", () => n.classList.remove("grow-glide"), { once: true });
+      }
+    }
+    prevRowYById = next;
   }
 
   // ─── The episode rail (vertical git-log) ────────────────────────────────────────────────────
@@ -2057,15 +2251,19 @@ function episodeRailLayout(epView) {
   function renderLane(l, geom, ghosts = []) {
     const y = geom.rowY(l.row);
     const midY = geom.midY(l.row);
-    const barY = midY - GANTT.barH / 2;
+    // A context lane under a theme focus renders quiet: thin row, thin bars, no chip ink.
+    const rh = geom.rowH ? geom.rowH(l.row) : GANTT.rowH;
+    const quiet = rh < GANTT.rowH;
+    const barH = quiet ? 5 : GANTT.barH;
+    const barY = midY - barH / 2;
     const color = laneColor(l.id);
     const inSelection = l.id === state.selected || (state.multi || []).includes(l.id);
     const g = mk("g", {
-      class: "glane" + (inSelection ? " selected" : ""),
+      class: "glane" + (inSelection ? " selected" : "") + (quiet ? " glane-quiet" : ""),
       "data-id": l.id, "data-first": l.firstCommit,
     });
     // full-row hit target (so hovering/clicking the gutter or empty time works, not just the bar)
-    g.appendChild(mk("rect", { x: 0, y, width: geom.w, height: GANTT.rowH, class: "glane-hit" }));
+    g.appendChild(mk("rect", { x: 0, y, width: geom.w, height: rh, class: "glane-hit" }));
 
     // Left gutter: identity swatch (▸ caret for a folded subsystem), then the label. Indented by
     // the lane's nesting depth so features step in under their (possibly nested) subsystem header.
@@ -2097,7 +2295,7 @@ function episodeRailLayout(epView) {
 
     // Chunk-car train: the lane's checkpoints, packed left->right in seg_index order (see
     // renderCars) -- the visual atom is the intent segment, not a raw op or a shared time column.
-    const lastX = renderCars(g, l, geom, color, barY, midY);
+    const lastX = renderCars(g, l, geom, color, barY, midY, { barH, quiet });
     // Op count in its own right-hand column: one x for every row, so the numbers read down the page
     // and none of them can land on the plot edge or the frontier scrubber.
     const count = mk("text", {
@@ -2112,7 +2310,7 @@ function episodeRailLayout(epView) {
 
     // This lane's future, in the band right of the `now` rule: uncommitted work + pending plan steps,
     // drawn as cars in the same grammar as history (see laneForecast / renderForecastCars).
-    renderForecastCars(g, l, geom, color, barY, midY, ghosts);
+    renderForecastCars(g, l, geom, color, barY, midY, ghosts, barH);
 
     renderLaneBadges(g, l, geom, color, barY, midY, geom.plotX0, lastX);
 
@@ -3223,7 +3421,7 @@ function episodeRailLayout(epView) {
   // keystroke; `sgt find`'s meaning rung layers in underneath on Enter. Scoring is deliberately
   // simple (prefix > word-start > substring; features nudged above symbols on ties) and capped, so
   // the dropdown stays a glance, not a page.
-  function localFindHits(query, nodes, segsByFeature, cap) {
+  function localFindHits(query, nodes, segsByFeature, cap, themes, commits) {
     cap = cap || 12;
     const q = String(query || "").trim().toLowerCase();
     if (!q) return [];
@@ -3257,6 +3455,29 @@ function episodeRailLayout(epView) {
           hits.push({ kind: "chapter", label: seg.intent, detail: seg.checkpoint,
                       feature: fid, checkpoint: seg.checkpoint, s: sc });
         }
+      }
+    }
+    // Cross-feature themes: the one unit that spans lanes. Ranked slightly above features on a
+    // tie -- a query matching a theme's name is usually asking about the work, not one lane.
+    for (const t of themes || []) {
+      if ((t.feature_span || []).length < 2) continue;
+      const st = Math.max(score(t.label), score(t.theme_id));
+      if (st > 0) {
+        hits.push({ kind: "group", label: t.label,
+                    detail: `across ${t.feature_span.length} features`, theme: t.theme_id, s: st + 0.3 });
+      }
+    }
+    // Saves, by subject or sha prefix -- the tokens `sgt find` and the terminal print. A save has
+    // no single lane, so its hit carries the commit index and the click flashes every lane it
+    // touched (revealSave) instead of selecting nothing.
+    for (const c of commits || []) {
+      if (c.bookkeeping) continue;
+      const sha = String(c.sha || "");
+      const bySha = q.length >= 4 && sha.toLowerCase().startsWith(q) ? 3 : -1;
+      const sc = Math.max(bySha, score(c.subject));
+      if (sc > 0) {
+        hits.push({ kind: "save", label: c.subject || sha.slice(0, 7), detail: sha.slice(0, 7),
+                    commitIndex: c.index, s: sc - 0.1 });
       }
     }
     hits.sort((a, b) => b.s - a.s || String(a.label).localeCompare(String(b.label)));
@@ -3319,8 +3540,10 @@ function episodeRailLayout(epView) {
     row.addEventListener("click", () => {
       const results = document.getElementById("findResults");
       if (results) results.hidden = true;
-      // Every hit that belongs somewhere takes you there; a save belongs to no single lane, so it
-      // selects nothing rather than guessing. A chapter hit lands on its exact car.
+      // Every hit that belongs somewhere takes you there. A chapter hit lands on its exact car;
+      // a theme enters the cross-lane focus; a save flashes every lane its commit touched.
+      if (hit.theme) { setThemeFocus(hit.theme); return; }
+      if (hit.commitIndex != null) { revealSave(hit.commitIndex, hit.label); return; }
       if (hit.feature) revealFeature(hit.feature);
       if (hit.checkpoint) {
         state.selectedCheckpoint = hit.checkpoint;
@@ -3340,7 +3563,8 @@ function episodeRailLayout(epView) {
       return;
     }
     results.hidden = false;
-    const local = localFindHits(query, map.nodes, checkpointsByFeature);
+    const local = localFindHits(query, map.nodes, checkpointsByFeature, 12,
+                                ((compose || {}).intent || {}).themes, (grid || {}).commits);
     if (local.length) {
       results.appendChild(el("div", "find-section", "in this graph"));
       for (const h of local) results.appendChild(findHitRow(h));
@@ -3378,11 +3602,15 @@ function episodeRailLayout(epView) {
     semanticState.pending = false;
     semanticState.mode = msg.mode || null;
     semanticState.message = msg.message || null;
+    const idxOfSha = new Map(((grid && grid.commits) || []).map((c) => [String(c.sha || "").slice(0, 8), c.index]));
     semanticState.hits = (msg.hits || []).map((h) => ({
       kind: h.kind,
       label: h.label,
       detail: h.detail || "",
       feature: h.feature || (h.kind === "feature" ? h.id : null),
+      // `sgt find` names a save by its sha; joining it to a commit index is what makes the hit
+      // land somewhere instead of being a dead row.
+      commitIndex: h.kind === "save" ? idxOfSha.get(String(h.id || h.detail || "").slice(0, 8)) : undefined,
     }));
     renderFind(semanticState.query);
   }
@@ -3538,7 +3766,41 @@ function episodeRailLayout(epView) {
       // Guarded: a staged candidate already drew this card above, and drawing it twice would put two
       // Abandon buttons on screen.
       if (!stagedNow) renderWorkingChangesCard();
+      renderThemesCard();
     }
+  }
+
+  // The cross-feature themes, on the idle panel: work that ran across lanes has no row of its own
+  // in the graph, so with nothing selected the panel lists the groups by name -- the same names
+  // `sgt log` footers and `sgt revert "<name>"` take. Clicking one enters the TableLens focus.
+  function renderThemesCard() {
+    const themes = ((((compose || {}).intent) || {}).themes || [])
+      .filter((t) => (t.feature_span || []).length > 1);
+    if (!themes.length) return;
+    themes.sort((a, b) => (b.feature_span || []).length - (a.feature_span || []).length);
+    const wrap = document.createElement("div");
+    const h = document.createElement("div");
+    h.className = "detail-title";
+    h.textContent = "Work that spans several features";
+    wrap.appendChild(h);
+    const why = document.createElement("div");
+    why.className = "detail-meta";
+    why.textContent = "one task, landed across lanes — click to see it on the graph";
+    wrap.appendChild(why);
+    for (const t of themes.slice(0, 8)) {
+      const row = document.createElement("button");
+      row.className = "theme-row" + (state.themeFocus === t.theme_id ? " theme-row-active" : "");
+      const name = document.createElement("span");
+      name.className = "theme-row-name";
+      name.textContent = `◈ ${t.label}`;
+      const meta = document.createElement("span");
+      meta.className = "theme-row-meta";
+      meta.textContent = `${(t.feature_span || []).length} features`;
+      row.append(name, meta);
+      row.addEventListener("click", () => setThemeFocus(t.theme_id));
+      wrap.appendChild(row);
+    }
+    inspector.appendChild(wrap);
   }
 
   // The multi-select union-closure card (Stage C): "N features -> M ops in closure", the OTHER
@@ -4191,14 +4453,14 @@ function episodeRailLayout(epView) {
     // A reverted chapter stays on this list -- it is still recorded and still addressable, and a
     // restore needs it named -- so the head says how many are gone rather than quietly shrinking.
     const nGone = segs.filter((s) => s.present_op_count === 0).length;
-    head.textContent = `Checkpoints · ${segs.length}` + (nGone ? ` · ${nGone} retired` : "") +
+    head.textContent = `Checkpoints · ${segs.length}` + (nGone ? ` · ${nGone} reverted` : "") +
       (built ? "" : "  (run sgt intent build to name)");
     wrap.appendChild(head);
     // Retired work is the half of this list nobody found. Name the way back once, at the top,
     // where the count already is -- rather than leaving it to a glyph on a faded row.
     if (nGone) {
       wrap.appendChild(el("div", "checkpoints-hint",
-        "Faded chapters are retired — click one, then Restore to bring it back."));
+        "Faded chapters were reverted — click one, then Restore to bring it back."));
     }
 
     for (const seg of segs) {

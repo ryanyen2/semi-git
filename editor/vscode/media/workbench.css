@@ -2315,3 +2315,133 @@ svg.railsvg {
   font-size: 11px;
   text-anchor: start;
 }
+
+
+/* ── Theme focus (the TableLens read) ─────────────────────────────────────────────────────────
+   One cross-feature group emphasized: member lanes keep full rows, everything else compresses to
+   a thin density strip and drops to background weight. The banner names the lens, because a
+   mostly-dim field with no caption reads as a rendering fault. */
+.theme-banner {
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  transform: translateX(-50%);
+  z-index: 6;
+  max-width: min(92%, 640px);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--panel-bg);
+  color: var(--fg);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  padding: 4px 12px;
+  font-size: 12px;
+}
+
+.theme-banner[hidden] {
+  display: none;
+}
+
+.theme-banner .theme-banner-name {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.theme-banner .theme-banner-note {
+  color: var(--dim);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.theme-banner button {
+  flex: none;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.theme-banner button:hover {
+  border-color: var(--accent);
+}
+
+/* A context lane under the focus: present, findable, quiet. */
+.glane-quiet .glane-label { opacity: 0.45; }
+.glane-quiet .glane-swatch { opacity: 0.45; }
+.glane-quiet .gcar, .glane-quiet .gcar-cell, .glane-quiet .gbar-track { opacity: 0.35; }
+.glane-quiet .gbar-count { opacity: 0.4; }
+
+/* A focused theme's member chapters: one shared ring across every lane they sit on. */
+.gcar-theme-member .gcar {
+  stroke: var(--accent);
+  stroke-width: 1.4;
+}
+
+/* A save picked in find: its chapters pulse together wherever that commit landed. */
+.gcar-save-hit .gcar {
+  stroke: var(--accent);
+  stroke-width: 1.6;
+  animation: save-hit-pulse 1.1s ease-in-out 3;
+}
+
+@keyframes save-hit-pulse {
+  0%, 100% { stroke-opacity: 1; }
+  50% { stroke-opacity: 0.25; }
+}
+
+/* ── Row glide (FLIP) ─────────────────────────────────────────────────────────────────────────
+   A row that moved between renders starts at its old offset and settles into its new slot; a
+   genuinely new row fades in in place. Motion says "the same thing, elsewhere" -- the absence of
+   motion is what made every fold/focus read as a teleport. */
+.grow-glide {
+  transition: transform 0.28s cubic-bezier(0.2, 0.7, 0.25, 1);
+}
+
+.grow-enter {
+  animation: row-enter 0.28s ease-out;
+}
+
+@keyframes row-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+
+/* Idle-panel theme rows: the cross-feature groups, clickable into the TableLens focus. */
+.theme-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  margin-top: 4px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.theme-row:hover {
+  border-color: var(--accent);
+}
+
+.theme-row-active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.theme-row-meta {
+  color: var(--dim);
+  font-size: 11px;
+  flex: none;
+}

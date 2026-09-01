@@ -224,6 +224,26 @@ compose.grid = (function gridFromHistory(history) {
   return { commits, cells, commit_count: commits.length };
 })(compose.history);
 
+// Two lanes' worth of commits grouped as one cross-feature theme, so the TableLens focus path
+// renders under test. The fixture predates themes; membership arrives as commit shas exactly like
+// the real payload's, so resolveThemeMarks' sha -> commit-index join is the code under test.
+(function synthesizeTheme() {
+  const byFeature = new Map();
+  for (const c of compose.grid.cells) {
+    if (!byFeature.has(c.feature_id)) byFeature.set(c.feature_id, []);
+    byFeature.get(c.feature_id).push(c.commit_index);
+  }
+  const feats = [...byFeature.keys()].slice(0, 2);
+  if (feats.length < 2) return;
+  const idx = new Set(feats.flatMap((f) => byFeature.get(f).slice(0, 2)));
+  const shas = compose.grid.commits.filter((c) => idx.has(c.index)).map((c) => c.sha);
+  compose.intent = compose.intent || {};
+  compose.intent.themes = [{
+    theme_id: "theme-smoke", label: "Smoke Theme", rationale: "", source: "fallback",
+    atom_shas: shas, stale_shas: [], op_ids: [], feature_span: feats, tier: "co-changed",
+  }];
+})();
+
 function feed(msg) {
   ALL.length = 0; // reset registry so counts reflect this render only
   // re-collect existing fixed nodes
@@ -279,6 +299,55 @@ try {
   const maxBig = Math.max(0, ...lanes.map((n) => n.querySelectorAll(".gcar-big-rect").length));
   check("at most one big-event tag per lane", maxTags <= 1, `${maxTags} on the busiest lane`);
   check("at most one big-event car per lane", maxBig <= 1, `${maxBig} on the busiest lane`);
+
+  // Fold stability: expanding a collapsed subsystem must not reshuffle the rows around it. The
+  // meta-lane's slot becomes the header's slot; everything above stays exactly where it was.
+  // (This is the ordering-by-kind rule in orderedChildren -- laneness flips on fold, kind doesn't.)
+  console.log("fold stability:");
+  const rowOrder = () => byId.rail.querySelectorAll(".glane, .swimlane")
+    .map((n) => ({ id: n.getAttribute("data-id"),
+                   y: parseFloat(n.querySelectorAll("rect")[0].getAttribute("y")) }))
+    .sort((a, b) => a.y - b.y).map((r) => r.id);
+  const beforeFold = rowOrder();
+  const metaLane = byId.rail.querySelectorAll(".glane").find((n) => {
+    const id = n.getAttribute("data-id") || "";
+    return id && !id.startsWith("f-");
+  });
+  if (metaLane && metaLane._listeners.click) {
+    const subId = metaLane.getAttribute("data-id");
+    const slot = beforeFold.indexOf(subId);
+    metaLane._listeners.click.forEach((fn) => fn({}));
+    const afterFold = rowOrder();
+    check("expanding a fold keeps every row above it in place",
+          JSON.stringify(afterFold.slice(0, slot)) === JSON.stringify(beforeFold.slice(0, slot)),
+          `before=${beforeFold.join(",")} after=${afterFold.join(",")}`);
+    check("the expanded block opens at the fold's own slot", afterFold[slot] === subId,
+          `expected header ${subId} at ${slot}, got ${afterFold[slot]}`);
+    // fold it back so later assertions meet the default view again
+    const header = byId.rail.querySelectorAll(".swimlane").find((n) => n.getAttribute("data-id") === subId);
+    if (header && header._listeners.click) header._listeners.click.forEach((fn) => fn({}));
+  } else {
+    check("a collapsed subsystem exists to test fold stability", false, "no meta lane found");
+  }
+
+  // Theme focus (TableLens): clicking a group on the idle panel compresses every non-member lane
+  // to a thin density row, keeps the members at full height, and captions the lens in a banner.
+  console.log("theme focus:");
+  const themeRow = byId.inspector.querySelectorAll(".theme-row")[0];
+  check("idle panel lists cross-feature groups", !!themeRow);
+  if (themeRow && themeRow._listeners.click) {
+    themeRow._listeners.click.forEach((fn) => fn({}));
+    const quiet = byId.rail.querySelectorAll(".glane-quiet");
+    const loud = byId.rail.querySelectorAll(".glane").filter((n) => !String(n.attrs.class).includes("glane-quiet"));
+    check("context lanes compress under the focus", quiet.length > 0, `${quiet.length} quiet lanes`);
+    check("member lanes keep their full rows", loud.length > 0, `${loud.length} full lanes`);
+    check("the banner names the lens", byId.themeBanner && byId.themeBanner.hidden === false);
+    const clearBtns = byId.themeBanner.querySelectorAll("button");
+    const clearBtn = clearBtns[clearBtns.length - 1];
+    if (clearBtn && clearBtn._listeners.click) clearBtn._listeners.click.forEach((fn) => fn({}));
+    check("clearing the focus restores every lane",
+          byId.rail.querySelectorAll(".glane-quiet").length === 0);
+  }
 
   // Selecting a feature: simulate a click on the first feature lane -> inspector populates.
   const featureLane = lanes.find((n) => n.getAttribute("data-id") && n.getAttribute("data-id").startsWith("f-"));
