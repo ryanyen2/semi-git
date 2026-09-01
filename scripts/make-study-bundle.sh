@@ -557,12 +557,17 @@ NEWEST
             echo "  embeddings, so stages 1 and 2 both lose a command they are told to use." >&2
             exit 1
         fi
+        # Read for the failure, not for a word in the success. `grep -q "edits"`
+        # was the first attempt and it rejected bikecount, whose rounding group is
+        # one edit -- and `plural()` correctly prints "1 edit". The message a
+        # failed resolve prints is the thing to look for.
         show_out="$(sgt show "$newest" 2>&1)" || true
-        printf '%s\n' "$show_out" | grep -q "edits" || {
-            echo "  REHEARSAL: sgt show cannot resolve stage 1's target by name ($newest):" >&2
+        if printf '%s\n' "$show_out" | grep -q "is not a known"; then
+            echo "  REHEARSAL: sgt show cannot resolve stage 1's target by name ($newest)." >&2
+            echo "  That name is what the answer key for stage 1 is measured against." >&2
             printf '%s\n' "$show_out" | head -3 >&2
             exit 1
-        }
+        fi
 
         ./stage 3 >/dev/null
         revert_out="$(sgt revert "$theme" --yes 2>&1)" || {
