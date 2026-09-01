@@ -1,18 +1,16 @@
-# Your stages: footfall, sgt
+# Tasks: footfall, sgt
 
-You are now responsible for **footfall**, a small web dashboard over the pedestrian counter on Spencer Street in Melbourne. Dana Whitfield built the project over six weeks before leaving the team. Its numbers are used in a quarterly report.
+You are taking over **footfall**, a small web dashboard over the pedestrian counter on Spencer Street in Melbourne, from Dana Whitfield. Its numbers are used in a quarterly report.
 
-You just practiced on this project. Keep using the same folder and the same terminal.
+Complete the four tasks in order. Start each one with the `./stage` command shown on its card. The timer starts after the command finishes.
 
-You will complete four stages in order.
-
-Start each stage by running the `./stage` command shown on the card. This prepares the correct starting state. The timer begins after that command finishes.
-
-The task itself is timed. The questions after the task are untimed. When the timer ends, continue to the questions and then move to the next stage.
+When you finish or the timer ends, answer the questions and continue to the next task.
 
 ## Stage 1: Get to know the project
 
 You have 5 minutes for this task.
+
+Start by running `./stage 1`.
 
 Run the command below first. It puts the project into this stage's starting state.
 
@@ -42,20 +40,11 @@ Run the command below first. It puts the project into this stage's starting stat
 
 **You are done when:** you can point at a row and say what your setup calls it, and point at a part of the dashboard and say which row put it there.
 
-What `./stage 1` does:
-
-- resets the project to its full recorded history, with nothing of anyone else's left in it
-
-Commands that may help:
-
-- `sgt log` is the feature map: one row per feature, its checkpoints as blocks along it. `sgt log --rail` lists what happened, newest first.
-- `sgt show "<name>"` says what one part covers — the files and the code inside it. `sgt show <file>::<name>` answers the other direction, for one function.
-- `sgt find "the bit that works out the averages"` searches by description. Any wording will do.
-- `sgt log --focus "<name>"` opens one row, or one ◆ piece of work that spans several rows.
-
 ## Stage 2: Find the work behind the wrong number
 
 You have 4 minutes for this task.
+
+Start by running `./stage 2`.
 
 Run the command below first. It resets the project and prints the two numbers this stage is about, side by side.
 
@@ -71,21 +60,11 @@ The pages open on the most recent year. Set the date window at the top to cover 
 
 **You are done when:** You can name the piece of work — a commit hash, a named piece of work, or an id all count. The questions after this stage ask you which one you found. If you are not certain, choose what you have and say that you are not certain. That is more useful to us than a guess.
 
-What `./stage 2` does:
-
-- puts the project back to its full history, discarding anything from the last stage
-- prints the number the paper quotes next to the number the dashboard shows
-
-Commands that may help:
-
-- `sgt log` shows the history grouped by feature; `sgt log --rail` lists what happened, newest first.
-- `sgt find "the bit that works out the averages"` searches by description. Any wording will do.
-- `sgt log --focus "<name>"` opens one feature — or one ◆ piece of cross-feature work: the map stays, its chapters are listed underneath.
-- To answer "which parts of the dashboard": `sgt show "<name>"` lists the files a feature — or a ◆ piece of cross-feature work — touches, and what taking it out would remove. `pages/<name>.py` is the page of the same name, and the workbench shows the same card.
-
 ## Stage 3: Take that work out
 
 You have 4 minutes for this task.
+
+Start by running `./stage 3`.
 
 Run the command below first. It resets the project and names the work you have to take out, so you have the name whether or not you found it in the last stage.
 
@@ -101,21 +80,11 @@ Set the date window to 2018 while you check the pages — the marks only show wh
 
 **You are done when:** `./check 3` says the program still runs and the by-year page reads **42,436** for 2018 again. Run it as often as you like — it does not mark you.
 
-What `./stage 3` does:
-
-- puts the project back to its full history, discarding anything from the last stage
-- names the work to take out, in the words this setup uses for it
-
-Commands that may help:
-
-- `sgt revert "<name>"` shows you what the removal would do and changes nothing.
-- Add `--yes` to actually do it: `sgt revert "<name>" --yes`.
-- The name is the one `./stage 3` printed. `sgt log` names it under the map too, with the other work that spans features, and `sgt log --focus "<name>"` shows exactly what is in it.
-- `sgt undo` reverses whatever you last did, and `sgt now` says where things stand.
-
 ## Stage 4: Put it back
 
 You have 4 minutes for this task.
+
+Start by running `./stage 4`.
 
 Run the command below first. It puts the project into the state where the work has already been taken out — the same state for everyone, whatever happened in the last stage.
 
@@ -128,14 +97,3 @@ Run the command below first. It puts the project into the state where the work h
 ![The by-year page you are aiming for: the marked 2018 row reads its excluded-days number again](/stages/footfall-yearly.png)
 
 **You are done when:** `./check 4` says the program still runs and the by-year page reads **42,545** for 2018 again.
-
-What `./stage 4` does:
-
-- puts the project in the state where that work has already been taken out, the same for everyone
-
-Commands that may help:
-
-- `sgt restore "<name>" --yes` puts back what `sgt revert` took out. It takes the same name.
-- Without `--yes` you get a preview and nothing happens.
-- `sgt log` and `sgt now` say what the history records so far.
-- `sgt undo` reverses whatever you last did.

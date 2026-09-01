@@ -1,18 +1,16 @@
-# Your stages: bikecount, git
+# Tasks: bikecount, git
 
-You are now responsible for **bikecount**, a small web dashboard over the bicycle counter on the Fremont Bridge in Seattle. Dana Whitfield built the project over six weeks before leaving the team. Its numbers are used in a quarterly report.
+You are taking over **bikecount**, a small web dashboard over the bicycle counter on the Fremont Bridge in Seattle, from Dana Whitfield. Its numbers are used in a quarterly report.
 
-You just practiced on this project. Keep using the same folder and the same terminal.
+Complete the four tasks in order. Start each one with the `./stage` command shown on its card. The timer starts after the command finishes.
 
-You will complete four stages in order.
-
-Start each stage by running the `./stage` command shown on the card. This prepares the correct starting state. The timer begins after that command finishes.
-
-The task itself is timed. The questions after the task are untimed. When the timer ends, continue to the questions and then move to the next stage.
+When you finish or the timer ends, answer the questions and continue to the next task.
 
 ## Stage 1: Get to know the project
 
 You have 5 minutes for this task.
+
+Start by running `./stage 1`.
 
 Run the command below first. It puts the project into this stage's starting state.
 
@@ -42,20 +40,11 @@ Run the command below first. It puts the project into this stage's starting stat
 
 **You are done when:** you can point at a row and say what your setup calls it, and point at a part of the dashboard and say which row put it there.
 
-What `./stage 1` does:
-
-- resets the project to its full recorded history, with nothing of anyone else's left in it
-
-Commands that may help:
-
-- `git log --oneline` lists the commits, newest first — one line per piece of work.
-- `git show <hash>` shows what one of them changed.
-- `git log --oneline -- <file>` narrows the list to one file, and `git blame <file>` says which commit last touched each line.
-- In the editor, the Graph shows the same history, and the Timeline at the bottom of the Explorer shows the commits that touched the open file.
-
 ## Stage 2: Find the work behind the wrong number
 
 You have 4 minutes for this task.
+
+Start by running `./stage 2`.
 
 Run the command below first. It resets the project and prints the two numbers this stage is about, side by side.
 
@@ -71,21 +60,11 @@ The pages open on the most recent year. Set the date window at the top to cover 
 
 **You are done when:** You can name the piece of work — a commit hash, a named piece of work, or an id all count. The questions after this stage ask you which one you found. If you are not certain, choose what you have and say that you are not certain. That is more useful to us than a guess.
 
-What `./stage 2` does:
-
-- puts the project back to its full history, discarding anything from the last stage
-- prints the number the report quotes next to the number the dashboard shows
-
-Commands that may help:
-
-- `git log --oneline` lists the commits, newest first.
-- `git show <hash>` shows what one commit changed.
-- `git log --oneline -S "average"` finds the commits where a piece of text arrived or went away. Any word from the code works.
-- `git log --oneline -- <file>` narrows that to one file, and `git blame <file>` says which commit last touched each line.
-
 ## Stage 3: Take that work out
 
 You have 4 minutes for this task.
+
+Start by running `./stage 3`.
 
 Run the command below first. It resets the project and names the work you have to take out, so you have the name whether or not you found it in the last stage.
 
@@ -101,21 +80,11 @@ Set the date window to 2018 while you check the pages — the marks only show wh
 
 **You are done when:** `./check 3` says the program still runs and the by-year page reads **2,882** for 2018 again. Run it as often as you like — it does not mark you.
 
-What `./stage 3` does:
-
-- puts the project back to its full history, discarding anything from the last stage
-- names the work to take out, in the words this setup uses for it
-
-Commands that may help:
-
-- `git revert <hash>` makes a new commit that undoes an old one. Give it the oldest of the three last.
-- If it stops on a conflict, `git status` lists the unresolved files. Fix the marked lines and `git add` the file, or `git rm` a file the revert means to delete, then `git revert --continue`.
-- `git revert --abort` walks away from a revert that has gone wrong and leaves nothing behind.
-- `git log --oneline` and `git status` say where you are at any point.
-
 ## Stage 4: Put it back
 
 You have 4 minutes for this task.
+
+Start by running `./stage 4`.
 
 Run the command below first. It puts the project into the state where the work has already been taken out — the same state for everyone, whatever happened in the last stage.
 
@@ -128,14 +97,3 @@ Run the command below first. It puts the project into the state where the work h
 ![The by-year page you are aiming for: the marked 2018 row reads its excluded-days number again](/stages/bikecount-yearly.png)
 
 **You are done when:** `./check 4` says the program still runs and the by-year page reads **2,900** for 2018 again.
-
-What `./stage 4` does:
-
-- puts the project in the state where that work has already been taken out, the same for everyone
-
-Commands that may help:
-
-- The removal is three commits at the top of the history. `git log --oneline` shows them.
-- `git revert <hash>` on a revert commit undoes the undoing.
-- If it stops on a conflict, `git status` lists the unresolved files. Fix the marked lines and `git add` the file, or `git rm` a file the revert means to delete, then `git revert --continue`.
-- `git show <hash>` reads any one of them if you want to see what it did.

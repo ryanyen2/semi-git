@@ -1,40 +1,14 @@
 # Welcome
 
-Thanks for taking part. Plan for an hour and a half, including breaks. Your facilitator will guide you through the session and tell you when to move on.
+Thanks for taking part. The session takes about an hour and a half, including breaks.
 
-## What you'll do
+You will use two tools to explore and change a small project's history. With each tool, you will:
 
-You will work through four stages on a small web dashboard:
-
-1. Get to know the project: what work it is made of, and which part of the dashboard each piece of work put there.
-2. Find the work that caused a wrong result.
-3. Remove that work.
+1. Find the changes that added parts of the dashboard.
+2. Find the change that caused an incorrect result.
+3. Remove the requested work.
 4. Restore it.
 
-You will complete these stages twice. Each round uses a different project and a different way of working with project history.
+You will practice before starting and answer a few questions as you go. We will finish with an interview.
 
-At the end, we will open a history view for one of your repositories if you chose to provide one. Otherwise, we will use a prepared public one: EasyOCR, an open-source library that reads text out of images.
-
-## Think out loud
-
-As you work, say what you are looking for, what you plan to do, and what you expect to happen. Please also say when something is confusing or surprising.
-
-We record your screen and voice during the session.
-
-## Schedule
-
-| Minutes | What you'll do |
-|---|---|
-| 4 | Consent and background questions |
-| 6 | Set up the first project |
-| 5 | Practice with the first setup |
-| 21 | Four stages with the first setup |
-| 2 | Questions about the first setup |
-| 6 | Set up and practice with the second setup |
-| 21 | Four stages with the second setup |
-| 2 | Questions about the second setup |
-| 3 | Compare the two setups |
-| 15 | Repository walkthrough and interview |
-| 2 | Send the study data and clean up |
-
-The study contains about 85 minutes of activities, with breaks during the remaining time.
+As you work, say what you are looking for, what you plan to do, and what you expect to happen. Tell us when something is confusing or surprising.
