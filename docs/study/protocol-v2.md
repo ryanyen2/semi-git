@@ -203,10 +203,13 @@ build refuses to finish if a file the map names is not in the repository it ship
 
 The job is the matching: put the map beside the setup's view of the history and
 work out what that setup calls each row. The map deliberately names the work in
-neither arm's vocabulary -- not the commit subjects, not the sgt labels -- which
-is what keeps one card fair in both arms, and is also forced: the bundles ship no
-`.sgt` store, so every install mines and names the features afresh and no two
-participants see identical labels.
+neither arm's vocabulary -- not the commit subjects, not the sgt labels -- because
+one card that both arms read cannot carry either arm's answers. Both vocabularies
+are in fact stable across participants: the bundle ships its mined graph frozen
+(`work/.study/sgt-pristine.tar`, restored by every `./stage N`), and the build's
+LLM caches are written back to the source repository so a rebuild re-rolls
+nothing. So the labels could have gone on the card; they are left off because
+putting them there would answer the stage for one arm only.
 
 **Why this stage has no quiz.** It had one until the first participant: the
 eleven-item behaviour checklist, asked about "the most recent piece of work in

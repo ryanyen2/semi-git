@@ -4,11 +4,15 @@ Try these steps before starting the tasks.
 
 Practice reading, finding, and undoing changes with Git. You can use the history views or the terminal.
 
+## Open the editor
+
+Run `study-code` in the session shell and leave that window open — it keeps recording. Everything else happens in the editor. Open two terminals there (**Terminal → New Terminal**, then the **+** button): one for the dashboard, one for every other command.
+
 ## The project
 
 **footfall** shows pedestrian counts from Spencer Street in Melbourne. Its charts and tables are used in a quarterly report.
 
-Open http://localhost:8000 and look through the pages. Use the date range at the top to choose which dates to show.
+Start it with `python3 -m footfall.server` in the first terminal, then open http://localhost:8000 and look through the pages. Use the date range at the top to choose which dates to show.
 
 ![Date range controls](/stages/footfall-window.png)
 

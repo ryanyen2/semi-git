@@ -2329,7 +2329,7 @@ function changeMeter(added, removed, width) {
     rail.appendChild(axisSvg);
     scroller.scrollTop = prevScroll;
     glideRows(svg, geom); // rows that moved glide to their new slot instead of teleporting
-    applySpotlight(); // re-pin a label-click spotlight across the re-render
+    applyLens(); // re-apply a pinned lane or a live search across the re-render
   }
 
   // FLIP row transitions: every re-render rebuilds the SVG from scratch, which reads as the whole
@@ -2647,17 +2647,47 @@ function changeMeter(added, removed, width) {
     // Measured, and carrying its full text on hover whenever it had to be cut. A feature's name is
     // the only thing on this row a reader can identify it by, and `put a search box in the h…` had
     // no way at all to finish itself -- not a wider column, not a tooltip, not a drag.
-    setLabel(label, l.isMeta ? `${raw} (${l.leaves.length})` : raw, geom.labelW - labelX - 4);
-    // A feature label is its own click target: it spotlights the feature (dim the field, light this
-    // lane + co-change neighbors) rather than selecting it -- a distinct, reversible viewing gesture.
-    // Meta (collapsed-subsystem) labels keep the row's fold-toggle behavior.
+    const clipped = setLabel(label, l.isMeta ? `${raw} (${l.leaves.length})` : raw,
+                             geom.labelW - labelX - 4);
+    // A feature label is its own click target, and it does something different from the row it sits
+    // in: the NAME pins a lens (dim the rest, keep this lane and what changes with it), the ROW opens
+    // the lane in the detail panel. Nothing said so -- an underline on hover was the entire signal,
+    // and an underline does not name an outcome -- so the tooltip says it, and a ◉ appears in the
+    // row's left gutter while the name is hovered and stays there while it is pinned, which is the
+    // same glyph the banner is headed with. Meta (collapsed-subsystem) labels keep the row's
+    // fold-toggle behavior.
     if (!l.isMeta) {
       label.classList.add("glane-label-btn");
       label.style.pointerEvents = "auto";
-      if (state.spotlight === l.id) label.classList.add("spotlit");
+      const pinned = state.spotlight === l.id;
+      if (pinned) label.classList.add("spotlit");
+      // ONE <title>, not two. `setLabel` adds its own when the name had to be cut, and a second
+      // <title> on the same element is simply never shown -- so a long name would have kept the
+      // full-text tooltip and silently lost this one, which is the half of the pair that answers
+      // the question nobody could answer from the screen.
+      label.querySelectorAll("title").forEach((t) => t.remove());
+      label.appendChild(mk("title", {
+        text: (clipped ? raw + "\n\n" : "")
+          + (pinned
+            ? "◉ pinned — click the name again to bring the other lanes back"
+            : "◉ click the NAME to dim the other lanes and keep this one and what changes with it\n"
+              + "click anywhere else on the ROW to open it in the detail panel"),
+      }));
       label.addEventListener("click", (ev) => { ev.stopPropagation(); toggleSpotlight(l.id); });
+      g.appendChild(label);
+      // In the row's own left gutter (x=1), not beside the name: the name's x depends on nesting
+      // depth and on whether the row has a caret, and every candidate offset from it landed on the
+      // identity swatch at one depth or another. One column, every row, always free.
+      //
+      // Immediately after the label in document order, because the CSS reaches it with `:hover +`.
+      g.appendChild(mk("text", {
+        x: 1, y: midY + 4,
+        class: "glane-lens-mark" + (pinned ? " on" : ""),
+        text: "\u25c9",
+      }));
+    } else {
+      g.appendChild(label);
     }
-    g.appendChild(label);
 
     // Chunk-car train: the lane's checkpoints, packed left->right in seg_index order (see
     // renderCars) -- the visual atom is the intent segment, not a raw op or a shared time column.
@@ -3098,10 +3128,9 @@ function changeMeter(added, removed, width) {
     if (!svg) return;
     if (!id) {
       markAxisSpan(svg, null);
+      svg.querySelectorAll(".glane.hovered").forEach((el) => el.classList.remove("hovered"));
       if (!armedVerb) clearGhosts();
-      if (state.spotlight) { applySpotlight(); return; } // a pinned spotlight survives mouse-out
-      svg.classList.remove("focus");
-      svg.querySelectorAll(".lit, .ctx").forEach((el) => el.classList.remove("lit", "ctx"));
+      applyLens(); // a pinned lane or a live search survives mouse-out; nothing pinned clears it
       return;
     }
     if (armedVerb) {
@@ -3127,17 +3156,17 @@ function changeMeter(added, removed, width) {
       }
       return;
     }
-    if (previewActive) return; // a held consequence preview owns the field dim; don't re-light co-change
-    // Focus the hovered lane + its co-change neighbors; dim the rest (the "what changes with this").
-    // This is the only place co-change is shown -- kept off the default view to avoid a hairball.
-    svg.classList.add("focus");
-    const neighbors = neighborsOf(id);
+    if (previewActive) return; // a held consequence preview owns the field dim
+    // Hover marks the row under the cursor and NOTHING else. It used to dim the whole field and
+    // recolour the hovered lane's co-change neighbours accent-blue, which meant moving the cursor
+    // across the map re-dimmed thirty rows and turned an unpredictable handful of them a different
+    // colour -- three questions raised for every one answered, on a gesture that was not a question.
+    // Co-change is worth showing and still is, on the lens: a deliberate, held, captioned act.
+    svg.querySelectorAll(".glane.hovered").forEach((el) => el.classList.remove("hovered"));
     svg.querySelectorAll(".glane").forEach((el) => {
-      const rid = el.getAttribute("data-id");
-      el.classList.toggle("lit", rid === id);
-      el.classList.toggle("ctx", neighbors.has(rid));
+      if (el.getAttribute("data-id") === id) el.classList.add("hovered");
     });
-    markAxisSpan(svg, id); // brighten the time columns this lane spans
+    markAxisSpan(svg, id); // brighten the time columns this lane spans -- local to the hovered lane
   }
 
   // ---- armed-result
@@ -3265,21 +3294,113 @@ function changeMeter(added, removed, width) {
     applySpotlight();
   }
 
-  function applySpotlight() {
+  // ---- the lens
+  // ONE held, captioned state, from two sources: a pinned lane (clicking its name) or live search
+  // text. Both mean the same thing -- "these lanes, the rest is context" -- so they share the paint,
+  // the banner and the way out, and only one can be on at a time (search wins while there is text
+  // in the box, because the text is on screen and the pin is not).
+  //
+  // Search used to do none of this. It filled a dropdown and left the map exactly as it was, so the
+  // answer to "where is the thing that formats dates" was a list of names you then had to find by
+  // eye in thirty rows -- the map, the one surface that could have answered, stayed silent.
+  function lensState() {
+    const box = document.getElementById("findBox");
+    const query = box ? box.value.trim() : "";
+    if (query) {
+      const hits = localFindHits(query, map.nodes, checkpointsByFeature, 500,
+                                 ((compose || {}).intent || {}).themes, (grid || {}).commits);
+      const ids = new Set();
+      for (const h of hits) {
+        if (h.feature) ids.add(h.feature);
+        // A theme hit is work across lanes; a save hit is a commit with no lane of its own. Both
+        // light every lane they reach, or searching for one would dim the whole map.
+        if (h.theme) {
+          const t = ((((compose || {}).intent) || {}).themes || []).find((x) => x.theme_id === h.theme);
+          for (const f of (t && t.feature_span) || []) ids.add(f);
+        }
+      }
+      for (const h of (semanticState && semanticState.query === query ? semanticState.hits : [])) {
+        if (h.feature) ids.add(h.feature);
+      }
+      return { kind: "find", query, ids, neighbors: new Set() };
+    }
+    if (state.spotlight) {
+      return { kind: "pin", query: "", ids: new Set([state.spotlight]),
+               neighbors: neighborsOf(state.spotlight) };
+    }
+    return null;
+  }
+
+  function applyLens() {
     const svg = rail.querySelector("svg");
+    const lens = lensState();
+    renderLensBanner(lens);
     if (!svg) return;
-    if (!state.spotlight) {
+    if (!lens) {
       svg.classList.remove("focus");
       svg.querySelectorAll(".lit, .ctx").forEach((el) => el.classList.remove("lit", "ctx"));
       return;
     }
     svg.classList.add("focus");
-    const neighbors = neighborsOf(state.spotlight);
+    // A lane counts as lit when it IS a hit or when a hit sits inside it -- otherwise searching for
+    // a symbol dims the collapsed subsystem that contains it, which is where the reader has to go.
     svg.querySelectorAll(".glane").forEach((el) => {
       const rid = el.getAttribute("data-id");
-      el.classList.toggle("lit", rid === state.spotlight);
-      el.classList.toggle("ctx", neighbors.has(rid));
+      const lane = (layout.laneById || {})[rid] || {};
+      const inside = (lane.leaves || []).some((f) => lens.ids.has(f));
+      el.classList.toggle("lit", lens.ids.has(rid) || inside);
+      el.classList.toggle("ctx", lens.neighbors.has(rid));
     });
+  }
+
+  // Kept as the old name for the call sites that mean "re-pin after a re-render".
+  function applySpotlight() { applyLens(); }
+
+  // What receded, why, and how to get it back. A map with half its rows dimmed and no caption is
+  // read as a rendering fault -- the terminal's `sgt log --focus` has said so above its own rows
+  // for months and this surface had nothing.
+  function renderLensBanner(lens) {
+    const el = document.getElementById("lensBanner");
+    if (!el) return;
+    if (!lens) { el.hidden = true; el.innerHTML = ""; return; }
+    el.hidden = false;
+    el.innerHTML = "";
+    el.classList.toggle("stacked", !!themeMarks); // sit under the theme caption, not on top of it
+    const lanes = (layout.lanes || []).filter((l) => !l.isMeta).length;
+    const name = document.createElement("span");
+    name.className = "theme-banner-name";
+    const note = document.createElement("span");
+    note.className = "theme-banner-note";
+    if (lens.kind === "find") {
+      name.textContent = `◉ ${lens.query}`;
+      note.textContent = lens.ids.size
+        ? `${lens.ids.size} of ${lanes} features match — the rest are dimmed, not hidden`
+        : "nothing in this graph matches — press ⏎ to search by meaning";
+    } else {
+      const label = ((byId(lens.ids.values().next().value) || {}).label) || "this feature";
+      name.textContent = `◉ ${label}`;
+      note.textContent = lens.neighbors.size
+        ? `pinned, with the ${lens.neighbors.size} features that change alongside it`
+        : "pinned — nothing else changes alongside it";
+    }
+    el.append(name, note);
+    const clear = document.createElement("button");
+    clear.textContent = "✕ Show everything";
+    clear.title = lens.kind === "find" ? "clear the search (Esc)" : "unpin (click the name again)";
+    clear.addEventListener("click", () => {
+      if (lens.kind === "find") {
+        const box = document.getElementById("findBox");
+        if (box) box.value = "";
+        semanticState = null;
+        const results = document.getElementById("findResults");
+        if (results) results.hidden = true;
+      } else {
+        state.spotlight = null;
+        saveState();
+      }
+      render();
+    });
+    el.appendChild(clear);
   }
 
   // Reveal a feature from the editor (task 4): select it (so the inspector opens), pin a spotlight on
@@ -3863,6 +3984,7 @@ function changeMeter(added, removed, width) {
     box.addEventListener("input", () => {
       semanticState = null; // a changed query orphans any older meaning results
       renderFind(box.value.trim());
+      applyLens(); // and the map answers too, not just the dropdown
     });
 
     box.addEventListener("keydown", (ev) => {
@@ -3871,6 +3993,7 @@ function changeMeter(added, removed, width) {
         results.hidden = true;
         semanticState = null;
         box.blur();
+        applyLens(); // clearing the text is what un-dims the map, so it has to run here too
         return;
       }
       if (ev.key !== "Enter") return;
@@ -3883,6 +4006,7 @@ function changeMeter(added, removed, width) {
       latestFindSeq = seq;
       semanticState = { query, pending: true, hits: [], mode: null, message: null };
       renderFind(query);
+      applyLens();
       vscode.postMessage({ type: "find", query, seq });
     });
 
@@ -3972,6 +4096,7 @@ function changeMeter(added, removed, width) {
       commitIndex: h.kind === "save" ? idxOfSha.get(String(h.id || h.detail || "").slice(0, 8)) : undefined,
     }));
     renderFind(semanticState.query);
+    applyLens(); // the meaning rung usually reaches lanes the substring rung did not
   }
 
   function el(tag, cls, text) {
@@ -5600,6 +5725,10 @@ function changeMeter(added, removed, width) {
     });
     setPreviewContext(null);
     clearOffscreenPills();
+    // Entering a preview drops the `focus` class (the two dims would compound), so leaving one has
+    // to put it back -- otherwise previewing anything silently un-dimmed a pinned lane or a live
+    // search, and the banner went on claiming the field was dimmed.
+    applyLens();
   }
 
   // The one preview-scoped sentence, wherever it comes from. Two writers and one clearer of the same

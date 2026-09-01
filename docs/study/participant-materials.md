@@ -150,10 +150,13 @@ So this is the stage where your notes are the data. Worth writing down:
   names their install rolled, or keep using the map's words. Either is a finding.
 - Any row they cannot place, and what they tried.
 
-The map does not name any sgt feature or checkpoint, deliberately: the bundles
-ship no `.sgt` store, so every install names the features afresh and no two
-participants get the same labels. There is nothing for you to look up beforehand
-and nothing to withhold — the answers are printed on the card.
+The map names no sgt feature or checkpoint, deliberately: the same card goes to
+both arms, and putting one arm's vocabulary on it would answer the stage for that
+arm. The labels themselves are stable — the bundle ships its mined graph frozen
+and every `./stage N` restores it, so every participant in the sgt arm sees the
+same feature and checkpoint names, and you can read them once at pre-flight if
+you want to follow along. Nothing on the card is withheld: the answers are
+printed on it.
 
 ### Stage 2 (s2): find the work behind the wrong number
 

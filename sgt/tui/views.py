@@ -251,7 +251,8 @@ def map_lines(
                      else f"subsystem, {plural(n_mem, 'feature')}" if kind == "subsystem"
                      else f"one piece of work across {plural(n_mem, 'feature')}")
         banner.append(f"  ·  {kind_note}"
-                      "  ·  other lanes dimmed — bare `sgt log` shows everything", style=MUTE)
+                      "  ·  every other lane still drawn, dimmed — bare `sgt log` undims them",
+                      style=MUTE)
         emit(con, banner)
     # Work this view cannot draw -- reverted ops with no lane left to hang off -- is disclosed here,
     # above the rows. A map that silently omits them reads as a complete account of the repository,
@@ -310,9 +311,16 @@ def map_lines(
         fid = l["id"]
         hexc = color_for(fid)
         is_sel = fid == selected
-        # The TableLens read: under an emphasis, a lane is either IN the group (full detail) or
-        # context (present, findable, compressed to its density spark). Membership goes through
-        # `leaves` so a folded row lights up when the group's features sit inside it.
+        # Under an emphasis a lane is either IN the group or context. Context rows keep every
+        # column they would have had and are DIMMED at the end of the row -- one `stylize("dim")`
+        # over the finished line, which rich composes on top of the identity hues rather than
+        # replacing them.
+        #
+        # They used to be rewritten instead: the checkpoint strip swapped for a density spark and
+        # the `latest` column blanked. That is a different row, not a quieter one, so a focus read
+        # as the map having been partly redacted -- the reader could no longer tell whether a
+        # context lane had two checkpoints or twenty, which is exactly the comparison a focus is
+        # for. Dim costs the same ink and answers it.
         emph_ids = (emphasis or {}).get("ids") or set()
         in_focus = emphasis is None or fid in emph_ids or any(x in emph_ids for x in l["leaves"])
         line.append(f"{SEL} " if is_sel else "  ", style=BODY)
@@ -321,10 +329,10 @@ def map_lines(
         # feature's disc: the glyph says which verbs apply before the reader has to find out.
         drew_meta = drew_meta or l["is_meta"]
         glyph = FOLD if l["is_meta"] else LEAF
-        line.append(f"{glyph} ", style=FAINT if not in_focus else (MUTE if l["is_meta"] else hexc))
+        line.append(f"{glyph} ", style=MUTE if l["is_meta"] else hexc)
         name = fit(lane_name(l), name_w - len(g) - 2)
         name_style = HEAD if (is_sel or (emphasis is not None and in_focus)) else BODY
-        line.append(name.ljust(name_w - len(g) - 2), style=FAINT if not in_focus else name_style)
+        line.append(name.ljust(name_w - len(g) - 2), style=name_style)
         if id_w:
             line.append(" " * pad)
             # Bright = the minimal unique prefix, dim = the rest: the eye reads straight off the row
@@ -342,9 +350,8 @@ def map_lines(
                 line.append(disp[k:].ljust(id_w - k), style=MUTE)
         line.append(" " * pad)
         # The checkpoint strip: every block is one `@n`, the exact unit `revert`/`restore` take.
-        # A context lane under an emphasis keeps only the density read -- the same compression a
-        # fold already uses -- so the emphasized lanes are the only ones spending chip ink.
-        if l["cars"] and not l["is_meta"] and in_focus:
+        # Drawn for every lane, in or out of focus -- see the dim note above.
+        if l["cars"] and not l["is_meta"]:
             line.append_text(car_strip(l["cars"], axis_len=axis_len, width=bar_w, hexc=hexc,
                                        color=color,
                                        name_of=lambda c: None if _echoes(c.get("label") or "",
@@ -362,7 +369,7 @@ def map_lines(
         line.append(f"{n_edits:,}".rjust(edits_w), style=MUTE)
         if latest_w:
             line.append(" " * pad)
-            line.append(fit(latest_of(l) if in_focus else "", latest_w), style=MUTE)
+            line.append(fit(latest_of(l), latest_w), style=MUTE)
         room = anno_w
         planned = ghost_by_lane.get(fid) or []
         if planned and room >= 12:
@@ -375,6 +382,10 @@ def map_lines(
             room -= len(tail)
         if links and links.get(fid) and room >= 12:
             line.append(f"  ↔ {fit(links[fid], room - 4)}", style=FAINT)
+        # The one place a focus takes ink away, and it takes it evenly: every span in the row keeps
+        # its own style and gains `dim`.
+        if not in_focus:
+            line.stylize("dim")
         emit(con, line)
         shown += 1
         lanes_drawn += 1

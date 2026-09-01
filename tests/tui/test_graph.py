@@ -560,10 +560,14 @@ def test_render_links_hidden_by_default_and_shown_with_show_links():
 
 
 def test_render_focus_mode_shows_one_lane_full_detail():
-    """Focus is a lens, not a filter: the focused lane gets its chapter table, and every OTHER
-    lane stays on screen as compressed context (density only, no chapter detail) -- the
-    TableLens read. It used to swap the whole map out for the one lane's table, which lost
-    "where does this sit among the others"."""
+    """Focus is a lens, not a filter and not a redaction: the focused lane gets its chapter table
+    below the map, and every OTHER lane stays on screen with every column it would have had --
+    dimmed, not rewritten.
+
+    Context rows used to be *replaced*: the checkpoint strip swapped for a density spark and the
+    `latest` column blanked. That is a different row rather than a quieter one, and it took away
+    the comparison a focus exists to support -- a reader could no longer tell whether a context
+    lane had two checkpoints or twenty."""
     m = {"roots": ["A", "B"], "nodes": [_node("A", None, []), _node("B", None, [])], "edges": []}
     hist = _grid(("A", 0), ("A", 1), ("B", 5))
     segs = [_seg("A", 0, ["o0"], 0, 0, label="scaffold"), _seg("A", 1, ["o1"], 1, 1, label="refine"),
@@ -571,10 +575,28 @@ def test_render_focus_mode_shows_one_lane_full_detail():
     lines = render_graph_lines(m, hist, segs, focus="A", color=False)
     text = "\n".join(lines)
     assert "scaffold" in text and "refine" in text
-    assert any(" B" in ln for ln in lines)      # context lanes stay on screen...
-    assert "other lanes dimmed" in text          # ...and the banner says why they look muted
+    assert any(" B" in ln for ln in lines)       # context lanes stay on screen...
+    assert "dimmed" in text                      # ...and the banner says why they look muted
     table = text[text.index("CHECKPOINT"):]
     assert "other work" not in table             # ...but only A's chapters are tabled
+
+
+def test_render_focus_dims_context_rows_rather_than_stripping_them():
+    """The dim is the whole mechanism, so it is asserted on the escape codes rather than on the
+    absence of columns. Without color there is nothing to see -- which is also why the banner
+    exists."""
+    m = {"roots": ["A", "B"], "nodes": [_node("A", None, []), _node("B", None, [])], "edges": []}
+    hist = _grid(("A", 0), ("A", 1), ("B", 5))
+    segs = [_seg("A", 0, ["o0"], 0, 0, label="scaffold"), _seg("A", 1, ["o1"], 1, 1, label="refine"),
+            _seg("B", 0, ["o5"], 5, 5, label="other work")]
+    lines = render_graph_lines(m, hist, segs, focus="A", color=True)
+    DIM = "\x1b[2m"
+    rows = [ln for ln in lines if "CHECKPOINT" not in ln]
+    a_row = next(ln for ln in rows if "\x1b[1mA" in ln or ln.strip().endswith("A") or " A " in ln)
+    b_row = next(ln for ln in rows if "B" in ln and "@0" in ln and ln is not a_row)
+    assert DIM in b_row, "a context row is dimmed"
+    # And it still carries its own checkpoint handle -- the column the old renderer removed.
+    assert "@0" in b_row
 
 
 def test_render_focus_mode_on_unknown_feature_reports_no_lane():
