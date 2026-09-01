@@ -635,8 +635,16 @@ def _render_save(as_json: bool, saved: bool, sha: str | None, n: int,
                   f"; `sgt feature regroup move` re-files work if that was not what you meant")
         # Un-save discoverability (Issue 2): make reversing the save one obvious command. `sgt undo`
         # pops the tail event of the op-log, which right now is this save's ideal edit -- so it drops
-        # exactly this save, returning its ops to pending (they stay on the tree, re-minable).
-        print(_dim("  ⤺ reverse this save:  sgt undo", color=color))
+        # exactly this save.
+        #
+        # Named for what it does to the TREE, not only to the record. This comment used to end
+        # "returning its ops to pending (they stay on the tree, re-minable)", and that is not what
+        # happens: undo materializes the prior ideal, which does not contain the work, so the edits
+        # leave the working copy and a following `save` finds nothing to mine. "Reverse this save"
+        # is heard as "put me back where I was" -- edits in hand and unsaved -- so it had to say the
+        # other half.
+        print(_dim("  ⤺ undo this save, and take its edits back off the working copy:  sgt undo",
+                   color=color))
     if plan is not None:
         for e in plan["auto_confirmed"]:
             steps = ", ".join(h[:12] for h in e["hollow_ids"])
@@ -755,11 +763,26 @@ def _undo(repo: str, as_json: bool, *, force: bool = False, emit: bool = False) 
             })
         parts = []
         if result.removed:
-            parts.append(f"{len(result.removed)} op(s) back to pending")
+            parts.append(f"{len(result.removed)} op(s) taken out of the record")
         if result.added:
             parts.append(f"{plural(len(result.added), 'op')} restored")
         detail = f" — {', '.join(parts)}" if parts else ""
-        print(f"✓ undo {result.witness_sha[:7]}: restored the prior ideal{detail}")
+        print(f"✓ undo {result.witness_sha[:7]}: the record is back to how it was before{detail}")
+        # Undo materializes the prior ideal, so the undone work leaves the *working copy* as well as
+        # the record. "N op(s) back to pending" said the opposite -- pending means on disk and
+        # re-minable -- and after undoing a save the content is gone from disk and a following `save`
+        # finds nothing. Undoing the one save a stage asks for and watching the files empty, under a
+        # message that says the work is pending, is the shape this project treats as its worst bug
+        # class. There is no flag that keeps the tree (`--force` only widens what undo will clobber),
+        # so the honest fix is to say what it did.
+        #
+        # Gated on nothing having come back. Undoing a *revert* also has a non-empty `removed` -- the
+        # prunes the revert minted leave the record -- but its whole effect is that the work returns
+        # to the working copy, so saying "those edits are off the working copy too" there would be
+        # the same kind of false statement this line exists to replace.
+        if result.removed and not result.added:
+            print("  those edits are off the working copy too — they are in this commit's parent "
+                  "if you want them back")
         return 0
 
     # A metadata-snapshot kind (feature reorg / declared edge).
