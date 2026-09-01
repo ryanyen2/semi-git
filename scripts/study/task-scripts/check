@@ -60,20 +60,31 @@ PY
 #
 # Only printed when there IS something half-finished. A permanent "no" line would
 # be noise in the arm that cannot reach this state.
+# Written as plain `if` blocks rather than `[ ... ] && var=yes` one-liners: this
+# file runs under `set -e`, and a trailing `&&` list that evaluates false is
+# exactly the shape whose exit-on-failure behaviour is worth not having to reason
+# about. A check script that exits early prints nothing and looks like a pass.
 gitdir="$(git rev-parse --git-dir 2>/dev/null || true)"
 unfinished=""
+conflicted=""
 if [ -n "$gitdir" ]; then
     for marker in MERGE_HEAD CHERRY_PICK_HEAD REVERT_HEAD BISECT_LOG; do
-        [ -e "$gitdir/$marker" ] && unfinished="yes"
+        if [ -e "$gitdir/$marker" ]; then
+            unfinished="yes"
+        fi
     done
-    [ -d "$gitdir/rebase-merge" ] || [ -d "$gitdir/rebase-apply" ] && unfinished="yes"
+    if [ -d "$gitdir/rebase-merge" ] || [ -d "$gitdir/rebase-apply" ]; then
+        unfinished="yes"
+    fi
     conflicted="$(git diff --name-only --diff-filter=U 2>/dev/null || true)"
-    [ -n "$conflicted" ] && unfinished="yes"
+    if [ -n "$conflicted" ]; then
+        unfinished="yes"
+    fi
 fi
 if [ -n "$unfinished" ]; then
     echo "${bold}Is anything half-finished?${off}"
     echo "  ${red}yes${off}   something you started is still in progress."
-    if [ -n "${conflicted:-}" ]; then
+    if [ -n "$conflicted" ]; then
         echo "${dim}       these files still hold conflict markers:${off}"
         printf '%s\n' "$conflicted" | sed 's/^/           /'
     fi
