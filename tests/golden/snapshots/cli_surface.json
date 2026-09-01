@@ -500,7 +500,7 @@
         "add new_file"
       ],
       "exit": 0,
-      "out": "\u2713 save <witness-sha> \"add new_file\"\n\u001b[2m  \u293a reverse this save:  sgt undo\u001b[0m\n"
+      "out": "\u2713 save <witness-sha> \"add new_file\"\n\u001b[2m  \u293a undo this save, and take its edits back off the working copy:  sgt undo\u001b[0m\n"
     }
   },
   "save_nothing_to_save": {
@@ -675,7 +675,7 @@
         "undo"
       ],
       "exit": 0,
-      "out": "\u2713 undo <witness-sha>: restored the prior ideal \u2014 1 op restored\n"
+      "out": "\u2713 undo <witness-sha>: the record is back to how it was before \u2014 1 op restored\n"
     }
   },
   "undo_nothing_to_undo": {

@@ -10872,3 +10872,54 @@ because the study counterbalances projects across conditions: a participant who
 draws footfall-under-git has a measurably longer stage 3 than one who draws
 bikecount-under-git, and that is a property of the testbed rather than of the
 tool being measured.
+
+### `sgt undo` says the work is pending; it is off the disk
+
+Last thing the walkthrough turned up, and pre-existing -- identical on 25ac53f3,
+so not something the fixes above introduced.
+
+Every save ends by offering it:
+
+```
+✓ save 5af3a0a "round the front page numbers"
+  ├─ ● Overview Charts (03f61b86)  …
+  ⤺ reverse this save:  sgt undo
+```
+
+Take the offer and the agent's eleven-file change leaves the working copy:
+
+```
+$ sgt undo
+✓ undo 4c56681: restored the prior ideal — 1 op(s) back to pending
+$ grep -c round_people footfall/metrics.py
+0
+$ sgt status
+ ✓ in sync
+```
+
+"Back to pending" means the opposite of what happened. Pending is on disk and
+re-minable; here the content is gone from disk, `status` reports nothing to save,
+and a following `save` finds nothing to mine. `porcelain.py`'s own comment on the
+line that prints the offer says "they stay on the tree, re-minable", which is
+what the message was written against and is not what `undo` does -- it
+materializes the prior ideal, and the prior ideal does not contain the work.
+
+In a stage this is recoverable (`./stage 1` resets), but the participant loses
+the four minutes and has just watched files empty under a message saying the work
+is safe. That is the silent-success shape with the sign flipped: a true statement
+about the record, printed where it reads as a statement about the files.
+
+There is no flag that keeps the tree -- `--force` only widens what undo will
+clobber -- so changing the behaviour is a real design question rather than a fix
+to make the week a study starts. What is cheap and honest is to stop
+mis-describing it, in both places a user meets it: the offer now names what it
+does to the working copy, and the result says where the content went. Golden
+regenerated for the two strings.
+
+The new line is gated on nothing having been restored, which the first cut of it
+was not -- caught by testing the other undo. Undoing a *revert* also empties
+`removed` into a count (the prunes the revert minted leave the record) while its
+whole effect is that the work returns to the working copy, so the unguarded line
+announced "those edits are off the working copy too" over a tree that had just
+got them back. Replacing one false statement with another in the same session is
+a good argument for walking both branches of anything phrased as a consequence.
