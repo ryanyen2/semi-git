@@ -629,7 +629,9 @@ def _kernel_edit_verb(
         print(f"usage: sgt {cmd} [--json] <ref>")
         return 2
     target = " ".join(ref_tokens)
-    get(repo)  # mine-on-contact before planning/applying the edit (R9)
+    from ._common import busy
+    with busy(f"working out what `{target}` covers…"):
+        get(repo)  # mine-on-contact before planning/applying the edit (R9)
 
     # A `<feature>@<n>` or `<feature>:<slug>` checkpoint (the intent-segment rewind unit): resolve
     # it to its deterministic op-set and run the exact same op-set edit `sgt intent revert` uses
@@ -870,7 +872,7 @@ def _no_feature_match(repo: str, cmd: str, target: str, as_json: bool) -> int:
                           "candidates": cands}, indent=2))
         return 2
     if not hits:
-        print(f"? [{cmd}] no feature matches handle {target!r} -- run `sgt log --map` to see the handles.")
+        print(f"? [{cmd}] no feature matches handle {target!r} -- run `sgt log` to see the handles.")
         return 2
     print(f"? [{cmd}] {target!r} is an ambiguous handle; did you mean:")
     for nid in hits[:8]:
@@ -909,7 +911,7 @@ def _revert_a_save(cmd: str, target: str, save: tuple[str, str, list[tuple[str, 
         for ref, label in feats[:8]:
             print(f"    sgt {cmd} {ref}   {label}")
         if len(feats) > 8:
-            print(f"    ... and {len(feats) - 8} more (`sgt log --map`)")
+            print(f"    ... and {len(feats) - 8} more (`sgt log`)")
     else:
         print("  it recorded no feature ops.")
     print("  or:")

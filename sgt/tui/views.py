@@ -98,8 +98,22 @@ def map_lines(
     unplaced_ghosts: list[dict] | None = None,
     notes: list[str] | None = None,
     links: dict[str, str] | None = None,
+    emphasis: dict | None = None,
+    themes: list[dict] | None = None,
 ) -> list[str]:
-    """`sgt log --map`: one line per lane, on one shared commit axis.
+    """`sgt log`: one line per lane, on one shared commit axis.
+
+    `emphasis` (`{"ids": set, "label": str, "kind": str}`) is the focus-within-context read
+    (`--focus <feature|subsystem|theme>`): the WHOLE map still renders, but only the emphasized
+    lanes keep their checkpoint strips -- every other lane compresses to the fold-style density
+    spark with a faint name, so the reader keeps their place in the codebase while the group
+    stands out. This replaced the scoped views that dropped the map entirely: a focus that hides
+    everything else answers "what is in this group" but loses "where does it sit".
+
+    `themes` (`[{"label", "feature_labels"}]`, span >= 2 only) is the cross-feature footer: work
+    that ran across lanes has no single row of its own, so without this the only place its NAME
+    appeared was `sgt intent list` -- which the study's participants (and its author) could not
+    connect back to this map at all.
 
     The row is three columns and only three: WHO (guides + glyph + name), WHEN (the density bar
     under its own `c0 … cN` ruler), and HOW MUCH (a right-aligned edit count). The `@n` checkpoint
@@ -219,6 +233,20 @@ def map_lines(
         title.append("  ·  ", style=MUTE)
         title.append(f"frontier c{frontier}", style=FAINT)
     emit(con, title)
+    # The focus banner: what is emphasized and how to widen back out. Stated above the rows
+    # because a mostly-dim map with no explanation reads as a rendering fault, not a lens.
+    if emphasis is not None:
+        in_ids = emphasis.get("ids") or set()
+        n_mem = sum(len(l["leaves"]) for l in layout.get("lanes", [])
+                    if l["id"] in in_ids or any(x in in_ids for x in l["leaves"]))
+        banner = Text(" ", style=BODY)
+        banner.append("◉ ", style=HEAD)
+        banner.append(emphasis.get("label", ""), style=HEAD)
+        kind_note = ("feature" if emphasis.get("kind") == "feature"
+                     else f"{emphasis.get('kind', 'group')}, {plural(n_mem, 'feature')}")
+        banner.append(f"  ·  {kind_note}"
+                      "  ·  other lanes dimmed — bare `sgt log` shows everything", style=MUTE)
+        emit(con, banner)
     # Work this view cannot draw -- reverted ops with no lane left to hang off -- is disclosed here,
     # above the rows. A map that silently omits them reads as a complete account of the repository,
     # which is the false-green this note exists to prevent.
@@ -276,15 +304,21 @@ def map_lines(
         fid = l["id"]
         hexc = color_for(fid)
         is_sel = fid == selected
+        # The TableLens read: under an emphasis, a lane is either IN the group (full detail) or
+        # context (present, findable, compressed to its density spark). Membership goes through
+        # `leaves` so a folded row lights up when the group's features sit inside it.
+        emph_ids = (emphasis or {}).get("ids") or set()
+        in_focus = emphasis is None or fid in emph_ids or any(x in emph_ids for x in l["leaves"])
         line.append(f"{SEL} " if is_sel else "  ", style=BODY)
         line.append(g, style=MUTE)
         # A folded row stands for a group of features, so it takes the group's caret rather than a
         # feature's disc: the glyph says which verbs apply before the reader has to find out.
         drew_meta = drew_meta or l["is_meta"]
         glyph = FOLD if l["is_meta"] else LEAF
-        line.append(f"{glyph} ", style=MUTE if l["is_meta"] else hexc)
+        line.append(f"{glyph} ", style=FAINT if not in_focus else (MUTE if l["is_meta"] else hexc))
         name = fit(lane_name(l), name_w - len(g) - 2)
-        line.append(name.ljust(name_w - len(g) - 2), style=HEAD if is_sel else BODY)
+        name_style = HEAD if (is_sel or (emphasis is not None and in_focus)) else BODY
+        line.append(name.ljust(name_w - len(g) - 2), style=FAINT if not in_focus else name_style)
         if id_w:
             line.append(" " * pad)
             # Bright = the minimal unique prefix, dim = the rest: the eye reads straight off the row
@@ -302,7 +336,9 @@ def map_lines(
                 line.append(disp[k:].ljust(id_w - k), style=MUTE)
         line.append(" " * pad)
         # The checkpoint strip: every block is one `@n`, the exact unit `revert`/`restore` take.
-        if l["cars"] and not l["is_meta"]:
+        # A context lane under an emphasis keeps only the density read -- the same compression a
+        # fold already uses -- so the emphasized lanes are the only ones spending chip ink.
+        if l["cars"] and not l["is_meta"] and in_focus:
             line.append_text(car_strip(l["cars"], axis_len=axis_len, width=bar_w, hexc=hexc,
                                        color=color,
                                        name_of=lambda c: None if _echoes(c.get("label") or "",
@@ -320,7 +356,7 @@ def map_lines(
         line.append(f"{n_edits:,}".rjust(edits_w), style=MUTE)
         if latest_w:
             line.append(" " * pad)
-            line.append(fit(latest_of(l), latest_w), style=MUTE)
+            line.append(fit(latest_of(l) if in_focus else "", latest_w), style=MUTE)
         room = anno_w
         planned = ghost_by_lane.get(fid) or []
         if planned and room >= 12:
@@ -344,6 +380,29 @@ def map_lines(
     for gh in (unplaced_ghosts or []):
         emit(con, Text(" ", style=FAINT).append(
             f"{GHOST} planned, no lane yet: {fit(gh.get('title', ''), 48)}", style=FAINT))
+    # Cross-feature work, named where the lanes are. A piece of work that ran across several
+    # features has no row of its own above, so this is the only place the map itself can say
+    # "these lanes changed together, and the group has a name you can focus or revert by".
+    if themes and emphasis is None:
+        emit(con, "")
+        emit(con, Text(" ", style=MUTE).append("work that spans several features:", style=MUTE))
+        label_w = min(36, max(len(t["label"]) for t in themes[:6]))
+        for t in themes[:6]:
+            trow = Text("   ", style=BODY)
+            trow.append("◈ ", style=HEAD)
+            trow.append(fit(t["label"], label_w).ljust(label_w), style=HEAD)
+            feats = t.get("feature_labels") or []
+            shown = ", ".join(feats[:3]) + (f" +{len(feats) - 3}" if len(feats) > 3 else "")
+            trow.append("  across ", style=MUTE)
+            trow.append(fit(shown, max(10, width - label_w - 16)), style=MUTE)
+            emit(con, trow)
+        if len(themes) > 6:
+            emit(con, Text("   ", style=FAINT).append(f"… and {len(themes) - 6} more", style=FAINT))
+        example_t = themes[0]["label"]
+        emit(con, Text(" ", style=FAINT).append(
+            fit(f'`sgt log --focus "{example_t}"` shows one group across its lanes  ·  '
+                f'`sgt revert "{example_t}"` removes one everywhere at once', width - 2),
+            style=FAINT))
     # The one thing the view cannot show about itself: that a bar's height is relative, and that the
     # chapters live one command away. Everything else -- that columns are time, that the hue is the
     # feature -- the ruler and the swatches now say on their own.
@@ -584,13 +643,13 @@ def rail_lines(
         handle = example[2:10] if example.startswith("f-") else example[:8]
         label = labels.get(example)
         target = f'"{label}"' if label and '"' not in label and label != example else handle
-        picks = [f"sgt show {target}", f"sgt log --focus {target}", "sgt log --map"]
+        picks = [f"sgt show {target}", f"sgt log --focus {target}", "sgt log"]
         # A name only stays easier to act on than a handle while it FITS: a label long enough to
         # push the suggested command past the terminal wraps the very command the line is teaching,
         # and a wrapped command is one a reader mis-copies. The handle survives that.
         if len(" · ".join(picks)) + 2 > width:
             target = handle
-            picks = [f"sgt show {target}", f"sgt log --focus {target}", "sgt log --map"]
+            picks = [f"sgt show {target}", f"sgt log --focus {target}", "sgt log"]
         emit(con, "")
         emit(con, Text(" ", style=FAINT).append(fit("   ·   ".join(picks), width - 2), style=FAINT))
     return to_lines(con, color=color)

@@ -669,9 +669,15 @@ def test_save_preview_view_splits_affected_features_from_new_work(tmp_path):
     affected_ids = {row["feature_id"] for row in v["affected"]}
     assert foo_leaf in affected_ids  # the reworked symbol's feature is flagged
     assert v["new_work_count"] >= 1  # `bar` belongs to no built leaf
-    # the split is exhaustive: every pending op is either attributed or new work
-    attributed = sum(row["op_count"] for row in v["affected"])
-    assert attributed + v["new_work_count"] == v["total_op_count"]
+    # the touched symbols are named, so the ghost can say WHAT would land, not just where
+    foo_row = next(row for row in v["affected"] if row["feature_id"] == foo_leaf)
+    assert "a.py::foo" in foo_row["symbols"]
+    # the split is exhaustive: every pending op is either attributed somewhere or new work
+    # (symbol-granular spread: one op may count in several lanes, so union op_ids, don't sum)
+    attributed = set()
+    for row in v["affected"]:
+        attributed.update(row["op_ids"])
+    assert len(attributed) + v["new_work_count"] == v["total_op_count"]
 
 
 def test_fold_view_at_commit_index_matches_that_frontiers_code(tmp_path):

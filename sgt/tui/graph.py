@@ -264,11 +264,19 @@ def graph_layout(
         that put four of the root's own features (`seed catalog`, `sort the grid`, `show what is on
         the shelf`, `seed tray`) under the `Plant Discovery` header, which announces 6 features
         above 9 rows -- so the one number the reader can check against the rows disagrees with them.
-        Grouping is what lets the indent mean containment; within a group, time still orders."""
+        Grouping is what lets the indent mean containment; within a group, time still orders.
+
+        The halves split by NODE KIND, not by "is it a lane": a COLLAPSED subsystem is a lane
+        (one meta row) while an expanded one is a header, so splitting on lane-ness moved the
+        whole block from the leaves half to the groups half whenever its fold state changed --
+        in the workbench, expanding a subsystem visibly teleported it below every feature and
+        the reader lost the row they had just clicked. Kind is fold-invariant, so a subsystem
+        occupies the same slot folded and open."""
         kids = (map_view.get("roots") or []) if node_id is None else children_of(node_id)
         present = [c for c in kids if is_present(c)]
-        leaves = sorted((c for c in present if c in lane_by_id), key=sort_key)
-        groups = sorted((c for c in present if c not in lane_by_id), key=sort_key)
+        is_sub = lambda c: (by_id.get(c) or {}).get("kind") == "subsystem"  # noqa: E731
+        leaves = sorted((c for c in present if not is_sub(c)), key=sort_key)
+        groups = sorted((c for c in present if is_sub(c)), key=sort_key)
         return leaves + groups
 
     row = 0
@@ -738,8 +746,36 @@ def resolve_focus_group(ref: str, map_view: dict, grid_view: dict, themes: dict 
         want_idx = {idx_of[s] for s in shas if s in idx_of}
         feats = {c["feature_id"] for c in grid_view.get("cells", []) if c["commit_index"] in want_idx}
         if feats:
-            return {"label": thits[0]["label"], "kind": "theme", "feature_ids": feats}
+            return {"label": thits[0]["label"], "kind": "theme", "feature_ids": feats,
+                    "commit_indices": want_idx}
     return None
+
+
+def theme_spans(themes: dict, map_view: dict, grid_view: dict) -> list[dict]:
+    """The cross-feature themes joined to the lanes they span, for the map's footer: each
+    multi-feature theme's label plus the LABELS (not hashes) of the features its commits touched,
+    widest span first. The join is the same commit->cell walk `resolve_focus_group` does, so what
+    the footer names and what `--focus` opens can never disagree. Single-feature themes are
+    dropped -- their lane already tells that story on its own row."""
+    labels = {n["id"]: n.get("label", n["id"]) for n in map_view.get("nodes", [])}
+    idx_of = {c["sha"]: c["index"] for c in grid_view.get("commits", [])}
+    cells_by_idx: dict[int, set[str]] = {}
+    for c in grid_view.get("cells", []):
+        cells_by_idx.setdefault(c["commit_index"], set()).add(c["feature_id"])
+    out = []
+    for t in (themes or {}).values():
+        label = (t or {}).get("label", "").strip()
+        if not label:
+            continue
+        feats: set[str] = set()
+        for sha in t.get("atom_shas", []):
+            feats |= cells_by_idx.get(idx_of.get(sha, -1), set())
+        if len(feats) < 2:
+            continue
+        out.append({"label": label, "feature_ids": feats,
+                    "feature_labels": sorted(labels.get(f, f) for f in feats)})
+    out.sort(key=lambda t: (-len(t["feature_ids"]), t["label"]))
+    return out
 
 
 def _resolve_focus(focus: str, layout: dict, labels: dict) -> str | None:
@@ -1061,6 +1097,8 @@ def render_graph_lines(
     *,
     selected: str | None = None,
     focus: str | None = None,
+    group: dict | None = None,
+    themes: list[dict] | None = None,
     frontier: int | None = None,
     collapsed=(),
     color: bool = True,
@@ -1237,7 +1275,14 @@ def render_graph_lines(
         lines.append(dim(f"   frontier: folded at commit {frontier} (later features hidden)"))
     lines.append("")
 
-    if focus is not None:
+    emphasis = None
+    focus_detail: list[str] = []
+    if group is not None:
+        # A group focus (`--focus <subsystem|theme>`, resolved by the caller): TableLens over the
+        # whole map -- the group's lanes keep full detail, everything else compresses in place.
+        emphasis = {"ids": set(group.get("feature_ids") or ()),
+                    "label": group.get("label", ""), "kind": group.get("kind", "group")}
+    elif focus is not None:
         fid_match = focus if focus in layout["node_by_id"] else _resolve_focus(focus, layout, labels)
         lane = layout["node_by_id"].get(fid_match) if fid_match else None
         if lane is None:
@@ -1245,24 +1290,17 @@ def render_graph_lines(
                              "ambiguous prefix/label)"))
             return lines
         focus = fid_match
-        handle = focus[2:10] if focus.startswith("f-") else focus[:8]  # copy token: the bare hex the gutter prints
-        hexc = color_for(focus)
         raw = labels.get(focus, focus)
-        n_ckpt = len(lane["cars"])
-        # Reverted chapters stay in the count -- they are still addressable, and `sgt restore` needs
-        # them listed -- so the header names them alongside it rather than quietly shrinking.
-        n_gone = sum(1 for c in lane["cars"] if c.get("reverted"))
-        # The short handle, not the whole 64-char id. The full hash was a wall of noise across the
-        # header of a view whose subject is named right beside it, and nothing a reader does with
-        # this line needs more than the prefix -- every verb that takes a feature resolves a unique
-        # prefix, or the name itself.
-        # The chapter table is `views.focus_lines`: three columns that repeated on every row
-        # (the handle, the label-derived `:slug`, and a full `sgt restore` incantation) collapse
-        # into a header stated once and a footer naming the two commands worth copying.
+        # The map stays on screen (emphasized lane bright, the rest compressed to density) and the
+        # chapter table renders BELOW it -- `views.focus_lines`, the one screen that prints the
+        # `@n` rewind handles. The old behaviour swapped the map out for the table entirely, which
+        # answered "what is in this feature" while losing "where does it sit among the others" --
+        # the whole point of a focus+context read.
+        emphasis = {"ids": {focus}, "label": raw, "kind": "feature"}
         from .views import focus_lines
-        return lines + focus_lines(focus, raw, lane["cars"], color=color)
+        focus_detail = [""] + focus_lines(focus, raw, lane["cars"], color=color)
 
-    # The non-focus map is drawn by the redesigned renderer in `views.py`: one line per lane, three
+    # The map is drawn by the redesigned renderer in `views.py`: one line per lane, three
     # columns, a `c0 … cN` ruler over the bars. Layout stays this module's job; presentation does not.
     from .views import map_lines
     _cols = shutil.get_terminal_size(fallback=(0, 0)).columns
@@ -1280,8 +1318,8 @@ def render_graph_lines(
         ghost_by_lane=ghost_by_lane, unplaced_ghosts=unplaced_ghosts,
         notes=_reverted_gap_note(layout.get("reverted_unaccounted"),
                                  _cols if _cols >= 40 else 10 ** 6),
-        links=link_note,
-    )
+        links=link_note, emphasis=emphasis, themes=themes,
+    ) + focus_detail
 
 
 

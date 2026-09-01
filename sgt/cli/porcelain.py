@@ -214,7 +214,9 @@ def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool =
             as_json,
         )
 
-    ideal = get(repo)  # mine the working tree (R9)
+    from ._common import busy
+    with busy("examining the working tree…"):
+        ideal = get(repo)  # mine the working tree (R9)
 
     # `save --resolve-plan --confirm-hollow ... --confirm-op ...` settles one ambiguous group by
     # name -- exactly what the removed `checkpoint --confirm-*` did, now reached through `save`.
@@ -237,21 +239,22 @@ def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool =
         # Guarded: a lane-assignment hiccup must never fail the save. Local import keeps the path light.
         from sgt.core.store import Store
         from sgt.lens import ledger
-        pre = _snapshot_cascade_tables(repo)
-        try:
-            cascade = ledger.assign_at_save(repo, ideal, Store(repo).all_ops())
-        except Exception:  # noqa: BLE001 -- a save must still succeed even if the cascade errors
-            _restore_cascade_tables(repo, pre)  # never commit a half-applied cascade
-            cascade = None
-        try:
-            sha = put(repo, ideal, message=message or "sgt save")
-        except (DirtyWorkingTreeError, GitError, ValueError) as e:
-            # `put` refused (an uncommitted conflict or out-of-scope drift): roll the cascade's
-            # writes back so an aborted save leaves the `.sgt` tables exactly as it found them, not
-            # dirty -- the same F1 invariant, on the error path.
-            _restore_cascade_tables(repo, pre)
-            return _fail_json(str(e), as_json)
-        record_ideal(repo, ideal, sha)
+        with busy("recording the save…"):
+            pre = _snapshot_cascade_tables(repo)
+            try:
+                cascade = ledger.assign_at_save(repo, ideal, Store(repo).all_ops())
+            except Exception:  # noqa: BLE001 -- a save must still succeed even if the cascade errors
+                _restore_cascade_tables(repo, pre)  # never commit a half-applied cascade
+                cascade = None
+            try:
+                sha = put(repo, ideal, message=message or "sgt save")
+            except (DirtyWorkingTreeError, GitError, ValueError) as e:
+                # `put` refused (an uncommitted conflict or out-of-scope drift): roll the cascade's
+                # writes back so an aborted save leaves the `.sgt` tables exactly as it found them,
+                # not dirty -- the same F1 invariant, on the error path.
+                _restore_cascade_tables(repo, pre)
+                return _fail_json(str(e), as_json)
+            record_ideal(repo, ideal, sha)
         saved = True
         # Zero-burden intent capture (intent-ledger M1): the `-m` message is the user's own words
         # about what this work was -- harvested as a turn keyed by the witness commit sha (a key
@@ -414,19 +417,27 @@ def _confirm_plan_match(repo: str, hollow_refs: list[str], op_refs: list[str], a
 
 
 def _save_attribution(repo: str, new_op_ids: frozenset, cascade: dict | None) -> list[dict]:
-    """Which feature(s) this save's new ops landed in -- the label feedforward. One row per
-    touched feature: its id, current label, a typeable handle, the (real) symbols this save
-    touched in it, and whether the save minted the lane (`new` -- still unnamed). Empty when no
-    tree has been built yet (a brand-new repo has nothing to attribute against)."""
+    """Which feature(s) this save's new ops touched -- the label feedforward. One row per
+    touched feature: its id, current label, a typeable handle, the symbols this save touched in
+    it, and whether the save minted the lane (`new` -- still unnamed). Empty when no tree has
+    been built yet (a brand-new repo has nothing to attribute against).
+
+    Symbol-granular, the same spread `save_preview_view` reports, and for the same reason: one
+    op can span several features' symbols (the study's stage-1 tree mines as ONE op touching
+    every page), and the old per-op filing (persisted `op_leaf`, first-member fallback) echoed
+    that as a single feature -- so the echo contradicted the ghost preview the user had just
+    been looking at. Each symbol reports to the lane that owns it (residue/anchor symbols follow
+    their anchor entity, `tree._member_leaf_for`'s own vote), so the echo and the ghosts tell
+    one story. The ledger still files each atomic op under one home lane; this echo answers
+    "what did this save touch", not "where did the record file it"."""
     from sgt.core import opindex
-    from sgt.core.op import _symbol_kind
+    from sgt.lens.tree import _anchor_entity_of, _member_leaf_for
     from sgt.lens.tree import leaf_member_index as tree_leaf_member_index
     from sgt.lens.tree import load as load_tree
 
     tree_result = load_tree(repo)
     if not tree_result or not new_op_ids:
         return []
-    op_leaf = tree_result.get("op_leaf", {})
     nodes = tree_result.get("nodes", {})
     member_leaf = tree_leaf_member_index(nodes)
     by_id = {op.id: op for op in opindex.index_ops(repo)}
@@ -435,25 +446,15 @@ def _save_attribution(repo: str, new_op_ids: frozenset, cascade: dict | None) ->
     rows: dict[str, dict] = {}
     for oid in new_op_ids:
         op = by_id.get(oid)
-        syms = sorted(
-            s for s in (op.footprint if op is not None else ())
-            if _symbol_kind(s) in ("entity", "nested", "whole_file")
-        )
-        leaf = op_leaf.get(oid)
-        if leaf is None:
-            # A save does not rebuild the tree, so an op recorded seconds ago has no `op_leaf`
-            # entry: only the cascade's visibility re-vote puts one there, and that runs solely
-            # when the save introduced a *new symbol*. Every modify-only save therefore dropped
-            # its whole feature line -- including the one the practice sheet asks for ("edit
-            # anything, a function or just the README") right after promising the save says which
-            # feature the change landed in. A modified symbol is already a member of a leaf, so
-            # ask membership directly rather than reclustering to find out.
-            leaf = next((member_leaf[s] for s in syms if s in member_leaf), None)
-        if leaf is None:
+        if op is None:
             continue
-        row = rows.setdefault(leaf, {"feature_id": leaf, "symbols": set(), "edits": 0})
-        row["edits"] += 1
-        row["symbols"].update(syms)
+        for sym in op.footprint:
+            leaf = _member_leaf_for(sym, member_leaf)
+            if leaf is None:
+                continue
+            row = rows.setdefault(leaf, {"feature_id": leaf, "symbols": set(), "op_ids": set()})
+            row["op_ids"].add(oid)
+            row["symbols"].add(_anchor_entity_of(sym) or sym)
     out = []
     for leaf, row in rows.items():
         nd = nodes.get(leaf, {})
@@ -462,10 +463,10 @@ def _save_attribution(repo: str, new_op_ids: frozenset, cascade: dict | None) ->
             "label": nd.get("label", leaf),
             "handle": leaf[2:10] if leaf.startswith("f-") else leaf[:11],
             "symbols": sorted(row["symbols"]),
-            "edits": row["edits"],
+            "edits": len(row["op_ids"]),
             "new": leaf in new_lanes,
         })
-    out.sort(key=lambda r: (-r["edits"], r["feature_id"]))
+    out.sort(key=lambda r: (-len(r["symbols"]), -r["edits"], r["feature_id"]))
     return out
 
 
@@ -625,7 +626,7 @@ def _render_save(as_json: bool, saved: bool, sha: str | None, n: int,
                 print(f"  ⚠ --as failed: {renamed['message']}")
         if len(features) >= 3:
             print(f"  ⚠ one save touched {len(features)} features — deliberate? "
-                  f"`sgt log --map` shows them; `sgt feature regroup move` re-files work")
+                  f"`sgt log` shows them; `sgt feature regroup move` re-files work")
         # Un-save discoverability (Issue 2): make reversing the save one obvious command. `sgt undo`
         # pops the tail event of the op-log, which right now is this save's ideal edit -- so it drops
         # exactly this save, returning its ops to pending (they stay on the tree, re-minable).
