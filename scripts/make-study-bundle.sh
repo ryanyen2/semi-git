@@ -245,6 +245,23 @@ print(f"  dropped {dropped} pending op(s)")
 PY
     (cd "$staging/work" && "$staging/bin/sgt" advanced resync) >/dev/null 2>&1 || true
 
+    # Mining is chunked against a per-contact deadline, so ONE contact on a loaded machine can
+    # leave the backfill mid-walk -- and a rebuild over an incomplete ideal ships a graph with
+    # real symbols in no frontier (the integrity gate below refused exactly that during a busy
+    # publish). Drive the sync to completion first; each contact advances at least one chunk.
+    echo "  Syncing the history to completion."
+    "$staging/toolenv/bin/python" - "$staging/work" <<'PY'
+import sys
+from sgt.core.lens import get, sync_status
+for i in range(24):
+    get(sys.argv[1])
+    if sync_status(sys.argv[1])["complete"]:
+        print(f"  complete after {i + 1} contact(s)")
+        break
+else:
+    sys.exit("  history sync did not complete after 24 contacts")
+PY
+
     echo "  Rebuilding the history view. About a minute."
     refresh_log="$staging/.refresh.log"
     (
