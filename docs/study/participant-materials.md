@@ -128,9 +128,10 @@ Write these down as they happen. This is your qualitative data.
 
 ## Scoring guide
 
-Two of the four stages score themselves against the key. Two are scored from the
-repository afterwards. Stage 1 is not scored at all. Nothing needs grading by
-hand.
+One thing is scored against the key: the piece of work the participant names in
+stage 2, and your reading of it is the authority. Stages 3 and 4 are scored from
+the repository afterwards. Stages 1 and 3 ask nothing with a right answer.
+Nothing needs grading by hand.
 
 ### Stage 1 (s1): get to know the project
 
@@ -287,10 +288,10 @@ For each participant per half you should have:
 
 - Stage 1: three ratings (also rolled up as one mean, reverse-keyed item
   flipped), time, and whether the cap was hit. No checklist and no key.
-- Stage 2: locate correct or not (your reading is the authority), checklist F1,
-  confidence, two ratings, time.
-- Stage 3: runs / target / collateral from the scorer, checklist F1, `gain`,
-  confidence, three ratings, time.
+- Stage 2: locate correct or not (your reading is the authority), the
+  recognition choice, confidence in the task, two ratings, time.
+- Stage 3: runs / target / collateral from the scorer, confidence in the task,
+  three ratings, time.
 - Stage 4: fidelity from the scorer, three ratings, time.
 - UMUX-Lite and NASA-TLX per half.
 - Your qualitative notes.

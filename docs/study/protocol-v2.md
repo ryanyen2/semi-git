@@ -61,7 +61,7 @@ stated at.
 |---|---|---|---|
 | RQ1: Orienting in an unfamiliar project | Given a project nobody has seen before, does intent-aligned history change how much of what the product does a developer can trace back to the work that produced it, and how well they understand the project afterwards? | S1 | Three rating items, time on task, telemetry of which surfaces they used, and what the participant says aloud while matching the card's map onto their setup's view |
 | RQ2: Locating work | Given a described defect, does intent-aligned history change how accurately and how quickly a developer finds the piece of work that caused it? | S2 | Free-text identifier scored against an accepted-strings list, time, confidence |
-| RQ3: Operating at the level of the task | When the task names a piece of work ("remove what your colleague did", "put it back"), can the developer carry out the operation at that level, with what success, what collateral damage, and what foresight about the operation's reach? | S2, S3, S4 | Reach prediction (S2) against outcome report (S3), behavioural check scripts, restore fidelity, mechanism self-report |
+| RQ3: Operating at the level of the task | When the task names a piece of work ("remove what your colleague did", "put it back"), can the developer carry out the operation at that level, with what success and what collateral damage? | S2, S3, S4 | Behavioural check scripts (`./check 3`, `./check 4`), page-snapshot diffs, restore fidelity, per-stage confidence and ratings, telemetry |
 
 Each RQ carries a falsifiable claim:
 
@@ -69,7 +69,7 @@ Each RQ carries a falsifiable claim:
 |---|---|
 | C1. Intent-aligned history makes an unfamiliar project's parts traceable to the work that produced them. | S1's three rating items are equal or lower under sgt. This is a self-report and the weakest claim in the set; section 10 says so in advance. |
 | C2. Intent-aligned history makes it cheaper and more reliable to locate the work behind a described defect. | S2 locate accuracy is equal or worse under sgt, with no time advantage. |
-| C3. Intent-aligned history lets people remove and restore a piece of work at the level the task names, with less damage. | S3 outcome or collateral damage is equal or worse under sgt, or S4 restore fidelity is equal or worse, or `gain` (S3 outcome report minus S2 reach prediction, both F1) is at or below zero. |
+| C3. Intent-aligned history lets people remove and restore a piece of work at the level the task names, with less damage. | S3 outcome or collateral damage is equal or worse under sgt, or S4 restore fidelity is equal or worse. |
 
 With 12 participants we can detect large effects and nothing else. The paper
 says that in the limitations section rather than hiding it behind a p-value.
@@ -254,17 +254,24 @@ the defect; the discovery cost the same minutes in both arms and was not the
 claim. Here the detective work is removed and what remains is the thing RQ2
 names, which is whether the representation makes the responsible work findable.
 
-After the identifier box, the reach prediction: "Which parts of the dashboard
-run through the code that work touches, the ones you would re-check if it were
-taken out?" The eleven-behaviour checklist (`BEHAVIOURS` in
-`web/src/study/tasks.ts`), scored as set F1 against a key measured by
-`scripts/study/harvest/write_answer_key.py`. Answered
-before anything is operated on, so it reflects the representation alone. It is
-untimed within the stage, unlike version 1's hard 60 seconds, because version
-1 worried that extra time let people reason from general knowledge of
-software; in this design the card has already told them what the change does,
-so what the checklist can reveal is only what the representation shows about
-where that change lives.
+**The reach checklist is gone from stages 2 and 3, and with it `gain`.** Both
+stages ended in the same eleven-option checklist ("which parts of the dashboard
+does that work affect"), scored as set F1 against a measured key; the pair was
+the study's own prediction-against-outcome measure. It is removed because it was
+not being answered. P01, the first real participant, left it untouched on three
+of the four occasions it was asked, and hit the four-minute cap on five stages
+out of eight -- eleven options each captioned with a page name is a wall of
+reading at the end of a stage whose clock has just run out, and the cost of it
+lands on the stages that follow. An instrument nobody fills in is not a weak
+measure; it is an absent one that is still charging rent.
+
+What replaces it is nothing. The confidence item after each of these stages now
+asks about the task ("how confident are you that you completed this task?"), and
+RQ2 and RQ3 rest on the locate answer, `./check 3` and `./check 4`, the
+page-snapshot diffs, and the per-stage ratings. The measured reach sets stay in
+`answer-key.json`: they are ground truth about the built testbeds, they still
+score the pilot and P01 halves that did answer, and `s3.markers` -- the pages the
+scorer diffs -- lives in the same entry. Section 11 states the loss.
 
 Scoring of the identifier is unchanged from version 1: free text, compared
 after the session against an accepted-strings list per project (full sha,
@@ -594,7 +601,9 @@ Derived measures, computed per stage and condition:
 - Time to first history operation.
 - Wrong turns: a history operation followed within 120 seconds by a recover
   action.
-- Quiz scores and `gain`, from `web/src/analysis/pipeline.ts`.
+- Per-stage confidence and rating means, from `web/src/analysis/pipeline.ts`.
+  (`quizPicksF1` and `gain` are computed there still, and are null for every
+  stage collected after 2026-09-01 -- see section 4.)
 - Collateral damage and fidelity, from the check scripts and page snapshots.
 
 ## 9. Ground truth and keys
@@ -608,13 +617,11 @@ testbeds -- never written by hand:
   `web/tests/answer-key.test.ts` fails on one, rather than letting it upload
   clean and score a question nobody was asked.
 - Stage 2: the accepted-strings list for the identifier -- every way either arm
-  can name the target, including the other arm's commit shas -- and the reach
-  set, measured by copying the testbed, removing the target, re-rendering every
-  page (`snap.py`), and mapping the pages that moved onto the options the
-  checklist offers.
-- Stage 3: the same reach set by construction, written from the same
-  measurement, so `gain` (S3 outcome minus S2 prediction) compares like with
-  like; plus the pages the removal is supposed to reach.
+  can name the target, including the other arm's commit shas. Its reach set is
+  still generated and still validated, but no stage reads it any more (section 4).
+- Stage 3: the same reach set, plus `markers` -- the pages the removal is
+  supposed to reach, which `score_dashboard.py` diffs. The reach set is retained
+  for the halves collected before the checklist was removed.
 - Stages 3 and 4: the page snapshots before removal, after a correct removal,
   and after a correct restore, which `score_dashboard.py` compares against.
 
@@ -640,7 +647,7 @@ paired comparisons, not imputed).
 
 | Tier | Measures |
 |---|---|
-| Primary | S2 locate accuracy (binary) and time; `gain`; S3 outcome (binary) and collateral damage; S4 fidelity (binary) |
+| Primary | S2 locate accuracy (binary) and time; S3 outcome (binary) and collateral damage; S4 fidelity (binary) |
 | Secondary | S1's three ratings; the other stages' rating sets; UMUX-Lite; the preference block |
 | Descriptive | Telemetry (surface mix, time to first operation, wrong turns), calibration, interview themes |
 
@@ -707,13 +714,15 @@ are fixed before the first participant of the new design.
 - The removal target was selected by a gate whose criteria include the git
   revert conflicting. The paper publishes the criteria and the parity table
   rather than presenting the target as arbitrary.
-- The behaviour checklists supply the answer space. Recognising which of eleven
-  listed behaviours a change touches is easier than asking, unprompted, what
-  might break; `gain` is a difference within a supplied set. The measured reach
-  sets are also broad -- the event-day work reaches nine of the eleven parts in
-  footfall and eight in bikecount -- so ticking everything scores an F1 of about
-  0.86, and the paper reports that tick-everything baseline alongside each
-  condition's mean rather than leaving the reader to work it out.
+- **The study no longer measures foresight at all.** The reach checklist was the
+  only instrument for "did you know what the removal would touch before you ran
+  it", and `gain` was the only measure of what operating taught beyond it. Both
+  are gone (section 4), because the checklist was not being answered under the
+  cap. What remains of C3 is whether the operation landed and what it broke --
+  outcome and collateral damage, not anticipation. The stage-3 rating "before I
+  ran it, I knew what the removal was going to change" is a self-report standing
+  where an F1 used to be, and the paper reports it as one. Anyone re-running this
+  should either give the checklist its own untimed step or drop the claim.
 - Stage 1 has no keyed outcome at all -- three rating items and the think-aloud.
   The card hands the participant the map the stage is about, which is what makes
   five minutes enough to orient in a project, and also what leaves nothing with a

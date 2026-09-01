@@ -785,13 +785,16 @@ The pages open on the most recent year. Set the date window at the top to cover 
         ],
         scored: false,
       },
-      {
-        kind: 'behaviours',
-        id: 'behaviours',
-        prompt:
-          'Which parts of the dashboard does that work affect? Tick the ones you would check if it were taken out.',
-        scored: true,
-      },
+      // The reach checklist is gone from here and from stage 3. It was the
+      // study's own prediction/outcome pair (`gain`), and it is not collectable:
+      // eleven options with a page name under each is a wall of reading at the
+      // end of a stage that has just run its clock out, and P01 -- the first real
+      // participant -- left it untouched on three of the four times it was asked
+      // and hit the cap on five stages out of eight. An instrument nobody answers
+      // is not a weak measure, it is an absent one that costs the stages that
+      // follow it. What replaces it is nothing: the confidence item below now
+      // asks about the task, and RQ2/RQ3 rest on the locate answer, the check
+      // scripts, and the ratings. Protocol v2 sections 4, 10 and 11 say so.
     ],
     quizConfidence: true,
     ratings: [
@@ -865,20 +868,12 @@ Set the date window to 2018 while you check the pages — the marks only show wh
         ],
       },
     },
-    quiz: [
-      {
-        kind: 'behaviours',
-        id: 'behaviours',
-        prompt:
-          'Which parts of the dashboard changed when the work came out? Tick the ones you saw change.',
-        scored: true,
-      },
-      // "How did the removal go?" is gone. The three answers it could take --
-      // applied cleanly, hit conflicts, edited by hand -- are all in the
-      // telemetry already, in more detail and without asking the participant to
-      // summarise four minutes of work into one line while the memory of it is
-      // the thing the ratings below are measuring.
-    ],
+    // No quiz. "How did the removal go?" went first -- its three answers
+    // (applied cleanly, hit conflicts, edited by hand) are all in the telemetry
+    // already, in more detail. The reach checklist went with stage 2's, for the
+    // reason given there. What the stage produces is `./check 3`, the page
+    // snapshots the scorer compares, the confidence item, and three ratings.
+    quiz: [],
     quizConfidence: true,
     ratings: [
       {

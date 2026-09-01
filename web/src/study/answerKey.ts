@@ -52,6 +52,11 @@ export function validateGroundTruth(parsed: GroundTruth): void {
             'participant zero. Regenerate it with the measuring scripts in scripts/study/.',
         )
       }
+      // No stage asks a behaviours checklist as of 2026-09-01. The rule above is
+      // kept rather than deleted: it fires the moment one is asked again, and the
+      // shape checks below now guard the reach sets whether or not a stage asks,
+      // because the key still carries them and they are still scored against --
+      // the pilot and P01 halves that answered, and `s3.markers` for the scorer.
       if (q.kind === 'choice' && q.scored) {
         const want = entry?.choices?.[q.id]
         if (!want) {
@@ -81,8 +86,12 @@ export function validateGroundTruth(parsed: GroundTruth): void {
     // read as "the same for both", so an older key still validates. Every project the study runs
     // has to be answered, or a participant on the unanswered one scores zero on a trial they
     // completed.
-    const wantsBehaviours = spec?.quiz.some((q) => q.kind === 'behaviours' && q.scored) ?? false
-    if (wantsBehaviours && entry.reach) {
+    // Checked whenever the key carries one, not only when a stage asks. The reach
+    // sets outlived the checklist that read them: they are the measured truth
+    // about the built testbeds, they score the halves that did answer, and a
+    // drifted or degenerate one now corrupts a post-hoc scoring pass silently
+    // instead of a live one loudly.
+    if (entry.reach) {
       const perProject: Array<[string, string[]]> = Array.isArray(entry.reach)
         ? PROJECTS.map((p) => [p, entry.reach as string[]])
         : Object.entries(entry.reach as Record<string, string[]>)

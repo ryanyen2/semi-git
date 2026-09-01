@@ -465,7 +465,7 @@ function StageAnswers({
   for (const q of spec.quiz) {
     if (q.kind === 'choice' && !a.quiz[q.id]) missing.push('the multiple choice')
   }
-  if (spec.quizConfidence && a.confidence == null) missing.push('how sure you are')
+  if (spec.quizConfidence && a.confidence == null) missing.push('how confident you are')
   if (spec.ratings.some((r) => a.ratings[r.id] == null)) missing.push('the statements')
 
   return (
@@ -481,8 +481,8 @@ function StageAnswers({
       {spec.quizConfidence && (
         <LikertRow
           name={`${spec.id}-confidence`}
-          label="How sure are you of those answers?"
-          anchors={['Not at all sure', 'Completely sure']}
+          label="How confident are you that you completed this task?"
+          anchors={['Not at all confident', 'Completely confident']}
           value={a.confidence}
           onChange={(confidence) => update({ confidence, confidenceScale: 7 })}
         />

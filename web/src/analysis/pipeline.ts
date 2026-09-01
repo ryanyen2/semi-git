@@ -114,6 +114,13 @@ export interface RequestMetrics {
    */
   quizPicksF1: number | null
   /**
+   * NOTE: null for every stage from 2026-09-01 on. The reach checklist was
+   * removed from stages 2 and 3, so nothing produces a behaviours answer any
+   * more. The scoring stays because the pilot and P01 halves that answered it are
+   * still in the collection and still scorable -- a field that stops being
+   * written is not a field that can be deleted.
+   */
+  /**
    * The stage's rating statements as one number: mean agreement on the 1-to-7
    * scale they are asked on, with reverse-keyed statements flipped so high is
    * always the better direction.
