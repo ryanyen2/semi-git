@@ -5,7 +5,7 @@
 
 import * as vscode from "vscode";
 import { Store } from "./store";
-import { EmitView } from "./types";
+import { ChangeSpan, EmitView } from "./types";
 
 const SCHEME = "sgt-preview";
 
@@ -77,6 +77,49 @@ export class PreviewProvider implements vscode.TextDocumentContentProvider, vsco
       );
     }
     return paths.length;
+  }
+
+  /** Open ONE changed file as "what this work did to it": left is the code without this feature or
+   * chapter, right is the code with it, so what it wrote reads as an addition rather than as the
+   * deletion of something still on screen.
+   *
+   * Which stored side is which is a property of the verb, not of the field name. `--emit`'s
+   * `before` is always the CURRENT ideal and `after` always the counterfactual, so previewing a
+   * revert puts the work in `before` and previewing the restore of an already-reverted chapter puts
+   * it in `after`. Getting that backwards would render every feature as a pure deletion.
+   *
+   * `symbol` reveals one entity inside the diff, resolved against the with-side's own spans --
+   * the workbench's change tree hands over the name it drew, never a line number, so a stale range
+   * cannot scroll the reader to the wrong function. */
+  async openChangeDiff(
+    verb: string,
+    label: string,
+    path: string,
+    pair: { before: string; after: string; before_spans?: ChangeSpan[]; after_spans?: ChangeSpan[] },
+    symbol?: string
+  ): Promise<void> {
+    const withWork = verb === "restore" ? "after" : "before";
+    const token = String(this.seq++);
+    const left = this.uri(token, "without", path);
+    const right = this.uri(token, "with", path);
+    this.contents.set(left.toString(), withWork === "before" ? pair.after : pair.before);
+    this.contents.set(right.toString(), withWork === "before" ? pair.before : pair.after);
+
+    const spans = (withWork === "before" ? pair.before_spans : pair.after_spans) || [];
+    const span = symbol ? spans.find((s) => s.symbol === symbol) : undefined;
+    const options: vscode.TextDocumentShowOptions = { preview: true };
+    if (span) {
+      // A whole-span selection rather than a cursor at its first line: the range is the entity, and
+      // the diff editor scrolls to show it.
+      options.selection = new vscode.Range(span.start_line - 1, 0, span.end_line - 1, 0);
+    }
+    await vscode.commands.executeCommand(
+      "vscode.diff",
+      left,
+      right,
+      `${path} — without ⇄ with ${label}`,
+      options
+    );
   }
 
   /** Open one file as it stood at a scrubbed frontier, as a working-tree ⇄ then diff. Left is the

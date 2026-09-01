@@ -539,6 +539,244 @@ function episodeRailLayout(epView) {
 }
 // ---- end-rail (test slice boundary) ----
 
+// ---- change-tree (test slice boundary) ----
+// What a feature -- or one of its chapters -- CHANGED, as a tree the reader can scan and click
+// into. The inspector used to print each of the selected feature's files in full, which answers
+// "what does this code say" and never "what did this do": the reader was left to diff two
+// screenfuls of mostly-unchanged text by eye, in a 12px pre with no syntax highlighting, in the
+// one panel that exists to explain a selection.
+//
+// The input is `sgt <verb> <ref> --emit --json`'s `files`: per changed path a `before`/`after`
+// pair plus each side's entity spans (`sgt.api._side_entity_spans`). That projection *is* a
+// feature's change in this model -- the difference between the tree holding its ops and the tree
+// without them -- so the tree shows the closure too, not only the lane's own lines. Which stored
+// side holds the work is a property of the verb, never of the field name: `before` is always the
+// current ideal, so reverting a live chapter puts its work in `before` and restoring a retired one
+// puts it in `after`. Read the wrong way round, every feature renders as a pure deletion.
+//
+// Pure (no DOM, no vscode API), so the node harness holds the shape.
+
+// A file's lines, without the phantom last element `"a\n".split("\n")` produces. A trailing
+// newline is not a line, and counting it as one reports a +1 on every file that gains content at
+// its end.
+function changeLines(text) {
+  const lines = String(text == null ? "" : text).split("\n");
+  if (lines.length && lines[lines.length - 1] === "") lines.pop();
+  return lines;
+}
+
+// Myers' O(ND) line diff. Returns the 1-based line numbers each side holds ALONE -- enough both to
+// count and to place a change inside an entity's span, which is all the tree needs.
+//
+// `maxD` is not a quality knob. A pathological pair (a generated file, a wholesale rewrite) walks
+// a trace that costs O(D^2) memory, and this runs inside a webview that has to stay responsive, so
+// past the cap we stop aligning and report the untrimmed middles wholesale. That is honest -- all
+// of it did change -- and it is flagged, so the caller can say so rather than quietly reporting a
+// smaller number than the truth.
+function lineDiff(a, b, maxD) {
+  maxD = maxD || 800;
+  const n0 = a.length, m0 = b.length;
+  let lo = 0;
+  while (lo < n0 && lo < m0 && a[lo] === b[lo]) lo++;
+  let hi = 0;
+  while (hi < n0 - lo && hi < m0 - lo && a[n0 - 1 - hi] === b[m0 - 1 - hi]) hi++;
+  const x0 = a.slice(lo, n0 - hi), y0 = b.slice(lo, m0 - hi);
+  const n = x0.length, m = y0.length;
+  const span = (start, count) => {
+    const out = [];
+    for (let i = 0; i < count; i++) out.push(start + i);
+    return out;
+  };
+  if (!n && !m) return { aOnly: [], bOnly: [], capped: false };
+  if (!n || !m) return { aOnly: span(lo + 1, n), bOnly: span(lo + 1, m), capped: false };
+
+  const max = Math.min(n + m, maxD);
+  const off = max + 1;
+  const v = new Int32Array(2 * max + 3);
+  const trace = [];
+  for (let d = 0; d <= max; d++) {
+    // Only the band [-d, d] is live at step d, so the trace stores that band and nothing else: a
+    // whole-array copy per step costs O(D * (N+M)) and blows up on exactly the files that most
+    // need the cap. Every k in the band is copied, not every other one: the backtrack reads the
+    // k-lines of the PREVIOUS step, which are the opposite parity to the ones step d writes, and
+    // sampling only d's own parity hands it stale values from step d-2 -- an alignment that walked
+    // off the front of the file and reported line numbers below 1.
+    const band = new Int32Array(2 * d + 1);
+    for (let k = -d; k <= d; k++) band[k + d] = v[off + k];
+    trace.push(band);
+    for (let k = -d; k <= d; k += 2) {
+      let x = k === -d || (k !== d && v[off + k - 1] < v[off + k + 1]) ? v[off + k + 1] : v[off + k - 1] + 1;
+      let y = x - k;
+      while (x < n && y < m && x0[x] === y0[y]) { x++; y++; }
+      v[off + k] = x;
+      if (x >= n && y >= m) return backtrackDiff(trace, d, x0, y0, lo);
+    }
+  }
+  return { aOnly: span(lo + 1, n), bOnly: span(lo + 1, m), capped: true };
+}
+
+// Walk the recorded d-bands back from the end point, collecting the one line each step consumes.
+// The snake between two steps is common text and contributes nothing.
+function backtrackDiff(trace, d, x0, y0, lo) {
+  const aOnly = [], bOnly = [];
+  let x = x0.length, y = y0.length;
+  for (; d > 0; d--) {
+    const band = trace[d];
+    const at = (k) => band[k + d];
+    const k = x - y;
+    const prevK = k === -d || (k !== d && at(k - 1) < at(k + 1)) ? k + 1 : k - 1;
+    const prevX = at(prevK), prevY = prevX - prevK;
+    while (x > prevX && y > prevY) { x--; y--; }
+    if (x > prevX) aOnly.push(lo + x); // a line only `a` has: 1-based, undoing the prefix trim
+    else bOnly.push(lo + y);
+    x = prevX; y = prevY;
+  }
+  aOnly.reverse();
+  bOnly.reverse();
+  return { aOnly, bOnly, capped: false };
+}
+
+// Line -> owning entity, innermost first. Entities nest (a method sits inside its class), and the
+// useful answer for a changed line is the smallest thing that contains it, so wider spans are
+// painted first and narrower ones overwrite them. Lines outside every span -- imports, module-level
+// statements, the gaps between definitions -- own nothing and are reported at file level.
+function spanOwners(spans, lineCount) {
+  const owner = new Array(lineCount + 1).fill(null);
+  const ordered = (spans || []).slice().sort(
+    (p, q) => (q.end_line - q.start_line) - (p.end_line - p.start_line));
+  for (const s of ordered) {
+    for (let ln = Math.max(1, s.start_line); ln <= Math.min(lineCount, s.end_line); ln++) {
+      owner[ln] = s;
+    }
+  }
+  return owner;
+}
+
+// How an entity reads on a row. An import is a real symbol here -- the extractor mints one per
+// specifier and a revert can take one out on its own -- but its stored name is the `__import__::`
+// marker `_symbol_kind` needs, which is machinery, not a name. Read off `kind` rather than
+// sniffing the string: that is what the field is for, and `_readable_symbols` already showed what
+// happens when a layout marker reaches a person's eyes verbatim.
+function entityName(span) {
+  if (!span) return "(top level)";
+  const name = span.symbol.split("::").slice(1).join("::");
+  return span.kind === "import" ? "import " + name.replace(/^__import__::/, "") : name;
+}
+
+// One changed path's per-entity tally. `added`/`removed` are relative to the WORK, not to a stored
+// field: a line only the with-side has is a line this work wrote.
+function fileChange(path, pair, withSide, maxD) {
+  const other = withSide === "before" ? "after" : "before";
+  const withLines = changeLines(pair[withSide]);
+  const otherLines = changeLines(pair[other]);
+  const d = lineDiff(otherLines, withLines, maxD);
+  const withOwner = spanOwners(pair[withSide + "_spans"], withLines.length);
+  const otherOwner = spanOwners(pair[other + "_spans"], otherLines.length);
+
+  const entities = new Map();
+  const bump = (span, side) => {
+    const key = span ? span.symbol : " top";
+    let e = entities.get(key);
+    if (!e) {
+      entities.set(key, (e = {
+        kind: "entity", path,
+        symbol: span ? span.symbol : null,
+        name: entityName(span),
+        entityKind: span ? span.kind : null,
+        order: span ? span.start_line : Infinity,
+        added: 0, removed: 0,
+      }));
+    }
+    // Document order comes from the with-side where the entity is on it; an entity this work
+    // deleted outright has no with-side span, so it keeps its other-side position and sorts among
+    // the rest rather than being dumped at the end.
+    if (span && e.order === Infinity) e.order = span.start_line;
+    e[side]++;
+  };
+  for (const ln of d.bOnly) bump(withOwner[ln], "added");
+  for (const ln of d.aOnly) bump(otherOwner[ln], "removed");
+
+  const children = [...entities.values()].sort(
+    (p, q) => p.order - q.order || String(p.name).localeCompare(String(q.name)));
+  // "(top level)" is the residue bucket -- imports and module statements, not a thing anyone can
+  // point at -- so it reads last however early in the file it happens to sit.
+  children.sort((p, q) => (p.symbol ? 0 : 1) - (q.symbol ? 0 : 1));
+  return {
+    kind: "file", path, name: path.split("/").pop(), children,
+    added: d.bOnly.length, removed: d.aOnly.length, capped: d.capped,
+  };
+}
+
+// The whole projection as a file-explorer tree: directories, then files, then the entities inside
+// them, every node carrying its subtree's totals. Directories with a single child directory fold
+// into one row (`footfall/pages`), the way VS Code's explorer compacts them -- a panel this narrow
+// cannot spend a row and an indent level on a name with nothing to choose between.
+function changeTree(files, opts) {
+  opts = opts || {};
+  const withSide = opts.withSide === "after" ? "after" : "before";
+  const root = { kind: "dir", name: "", path: "", children: [], added: 0, removed: 0 };
+  let capped = false;
+  let fileCount = 0;
+
+  for (const path of Object.keys(files || {}).sort()) {
+    const node = fileChange(path, files[path] || {}, withSide, opts.maxD);
+    if (!node.added && !node.removed) continue; // a byte-identical pair is not a change
+    capped = capped || node.capped;
+    fileCount++;
+    const parts = path.split("/");
+    let dir = root;
+    for (let i = 0; i < parts.length - 1; i++) {
+      const sub = parts.slice(0, i + 1).join("/");
+      let next = dir.children.find((c) => c.kind === "dir" && c.path === sub);
+      if (!next) {
+        next = { kind: "dir", name: parts[i], path: sub, children: [], added: 0, removed: 0 };
+        dir.children.push(next);
+      }
+      dir = next;
+    }
+    dir.children.push(node);
+  }
+
+  const roll = (node, isRoot) => {
+    if (node.kind !== "dir") return;
+    // Fold a lone-child directory into this row before rolling, so the compacted name is the one
+    // the totals hang off. Never the root: it is the container the rows sit in, not a row, and
+    // folding into it deletes the one directory name the reader was going to read.
+    while (!isRoot && node.children.length === 1 && node.children[0].kind === "dir") {
+      const only = node.children[0];
+      node.name = node.name ? node.name + "/" + only.name : only.name;
+      node.path = only.path;
+      node.children = only.children;
+    }
+    node.children.sort((p, q) => (p.kind === q.kind ? 0 : p.kind === "dir" ? -1 : 1)
+      || String(p.name).localeCompare(String(q.name)));
+    node.added = 0;
+    node.removed = 0;
+    for (const c of node.children) {
+      roll(c, false);
+      node.added += c.added;
+      node.removed += c.removed;
+    }
+  };
+  roll(root, true);
+  return { root, added: root.added, removed: root.removed, fileCount, capped };
+}
+
+// GitHub's five-block diffstat, in the terminal grammar the rest of this view already speaks: a
+// fixed-width strip so the column scans, split by the change's own proportion, with `.` filling the
+// remainder. Every non-zero side keeps at least one glyph -- a 200/1 change drawn as five plus
+// signs would say the removal never happened, which is the one thing a reader most needs to see.
+function changeMeter(added, removed, width) {
+  width = width || 5;
+  const total = added + removed;
+  if (!total) return { plus: "", minus: "", rest: ".".repeat(width) };
+  let a = added ? Math.max(1, Math.round((added / total) * width)) : 0;
+  let r = removed ? Math.max(1, Math.round((removed / total) * width)) : 0;
+  while (a + r > width) { if (a >= r) a--; else r--; }
+  return { plus: "+".repeat(a), minus: "-".repeat(r), rest: ".".repeat(width - a - r) };
+}
+// ---- end-change-tree (test slice boundary) ----
+
 // ─── Rendering + interaction ──────────────────────────────────────────────────────────────────
 // Everything below touches the DOM/vscode API and is not exercised by the node harness.
 
@@ -601,6 +839,15 @@ function episodeRailLayout(epView) {
   let foldSeq = 0;
   let pendingFold = null;
   let foldResultCache = {}; // featureId -> {files, oracle_verdict, forked, error}, reset per composition
+
+  // The inspector's change panel: one `--emit` projection per selected scope (`<verb><ref>`, so a
+  // chapter and its feature never share an answer), reset per composition like every other read.
+  // The two fold sets are transient by design -- see `toggleChangeFold`.
+  let changeSeq = 0;
+  let pendingChange = null;
+  let changeCache = {};
+  const changeFolded = new Set();
+  const changeUnfolded = new Set();
 
   // Multi-select union closure (Stage C): ⌘/ctrl/shift-click accretes a set of feature lanes; the
   // host resolves the union via `sgt select` and we show the closure count + paint it. Transient
@@ -2971,9 +3218,6 @@ function episodeRailLayout(epView) {
     render();
     if ((state.multi || []).length >= 2) {
       requestSelectionClosure(state.multi);
-    } else {
-      const node = state.selected && byId(state.selected);
-      if (node && node.kind === "feature") requestFold(state.selected);
     }
   }
 
@@ -2996,8 +3240,6 @@ function episodeRailLayout(epView) {
     state.selectedCheckpoint = state.selectedCheckpoint === car.checkpoint ? null : car.checkpoint;
     saveState();
     render();
-    const node = byId(laneId);
-    if (node && node.kind === "feature") requestFold(laneId);
     const row = inspector.querySelector(".checkpoint.selected");
     if (row) row.scrollIntoView({ block: "nearest" });
   }
@@ -3067,8 +3309,6 @@ function episodeRailLayout(epView) {
     saveState();
     if (changed) recompute();
     render();
-    const node = byId(featureId);
-    if (node && node.kind === "feature") requestFold(featureId);
     let target = null;
     rail.querySelectorAll(".glane, .rail-row").forEach((el) => {
       if (!target && el.getAttribute("data-id") === featureId) target = el;
@@ -3812,15 +4052,17 @@ function episodeRailLayout(epView) {
     el.textContent = text;
   }
 
-  // One non-interactive fold per selection (Phase 3): ask the host to fold the current
-  // composition and hand back only the files under this feature's directory. Stale responses
-  // (an older selection's fold landing after a newer one) are dropped by sequence number, same
-  // pattern as `requestPreview`.
+  // One non-interactive fold: ask the host to fold the current composition and hand back only the
+  // files under this feature's directory. No longer fired on every selection -- the change panel
+  // is what a selection asks for, and this is its fallback when there is no projection to read, so
+  // it is requested from inside the render that will draw the skeleton for it. Stale responses (an
+  // older selection's fold landing after a newer one) are dropped by sequence number, same pattern
+  // as `requestPreview`.
   function requestFold(featureId) {
+    if (pendingFold && pendingFold.featureId === featureId) return;
     const seq = ++foldSeq;
     pendingFold = { seq, featureId };
     vscode.postMessage({ type: "requestFold", featureId, ref: state.compositionRef || "HEAD", seq });
-    renderInspector(); // paint a "Loading…" placeholder immediately
   }
 
   function renderInspector() {
@@ -3879,7 +4121,7 @@ function episodeRailLayout(epView) {
     } else if (playheadCommitIndex != null) {
       renderPlayheadPanel(playheadCommitIndex, node && node.kind === "feature" ? node : null);
     } else if (node && node.kind === "feature") {
-      renderCodePanel(id);
+      renderChangePanel(id);
     } else if (!node && !step && !session) {
       // The panel's "home" state: nothing selected, not scrubbing. Surface the uncommitted work
       // as a record-and-save card so the primary daily action is one click from an idle view.
@@ -4379,6 +4621,7 @@ function episodeRailLayout(epView) {
     section.appendChild(heading);
 
     const cached = foldResultCache[id];
+    if (cached === undefined) requestFold(id);
     // A failing verdict tints the panel's own heading (a transition on the status channel this
     // surface already owns) rather than a separate line of text saying "oracle: fail".
     if (cached && !cached.error && oracleStatus(cached.oracle_verdict) === "fail") {
@@ -4782,10 +5025,16 @@ function episodeRailLayout(epView) {
     label.textContent = "touches";
     wrap.appendChild(label);
     for (const r of rows.slice(0, 8)) {
-      const chip = document.createElement("span");
+      // A hit target, not a label. The chip already answers "which part of the dashboard"; the one
+      // move it left the reader with -- go look at it -- was theirs to make by hand, through a file
+      // tree, from a name the panel was already showing. Opening the document is all this has to
+      // do: blame.ts decorates whatever editor becomes active, so the file arrives with this
+      // feature's own spans already tinted in its identity color.
+      const chip = document.createElement("button");
       chip.className = "chip file-chip" + (r.page ? " file-chip-page" : "");
       chip.textContent = shortName(r.file);
-      chip.title = `${r.file} — ${r.n} symbol(s) of this feature's work`;
+      chip.title = `${r.file} — ${r.n} symbol(s) of this feature's work · click to open`;
+      chip.addEventListener("click", () => vscode.postMessage({ type: "openFile", path: r.file }));
       wrap.appendChild(chip);
     }
     if (rows.length > 8) {
@@ -4795,6 +5044,171 @@ function episodeRailLayout(epView) {
       wrap.appendChild(more);
     }
     inspector.appendChild(wrap);
+  }
+
+  // ─── The change panel ─────────────────────────────────────────────────────────────────────────
+  // What the selection CHANGED, as a file-explorer tree with a way into a real diff editor on every
+  // row. It replaces the panel that printed each of the feature's files in full: that answered
+  // "what does this code say", and the only question a selection raises is "what did this do".
+
+  // Which dry run answers for this selection, and what to call it. A chapter is its own scope --
+  // clicking a checkpoint and clicking its feature must not project the same change, which is the
+  // same mis-scope the action bar already fixed. The verb is whichever direction actually exists:
+  // a retired chapter has nothing to revert, and its change is the one a restore would bring back.
+  function changeScope(id) {
+    const segs = checkpointsByFeature[id] || [];
+    const scope = state.selectedCheckpoint && chapterScope(segs, state.selectedCheckpoint);
+    if (scope) {
+      return { ref: scope.seg.checkpoint, verb: scope.gone ? "restore" : "revert",
+               label: scope.seg.intent, noun: "chapter" };
+    }
+    const retired = retiredWork(segs);
+    const gone = segs.length > 0 && retired.chapters === segs.length;
+    const node = byId(id);
+    return { ref: id, verb: gone ? "restore" : "revert",
+             label: (node && node.label) || id, noun: "feature" };
+  }
+
+  function requestChange(verb, ref, key) {
+    if (pendingChange && pendingChange.key === key) return; // already in flight for this scope
+    const seq = ++changeSeq;
+    pendingChange = { seq, key };
+    // Deliberately no repaint: this is called from inside a render that is already drawing the
+    // skeleton for exactly this request.
+    vscode.postMessage({ type: "requestChange", verb, ref, seq });
+  }
+
+  function renderChangePanel(id) {
+    const scope = changeScope(id);
+    // Separated on U+001F, spelled rather than typed: a checkpoint ref can be `<feature>:<slug>`,
+    // so a punctuation separator is one a real ref can contain.
+    const key = `${scope.verb}\u001f${scope.ref}`;
+    const section = el("div", "code-panel change-panel");
+    const heading = el("div", "code-panel-heading", `changed by this ${scope.noun}`);
+    // The scope is wider than the lane, and saying so here is cheaper than a reader discovering it
+    // from a diff: a revert takes its dependents with it, so the projection is the whole closure.
+    heading.title = `sgt ${scope.verb} ${scope.ref} --emit\n`
+      + `The difference between the ideal holding this ${scope.noun}'s edits and the ideal without `
+      + `them — dependents included, which is what the ${scope.verb} would actually do.`;
+    section.appendChild(heading);
+    inspector.appendChild(section);
+
+    const cached = changeCache[key];
+    if (cached === undefined) {
+      requestChange(scope.verb, scope.ref, key);
+      section.appendChild(skeletonRows(5));
+      return;
+    }
+    if (!cached.ok) {
+      section.appendChild(statusLine(humanizeRefusal(cached.message), "warn"));
+      renderCodePanel(id); // no projection to read, so offer the code at this frontier instead
+      return;
+    }
+    const tree = changeTree(cached.files, { withSide: scope.verb === "restore" ? "after" : "before" });
+    if (!tree.fileCount) {
+      section.appendChild(statusLine(`This ${scope.noun} changes no file in the current ideal.`));
+      renderCodePanel(id);
+      return;
+    }
+
+    const sum = el("div", "change-summary");
+    sum.appendChild(el("span", "change-files",
+      `${tree.fileCount} file${tree.fileCount === 1 ? "" : "s"}`));
+    sum.appendChild(el("span", "change-plus", `+${tree.added}`));
+    sum.appendChild(el("span", "change-minus", `−${tree.removed}`));
+    section.appendChild(sum);
+    if (tree.capped) {
+      // Never a silent truncation: the count is a floor, and the caption says which way it errs.
+      section.appendChild(statusLine(
+        "A file changed too much to align line by line — its counts read whole regions as changed.",
+        "warn"));
+    }
+
+    // Files start folded only when the tree is long enough that leaving them open would push the
+    // action bar off screen. A panel you have to scroll past to reach the verbs is worse than one
+    // you click into.
+    const rows = tree.fileCount + countEntityRows(tree.root);
+    const list = el("div", "ctree");
+    appendChangeRows(list, tree.root, 0, scope, rows > 40);
+    section.appendChild(list);
+  }
+
+  function countEntityRows(node) {
+    if (node.kind === "file") return node.children.length;
+    let n = 0;
+    for (const c of node.children || []) n += countEntityRows(c);
+    return n;
+  }
+
+  function appendChangeRows(list, parent, depth, scope, foldFiles) {
+    for (const node of parent.children || []) {
+      const folded = changeFolded.has(node.path) || (node.kind === "file" && foldFiles
+        && !changeUnfolded.has(node.path));
+      list.appendChild(changeRow(node, depth, scope, folded));
+      if (node.kind === "dir") {
+        if (!folded) appendChangeRows(list, node, depth + 1, scope, foldFiles);
+      } else if (!folded) {
+        for (const entity of node.children) {
+          list.appendChild(changeRow(entity, depth + 1, scope, false));
+        }
+      }
+    }
+  }
+
+  function changeRow(node, depth, scope, folded) {
+    const row = el("div", `ctree-row ctree-${node.kind}`);
+    row.style.paddingLeft = `${4 + depth * 12}px`;
+    const twisty = el("span", "ctree-twisty",
+      node.kind === "entity" || !node.children.length ? "" : folded ? "▸" : "▾");
+    row.appendChild(twisty);
+    row.appendChild(el("span", "ctree-name", node.name));
+
+    const meter = changeMeter(node.added, node.removed);
+    const strip = el("span", "ctree-meter");
+    strip.appendChild(el("span", "ctree-plus", meter.plus));
+    strip.appendChild(el("span", "ctree-minus", meter.minus));
+    strip.appendChild(el("span", "ctree-rest", meter.rest));
+    row.appendChild(strip);
+    row.appendChild(el("span", "ctree-count", `+${node.added} −${node.removed}`));
+
+    if (node.kind === "dir") {
+      row.title = `${node.path} — ${node.added} line(s) added, ${node.removed} removed by this `
+        + `${scope.noun}`;
+      row.addEventListener("click", () => toggleChangeFold(node.path, folded));
+      return row;
+    }
+    // A file or an entity is a way into the diff; a file's twisty is the one part of its row that
+    // folds instead, the same split the editor's own explorer uses.
+    const what = node.kind === "file" ? node.path : node.symbol || node.path;
+    row.title = `${what} — +${node.added} −${node.removed} · click to diff without ⇄ with `
+      + `this ${scope.noun}`;
+    row.addEventListener("click", () => vscode.postMessage({
+      type: "openChangeDiff", verb: scope.verb, ref: scope.ref, label: scope.label,
+      path: node.path, symbol: node.kind === "entity" ? node.symbol : undefined,
+    }));
+    if (node.kind === "file" && node.children.length) {
+      twisty.classList.add("ctree-twisty-live");
+      twisty.title = folded ? "Show the entities inside" : "Hide the entities inside";
+      twisty.addEventListener("click", (e) => {
+        e.stopPropagation();
+        toggleChangeFold(node.path, folded);
+      });
+    }
+    return row;
+  }
+
+  // Folding is exploratory, not a preference: it lives beside the panel, not in `state`, so a
+  // reopened workbench is not still hiding what the last selection folded. `changeUnfolded` is the
+  // opposite set, so a file the long-tree rule folded stays open once the reader opens it.
+  function toggleChangeFold(path, wasFolded) {
+    if (wasFolded) {
+      changeFolded.delete(path);
+      changeUnfolded.add(path);
+    } else {
+      changeFolded.add(path);
+      changeUnfolded.delete(path);
+    }
+    renderInspector();
   }
 
   function renderActionBar(id) {
@@ -5445,6 +5859,8 @@ function episodeRailLayout(epView) {
       savePreviewMarks = collectSavePreview(compose.save_preview);
       checkpointsByFeature = collectCheckpoints(compose.intent);
       foldResultCache = {};
+      changeCache = {};
+      pendingChange = null; // in flight against an ideal this push replaced
       playheadResultCache = {};
       playheadCommitIndex = null; // a new composition means a different commit-index axis
       // A held (not yet applying) staged confirm is stale the moment the composition changes under
@@ -5491,6 +5907,12 @@ function episodeRailLayout(epView) {
         files: msg.files, oracle_verdict: msg.oracle_verdict, forked: msg.forked, error: msg.error,
       };
       if (state.selected === msg.featureId) renderInspector();
+    } else if (msg.type === "changeResult" && pendingChange && pendingChange.seq === msg.seq) {
+      changeCache[pendingChange.key] = {
+        ok: msg.ok !== false, message: msg.message, files: msg.files || {},
+      };
+      pendingChange = null;
+      renderInspector();
     } else if (msg.type === "playheadResult" && pendingPlayhead && pendingPlayhead.seq === msg.seq) {
       pendingPlayhead = null;
       playheadResultCache[msg.commitIndex] = {
@@ -5503,8 +5925,10 @@ function episodeRailLayout(epView) {
       state.compositionRef = msg.ref;
       saveState();
       foldResultCache = {};
+      changeCache = {};
+      pendingChange = null;
       renderTitlebar();
-      if (state.selected) requestFold(state.selected);
+      renderInspector();
     } else if (msg.type === "compositionPreviewStart") {
       latestCompositionPreviewSeq = msg.seq;
       compositionPreviewActive = msg.ref;

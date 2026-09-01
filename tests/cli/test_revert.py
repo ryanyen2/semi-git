@@ -1041,3 +1041,36 @@ def test_an_out_of_range_checkpoint_index_reports_the_range_not_an_api_key(
         f"{verb} blames a missing API key for an out-of-range chapter index:\n{out}")
     assert str(len(segs)) in out, f"the refusal does not say how many chapters exist:\n{out}"
     assert f"{feat}@0" in out, f"the refusal offers no chapter that does exist:\n{out}"
+
+
+def test_the_dry_run_spans_both_sides_so_a_client_can_read_the_change_per_entity(tmp_path, capsys):
+    """The workbench's change tree asks a question the projection could not answer: which entity does
+    this changed line belong to. A before/after pair alone cannot say -- finding where a function
+    begins by looking at text is exactly the guess this kernel exists to replace -- so `--emit --json`
+    now spans both sides with the same tree-sitter extraction `blame` runs, and the line numbers are
+    against that side's own text (the two differ the moment an entity is added or removed)."""
+    import json as _json
+
+    repo = _string_reference_repo(tmp_path)
+    get(repo)
+
+    _in(repo, ["revert", "m.py::helper", "--emit", "--json"])
+    view = _json.loads(capsys.readouterr().out)
+    pair = view["files"]["m.py"]
+
+    before = {s["symbol"] for s in pair["before_spans"]}
+    after = {s["symbol"] for s in pair["after_spans"]}
+    assert "m.py::helper" in before, sorted(before)
+    assert "m.py::helper" not in after, sorted(after)
+    assert {"m.py::shared", "m.py::user"} <= after, sorted(after)
+
+    # Line numbers are against that side's own text, not the other's: `shared` moves up when
+    # `helper` comes out, and a client revealing the span in a diff editor lands on the wrong
+    # function if either side is spanned against the wrong text.
+    for side, spans in (("before", pair["before_spans"]), ("after", pair["after_spans"])):
+        lines = pair[side].splitlines()
+        for span in spans:
+            head = lines[span["start_line"] - 1]
+            name = span["symbol"].split("::", 1)[1]
+            assert name in head, f"{side} {span['symbol']} starts at {span['start_line']}: {head!r}"
+            assert span["end_line"] <= len(lines), (span, len(lines))

@@ -711,3 +711,202 @@ def test_a_payload_making_no_claim_is_never_called_retired():
     """`present_op_count: null` is an unreadable ideal or an older payload -- no claim. Counting it
     as retired would offer a restore for work that was never gone."""
     assert _retired([{"op_count": 4, "present_op_count": None}])["any"] is False
+
+
+# ── The inspector's change tree ──────────────────────────────────────────────────────────────────
+# `changeTree` turns `--emit`'s per-file before/after pair plus each side's entity spans into the
+# file-explorer tree the inspector draws instead of printing every file in full. The contract that
+# matters is which side counts as "added": the projection's `before` is always the CURRENT ideal,
+# so the work sits in `before` when previewing a revert and in `after` when previewing the restore
+# of a retired chapter. Read the wrong way round every feature renders as a pure deletion.
+
+
+def _tree(files: dict, with_side: str = "before"):
+    return _node(_slice("// ---- change-tree", "// ---- end-change-tree"),
+                 f"console.log(JSON.stringify(changeTree({json.dumps(files)}, "
+                 f"{json.dumps({'withSide': with_side})})));\n")
+
+
+def _meter(added: int, removed: int, width: int = 5):
+    return _node(_slice("// ---- change-tree", "// ---- end-change-tree"),
+                 f"console.log(JSON.stringify(changeMeter({added}, {removed}, {width})));\n")
+
+
+def _diff(a: list[str], b: list[str], max_d: int = 800):
+    return _node(_slice("// ---- change-tree", "// ---- end-change-tree"),
+                 f"console.log(JSON.stringify(lineDiff({json.dumps(a)}, {json.dumps(b)}, {max_d})));\n")
+
+
+_FILE = {
+    # `helper` is this work's own; `shared` gained a line; `user` it never touched.
+    "before": "import os\n\n\ndef helper():\n    return 1\n\n\ndef shared():\n    a = 1\n"
+              "    b = 2\n    return a + b\n\n\ndef user():\n    return 0\n",
+    "after": "import os\n\n\ndef shared():\n    a = 1\n    return a\n\n\ndef user():\n    return 0\n",
+    "before_spans": [
+        {"symbol": "m.py::helper", "kind": "function", "start_line": 4, "end_line": 5},
+        {"symbol": "m.py::shared", "kind": "function", "start_line": 8, "end_line": 11},
+        {"symbol": "m.py::user", "kind": "function", "start_line": 14, "end_line": 15},
+    ],
+    "after_spans": [
+        {"symbol": "m.py::shared", "kind": "function", "start_line": 4, "end_line": 6},
+        {"symbol": "m.py::user", "kind": "function", "start_line": 9, "end_line": 10},
+    ],
+}
+
+
+def test_the_work_is_on_the_side_the_verb_puts_it_on():
+    """Same pair, both verbs. Reverting a live chapter previews its absence, so the work is in
+    `before`; restoring a retired one previews its return, so the work is in `after`. The tree has
+    to report the same lines as additions either way -- the alternative is a panel that tells the
+    reader a feature deleted everything it wrote."""
+    revert = _tree({"m.py": _FILE}, "before")
+    restore = _tree({"m.py": _FILE}, "after")
+    assert revert["added"] == restore["removed"]
+    assert revert["removed"] == restore["added"]
+    assert revert["added"] > 0 and revert["removed"] > 0
+
+
+def test_a_changed_line_lands_in_the_entity_that_owns_it():
+    """The point of spanning both sides. `helper` exists only in `before` and `shared` only lost a
+    line, and the two must not be pooled into one file-level number -- the tree exists so a reader
+    can see which function this chapter is about before opening anything."""
+    tree = _tree({"m.py": _FILE}, "before")
+    file_node = tree["root"]["children"][0]
+    assert file_node["kind"] == "file" and file_node["path"] == "m.py"
+    by_name = {c["name"]: c for c in file_node["children"]}
+    assert by_name["helper"]["added"] == 2 and by_name["helper"]["removed"] == 0
+    assert by_name["shared"]["added"] >= 1
+    assert "user" not in by_name, "an untouched entity must not get a row"
+    assert sum(c["added"] for c in file_node["children"]) == file_node["added"]
+    assert sum(c["removed"] for c in file_node["children"]) == file_node["removed"]
+
+
+def test_lines_outside_every_entity_are_reported_not_dropped():
+    """Imports and module-level statements own no entity. Attributing them to the nearest function
+    would be a lie and dropping them would make the file row disagree with its own children, so
+    they get their own bucket -- and it sorts last, because it is not a thing anyone can point at."""
+    pair = {
+        "before": "import os\nimport sys\n\n\ndef f():\n    return 1\n",
+        "after": "import os\n\n\ndef f():\n    return 1\n",
+        "before_spans": [{"symbol": "m.py::f", "kind": "function", "start_line": 5, "end_line": 6}],
+        "after_spans": [{"symbol": "m.py::f", "kind": "function", "start_line": 4, "end_line": 5}],
+    }
+    file_node = _tree({"m.py": pair}, "before")["root"]["children"][0]
+    assert [c["name"] for c in file_node["children"]] == ["(top level)"]
+    assert file_node["children"][0]["added"] == 1
+    assert file_node["children"][0]["symbol"] is None, "the bucket is not clickable as an entity"
+
+
+def test_a_projection_with_no_spans_still_reports_the_file():
+    """A pinned older CLI has no `_side_entity_spans`. The tree degrades to file granularity rather
+    than guessing where a function begins -- the guess is the thing this repo parses to avoid."""
+    pair = {"before": "a\nb\nc\n", "after": "a\nc\n"}
+    file_node = _tree({"m.py": pair}, "before")["root"]["children"][0]
+    assert file_node["added"] == 1 and file_node["removed"] == 0
+    assert [c["name"] for c in file_node["children"]] == ["(top level)"]
+
+
+def test_directories_nest_and_a_lone_child_folds_into_one_row():
+    """The explorer's compact-folders rule. An inspector this narrow cannot spend a row and an
+    indent level on a directory name there is nothing to choose between."""
+    pair = {"before": "x\ny\n", "after": "x\n"}
+    tree = _tree({"app/pages/one.py": pair, "app/pages/two.py": pair}, "before")
+    top = tree["root"]["children"]
+    assert [c["name"] for c in top] == ["app/pages"], top
+    assert [c["name"] for c in top[0]["children"]] == ["one.py", "two.py"]
+    assert top[0]["added"] == 2, "a directory carries its subtree's total"
+    assert tree["fileCount"] == 2
+
+
+def test_an_unchanged_file_never_reaches_the_tree():
+    tree = _tree({"m.py": {"before": "a\n", "after": "a\n"}}, "before")
+    assert tree["fileCount"] == 0 and tree["root"]["children"] == []
+
+
+def test_the_diff_finds_the_one_changed_line_in_a_long_file():
+    """A sanity check on the alignment itself: prefix/suffix trimming plus Myers should report one
+    line each way for a one-line edit, not the whole file."""
+    a = [f"line {i}" for i in range(400)]
+    b = list(a)
+    b[200] = "line 200 edited"
+    d = _diff(a, b)
+    assert d["aOnly"] == [201] and d["bOnly"] == [201], d
+    assert d["capped"] is False
+
+
+def test_a_change_past_the_cap_reports_everything_rather_than_too_little():
+    """The bound is on memory, not on honesty. Past it the aligner stops and the untrimmed middles
+    are reported wholesale -- all of it did change -- and the result says so, so the panel can
+    caption it instead of quietly showing a smaller number than the truth."""
+    a = [f"a{i}" for i in range(60)]
+    b = [f"b{i}" for i in range(60)]
+    d = _diff(a, b, 4)
+    assert d["capped"] is True
+    assert len(d["aOnly"]) == 60 and len(d["bOnly"]) == 60
+
+
+def test_the_meter_never_hides_a_side_that_happened():
+    """A 200/1 change drawn as five plus signs says the removal never happened. Both sides keep at
+    least one glyph, and the strip stays a fixed width so the column scans."""
+    lopsided = _meter(200, 1)
+    assert lopsided["plus"] and lopsided["minus"]
+    assert len(lopsided["plus"] + lopsided["minus"] + lopsided["rest"]) == 5
+    only_added = _meter(9, 0)
+    assert only_added["minus"] == "" and only_added["plus"] == "+++++"
+    assert _meter(0, 0)["rest"] == "....."
+
+
+def test_the_real_projection_reaches_the_tree_at_entity_granularity(tmp_path):
+    """The seam, end to end: `sgt revert --emit --json` into `changeTree`, no hand-written payload
+    in between.
+
+    Both halves above pass with the span keys renamed -- the JS is tested against a fixture and the
+    projection against its own shape -- and a rename degrades the panel to file granularity in
+    silence, which looks like a design choice rather than a break. This is the only test that fails
+    when the two stop agreeing."""
+    import os
+
+    from sgt.cli import main
+    from sgt.core.lens import get
+    from tests.laws import corpus
+
+    repo = tmp_path / "demo"
+    corpus._init(repo)
+    corpus._write(repo, "app/metrics.py", "import math\n\n\ndef mean(xs):\n    return sum(xs) / len(xs)\n")
+    corpus._commit(repo, "mean", 1)
+    corpus._write(repo, "app/metrics.py",
+                  "import math\nimport statistics\n\n\ndef mean(xs):\n    return sum(xs) / len(xs)\n"
+                  "\n\ndef spread(xs):\n    return max(xs) - min(xs)\n")
+    corpus._commit(repo, "spread", 2)
+    get(repo)
+
+    cwd = os.getcwd()
+    os.chdir(repo)
+    try:
+        import contextlib
+        import io
+
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            main(["revert", "app/metrics.py::spread", "--emit", "--json"])
+    finally:
+        os.chdir(cwd)
+    view = json.loads(out.getvalue())
+    assert view["ok"], view
+
+    tree = _tree(view["files"], "before")
+    rows = []
+
+    def walk(node):
+        for child in node.get("children", []):
+            rows.append(child)
+            walk(child)
+
+    walk(tree["root"])
+    named = {r["name"]: r for r in rows if r["kind"] == "entity"}
+    assert "spread" in named, sorted(named)
+    assert named["spread"]["added"] == 2 and named["spread"]["removed"] == 0
+    assert named["spread"]["symbol"] == "app/metrics.py::spread", "the diff reveal needs the id"
+    # The extractor's `__import__::` marker is machinery. It must not reach a row verbatim, and the
+    # import must still be its own row -- a revert can take one out on its own.
+    assert not any(r["name"].startswith("__") for r in rows), [r["name"] for r in rows]
