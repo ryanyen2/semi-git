@@ -305,6 +305,31 @@ def test_save_closes_a_capture_manifest(tmp_path):
     assert [t["text"] for t in rec2["turns"]] == ["bump quux"]
 
 
+def test_save_reflects_a_grounded_stint_so_why_answers_with_the_users_words(tmp_path):
+    """The P2 payoff: a hook-captured prompt, the activity events its session produced, and the
+    save's ops meet at the save beat -- and `sgt why <sha>` answers with the user's own sentence
+    (both the recorded-why rationale and the words line, via the manifest fallback), with no
+    batch aligner and no plan session anywhere."""
+    from sgt.api import why_view
+    from sgt.intent import activity, turns
+    from sgt.store.gitbind import GitBinding
+
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    get(repo)
+    turns.record_turn(repo, key="cs-9", key_kind="chat", actor="human", channel="hook",
+                      text="add a quux helper\nand keep it tiny")
+    activity.record_activity(repo, tool="Write", file="d.py", session_id="cs-9")
+    (repo / "d.py").write_text("def quux():\n    return 42\n", encoding="utf-8")
+    with _in(repo):
+        assert cli.main(["save"]) == 0
+
+    view = why_view(repo, GitBinding(repo).head())
+    assert view["kind"] == "commit" and view["ok"] is True
+    reasons = [r["reason"] for r in view["rationale"]]
+    assert "add a quux helper" in reasons  # the ask's first line, not the commit subject
+    assert view["words"] == "add a quux helper\nand keep it tiny"
+
+
 def test_save_echo_reports_no_words_captured_without_a_message(tmp_path, capsys):
     """Save-echo legibility (intent-ledger P1): a bare save (no `-m`, no plan step) says so
     explicitly rather than staying silent or -- the failure the design forbids -- printing the

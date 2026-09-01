@@ -411,6 +411,12 @@ def test_save_carries_the_driving_prompt_into_the_closing_manifest(tmp_path):
     assert hits[0]["channel"] == "agent" and hits[0]["actor"] == "human"
     rec = load_manifests(repo)[payload["commit"]]
     assert "make foo return 99" in [t["text"] for t in rec["turns"]]
+    # An MCP client without hooks produces no activity events, so nothing grounds file-by-file --
+    # but the deliberate carry is a whole-save claim, and the save's reflection records it (P2):
+    # `sgt why <sha>` answers with the user's words from the very next read.
+    from sgt.api import why_view
+    reasons = [r["reason"] for r in why_view(repo, payload["commit"])["rationale"]]
+    assert "make foo return 99" in reasons
 
 
 def test_save_without_a_chat_key_keys_the_prompt_by_the_new_commit(tmp_path):
@@ -428,6 +434,11 @@ def test_save_without_a_chat_key_keys_the_prompt_by_the_new_commit(tmp_path):
     hits = turns_for(repo, payload["commit"], key_kind="sha")
     assert [t["text"] for t in hits] == ["make foo return 99"]
     assert hits[0]["channel"] == "agent"
+    # The carry landed after the save's own reflection, so tool_save re-reflects: the sha-keyed
+    # prompt still becomes a save-wide recorded why.
+    from sgt.api import why_view
+    reasons = [r["reason"] for r in why_view(repo, payload["commit"])["rationale"]]
+    assert "make foo return 99" in reasons
 
 
 def test_save_on_a_clean_tree_says_so_rather_than_committing_nothing(tmp_path):

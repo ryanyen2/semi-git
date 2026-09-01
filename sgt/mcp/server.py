@@ -356,6 +356,13 @@ def tool_save(repo_path: str, args: dict) -> dict:
                as_label=(args.get("as_feature") or "").strip() or None)
     if not chat and out.get("saved") and out.get("commit"):
         _carry_prompt(repo_path, args, key=out["commit"], key_kind="sha")
+        # The carry landed after the save's own reflection ran -- re-reflect so the sha-keyed
+        # prompt becomes a save-wide rationale record too (idempotent; guarded like the carry).
+        try:
+            from sgt.intent.stint import reflect_save
+            reflect_save(repo_path, out["commit"])
+        except Exception:  # noqa: BLE001
+            pass
     return out
 
 

@@ -328,6 +328,11 @@ def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool =
             record_manifest(repo, sha=sha,
                             ops=[op for op in opindex.index_ops(repo) if op.id in new_op_ids],
                             end=_time.time(), prev_save_ts=prev_ts)
+            # ...and reflect it (weave P2): each grounded stint and each sha-keyed turn becomes a
+            # standard rationale record, so `sgt why` answers with the user's own words from the
+            # next read on. Idempotent all the way down; a retried save re-emits nothing.
+            from sgt.intent.stint import reflect_save
+            reflect_save(repo, sha)
         except Exception:  # noqa: BLE001 -- the manifest is subordinate to the save
             pass
     words = _echo_words(repo, message, plan) if saved else None

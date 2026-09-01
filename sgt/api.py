@@ -2683,6 +2683,15 @@ def _atom_prompt(repo, atom) -> str | None:
             hits = turns_for(repo, chat, key_kind="chat") if chat else []
             if hits:
                 return hits[0]["text"]
+    # The capture manifest (weave P2): the window this save closed is the last place words can
+    # live -- a chat-keyed prompt carried over MCP with no plan session to join through. First
+    # turn of the window wins, matching the write-once sidecar's first-string-per-key spirit.
+    from sgt.intent.manifest import load_manifests
+    m = load_manifests(repo).get(atom.commit_sha)
+    if m:
+        for t in m["turns"]:
+            if t["key_kind"] == "chat":
+                return t["text"]
     return None
 
 
