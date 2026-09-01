@@ -569,3 +569,54 @@ def test_activity_hook_installs_a_posttooluse_matcher_and_preserves_the_prompt_h
     assert _install_activity_hook(str(tmp_path)) is True  # idempotent: no duplicate entry
     settings = json.loads((tmp_path / ".claude" / "settings.local.json").read_text(encoding="utf-8"))
     assert len(settings["hooks"]["PostToolUse"]) == 1
+
+
+def test_intent_record_rejects_harness_injected_wrappers(tmp_path, monkeypatch):
+    """`UserPromptSubmit` fires for more than typed prompts: the harness routes task
+    notifications, system reminders, and slash-command markup through the same hook, wrapped in a
+    leading tag. Recording those as `actor="human"` poisons every surface that trusts the turn
+    store (dogfood 2026-09-01: 137 of 294 captured "prompts" were `<task-notification>` blobs, and
+    `sgt now` would happily report one as what the developer is working on). A leading known
+    wrapper tag means "not the user's voice" -- skip it, silently, exit 0."""
+    import io
+
+    from sgt.intent.turns import turns_for
+
+    _seed(tmp_path)
+    for tag in ("task-notification", "system-reminder", "command-name", "local-command-stdout"):
+        payload = json.dumps({"session_id": "cs-9", "prompt": f"<{tag}>whatever</{tag}>"})
+        monkeypatch.setattr("sys.stdin", io.StringIO(payload))
+        assert _in(tmp_path, ["intent", "record"]) == 0
+    assert turns_for(tmp_path, "cs-9", key_kind="chat") == []
+
+
+def test_intent_record_keeps_a_real_prompt_that_merely_mentions_a_tag(tmp_path, monkeypatch):
+    """Only a LEADING wrapper tag marks an injection. A user asking about the machinery --
+    pasting a `<task-notification>` mid-sentence, or starting with unrelated markup -- is still
+    a human utterance and must be kept verbatim."""
+    import io
+
+    from sgt.intent.turns import turns_for
+
+    _seed(tmp_path)
+    text = "why does <task-notification> show up in my turn store?"
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({"session_id": "cs-9", "prompt": text})))
+    assert _in(tmp_path, ["intent", "record"]) == 0
+    hits = turns_for(tmp_path, "cs-9", key_kind="chat")
+    assert len(hits) == 1 and hits[0]["text"] == text
+
+
+def test_intent_activity_skips_an_edit_outside_this_repo(tmp_path, monkeypatch):
+    """The PostToolUse hook fires with cwd = the session's repo, but the edited file can live
+    anywhere (dogfood 2026-09-01: a sibling checkout's edits landed in this repo's feed). An
+    event whose file is outside the repo root is another repo's motion, not this one's."""
+    import io
+
+    from sgt.intent.activity import load_activity
+
+    _seed(tmp_path)
+    payload = json.dumps({"session_id": "cs-9", "tool_name": "Edit",
+                          "tool_input": {"file_path": "/somewhere/else/b.py"}})
+    monkeypatch.setattr("sys.stdin", io.StringIO(payload))
+    assert _in(tmp_path, ["intent", "activity"]) == 0
+    assert load_activity(tmp_path) == []

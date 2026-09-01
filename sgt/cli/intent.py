@@ -201,6 +201,17 @@ def _review(repo: str, action: str | None, rest: list[str] | None, as_json: bool
     return 0
 
 
+# What `UserPromptSubmit` delivers that is NOT the user's voice: the harness routes background-task
+# notifications, injected reminders, and slash-command markup through the same hook, each wrapped in
+# a leading tag. A turn store that records these as `actor="human"` poisons every surface that
+# trusts it -- `sgt now` reports a task-notification blob as "working on", and any prompt->op
+# alignment weighs machine chatter as the developer's own words (dogfood 2026-09-01: 137 of 294
+# captured turns were `<task-notification>`s). Only a LEADING tag marks an injection; a prompt that
+# merely mentions one mid-sentence is still human and is kept verbatim.
+_INJECTED_WRAPPERS = ("<task-notification>", "<system-reminder>", "<command-name>",
+                      "<local-command-stdout>", "<command-message>")
+
+
 def _record(repo: str, as_json: bool) -> int:
     """`sgt intent record`: the zero-burden capture entry a Claude Code `UserPromptSubmit` hook
     pipes into. Reads the hook's JSON payload from stdin (`{"session_id": ..., "prompt": ...}`)
@@ -218,7 +229,7 @@ def _record(repo: str, as_json: bool) -> int:
         if (Path(repo) / ".sgt").is_dir():
             payload = _json.loads(sys.stdin.read() or "{}")
             chat, text = payload.get("session_id"), (payload.get("prompt") or "").strip()
-            if chat and text:
+            if chat and text and not text.startswith(_INJECTED_WRAPPERS):
                 from sgt.intent.turns import record_turn
                 record_turn(repo, key=chat, key_kind="chat", actor="human", channel="hook", text=text)
     except Exception:  # noqa: BLE001 -- never break the hook chain
@@ -245,6 +256,11 @@ def _activity(repo: str, as_json: bool) -> int:
             payload = _json.loads(sys.stdin.read() or "{}")
             tool = payload.get("tool_name") or ""
             file = (payload.get("tool_input") or {}).get("file_path")
+            # The hook fires with cwd = the session's repo, but the edited file can live anywhere
+            # (dogfood 2026-09-01: a sibling checkout's edits landed in this repo's feed). An edit
+            # outside the repo root is another repo's motion, not this one's -- skip it.
+            if file is not None and not Path(file).resolve().is_relative_to(Path(repo).resolve()):
+                tool = ""
             if tool:
                 from sgt.intent.activity import record_activity
                 record_activity(repo, tool=tool, file=file, session_id=payload.get("session_id"))
