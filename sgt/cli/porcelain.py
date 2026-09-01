@@ -625,8 +625,14 @@ def _render_save(as_json: bool, saved: bool, sha: str | None, n: int,
             else:
                 print(f"  ⚠ --as failed: {renamed['message']}")
         if len(features) >= 3:
-            print(f"  ⚠ one save touched {len(features)} features — deliberate? "
-                  f"`sgt log` shows them; `sgt feature regroup move` re-files work")
+            # Stated, not queried. A save that spans several features is a fact about the change --
+            # the agent-authored one this is most often read after touches five of them, and that
+            # spread is the answer to "what did this change touch", not a symptom. Under a `⚠` and
+            # the word "deliberate?" it read as "you have done something wrong", pointing at a
+            # regroup nobody needed; in a timed study stage that is an invitation to go repair
+            # correct work. The re-filing route stays, as an option rather than a remedy.
+            print(f"  · one save, {len(features)} features — `sgt log` draws them"
+                  f"; `sgt feature regroup move` re-files work if that was not what you meant")
         # Un-save discoverability (Issue 2): make reversing the save one obvious command. `sgt undo`
         # pops the tail event of the op-log, which right now is this save's ideal edit -- so it drops
         # exactly this save, returning its ops to pending (they stay on the tree, re-minable).

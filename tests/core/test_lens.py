@@ -1134,3 +1134,48 @@ def test_fsck_tree_classifies_a_tracked_path_with_a_non_ascii_name(tmp_path):
         f"tracked non-ASCII path vanished from every fsck class; got "
         f"{ {k: v for k, v in result.items() if v} }"
     )
+
+
+def test_an_edit_landing_mid_sync_is_not_cached_as_already_mined(tmp_path, monkeypatch):
+    """F130: the no-op gate's fingerprint must describe the tree that was actually *mined*, not the
+    tree as it stands when the entry is written.
+
+    `_sync` reads the working tree twice: once up front, to decide `include_dirty` (R16), and once
+    at the end, inside `_sync_fingerprint`, to key the cache entry. Those are seconds apart on a
+    real repo, and an edit landing between them was recorded as "this dirty tree mines to <the
+    committed-only ids>" -- a claim that was never true. The gate then served it on every later
+    contact, so `status` reported drift while `save` answered "nothing to save", and only a *further*
+    edit could move the fingerprint and clear it. A participant whose editor was mid-sync when
+    `./stage 1` applied its patch could not record the work at all (2026-09-01).
+
+    The fingerprint now carries the mine-time digest, so a tree that moved mid-sync simply misses
+    the gate on the next contact and gets mined."""
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add foo")
+    get(repo)  # warm the gate on a clean tree
+
+    # A new commit moves HEAD, so the next `get()` runs the full sync body rather than the gate.
+    (repo / "b.py").write_text("def bar():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("add bar")
+
+    # Land the edit *during* that sync -- after the `has_dirty_source()` sample that decides
+    # `include_dirty`, before the cache entry is fingerprinted. `_record_parked_forks` sits between
+    # the two, which is what makes this the real interleaving rather than an approximation of it.
+    real_parked = lens_mod._record_parked_forks
+
+    def land_edit_mid_sync(*args, **kwargs):
+        (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
+        return real_parked(*args, **kwargs)
+
+    monkeypatch.setattr(lens_mod, "_record_parked_forks", land_edit_mid_sync)
+    raced = get(repo)  # never saw the edit: it arrived after the dirty-source sample
+    monkeypatch.undo()
+
+    assert gb.has_dirty_source()  # the edit is on disk and uncommitted
+
+    calls = _count_snapshot_calls(monkeypatch)
+    recovered = get(repo)  # the very next contact must mine it (R9)
+    assert calls["n"] >= 1, "the gate served a cache entry keyed to a tree it never mined"
+    assert recovered.op_ids != raced.op_ids

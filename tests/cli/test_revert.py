@@ -870,6 +870,42 @@ def test_a_whole_entity_revert_still_warns_about_surviving_references(tmp_path):
         f"{alone.broken_references}")
 
 
+def test_a_common_name_in_another_file_is_not_a_surviving_reference(tmp_path):
+    """F132. The byte sweep matched a removed symbol's *bare* name as a raw substring, anywhere.
+
+    Removing `events.py::label` therefore put `label` on the wanted list, and every surviving symbol
+    whose bytes contained those six characters -- `bar_chart(pairs, label=str)`, a helper named
+    `_label`, a caller passing `label=_label` -- was reported as "still references removed code".
+    On the study's stage-3 revert that was four symbols, in a tree that referenced nothing removed at
+    all, under advice reading "fix or revert separately". A participant was sent to repair working
+    code against a four-minute clock.
+
+    A symbol in another file can only reach `events.py::label` through `events.label`, so that is
+    what counts there. The same-file bare-name case keeps working -- the test above pins it."""
+    from sgt.core import verbs as core_verbs
+    from sgt.core.subtract import plan_subtraction
+
+    repo = tmp_path / "commonname"
+    corpus._init(repo)
+    corpus._write(repo, "events.py", "def label(day):\n    return None\n")
+    # Every `label` here is local: a keyword argument, a helper of its own, a call through it.
+    corpus._write(repo, "charts.py",
+                  "def bar_chart(pairs, label=str):\n    return [label(k) for k, _ in pairs]\n")
+    corpus._write(repo, "page.py",
+                  "def _label(key):\n    return str(key)\n\n\n"
+                  "def render(rows):\n    return bar_chart(rows, label=_label)\n")
+    corpus._commit(repo, "one", 1)
+    get(repo)
+
+    ops, ideal, declared = core_verbs._load(repo)
+    label_add = next(o.id for o in ops if o.footprint.get("events.py::label", (0,))[0] is None)
+    plan = plan_subtraction(repo, {label_add}, ops, ideal.op_ids, declared, tag="t")
+
+    assert plan.broken_references == (), (
+        "a bare `label` in another file is a different `label`: "
+        f"{plan.broken_references}")
+
+
 def test_json_revert_says_whether_it_applied(tmp_path, capsys, monkeypatch):
     """F124. The plain path prints its preview and declines with no terminal attached; `--json` skips
     the confirm block and applies. That asymmetry is the machine contract (`--emit --json` is the dry

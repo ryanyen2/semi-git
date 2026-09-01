@@ -96,12 +96,65 @@ def _broken_references(
     said nothing, and the same removal *did* warn as soon as any unrelated symbol needed a splice
     (F123 -- the reason `still references removed code` never fired in the WP-V4 sweep).
     """
-    removed_names = {sym.rsplit("::", 1)[1].encode() for sym in born
-                     if "::" in sym and "::__" not in sym}
-    if not removed_names:
+    # F132: how a name has to appear before it counts as a reference.
+    #
+    # A bare substring sweep over the removal's files reports the study's stage-3 revert as leaving
+    # four symbols "still referencing removed code" when the tree it produces references nothing at
+    # all: removing `events.py::label` puts the six bytes `label` on the wanted list, and
+    # `charts.py::bar_chart` carries `label=str` in its signature. The advice attached to the warning
+    # is "fix or revert separately", so a false positive sends someone to repair working code -- in a
+    # timed stage, against a clock.
+    #
+    # Where the name has to be qualified to reach the removed thing, require it qualified. A
+    # surviving symbol in *another* file can only reach `events.py::label` through `events.label`, so
+    # that is what is matched there; a bare `label` in that file is a different `label`, which is
+    # exactly the reading the false positives got wrong. Within the removed symbol's own file a bare
+    # name does resolve, so there it still counts -- on a word boundary, so `_label` stops matching
+    # `label`.
+    #
+    # This narrows the byte sweep, which exists only for references the extractor MISSED (a callback,
+    # a name inside a string). Genuine def-use dependents come from the `requires` sweep below, which
+    # is exact and unaffected. A cross-file `from x import label` followed by a bare call is the case
+    # this no longer flags by bytes -- and the case `requires` records properly, being an import.
+    import re as _re
+
+    removed_by_file: dict[str, set[bytes]] = {}
+    stem_of: dict[str, bytes] = {}
+    for sym in born:
+        if "::" not in sym or "::__" in sym:
+            continue
+        path, name = sym.split("::", 1)[0], sym.rsplit("::", 1)[1]
+        removed_by_file.setdefault(path, set()).add(name.encode())
+        stem_of[path] = path.rsplit("/", 1)[-1].rsplit(".", 1)[0].encode()
+    if not removed_by_file:
         return ()
+
+    def _names(image: bytes, names) -> bool:
+        """Whole-word only, so `_label` stops matching `label` and `labels` stops matching `label`."""
+        return any(_re.search(rb"(?<![A-Za-z0-9_])" + _re.escape(n) + rb"(?![A-Za-z0-9_])", image)
+                   for n in names)
+
     spliced_by_sym = {next(iter(op.footprint)): op for op in new_ops}
     broken: set[str] = set()
+    _file_blob: dict[str, bytes] = {}
+
+    def _blob_for(path: str) -> bytes:
+        """Every surviving image in one file, joined -- the file as it will stand after the removal.
+
+        A cross-file reference is only visible against the whole file: `report.py` reaches a removed
+        `mod.py::only` by importing it at module level and then calling a bare `only()` from inside
+        `show`, so `show`'s own image names the module nowhere."""
+        if path not in _file_blob:
+            parts = []
+            for other, other_tip in post_frontier.items():
+                if other.split("::", 1)[0] != path:
+                    continue
+                sp = spliced_by_sym.get(other)
+                img = sp.images[other] if sp is not None else images_of(other_tip).get(other)
+                if img:
+                    parts.append(img)
+            _file_blob[path] = b"\n".join(parts)
+        return _file_blob[path]
 
     def _flag_if_naming_removed(sym: str) -> None:
         if "::__" in sym or sym in born or sym in broken:
@@ -111,7 +164,23 @@ def _broken_references(
             return
         spliced = spliced_by_sym.get(sym)
         image = spliced.images[sym] if spliced is not None else images_of(tip_id).get(sym)
-        if image and any(name in image for name in removed_names):
+        if not image:
+            return
+        path = sym.split("::", 1)[0]
+        # Which removed names can this symbol's bytes actually be naming. Its own file's, always --
+        # a bare name resolves there. Another file's only if this file reaches that module at all,
+        # which is what an import or a qualified use leaves behind. Without that second condition a
+        # removed `events.py::label` claimed every surviving `label=str` in the repository.
+        candidates = set(removed_by_file.get(path, ()))
+        blob = None
+        for other_path, names in removed_by_file.items():
+            if other_path == path:
+                continue
+            if blob is None:
+                blob = _blob_for(path)
+            if _names(blob, (stem_of[other_path],)):
+                candidates |= names
+        if candidates and _names(image, candidates):
             broken.add(sym)
 
     for op in ops:

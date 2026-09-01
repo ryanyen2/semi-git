@@ -10579,3 +10579,208 @@ The function-local import check is the one that would have caught the
 `_restore_gap` removal directly, since `sgt/mcp/server.py:144` imports it inside
 a function and the module therefore still imported cleanly with the function
 gone. It is a throwaway script right now, not a committed check.
+
+## F130 -- an edit landing mid-sync is cached as "already mined", and the repo stays wedged until something else is edited
+
+Pilot footfall-b, 2026-09-01. The participant ran `./stage 1`, which put eleven
+modified files in the working copy, and then could not record any of it:
+
+```
+(work) study work $ sgt save -m "new chnages"
+✓ nothing to save -- no uncommitted ops
+```
+
+`sgt status` disagreed with `sgt save` on the same tree, in the same second:
+
+```
+⚠ 11 files differ from the recorded state                    sgt save
+```
+
+`status` reads git-level drift; `save` asks the miner. Only one of them was
+wrong, and it was the one that decides whether work is recorded.
+
+### The race
+
+`_sync` reads the working tree twice. Once up front, to decide whether to run
+the dirty pass at all (`lens.py:829`, `gb.has_dirty_source()`, R16), and once at
+the end, inside `_sync_fingerprint`, to key the no-op gate's cache entry
+(`lens.py:1101`). On a real repo those two readings are a whole sync apart --
+four seconds in the telemetry below.
+
+An edit landing in that window is mined by neither and attributed to both. The
+entry written is *fingerprint(the tree including the edit) -> the ids mined
+without it*: a claim that was never true at any instant. The gate at
+`lens.py:791` then matches that fingerprint on every later contact and returns
+the committed-only ideal without ever looking at the tree.
+
+Nothing clears it. The fingerprint only moves when the tree moves, and the
+participant's next action is `sgt save`, not another edit. So the repo is wedged
+permanently, and `save`'s answer is `✓`.
+
+### It was not a rare interleaving
+
+The study bundle runs an editor that polls sgt continuously, and `./stage 1`
+lands its patch a fraction of a second after a `resync`. From
+`telemetry/events.jsonl` (timestamps are completion times):
+
+```
+00:29:06  git checkout -q -f -B main study/stage1        terminal
+00:29:07  sgt plan status --json --full   starts          editor    (4195 ms)
+00:29:10  sgt advanced resync             ends            terminal  (4167 ms)
+00:29:10  git apply .study/stage1.patch                   terminal
+00:29:11  sgt plan status --json --full   ends            editor
+```
+
+The editor's sync sampled a clean tree at 00:29:07 and fingerprinted a dirty one
+at 00:29:11. `git apply` at 00:29:10 landed squarely between them.
+
+This is why the pre-ship rehearsal (3805a781) did not catch it: rehearsals run
+headless, and with no editor polling alongside, there is no second process to
+race. The bundles were built correctly and the wedge is created on the
+participant's machine, at run time.
+
+### F78's guard does not cover this
+
+`save` already refuses to say "nothing to save" while the mine is incomplete
+(`porcelain.py:272`). Here `sync_status` was genuinely `complete: True` --
+witness at head, `reached_genesis` true, zero dropped ops. The mine had finished;
+it had finished against the wrong tree.
+
+### Fix
+
+Sample the digest once, *before* `has_dirty_source()`, and key the cache entry
+to that sample rather than to a second reading taken at write time. Ordering the
+two reads this way makes every interleaving fail safe: an entry can only ever
+describe a tree at or before the one that was mined, so a tree that moved during
+the sync misses the gate on the next contact and gets mined. Costs no extra git
+calls on the full-sync path -- the same two readings, one of them just moved
+earlier.
+
+`_FINGERPRINT_SCHEMA` bumps to `"2"` alongside it. The fix stops new poisoning
+but cannot heal a repo already wedged, because the poisoned entry still matches
+its tree; only eviction does. `MINER_VERSION` is the wrong lever (R12 reserves it
+for mining/identity changes, and it re-mines all history), so the discriminator
+lives in the fingerprint, following the `store`-key precedent at `lens.py:791`:
+old entries compare unequal, take one extra sync, no migration.
+
+Regression test: `test_an_edit_landing_mid_sync_is_not_cached_as_already_mined`
+lands the edit from inside `_record_parked_forks`, which sits between the two
+readings, so it exercises the real interleaving rather than an approximation.
+
+### Scope
+
+`sgt/core/lens.py` is byte-identical in both shipped sgt-arm bundles
+(`study-bikecount-b.tgz` and `study-footfall-b.tgz` ship the same
+`semi_git-0.6.0-py3-none-any.whl`), so bikecount carried the same wedge. Neither
+bundle was stale: the installed source matched `main` exactly. The bug was live
+on `main`.
+
+## F131 -- the stage-1 save ends by telling the participant their history moved backward
+
+Found walking stage 1 as a participant, 2026-09-01, in both projects and in the
+shipped build as well as the fixed one. The save works. What follows it does not:
+
+```
+(work) study work $ sgt save -m "record the assistant's work"
+✓ save f279d1a "record the assistant's work"
+  ├─ ● Overview Charts (03f61b86)  footfall/metrics.py::round_people, …
+  └─ ● Monthly Totals Page (08915a9f)  footfall/pages/monthly.py::render
+
+(work) study work $ sgt now
+needs you   git history moved backward — run `sgt advanced resync`
+```
+
+Nothing moved backward. This is the one action stage 1 asks for, and the S1 quiz
+that follows asks "in one sentence, what does the history now say happened?" --
+so the participant answers it having just been told the history is broken. The
+remedy on offer, `sgt advanced resync`, re-derives from git history and drops the
+save they were asked to make.
+
+### Why
+
+`./stage 1` checks the branch back to an earlier tag, resyncs, then replays the
+agent's edits into the tree -- edits whose content is, by construction, work that
+later landed on the fuller branch. `store.add` dedups each mined edit into the
+*existing* op with the same content, which carries that branch's now-unreachable
+provenance. `put` then witnesses the save by `Sgt-Op:` trailer, not by
+provenance: provenance can never live inside its own witnessing commit, since
+writing it would change that commit's tree and so its sha.
+
+So `dropped_ideal_ops` saw twenty ops in the recorded ideal whose every
+provenance sha was unreachable, and called history rewritten. Its own docstring
+already exempts the empty-provenance case for exactly this reason; the
+just-deduped case has *stale* provenance rather than none, and fell through.
+
+### Fix
+
+An op named by the tip's `Sgt-Op:` trailers is live, whatever its provenance
+says -- the same fallback `opindex.earliest_commit_sha` already uses for the
+empty-provenance case, and the rung `_ideal_from_ref`'s recovery ladder trusts
+first. It does not blunt the check: after a genuine backward move the tip is an
+older commit whose trailers name the older ideal, so ops recorded after it are
+still uncovered and still reported.
+`test_a_backward_move_past_an_sgt_commit_is_still_detected` pins that half.
+
+## F132 -- `still references removed code` fires on four symbols that reference nothing
+
+Same walkthrough, stage 3. `sgt revert "Event Day Handling"` is the arm's whole
+task and it applies cleanly -- `./check 3` renders all five pages and the 2018
+average is back to the published figure. It ends with:
+
+```
+⚠ still references removed code (fix or revert separately):
+    footfall/charts.py::bar_chart, footfall/pages/monthly.py::_label,
+    footfall/pages/monthly.py::render, footfall/pages/overview.py::render
+```
+
+`grep -rn events footfall/` after the revert returns nothing. All four are false.
+
+### Why
+
+`_broken_references`'s byte sweep took each removed symbol's *bare* name and
+asked whether those bytes appear anywhere in a surviving symbol's image.
+Removing `events.py::label` put the six bytes `label` on the wanted list, and
+`bar_chart(pairs, label=str)` contains them. So does a helper named `_label`, and
+so does `render`'s `label=_label`.
+
+The attached advice is "fix or revert separately", so a false positive sends
+someone to repair working code -- in a four-minute stage, against a clock, right
+before the quiz that asks how the removal went.
+
+### Fix
+
+Where a name has to be qualified to reach the removed thing, require it
+qualified. A symbol in another file reaches `events.py::label` only if its file
+names the `events` module at all -- an import or a qualified use both leave that
+behind -- so the bare name counts there only under that condition, and within the
+removed symbol's own file it counts as before. All matching moved to whole words,
+so `_label` stops matching `label`.
+
+The byte sweep exists only for references the extractor MISSED (a callback, a
+name inside a string); genuine def-use dependents come from the exact `requires`
+sweep, untouched. `test_a_whole_entity_revert_still_warns_about_surviving_references`
+(same-file, name in a string literal) and
+`test_reverting_a_referenced_last_entity_removes_the_file_not_just_the_ideal`
+(cross-file `from mod import only`, then a bare call) both still fire.
+
+## Three smaller things the same walkthrough turned up
+
+**`./check 3` reports a full green over an unfinished revert.** The git arm's
+third revert conflicts in `README.md`. With markers still in the file and
+`REVERT_HEAD` present, `check.py` imports fine and the average reads correctly --
+both come out of files the resolution had already reached -- so the script
+printed "yes" and "those match". The participant is told they are done when a
+revert is still in progress. `check` now reports unmerged paths and in-progress
+merge/revert/cherry-pick/rebase first, and only when there is something to say.
+
+**`sgt status --full` prints the same truncated line as `sgt status`.** `--full`
+widened the sample to every path and then handed the whole join to `fit`, which
+clipped it back to one terminal line -- minus the "+N more" that at least
+admitted it was a sample. It wraps now.
+
+**A `◆` name is the one name a reader has to type, and it was the one that got
+truncated.** `sgt revert`/`restore`/`log --focus` all take it and a `◆` row has no
+id to fall back to, unlike a lane. At 100 columns it rendered "Event Day Handl…",
+and that prefix does not resolve -- it offers a *different* feature (10 edits,
+not 20) as a suggestion. A `◆` row's id column is blank, so the name now uses it:
+full at 90 columns, same total prefix width, bars still aligned to the lanes.

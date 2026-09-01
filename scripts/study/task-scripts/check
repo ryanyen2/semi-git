@@ -50,6 +50,38 @@ else:
 PY
 }
 
+# An unfinished merge/revert/cherry-pick, or a file still holding conflict
+# markers, makes both checks below lie. The tree is halfway between two states:
+# `check.py` can import cleanly while a doc still holds markers, and the average
+# can read correctly out of a file the resolution has not reached yet -- which is
+# exactly what the git arm saw in rehearsal, a full green over a revert that was
+# still in progress with markers in README.md. Reported first, so it frames the
+# two lines under it rather than being discovered afterwards.
+#
+# Only printed when there IS something half-finished. A permanent "no" line would
+# be noise in the arm that cannot reach this state.
+gitdir="$(git rev-parse --git-dir 2>/dev/null || true)"
+unfinished=""
+if [ -n "$gitdir" ]; then
+    for marker in MERGE_HEAD CHERRY_PICK_HEAD REVERT_HEAD BISECT_LOG; do
+        [ -e "$gitdir/$marker" ] && unfinished="yes"
+    done
+    [ -d "$gitdir/rebase-merge" ] || [ -d "$gitdir/rebase-apply" ] && unfinished="yes"
+    conflicted="$(git diff --name-only --diff-filter=U 2>/dev/null || true)"
+    [ -n "$conflicted" ] && unfinished="yes"
+fi
+if [ -n "$unfinished" ]; then
+    echo "${bold}Is anything half-finished?${off}"
+    echo "  ${red}yes${off}   something you started is still in progress."
+    if [ -n "${conflicted:-}" ]; then
+        echo "${dim}       these files still hold conflict markers:${off}"
+        printf '%s\n' "$conflicted" | sed 's/^/           /'
+    fi
+    echo "${dim}       Finish it or undo it first. Until then the two checks below"
+    echo "       describe a project that is halfway between two states.${off}"
+    echo
+fi
+
 echo "${bold}Does the program still run?${off}"
 if out=$("$py" check.py 2>&1); then
     echo "  ${green}yes${off}   $out"
