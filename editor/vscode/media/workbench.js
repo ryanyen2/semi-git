@@ -1917,28 +1917,21 @@ function episodeRailLayout(epView) {
   }
 
   // ─── Cross-feature work, drawn IN the graph ─────────────────────────────────────────────────
-  // One task's work that landed on several lanes is one object, so it draws as one object: a thin
-  // vertical spine at its moment in time, an elbow to each member chapter, one name. An arc
-  // diagram folded onto the timeline -- the lanes are the nodes, the spine is the arc. This is
-  // the graph-native answer to "where is the group?": there is no separate list to map back, and
-  // no third noun -- these are checkpoints that landed across features, named once.
-  //
-  // Ink discipline: spines are quiet by default (they annotate, the lanes carry the data), the
-  // two widest carry their name inline, the rest name themselves on hover. Hovering rings every
-  // member chapter; clicking enters the same TableLens focus the panel offers. Under an active
-  // focus only that work's spine draws, bright.
+  // Links on demand, presence for cheap. Always-on spines were tried and, with several themes on
+  // real data, drew crossing dotted lines and floating labels nobody could attribute -- classic
+  // link spaghetti. So the DEFAULT is one small ◆ on the time axis per spanning work (the Gantt
+  // milestone idiom): hovering it rings that work's member chapters and names it in the presence
+  // pill; clicking enters the TableLens focus, and only THEN does the one focused spine draw --
+  // a dotted vertical with a dot at each member lane, no elbows, members already ringed.
   function renderThemeSpines(layer, svg, geom) {
     const themes = spanningThemes();
     if (!themes.length) return;
     const idxOf = new Map(((grid && grid.commits) || []).map((c) => [c.sha, c.index]));
     const spines = [];
     for (const t of themes) {
-      if (themeMarks && themeMarks.id !== t.theme_id) continue; // focused: one spine, bright
       const cid = new Set((t.atom_shas || []).map((sh) => idxOf.get(sh)).filter((i) => i != null));
       if (!cid.size) continue;
-      // ONE anchor per lane -- the chapter holding most of this work there. Marking every
-      // touched car drew a rash of dots down a busy fold; one dot per lane is the statement
-      // "this work landed here", which is all the link needs to carry.
+      // ONE anchor per lane -- the chapter holding most of this work there.
       const bestByLane = new Map();
       for (const [chk, r] of carRects) {
         const overlap = r.subBins.reduce((n, b) => n + (cid.has(b[0]) ? b[1] : 0), 0);
@@ -1947,66 +1940,76 @@ function episodeRailLayout(epView) {
         if (!cur || overlap > cur.overlap) bestByLane.set(r.laneId, { chk, overlap, ...r });
       }
       const members = [...bestByLane.values()];
-      const laneCount = members.length;
-      if (laneCount < 2) continue; // folded into one visible lane: nothing to link
-      const centers = members.map((m) => m.x + m.w / 2);
-      centers.sort((a, b) => a - b);
-      const x = centers[Math.floor(centers.length / 2)]; // median member: the spine sits where the work is
-      spines.push({ t, members, x, span: laneCount });
+      if (members.length < 2) continue; // folded into one visible lane: nothing to link
+      const centers = members.map((m) => m.x + m.w / 2).sort((a, b) => a - b);
+      const x = centers[Math.floor(centers.length / 2)];
+      spines.push({ t, members, x, span: members.length });
     }
     if (!spines.length) return;
-    // Widest span first for labeling; then left-to-right with a nudge so co-timed spines split.
-    spines.sort((a, b) => b.span - a.span);
-    const labelled = new Set(spines.slice(0, themeMarks ? 1 : 2).map((s) => s.t.theme_id));
     spines.sort((a, b) => a.x - b.x);
     let lastX = -Infinity;
     for (const sp of spines) {
-      if (sp.x - lastX < 7) sp.x = lastX + 7;
+      if (sp.x - lastX < 10) sp.x = lastX + 10;
       lastX = sp.x;
     }
-    for (const sp of spines) {
+
+    const ring = (sp, on) => {
+      for (const m of sp.members) {
+        svg.querySelectorAll(".gcar-wrap").forEach((w) => {
+          if (w.getAttribute("data-checkpoint") === m.chk) {
+            w.classList[on ? "add" : "remove"]("gcar-theme-member");
+          }
+        });
+      }
+    };
+    const drawSpine = (sp, cls) => {
       const ys = sp.members.map((m) => m.midY);
       const y1 = Math.min(...ys);
       const y2 = Math.max(...ys);
-      const g = mk("g", {
-        class: "theme-spine" + (themeMarks ? " theme-spine-focused" : ""),
-        "data-theme": sp.t.theme_id,
-      });
-      // A forgiving hit target: the visible line is 1.5px, nobody can hover that.
-      g.appendChild(mk("rect", {
-        x: sp.x - 5, y: y1 - 14, width: 10, height: y2 - y1 + 20, class: "theme-spine-hit",
-      }));
-      g.appendChild(mk("line", { x1: sp.x, x2: sp.x, y1: y1 - 8, y2, class: "theme-spine-line" }));
+      const g = mk("g", { class: cls, "data-theme": sp.t.theme_id });
+      g.appendChild(mk("line", { x1: sp.x, x2: sp.x, y1: y1 - 6, y2: y2 + 6, class: "theme-spine-line" }));
       for (const m of sp.members) {
-        const cx = Math.max(geom.plotX0, Math.min(m.x + m.w / 2, geom.plotX0 + geom.plotW));
-        g.appendChild(mk("line", {
-          x1: sp.x, x2: cx, y1: m.midY, y2: m.midY, class: "theme-spine-elbow",
-        }));
-        g.appendChild(mk("circle", { cx, cy: m.midY, r: 2.5, class: "theme-spine-dot" }));
+        g.appendChild(mk("circle", { cx: sp.x, cy: m.midY, r: 3, class: "theme-spine-dot" }));
       }
-      const named = labelled.has(sp.t.theme_id);
       const label = mk("text", {
-        x: sp.x, y: Math.max(GANTT.padT + 8, y1 - 16), "text-anchor": "middle",
-        class: "theme-spine-label" + (named ? "" : " theme-spine-label-hover"),
-        text: sp.t.label,
+        x: sp.x, y: Math.max(12, y1 - 12), "text-anchor": "middle",
+        class: "theme-spine-label", text: sp.t.label,
       });
       g.appendChild(label);
+      return g;
+    };
+
+    // Focused: exactly one piece of work is the subject -- its spine draws, nothing else.
+    if (themeMarks) {
+      const sp = spines.find((x) => x.t.theme_id === themeMarks.id);
+      if (sp) layer.appendChild(drawSpine(sp, "theme-spine theme-spine-focused"));
+      return;
+    }
+
+    // Default: one ◆ per spanning work, sitting on the time axis. Presence without spaghetti.
+    let hoverSpine = null;
+    for (const sp of spines) {
+      const g = mk("g", { class: "theme-mark", "data-theme": sp.t.theme_id });
+      g.appendChild(mk("rect", { x: sp.x - 7, y: 4, width: 14, height: 16, class: "theme-mark-hit" }));
+      g.appendChild(mk("rect", {
+        x: sp.x - 3.6, y: 8.4, width: 7.2, height: 7.2, rx: 1.5,
+        class: "theme-mark-glyph", transform: `rotate(45 ${sp.x} 12)`,
+      }));
       g.appendChild(mk("title", {
         text: `${sp.t.label}\none piece of work across ${sp.span} features — click to focus it`,
       }));
-      const ring = (on) => {
-        for (const m of sp.members) {
-          svg.querySelectorAll(".gcar-wrap").forEach((w) => {
-            if (w.getAttribute("data-checkpoint") === m.chk) {
-              w.classList[on ? "add" : "remove"]("gcar-theme-member");
-            }
-          });
-        }
-      };
-      g.addEventListener("mouseenter", () => { g.classList.add("theme-spine-hot"); ring(true); });
+      g.addEventListener("mouseenter", () => {
+        g.classList.add("theme-mark-hot");
+        ring(sp, true);
+        hoverSpine = drawSpine(sp, "theme-spine theme-spine-hot");
+        layer.appendChild(hoverSpine);
+        setPreviewContext(`◆ ${sp.t.label} — across ${sp.span} features · click to focus`, "identity");
+      });
       g.addEventListener("mouseleave", () => {
-        g.classList.remove("theme-spine-hot");
-        if (!themeMarks) ring(false); // under a focus the rings are the state, not the hover
+        g.classList.remove("theme-mark-hot");
+        ring(sp, false);
+        if (hoverSpine) { hoverSpine.remove(); hoverSpine = null; }
+        if (previewContext.classList.contains("identity")) setPreviewContext(null);
       });
       g.addEventListener("click", (ev) => { ev.stopPropagation(); setThemeFocus(sp.t.theme_id); });
       layer.appendChild(g);

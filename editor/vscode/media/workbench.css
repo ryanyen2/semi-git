@@ -2549,3 +2549,22 @@ svg.railsvg {
   color: var(--dim);
   font-size: 11px;
 }
+
+/* The ◆ milestone markers: presence without link spaghetti. */
+.theme-mark-hit {
+  fill: transparent;
+  pointer-events: all;
+  cursor: pointer;
+}
+
+.theme-mark-glyph {
+  fill: var(--panel-bg);
+  stroke: var(--dim);
+  stroke-width: 1.4;
+  pointer-events: none;
+}
+
+.theme-mark-hot .theme-mark-glyph {
+  fill: var(--accent);
+  stroke: var(--accent);
+}

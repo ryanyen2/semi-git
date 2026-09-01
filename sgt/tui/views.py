@@ -402,8 +402,19 @@ def map_lines(
                 trow.append(" " * pad)
                 trow.append(" " * id_w)
             trow.append(" " * pad)
-            trow.append_text(spark_bar(t.get("per_commit") or {}, axis_len=axis_len, width=bar_w,
-                                       scale_max=scale_max, hexc=None, color=color))
+            # The cells paint in the hue of the LANE the work landed on at that moment, so the
+            # row is read by colour-matching against the lanes above -- a grey strip carried no
+            # information at all (nobody can line columns up across ten rows of distance by eye).
+            feat_at = t.get("feature_at") or {}
+            cells = [None] * bar_w
+            for ci, fid in feat_at.items():
+                col = min(bar_w - 1, int(ci * bar_w / max(1, axis_len)))
+                cells[col] = fid
+            for fid in cells:
+                if fid is None:
+                    trow.append(GUIDE_PAD if not color else "·", style=FAINT)
+                else:
+                    trow.append("█", style=color_for(fid) if color else BODY)
             trow.append(" " * pad)
             trow.append(f"{t.get('op_count', 0):,}".rjust(edits_w), style=MUTE)
             if latest_w:
