@@ -477,7 +477,7 @@ Run the command below first. It resets the project and prints the two numbers th
       sgt: [
         '`sgt log` shows the history grouped by feature; `sgt log --rail` lists what happened, newest first.',
         '`sgt find "the bit that works out the averages"` searches by description. Any wording will do.',
-        '`sgt log --focus "<name>"` opens one feature or group: the map stays, its chapters are listed underneath.',
+        '`sgt log --focus "<name>"` opens one feature — or one ◆ piece of cross-feature work: the map stays, its chapters are listed underneath.',
       ],
     },
     run: {

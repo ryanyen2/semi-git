@@ -190,14 +190,14 @@ case "$stage" in
     if have_sgt; then
         label="$(theme_label)"
         echo "    ${label:-Event-Day Handling}"
-        # One task's work, landed across several features. `sgt log` names these
-        # groups under the map, and the workbench lists them on its detail panel
-        # -- so the name above is findable where the participant is already
-        # looking, not only in a separate listing.
+        # One task's work, landed across several features. `sgt log` draws it as
+        # a ◆ row under the lanes and the workbench links its checkpoints with a
+        # vertical spine -- the name above is IN the picture, not in a separate
+        # listing the participant has to map back by hand.
         echo "${dim}    That is one piece of work that touched several features."
-        echo "    \`sgt log\` names these groups under the map; so does the"
-        echo "    workbench panel. Revert and restore both take that name"
-        echo "    exactly as it is written above.${off}"
+        echo "    \`sgt log\` draws it as a ◆ row under the lanes; the workbench"
+        echo "    links its blocks with a vertical line. Revert and restore both"
+        echo "    take that name exactly as it is written above.${off}"
     else
         echo "${dim}    three commits, oldest first:${off}"
         removed_commits | sed 's/^/    /'
