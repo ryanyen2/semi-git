@@ -40,7 +40,9 @@ function CodeBlock({ body }: { body: string }) {
 //
 // Supports what the study materials actually use: headings, paragraphs,
 // blockquotes, fenced and indented code, bullet and numbered lists, tables,
-// horizontal rules, and inline code, bold, italic and links.
+// horizontal rules, and inline code, bold, italic and links. Both kinds of code
+// block get the copy button; the indented kind is what every stage card uses for
+// the `./stage N` it opens with.
 
 function inline(text: string, keyBase: string): ReactNode[] {
   const out: ReactNode[] = []
@@ -108,6 +110,27 @@ export function Markdown({ children, className }: { children: string; className?
       i++
       while (i < lines.length && !/^\s*```/.test(lines[i])) body.push(lines[i++])
       i++
+      blocks.push(<CodeBlock key={k++} body={body.join('\n')} />)
+      continue
+    }
+
+    // Indented code. Four spaces or a tab, which is how every stage card writes
+    // the `./stage N` it opens with -- and, until this existed, how every stage
+    // card printed it: as a paragraph with four visible leading spaces, in plain
+    // body text, with no copy button. That command is the first thing a
+    // participant types under a running clock, and the copy button exists
+    // precisely so a mistyped one does not get measured as the tool.
+    //
+    // No conflict with anything else the study writes: tables, lists and
+    // headings all start in column one here, and a continuation line indented
+    // under a list item would be the only ambiguous case, which none of this
+    // copy has.
+    if (/^(?: {4}|\t)\S/.test(line)) {
+      const body: string[] = []
+      while (i < lines.length && /^(?: {4}|\t)/.test(lines[i])) {
+        body.push(lines[i++].replace(/^(?: {4}|\t)/, ''))
+      }
+      while (body.length && !body[body.length - 1].trim()) body.pop()
       blocks.push(<CodeBlock key={k++} body={body.join('\n')} />)
       continue
     }

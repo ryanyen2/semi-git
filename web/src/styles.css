@@ -163,6 +163,22 @@ hr {
   margin: 0.25rem 0 1rem;
 }
 
+/* A screenshot inside a table cell is a thumbnail beside its row, not a figure
+   in its own right. Stage 1's map puts one in every row so that a row names a
+   thing the participant can see rather than a phrase they have to match, and the
+   column it sits in gets the width -- the two columns they fill in hold a
+   filename and a sentence and need much less. Without the width rule the browser
+   split three columns evenly and the screenshots came out 275px wide, which is
+   too small to recognise a page from. */
+.markdown td .md-img {
+  margin: 0.4rem 0 0.15rem;
+  max-height: 260px;
+}
+
+.markdown td:has(.md-img) {
+  min-width: 20rem;
+}
+
 blockquote {
   margin: 0 0 1rem;
   padding: 0.75rem 1rem;

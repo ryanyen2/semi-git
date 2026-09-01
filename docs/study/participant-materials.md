@@ -150,9 +150,17 @@ The answer, measured on the shipped bundles and identical in both projects:
 
 Two of eleven. Someone who ticks everything scores about 0.31 here, which is the
 point of asking about this one: the reach is narrow enough that the checklist
-discriminates. Watch for the sgt arm being pulled toward the hourly charts — the
-rounding checkpoint sits on a lane named after them — and note it if it happens;
-that is a finding about the representation either way.
+discriminates.
+
+One thing to watch in the sgt arm. The rounding checkpoint sits on some lane, and
+that lane is named after whatever else is in it — not after rounding. On the
+`20260901` bundles it is `Daily and Hourly Charts` in footfall and
+`Counter Dashboard` in bikecount, so a participant reading the lane name could be
+pulled toward the hourly charts or the front-page charts generally. **Read the
+current name yourself before the session** — `sgt log --rail` in the bundle, top
+row, right-hand column — because a rebuild re-rolls every label. If someone ticks
+a part because the lane is called after it, note it; that is a finding about the
+representation either way.
 
 Do not read the answer out. If the participant asks afterwards, tell them after
 the second half.

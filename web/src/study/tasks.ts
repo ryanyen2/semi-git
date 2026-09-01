@@ -326,8 +326,6 @@ export const PROJECT_WORDS: Record<
     unusualDays: string
     ordinaryDay: string
     precision: string
-    /** The python package, so a card can name a file without naming a project twice. */
-    pkg: string
     /** What this project's own nav calls the two-sensor page. */
     sidesPage: string
     /**
@@ -338,6 +336,10 @@ export const PROJECT_WORDS: Record<
      */
     img: {
       yearly: string
+      /** The same page unmarked. Stage 1's map shows the dashboard as it is; the
+       * red outline round the 2018 row is an annotation stages 2 and 4 add, and
+       * on a card that opens "nothing is wrong with it" it says the opposite. */
+      yearlyPlain: string
       monthly: string
       hourly: string
       hourlySplit: string
@@ -356,10 +358,10 @@ export const PROJECT_WORDS: Record<
     ordinaryDay:
       'a snowstorm that shut the city says nothing about how many people cycle to work on an ordinary day',
     precision: 'one-bike precision',
-    pkg: 'bikecount',
     sidesPage: 'east against west',
     img: {
       yearly: '/stages/bikecount-yearly.png',
+      yearlyPlain: '/stages/bikecount-yearly-plain.png',
       monthly: '/stages/bikecount-monthly.png',
       hourly: '/stages/bikecount-hourly.png',
       hourlySplit: '/stages/bikecount-hourly-split.png',
@@ -377,10 +379,10 @@ export const PROJECT_WORDS: Record<
     ordinaryDay:
       'a public holiday when the offices are shut says nothing about how many people walk to work on an ordinary day',
     precision: 'single-person precision',
-    pkg: 'footfall',
     sidesPage: 'north against south',
     img: {
       yearly: '/stages/footfall-yearly.png',
+      yearlyPlain: '/stages/footfall-yearly-plain.png',
       monthly: '/stages/footfall-monthly.png',
       hourly: '/stages/footfall-hourly.png',
       hourlySplit: '/stages/footfall-hourly-split.png',
@@ -424,14 +426,16 @@ Run the command below first. It puts the project into this stage's starting stat
 
 **What happened:** You have just joined this project. Nothing is wrong with it, and there is nothing to fix in this stage.
 
-**Your job:** Work out what this project is made of. Put the dashboard beside your setup's view of the history, and fill in the map below — for each part of the dashboard, where it lives in the code and which piece of work in the history put it there. The first row is filled in as an example.
+**Your job:** Work out what this project is made of. Put the dashboard beside your setup's view of the history, and fill in the map below, right to left: for each part of the dashboard, which piece of work in the history put it there and where in the code that work lives. The first row is filled in as an example.
 
-| Part of the dashboard | Where it lives in the code | The work that put it there |
+| The work | Where it lives in the code | What it puts on the dashboard |
 |---|---|---|
-| **The busiest hour, and the hour-of-day chart under it** ![The hourly page: the busiest hour, and the average count by hour of day](${w.img.hourly}) | \`${w.pkg}/pages/hourly.py\` draws it; \`${w.pkg}/metrics.py\` works out the averages | *(example)* the work that added the hour-of-day page |
-| **The month-by-month chart** ![The monthly page](${w.img.monthly}) | | |
-| **The one-row-per-year table** ![The by-year page](${w.img.yearly}) | | |
-| **The ${w.sidesPage} comparison** ![The two-sensor comparison page](${w.img.sides}) | | |
+| *(example)* the work that added the hour-of-day page | \`pages/hourly.py\` draws it, \`metrics.py\` works out the averages | **The busiest hour, and the hour-of-day chart under it** ![The hourly page: the busiest hour, and the average count by hour of day](${w.img.hourly}) |
+| | | **The month-by-month chart** ![The monthly page](${w.img.monthly}) |
+| | | **The one-row-per-year table** ![The by-year page](${w.img.yearlyPlain}) |
+| | | **The ${w.sidesPage} comparison** ![The two-sensor comparison page](${w.img.sides}) |
+
+File names are relative to the project's package, the one the practice sheet lists — \`pages/hourly.py\` is the hour-of-day page.
 
 The date window at the top of every page is the one control on the dashboard. The pages open on the most recent year; set it to 2018 if you want to see the whole of a year.
 
