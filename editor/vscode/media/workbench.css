@@ -2538,6 +2538,9 @@ svg.railsvg {
   border-radius: 5px;
   border: 1px solid var(--line);
   color: var(--fg);
+  /* A <button>, so it has to shed the chrome one brings and keep reading as the chip it was. */
+  background: none;
+  cursor: pointer;
 }
 
 .file-chip-page {
@@ -2548,6 +2551,126 @@ svg.railsvg {
 .touched-files-more {
   color: var(--dim);
   font-size: 11px;
+}
+
+/* ── The change panel ─────────────────────────────────────────────────────────────────────────
+   What the selection changed: directories, files, then the entities inside them, each row a way
+   into a real diff editor. Green/red here is the CHANGE channel, not identity — a diff has two
+   directions and nothing else in this view competes for them; identity stays with the lane colors
+   and the dots, which never appear on these rows. */
+.change-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--dim);
+  margin-bottom: 6px;
+}
+
+.change-plus { color: var(--land); }
+.change-minus { color: var(--fail); }
+
+.ctree {
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--code-bg);
+  padding: 3px 0;
+  overflow-x: hidden;
+}
+
+.ctree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 6px;
+  line-height: 20px;
+  cursor: pointer;
+  /* The rows are a column the eye runs down; a background that arrives on hover is enough to say
+     "this one", and a border would shift every name by a pixel. */
+  transition: background var(--dur-flick) var(--ease-both);
+}
+
+.ctree-row:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.ctree-twisty {
+  flex: none;
+  width: 11px;
+  color: var(--dim);
+  font-size: 9px;
+  text-align: center;
+}
+
+/* Only a file's twisty is its own hit target — the rest of a file row opens the diff, which is the
+   split the editor's own explorer already trained the reader on. A directory row toggles whole. */
+.ctree-twisty-live {
+  cursor: pointer;
+  border-radius: 2px;
+}
+
+.ctree-twisty-live:hover {
+  color: var(--fg);
+  background: var(--vscode-toolbar-hoverBackground, transparent);
+}
+
+.ctree-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.ctree-dir > .ctree-name {
+  color: var(--dim);
+}
+
+.ctree-file > .ctree-name {
+  color: var(--fg);
+  font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
+
+/* An entity is read at a glance and clicked at leisure: quieter than its file, and in the editor's
+   own font, because the name on the row is the name in the code. */
+.ctree-entity > .ctree-name {
+  color: var(--dim);
+  font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+}
+
+.ctree-entity:hover > .ctree-name {
+  color: var(--fg);
+}
+
+.ctree-meter {
+  flex: none;
+  font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  letter-spacing: 0.5px;
+}
+
+.ctree-plus { color: var(--land); }
+.ctree-minus { color: var(--fail); }
+.ctree-rest { color: var(--line); }
+
+.ctree-count {
+  /* A min-width rather than a width: the column aligns at ordinary magnitudes and a four-digit
+     change pushes the meter left instead of being clipped by it. */
+  flex: none;
+  min-width: 62px;
+  text-align: right;
+  white-space: nowrap;
+  color: var(--dim);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The chip is a button now (it opens the file), so it says so on hover. */
+.file-chip:hover {
+  border-color: var(--accent);
+  background: var(--vscode-list-hoverBackground);
 }
 
 /* The ◆ milestone markers: presence without link spaghetti. */

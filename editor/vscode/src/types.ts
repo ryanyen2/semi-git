@@ -182,6 +182,17 @@ export interface FocusView {
   context_count: number;
 }
 
+// One entity's line range in one side of a verb projection (`sgt.api._side_entity_spans`), from
+// the same tree-sitter extraction `blame` runs. Ranges are 1-based inclusive and are against THAT
+// SIDE's own text: `before` and `after` disagree about line numbers the moment an entity is added
+// or removed, so a span read against the wrong side lands on the wrong function.
+export interface ChangeSpan {
+  symbol: string; // `file::qualname`
+  kind: string; // "function" | "class" | "method"
+  start_line: number;
+  end_line: number;
+}
+
 // `sgt revert <ref> --emit --json` — a sandboxed dry-run preview, shared by single-op and
 // feature-grouped revert (both resolve to the same `sgt.api._project_verb_preview` shape).
 export interface EmitView {
@@ -192,7 +203,13 @@ export interface EmitView {
   added: string[];
   affected_symbols: string[];
   forked: boolean;
-  files: Record<string, { before: string; after: string }>;
+  // `*_spans` are optional because a pinned older CLI has no `_side_entity_spans` and answers
+  // the pair alone; a client without them falls back to file granularity rather than guessing
+  // where an entity begins.
+  files: Record<
+    string,
+    { before: string; after: string; before_spans?: ChangeSpan[]; after_spans?: ChangeSpan[] }
+  >;
   message: string;
   // U3 additions -- the selectable dependent frontier and the rolled-up affected features.
   frontier?: FrontierRow[];

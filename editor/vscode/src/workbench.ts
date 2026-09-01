@@ -31,6 +31,7 @@ import { colorForNode } from "./color";
 import type { IdealEditPhase } from "./commands"; // type-only: keeps the commands↔workbench import cycle out of the emitted JS
 import { PreviewProvider } from "./preview";
 import { FoldFrontier, StaleRequestError } from "./sgt";
+import type { EmitView } from "./types";
 import { Store } from "./store";
 
 /** The composition picker's ref, as a fold frontier.
@@ -59,7 +60,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
   // them all; each read now checks this when its queue turn arrives and a superseded one is
   // dropped before it spawns. Sequence numbers already existed for result-ordering -- this reuses
   // them for cancellation.
-  private readonly latest = { preview: 0, fold: 0, playhead: 0, find: 0 };
+  private readonly latest = { preview: 0, fold: 0, playhead: 0, find: 0, change: 0 };
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -327,6 +328,15 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
         return;
       case "requestFold":
         await this.requestFold(msg.featureId, msg.ref, msg.seq);
+        return;
+      case "requestChange":
+        await this.requestChange(msg.verb, msg.ref, msg.seq);
+        return;
+      case "openChangeDiff":
+        await this.openChangeDiff(msg.verb, msg.ref, msg.label, msg.path, msg.symbol);
+        return;
+      case "openFile":
+        await this.openFile(msg.path);
         return;
       case "find":
         await this.find(msg.query, msg.seq);
@@ -857,6 +867,93 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     } catch (e: any) {
       if (e instanceof StaleRequestError) return; // a newer selection's fold answers instead
       void this.view?.webview.postMessage({ type: "foldResult", seq, featureId, error: e.message });
+    }
+  }
+
+  /**
+   * `sgt <verb> <ref> --emit --json`, memoized in the cache `preview()` already fills.
+   *
+   * Deliberately the same key shape (`<verb>:<ref>`) as the hover preview's, so the change panel,
+   * the sentence in the confirm bar and the diff tabs are three readings of ONE dry run and cannot
+   * disagree about what a revert would do. Cleared per composition push, like every other read.
+   */
+  private async cachedEmit(
+    verb: "revert" | "restore",
+    ref: string,
+    stillWanted?: () => boolean
+  ): Promise<EmitView> {
+    const key = `${verb}:${ref}`;
+    const hit = this.previewCache.get(key) as EmitView | undefined;
+    if (hit !== undefined) return hit;
+    const view = await this.store.sgt.emit(ref, verb, stillWanted);
+    this.previewCache.set(key, view);
+    return view;
+  }
+
+  // What a feature or one of its chapters CHANGED, for the inspector's change tree. The panel used
+  // to print each of the feature's files in full, which answers "what does this code say" and never
+  // "what did this do" -- so the reader had to diff two screenfuls of unchanged text by eye. The
+  // projection is the revert dry-run's before/after pair (plus per-side entity spans), which is the
+  // only thing in this model that *is* a feature's change: the difference between the tree with its
+  // ops and the tree without them, closure included.
+  private async requestChange(verb: "revert" | "restore", ref: string, seq: number): Promise<void> {
+    this.latest.change = seq;
+    try {
+      const view = await this.cachedEmit(verb, ref, () => this.latest.change === seq);
+      void this.view?.webview.postMessage({
+        type: "changeResult",
+        seq,
+        ref,
+        verb,
+        ok: view.ok !== false,
+        message: view.message,
+        files: view.files || {},
+      });
+    } catch (e: any) {
+      if (e instanceof StaleRequestError) return; // a newer selection's projection answers instead
+      void this.view?.webview.postMessage({
+        type: "changeResult", seq, ref, verb, ok: false, message: e.message, files: {},
+      });
+    }
+  }
+
+  // Clicking a node in that tree: the same projection, in a real diff editor. The webview sends the
+  // entity NAME it drew, never a line number -- the span is resolved host-side against the side the
+  // work is on, so a tree drawn before a refresh cannot scroll the reader to the wrong function.
+  private async openChangeDiff(
+    verb: "revert" | "restore",
+    ref: string,
+    label: string,
+    path: string,
+    symbol?: string
+  ): Promise<void> {
+    try {
+      const view = await this.cachedEmit(verb, ref);
+      if (view.ok === false) {
+        vscode.window.showWarningMessage(view.message || `Cannot project the change for ${ref}.`);
+        return;
+      }
+      const pair = view.files?.[path];
+      if (!pair) {
+        vscode.window.showInformationMessage(`${path} is unchanged by ${label}.`);
+        return;
+      }
+      await this.previewTabs.openChangeDiff(verb, label, path, pair, symbol);
+    } catch (e: any) {
+      vscode.window.showErrorMessage(e.message);
+    }
+  }
+
+  // A `touches` chip is a hit target now. Opening the document is all this has to do: blame.ts
+  // decorates whatever editor becomes active with the per-feature spans in identity color, so the
+  // file arrives with this feature's own work already tinted.
+  private async openFile(relPath: string): Promise<void> {
+    const uri = vscode.Uri.joinPath(vscode.Uri.file(this.root), relPath);
+    try {
+      await vscode.window.showTextDocument(uri, { preview: true });
+    } catch {
+      // A path can be live in the ideal and absent from disk (a fold the working tree never got).
+      vscode.window.showWarningMessage(`${relPath} is not in the working tree.`);
     }
   }
 

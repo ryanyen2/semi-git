@@ -706,6 +706,26 @@ def so_what_for(projected: dict, kept: frozenset = frozenset()) -> str:
     return f"{verb} {primary}. {undo}"
 
 
+def _side_entity_spans(path: str, source: bytes) -> list[dict]:
+    """One side of a verb projection, as `{symbol, kind, start_line, end_line}` in document order.
+
+    The same tree-sitter extraction `_entity_line_spans` runs against the current ideal, pointed at
+    an arbitrary folded text instead. A client showing "what did this chapter change" has a
+    before/after pair and wants the answer per entity, not per file -- and it cannot find where a
+    function begins by looking at the text, which is the whole reason this repo parses in the first
+    place. Both sides are spanned because the two texts have different line numbers: a caller maps
+    a line on either side to the entity that owns it. Never raises (`extract_file` answers `[]` for
+    an unsupported or unparseable file), so a projection stays complete even where it has no
+    entities to name.
+    """
+    from sgt.entities.extract import extract_file
+
+    return [
+        {"symbol": e.id, "kind": e.kind, "start_line": e.start_line, "end_line": e.end_line}
+        for e in sorted(extract_file(path, source), key=lambda e: (e.start_line, e.id))
+    ]
+
+
 def _project_verb_preview(repo, preview) -> dict:
     """Given an already-computed `sgt.core.verbs.VerbPreview`, the per-file before/after bytes
     plus the rest of `verb_preview_view`'s shape. Factored out so a caller that resolves its own
@@ -726,6 +746,10 @@ def _project_verb_preview(repo, preview) -> dict:
         path: {
             "before": before.get(path, b"").decode("utf-8", "replace"),
             "after": after.get(path, b"").decode("utf-8", "replace"),
+            # Additive (U-discipline): a reader of the two texts alone can only guess at entity
+            # boundaries, and this kernel already knows them exactly.
+            "before_spans": _side_entity_spans(path, before.get(path, b"")),
+            "after_spans": _side_entity_spans(path, after.get(path, b"")),
         }
         for path in sorted(set(before) | set(after))
         if before.get(path) != after.get(path)
