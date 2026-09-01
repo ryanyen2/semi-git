@@ -2595,3 +2595,71 @@ and the count as "how many lanes you will see". Nothing in the study depends on
 the number, so it is left disagreeing rather than changed a week before the first
 participant. On a mined EasyOCR the same gap is 67 against 29
 (`docs/study/interview-demo-easyocr.md`), which is where it stops being cosmetic.
+
+## Found building the closing interview's demo repository (2026-09-01)
+
+Mining a real third-party repository (`JaidedAI/EasyOCR`, 275 commits, 670 live
+symbols) for the interview walkthrough. Full detail, with the observed output for
+each, in `docs/study/interview-demo-easyocr.md` under "Known rough edges".
+
+### Finding 87 (open): a rename leaves the post-rename chain rootless, and 19% coverage
+
+EasyOCR moved `easy_ocr/` to `easyocr/` in 2020, and `easyocr/model.py` to
+`easyocr/model/model.py` seven months later. On a full clone, the pre-rename chain
+stays alive under the old path -- all 438 `easy_ocr/*` ops are in the ideal --
+while the post-rename chain never gets a creation op: `easyocr/easyocr.py::Reader`
+has nine distinct `pre` versions that no op in the store produces. Every op in a
+rootless segment is invalid, and ops declaring `requires` edges on those
+symbol-versions cascade out with them, which is how `easyocr/DBNet/` (added 2022,
+never renamed) and even `Dockerfile` end up invisible.
+
+What it looks like from the outside: `sgt show "easyocr/easyocr.py::Reader"` --
+the class every EasyOCR user calls -- answers `is not a known feature,
+checkpoint, op, or symbol`. So do `detection.py::get_textbox`,
+`recognition.py::get_text` and `utils.py::group_text_box`. Worse, the features
+that ARE visible are anchored on paths deleted in 2020: `sgt show "CRAFT Text
+Detector"` lists `easy_ocr/craft.py::CRAFT` and "last touched 2329d ago".
+
+The demo works around it by starting the history after the last rename
+(`git clone --shallow-since`, so the boundary commit has no parents and is mined
+as genesis). That still leaves 119 of 670 symbols in no frontier and coverage at
+19%, because the same shape recurs at smaller scale. `sgt init --horizon <ref>`,
+the documented way to bound mining, is not a workaround: on the full clone it
+printed nothing and had persisted zero ops after ten minutes, twice.
+
+### Finding 88 (open): `sgt save` reports "nothing to save" over a real edit, exit 0
+
+The one to fear. On the mined EasyOCR, editing a file sgt CAN reproduce and then
+saving:
+
+```
+$ git status --porcelain          #  M easyocr/cli.py
+$ sgt save -m "Add a --min_confidence option to the CLI"
+✓ nothing to save -- no uncommitted ops
+$ echo $?                         # 0
+$ git status --porcelain          #  M easyocr/cli.py   — still dirty, HEAD unmoved
+```
+
+The edit *was* mined -- the op count goes 2319 to 2320 and the store gains a
+provenance-less `rework` op with footprint `easyocr/cli.py::parse_args` -- so the
+save both saw the work and reported there was none, with a green tick and exit 0.
+Reproduced twice on a pristine store with no `resync` in between. Nothing recovers
+it except editing again after a reset.
+
+This is the same silent-success class as finding 59 (`sgt revert` printing ✓ over
+an untouched tree) and the 2026-08-31 stage-1 save that said "nothing to save"
+over eleven modified files, and it is the third time it has appeared on a
+different path. A verb that mutates nothing must not print ✓.
+
+Not on any participant's path: no stage in protocol v2 runs `sgt save`.
+
+### Finding 89 (open): `sgt advanced resync` is six minutes that fixes nothing, and `sgt save` recommends it
+
+`sgt save`'s failure message on that repo ends `(if you just rewrote git history
+-- reset/amend/branch -f -- run \`sgt advanced resync\`)`, so it is the obvious
+next thing to type. Measured: 6 minutes 16 seconds, re-derived
+`refs/heads/master` from 2,066 to 2,181 ops (+115), brought reported working-tree
+drift from 81 files down to 71 -- and `sgt save` then failed with the identical
+message. It also moves every op count anyone has written down. The advice should
+be gated on the condition it names (history actually rewritten) rather than
+offered as a generic remedy.

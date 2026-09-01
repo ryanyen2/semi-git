@@ -782,11 +782,36 @@ most of `easyocr/utils.py`. Coverage is 19%.
   `sgt why "easyocr/utils.py::filter_by_confidence"` answers `is not an op-id, a live symbol …`
   and `sgt show "Text Box Processing"` still lists only its two original symbols. The plan
   bookkeeping is right; the placement of the new work is not. Stop step 5 at `sgt plan status`.
-- **`sgt save` does not work on this repo.** `sgt save -m "…"` on the step-5 edits fails with
+- **`sgt save` does not work on this repo, and it fails two different ways.** `sgt save -m "…"` on
+  the step-5 edits fails loudly with
   `put() would overwrite uncommitted changes: ['easyocr/easyocr.py', 'easyocr/utils.py']`. sgt
   reports 81 of 207 files as drift on a *clean, pristine* tree — its fold does not reproduce them
   — so it refuses to write them back. That is why step 5 commits with git and confirms with
   `sgt save --resolve-plan` instead. Do not type a bare `sgt save` in front of anyone.
+
+  The second way is worse, and it is the one to actually fear on a shared screen. Edit a file sgt
+  *can* reproduce — anything not in that 81 — and `sgt save` prints a **green tick over nothing**:
+
+  ```
+  $ git status --porcelain          #  M easyocr/cli.py
+  $ sgt save -m "Add a --min_confidence option to the CLI"
+  ✓ nothing to save -- no uncommitted ops
+  $ echo $?                         # 0
+  $ git status --porcelain          #  M easyocr/cli.py   — still dirty, HEAD unmoved
+  ```
+
+  The edit *was* mined: the op count goes 2319 → 2320 and the store gains one provenance-less op
+  (`rework`, footprint `easyocr/cli.py::parse_args`). So the save both saw the work and reported
+  there was none, exit 0. Reproduced twice on the pristine store, with no `resync` in between.
+  Nothing recovers it except editing again after a reset.
+
+- **Do not reach for `sgt advanced resync`, even though `sgt save`'s own error tells you to.** That
+  error ends `(if you just rewrote git history -- reset/amend/branch -f -- run
+  \`sgt advanced resync\`)`, so it is the obvious next thing to type. Measured here: it ran for
+  **6 minutes 16 seconds**, re-derived `refs/heads/master` from 2,066 to 2,181 ops (+115), and
+  brought the drift count down from 81 files to 71. `sgt save` then failed with exactly the same
+  message. It is six minutes of dead air that fixes nothing and moves every op count in this
+  document, including step 8's `2319`. If you have already run it, reset from the tar.
 
 **Two forks print on every read.** `sgt log`, `sgt now` and `sgt log --focus` all open with the
 two carriage-return filenames, and `sgt now`'s `→ next` is always "resolve fork" rather than
