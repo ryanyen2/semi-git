@@ -165,6 +165,13 @@ case "$stage" in
     echo "This is the real project, with its whole history."
     echo "Everything you do to it here is undone when you run \`./stage 1\`, so"
     echo "nothing you try now can go wrong."
+    echo
+    # Practice is the first time anyone needs the dashboard, and the practice sheet
+    # sends them to localhost:8000 without saying what puts anything there. Stage 1
+    # printed this and stage 0 did not, so the one step where nobody has seen the
+    # product yet was the one step that did not say how to look at it.
+    echo "Start the dashboard in your other terminal:"
+    echo "    ${bold}python3 -m $(pkg).server${off}   then open http://localhost:8000"
     ;;
 1)
     reset_to study/full

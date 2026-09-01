@@ -346,11 +346,16 @@ export interface StageShots {
  *
  * `work` is what it did in product terms -- never the commit subject and never
  * an sgt label. Commit subjects are the git arm's own words for these rows and
- * the sgt labels are the sgt arm's, and a card both arms read cannot use
- * either: the bundles ship no `.sgt` store, so every participant's install
- * mines and names the features afresh and no two get quite the same labels.
- * Naming the work in neither vocabulary is what leaves the participant with
- * something to do -- putting the map beside their own view and matching them up.
+ * the sgt labels are the sgt arm's, and one card that both arms read cannot use
+ * either without handing one arm its answers. Naming the work in neither
+ * vocabulary is also what leaves the participant something to do: put the map
+ * beside their own view and match them up.
+ *
+ * Both vocabularies are stable, so this is a choice and not a workaround. The
+ * bundle ships its mined graph frozen in `work/.study/sgt-pristine.tar` and
+ * every `./stage N` restores it, so all participants see identical feature and
+ * checkpoint labels -- `sgt log --rebuild` runs once at BUILD time (and its LLM
+ * caches are copied back to the source repo so the next build re-rolls nothing).
  *
  * `code` is the row's files, straight out of `git log --name-only` in the built
  * bundle rather than a description of it, relative to the project's package.

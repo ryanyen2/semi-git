@@ -26,13 +26,19 @@ As you work, say what you are looking for, what you plan to do, and what you exp
 
 export const HANDOUT_MD = `# Welcome\n\n${WELCOME_MD}\n`
 
+const OPEN_EDITOR = `
+## Open the editor
+
+Run \`study-code\` in the session shell and leave that window open — it keeps recording. Everything else happens in the editor. Open two terminals there (**Terminal → New Terminal**, then the **+** button): one for the dashboard, one for every other command.
+`
+
 const PROJECT_TOUR: Record<Project, string> = {
   bikecount: `
 ## The project
 
 **bikecount** shows bicycle counts from the Fremont Bridge in Seattle. Its charts and tables are used in a quarterly report.
 
-Open http://localhost:8000 and look through the pages. Use the date range at the top to choose which dates to show.
+Start it with \`python3 -m bikecount.server\` in the first terminal, then open http://localhost:8000 and look through the pages. Use the date range at the top to choose which dates to show.
 
 ![Date range controls](${PROJECT_WORDS.bikecount.img.window})
 
@@ -57,7 +63,7 @@ Each page has a file in \`bikecount/pages/\`:
 
 **footfall** shows pedestrian counts from Spencer Street in Melbourne. Its charts and tables are used in a quarterly report.
 
-Open http://localhost:8000 and look through the pages. Use the date range at the top to choose which dates to show.
+Start it with \`python3 -m footfall.server\` in the first terminal, then open http://localhost:8000 and look through the pages. Use the date range at the top to choose which dates to show.
 
 ![Date range controls](${PROJECT_WORDS.footfall.img.window})
 
@@ -237,7 +243,7 @@ export function tutorialFor(condition: Condition, project: Project): string {
   const body = condition === 'git' ? GIT_BODY : SGT_BODY
 
   return (
-    [opening, PROJECT_TOUR[project], WARM_UP_STATE, body]
+    [opening, OPEN_EDITOR, PROJECT_TOUR[project], WARM_UP_STATE, body]
       .map((section) => section.trim())
       .join('\n\n') + '\n'
   )

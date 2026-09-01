@@ -21,6 +21,20 @@
   --fail: var(--vscode-testing-iconFailed, var(--vscode-charts-red, #e5675f));
   --code-bg: var(--vscode-textCodeBlock-background, var(--vscode-editor-background));
 
+  /* ── Receding ─────────────────────────────────────────────────────────────────────────────────
+     Dim means exactly one thing in this view: "still here, not part of what you asked for". Two
+     steps and no others, because the file used to carry four (0.78 on hover, 0.3 on the rail, 0.25
+     for unborn lanes, 0.18 under a preview) with no relationship between them -- so the same grey
+     row meant a different thing depending on which of them had painted it, and the deepest of them
+     was past the point where a label can be read at all.
+
+     A lens NEVER dims on hover. Moving the cursor across a map is not a question, and a field that
+     re-dims under every pointer move reads as flicker rather than as an answer. Dimming is the
+     response to a deliberate act -- a pinned lane, a search, a held preview -- and each of those
+     puts a banner on screen saying what receded and how to clear it. */
+  --recede: 0.5;        /* a lens: context you can still read */
+  --recede-deep: 0.38;  /* a held preview: the field goes further back, not out of reach */
+
   /* ── Motion ───────────────────────────────────────────────────────────────────────────────────
      One vocabulary, four durations. Before this the file carried twelve ad-hoc numbers -- 110ms
      here, 150 there, 200, 240, 260, 340, 360 -- so nothing on screen shared a tempo and every new
@@ -517,8 +531,17 @@ svg.railsvg {
   pointer-events: none;
 }
 
-/* A feature label is a distinct click target (spotlight toggle) -- so it opts back into pointer
-   events and shows a pointer cursor; the spotlit one carries the accent while pinned. */
+/* A feature label is a second, smaller click target inside a row that is itself clickable, and the
+   two do different things: the NAME pins a lens (dim the rest, keep this lane and what changes with
+   it), the ROW opens the lane in the inspector. That distinction was carried by nothing but an
+   underline on hover, so "what is the difference between clicking the name and clicking the row"
+   had no answer on screen. It now has three:
+     - hovering the name underlines it AND shows a ◉ in the gutter -- the same glyph the pinned
+       state and the banner use, so the affordance names its own outcome;
+     - the pinned name keeps the ◉ and goes semibold;
+     - pinning puts a banner over the plot saying what is dimmed and how to clear it.
+   The pinned name is NOT recolored. Hue is identity in this view (see the file header), and an
+   accent-blue label was the one place a lens borrowed the identity channel to say "state". */
 .glane-label-btn {
   cursor: pointer;
 }
@@ -528,8 +551,22 @@ svg.railsvg {
 }
 
 .glane-label-btn.spotlit {
-  fill: var(--accent);
   font-weight: 600;
+}
+
+/* The lens glyph, drawn in the row gutter left of the name: present when the name is hovered or
+   pinned, so the control and its state read the same. */
+.glane-lens-mark {
+  fill: var(--fg);
+  font-size: 9px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-flick) var(--ease-both);
+}
+
+.glane-label-btn:hover + .glane-lens-mark,
+.glane-lens-mark.on {
+  opacity: 0.85;
 }
 
 /* The no-segments fallback track spanning a feature's lifetime [first,last]. */
@@ -854,11 +891,15 @@ svg.railsvg {
   stroke-width: 1.5px;
 }
 
-/* Hover focus: dim the field, re-light the hovered lane + its co-change neighbors (the only place
-   co-change shows -- kept off the default view to avoid a hairball). */
+/* The lens: one lane (or one search) asked about, the rest receded. Held, never hover -- see
+   --recede. Three levels and no fourth: BOLD is the lane you asked about, plain-and-present is what
+   changes with it (co-change, the only place it shows), receded is everything else. The middle level
+   used to be accent-blue, which read as a status hue in a view where hue is identity and made
+   "hovering turned some other rows blue" the first thing anyone asked about. Full opacity against a
+   receded field says "related" without spending a colour on it. */
 .gantt.focus .glane,
 .gantt.focus .swimlane {
-  opacity: 0.78;
+  opacity: var(--recede);
 }
 
 .gantt.focus .glane.lit,
@@ -870,14 +911,17 @@ svg.railsvg {
   font-weight: 700;
 }
 
-.gantt.focus .glane.ctx .glane-label {
-  fill: var(--accent);
+/* Hover: the row band and the label underline, and nothing that touches another row. */
+.gantt .glane.hovered .glane-label {
+  font-weight: 700;
 }
 
-/* Not yet born at the scrubbed frontier: the gutter dims (the veil handles the plot). */
+/* Not yet born at the scrubbed frontier: the gutter dims (the veil handles the plot). Deeper than
+   --recede because this is absence rather than de-emphasis -- the lane has no ops at this frame --
+   but off the 0.25 floor, which put the name past reading. */
 .glane.beyond,
 .swimlane.beyond {
-  opacity: 0.25;
+  opacity: 0.42;
 }
 
 /* Lane badges. Drift = solid identity outline (past divergence); fork = ⋔ in the --blast channel.
@@ -927,7 +971,7 @@ svg.railsvg {
    the lane's own count label, so the numbers survive with motion off. */
 .gantt.preview .glane,
 .gantt.preview .swimlane {
-  opacity: 0.18;
+  opacity: var(--recede-deep);
 }
 
 .gantt.preview .glane.preview-lit {
@@ -993,7 +1037,7 @@ svg.railsvg {
    target, --blast losing, --land gaining) and, for the held morph, the field recedes while the
    affected rows keep full presence. Reuses the .ghost-*/.preview-* classes the Gantt paint sets. */
 .rail.preview .rail-row {
-  opacity: 0.3;
+  opacity: var(--recede-deep);
 }
 
 .rail.preview .rail-row.preview-lit {
@@ -2341,6 +2385,14 @@ svg.railsvg {
 
 .theme-banner[hidden] {
   display: none;
+}
+
+/* Two captions can be on screen at once, and they are different statements: a theme focus
+   reallocates row HEIGHT (TableLens), a lens reallocates PRESENCE (opacity). Neither replaces the
+   other, so the lens sits under the theme's caption instead of on top of it -- both are absolutely
+   positioned at the same top, and one silently covered the other. */
+#lensBanner.stacked {
+  top: 46px;
 }
 
 .theme-banner .theme-banner-name {
