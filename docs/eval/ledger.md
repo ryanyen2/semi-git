@@ -10784,3 +10784,50 @@ id to fall back to, unlike a lane. At 100 columns it rendered "Event Day Handl�
 and that prefix does not resolve -- it offers a *different* feature (10 edits,
 not 20) as a suggestion. A `◆` row's id column is blank, so the name now uses it:
 full at 90 columns, same total prefix width, bars still aligned to the lanes.
+
+## F133 -- `show` could not answer for the one noun the task names
+
+Same walkthrough. `sgt log` draws a ◆ row for work that landed across several
+features; `sgt log --focus` opens it; `sgt revert` and `sgt restore` both act on
+it by name. Stage 3 hands the participant that name and says "revert and restore
+both take that name exactly as it is written above". Asked about it, the verb
+whose whole job is "what is this, and what would come with it" said:
+
+```
+$ sgt show "Event Day Handling"
+✗ 'Event Day Handling' is not a known feature, checkpoint, op, or symbol
+```
+
+The gap is felt exactly where it costs most. A ◆ carries no id in the log the way
+a lane does, so its label is the only handle a reader has, and `show` is the verb
+that turns a handle into an answer. Stage 2's own tip pointed at
+`sgt show "<name>"` for "which parts of the dashboard does that work affect".
+
+`show_view` grew a rung for it, ahead of the three miss branches, matching on the
+label the way the acting verbs match (case-insensitive, punctuation-blind, so
+both projects' spellings land) and on the theme id -- which this view is now also
+the place to find. It reuses `_show_footprint`, `_show_provenance` and
+`_show_consequences`, so the consequence comes from the same `plan_revert_op_set`
+every other kind uses rather than a stub:
+
+```
+work across features theme-df22484c1cd9  "Event Day Handling"
+  31 edits · 10 symbols in 6 files · across 7 features · last touched 8d ago
+  symbols      README.md, footfall/charts.py::bar_chart, …
+  saves        7e81c4c  start tracking event days that break the normal commute pattern
+               9fa083e  mark event days on the daily and monthly charts
+               138f7d9  keep event days out of the averages
+  reverting this removes 20 edits, 1 of them work built on top
+
+  next:
+    sgt log --focus "Event Day Handling"   this work in the map, with the features it landed on
+    sgt revert "Event Day Handling"        preview taking it out; add --yes to apply
+```
+
+The three saves are the same three commits the git arm's stage 3 lists, which is
+the isomorphism the protocol claims, now visible from one command in each arm.
+
+No renderer change was needed beyond one clause: `_print_show` reads `kind`,
+`handle`, `label` and the counts generically, and `across N features` prints only
+when the key is present. `show` still refuses a phrase -- this is an exact-label
+rung, not the NL resolver, and `test_show_never_calls_the_nl_resolver` still holds.
