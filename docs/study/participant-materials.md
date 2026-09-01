@@ -266,10 +266,11 @@ Do not apologise for the clock before they answer temporal demand.
   clearly. "No real difference" is a real answer and we want it where it is true,
   so do not nudge anyone off it.
 - The interview runs over the participant's own repository, or over the prepared
-  one (`interview-demo-easyocr.md`). The guide is `protocol-v2.md` section 6.4.
-  Ask the question about what they would want the history to tell them **before**
-  they compare the two setups: in two pilots, participants answered it with
-  something close to what sgt does, one of them from inside the git half.
+  one (`interview-demo-easyocr.md`). The guide is ten questions in four groups,
+  in `protocol-v2.md` section 6.4 and in the console's **Interview** tab. Ask
+  them in the order given — the last one asks what *version control* should let
+  you act on, and it only tells us something while sgt's own framing for that is
+  still off the table.
 - Note on the roster which interview path was taken. The website cannot know.
 - Watch them run `study-sync --final` and then `study-cleanup`.
 

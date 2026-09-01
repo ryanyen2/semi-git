@@ -16,6 +16,18 @@ import { existsSync } from 'node:fs'
 import { PROJECTS } from '../src/lib/types'
 import { tutorialFor } from '../src/study/content'
 
+/**
+ * The three places the participant is told how much work there is: the welcome
+ * page, the preamble before the first card, and the debrief afterwards. All
+ * three were typed out once, and the preamble was still promising "three
+ * requests, about twenty minutes" two redesigns after that stopped being true.
+ */
+const quotedTotals = (): Array<[string, string]> => [
+  ['the welcome page', WELCOME_MD],
+  ['the task preamble', TASK_PREAMBLE('footfall', 'Sam Park', 'a small tool')],
+  ['the debrief', DEBRIEF_MD],
+]
+
 describe('the session schedule', () => {
   it('estimates a task block as the caps plus the answering', () => {
     for (const id of ['tasks-1', 'tasks-2']) {
@@ -33,9 +45,19 @@ describe('the session schedule', () => {
     expect(TOTAL_ESTIMATE_MIN).toBeLessThanOrEqual(90 - 4)
   })
 
-  it('shows the participant the same total it computes', () => {
-    expect(WELCOME_MD).toContain(`about ${TOTAL_ESTIMATE_MIN} minutes`)
-    expect(WELCOME_MD).toContain(`| ${BLOCK_ESTIMATE_MIN} |`)
+  // Not "the page must state the total": the welcome copy is allowed to say only
+  // "about an hour and a half", and it does. What is not allowed is stating a
+  // minute figure that the caps contradict, which is the drift that shipped
+  // before -- two numbers on one page, three minutes apart, neither computed.
+  it('never quotes a minute total the code disagrees with', () => {
+    for (const [where, text] of quotedTotals()) {
+      for (const [, minutes] of text.matchAll(/about (\d+) minutes/g)) {
+        expect(Number(minutes), `${where} quotes ${minutes} minutes`).toBe(TOTAL_ESTIMATE_MIN)
+      }
+      for (const [, minutes] of text.matchAll(/^\| (\d+) \|/gm)) {
+        expect([BLOCK_ESTIMATE_MIN, 2, 3, 4, 5, 6, 15]).toContain(Number(minutes))
+      }
+    }
   })
 
   // A step with a clock and no estimate is missing from the schedule the
@@ -47,10 +69,23 @@ describe('the session schedule', () => {
   // Spelled words rather than digits, because that is what the prose uses and a
   // digit would pass this while reading wrong on the page.
   it('quotes the same stage count everywhere it says one', () => {
-    const preamble = TASK_PREAMBLE('footfall', 'Sam Park', 'a small tool')
-    expect(preamble).toContain(`${spell(STAGE_COUNT)} stages`)
-    expect(DEBRIEF_MD).toContain(`the same ${spell(STAGE_COUNT)} tasks`)
     expect(STAGE_COUNT).toBe(REQUESTS.length)
+    const right = spell(STAGE_COUNT)
+    const wrong = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+      .filter((n) => n !== STAGE_COUNT)
+      .map(spell)
+    for (const [where, text] of quotedTotals()) {
+      for (const word of wrong) {
+        for (const noun of ['stages', 'tasks']) {
+          expect(text, `${where} says "${word} ${noun}"`).not.toContain(`${word} ${noun}`)
+        }
+      }
+    }
+    // And at least one of the three still says it, so this cannot pass by the
+    // count having quietly disappeared from every page.
+    expect(
+      quotedTotals().some(([, text]) => text.includes(`${right} stages`) || text.includes(`${right} tasks`)),
+    ).toBe(true)
   })
 
   it('estimates every step that takes time', () => {
@@ -123,9 +158,10 @@ describe('the printed sheets', () => {
   // The welcome sheet carries the two numbers the participant consented to. They
   // are computed, so this checks the printed copy is the computed one and not a
   // stale render of it.
-  it('tells the participant the same total the website computes', () => {
+  it('never quotes a minute total the code disagrees with', () => {
     const text = readFileSync('../docs/study/materials/00-welcome.md', 'utf8')
-    expect(text).toContain(`about ${TOTAL_ESTIMATE_MIN} minutes`)
-    expect(text).toContain(`| ${BLOCK_ESTIMATE_MIN} |`)
+    for (const [, minutes] of text.matchAll(/about (\d+) minutes/g)) {
+      expect(Number(minutes)).toBe(TOTAL_ESTIMATE_MIN)
+    }
   })
 })

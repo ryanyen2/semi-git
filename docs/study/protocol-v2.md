@@ -482,20 +482,52 @@ are unchanged from version 1.
 ### 6.4 The interview
 
 Semi-structured, about ten minutes inside the 15-minute step, audio recorded,
-run over the participant's own repository (section 7). The guide, with the
-usual freedom to follow up:
+run over the participant's own repository (section 7). Ten questions in four
+movements, asked in this order, with the usual freedom to follow up. The
+facilitator types the answers into the console's Interview tab, which carries
+the same ten under the same headings.
 
-1. Walk me through what you see. What are these groups? Do the names match
-   what you would call the work?
-2. Pick a piece of work you remember doing. Does what the view shows match
-   what it actually was? What is missing or wrong?
-3. In the session you removed a colleague's work and put it back. Where in
-   this repository would you want that, and what would you be afraid of?
-4. Today, when you join a project you have not seen, what do you do first, and
-   what would you want its history to tell you? Today, when an assistant changes
-   several files and you save it, what do you actually know about what you saved?
-5. Would you keep this view of your repository? What would it have to do
-   before you trusted it?
+**How they located and understood prior work.**
+
+1. When you were trying to find the work behind the behavior, how did your
+   approach differ between Git and sgt?
+2. What made you feel that you had found the right work?
+3. Was there anything you had to piece together yourself before you understood
+   what had happened?
+
+**Whether they could reason about it and act on it safely.**
+
+4. Before removing the work, how did you decide what else might be affected?
+5. Did anything happen after the removal or restore that you did not expect?
+6. What was difficult about removing and restoring the work in each setup?
+
+**Whether the unit of work is the one they think in.** This is the part the
+stages cannot answer: they measure operating on a unit we chose, on a codebase
+we built. Their disagreements here are the finding, and question 9 moves the
+question off our testbeds entirely.
+
+7. Did sgt's grouping of the history match what you considered to be one piece
+   of work? Why or why not?
+8. Can you point to a case where sgt grouped the work in a way you would have
+   organized differently?
+9. Think of a real change from one of your own projects that you might want to
+   revisit later. What would you consider "the work" in that case?
+
+**What it implies for the design.**
+
+10. After using both setups, what do you think version control should let you
+    identify and act on directly?
+
+Question 10 is asked about version control and not about sgt deliberately, and
+is asked last. Put sgt's framing in front of it -- "would you want semantic
+version control", or anything that names the unit for them -- and agreement
+becomes the easy answer; the question then measures the framing rather than
+what the session left them thinking. The console's Interview tab says so beside
+the question.
+
+The order also matters for a reason that is not rhetorical: questions 1 and 6
+ask for a comparison between the two setups, so the interview cannot begin
+before both halves are done. It is step 12 of 15 for that reason among others.
 
 Analysis of the recordings is reflexive thematic analysis, with the same
 two-coder arrangement as version 1 (codebook agreed first, 25% double-coded,
@@ -684,12 +716,14 @@ are fixed before the first participant of the new design.
   five minutes enough to orient in a project, and also what leaves nothing with a
   right answer to ask afterwards (section 4). RQ1 rests on self-report, and any
   result on it is reported as such.
-- The study no longer exercises recording at all: no stage asks the participant
-  to run `sgt save` or `git commit`, so it says nothing about the moment a change
-  enters the history. That was stage 1's job in the earlier design of this
-  version, and it was traded for orientation because pilots were arriving at
-  stage 2 without knowing what the product did. The interview still asks about
-  it (section 6.4, question 4).
+- The study no longer touches recording at any point: no stage asks the
+  participant to run `sgt save` or `git commit`, and the interview guide no
+  longer asks about it either. That was stage 1's job in the earlier design of
+  this version, and it was traded for orientation because pilots were arriving at
+  stage 2 without knowing what the product did; the interview question about it
+  went when the guide was rebuilt around locating, operating, and the unit of
+  work (section 6.4). So the study says nothing at all about the moment a change
+  enters the history, which is half of what an intent-aligned history is for.
 - Four stages, one workflow, two small synthesized codebases, 4-minute caps.
   First-contact evidence only; the companion field deployment remains the
   design document's recommendation.

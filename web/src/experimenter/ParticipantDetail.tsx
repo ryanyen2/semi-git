@@ -31,13 +31,94 @@ import { downloadCsv, downloadJson } from '../lib/svgExport'
 
 type DetailTab = 'overview' | 'requests' | 'answers' | 'interview' | 'telemetry'
 
-const PROBES = [
-  { id: 'wish', label: 'What did you wish you could ask the history?', note: 'Ask this BEFORE they compare the setups.' },
-  { id: 'trust', label: 'What did you trust, and what did you check?' },
-  { id: 'lost', label: 'Where were you lost?' },
-  { id: 'hidden', label: 'What did the history hide, and what did it show?' },
-  { id: 'delegate', label: 'How did you decide what to hand to the assistant?' },
+/**
+ * The interview guide, as the form the facilitator types into. Protocol v2
+ * section 6.4, in the same order and the same words.
+ *
+ * Four movements, and the order is the argument: what people could find and
+ * understand, then whether they could reason about it and act on it safely,
+ * then whether sgt's unit of work is the one they think in -- and only last the
+ * design question, which is asked about version control rather than about sgt so
+ * that agreeing with the premise is not the easy answer.
+ *
+ * The ids are what a note is stored under, so renaming one orphans every note
+ * already taken against it. The previous five (`wish`, `trust`, `lost`,
+ * `hidden`, `delegate`) belonged to a design with a live assistant in it; the
+ * pilot notes filed under them are still on screen, under "Earlier probes".
+ */
+const PROBE_GROUPS: Array<{
+  title: string
+  probes: Array<{ id: string; label: string; note?: string }>
+}> = [
+  {
+    title: 'How they located and understood prior work',
+    probes: [
+      {
+        id: 'approachDiff',
+        label:
+          'When you were trying to find the work behind the behavior, how did your approach differ between Git and sgt?',
+      },
+      { id: 'foundRight', label: 'What made you feel that you had found the right work?' },
+      {
+        id: 'piecedTogether',
+        label:
+          'Was there anything you had to piece together yourself before you understood what had happened?',
+      },
+    ],
+  },
+  {
+    title: 'Whether they could reason about it and act on it safely',
+    probes: [
+      {
+        id: 'decidedAffected',
+        label: 'Before removing the work, how did you decide what else might be affected?',
+      },
+      {
+        id: 'unexpected',
+        label: 'Did anything happen after the removal or restore that you did not expect?',
+      },
+      {
+        id: 'difficulty',
+        label: 'What was difficult about removing and restoring the work in each setup?',
+      },
+    ],
+  },
+  {
+    title: 'Whether the unit of work is the one they think in',
+    probes: [
+      {
+        id: 'groupingMatch',
+        label:
+          "Did sgt's grouping of the history match what you considered to be one piece of work? Why or why not?",
+        note: 'Their disagreements are the data here. Follow up on every "not really".',
+      },
+      {
+        id: 'groupedDifferently',
+        label:
+          'Can you point to a case where sgt grouped the work in a way you would have organized differently?',
+      },
+      {
+        id: 'ownWork',
+        label:
+          'Think of a real change from one of your own projects that you might want to revisit later. What would you consider "the work" in that case?',
+      },
+    ],
+  },
+  {
+    title: 'What it implies for the design',
+    probes: [
+      {
+        id: 'shouldIdentify',
+        label:
+          'After using both setups, what do you think version control should let you identify and act on directly?',
+        note:
+          'Ask it exactly as written. It says "version control", not sgt, and offering sgt\'s framing turns the answer into agreement.',
+      },
+    ],
+  },
 ]
+
+const PROBES = PROBE_GROUPS.flatMap((g) => g.probes)
 
 export function ParticipantDetail({
   pid,
@@ -888,40 +969,85 @@ function Interview({ pid, adminEmail }: { pid: string; adminEmail: string }) {
     edit({ ...drafts, [probeId]: '' })
   }
 
-  return (
-    <div className="stack">
-      <Callout kind="accent" title="Ask the first probe before they compare the setups">
-        Both pilots answered it with something close to what sgt does, one of them from inside the
-        git half. That is worth protecting from contamination.
-      </Callout>
-      {PROBES.map((probe) => (
-        <div className="card" key={probe.id}>
-          <h3 style={{ marginBottom: '0.25rem' }}>{probe.label}</h3>
-          {probe.note && <div className="tiny" style={{ color: 'var(--warn)' }}>{probe.note}</div>}
-          <div className="stack tight" style={{ margin: '0.75rem 0' }}>
-            {(notes ?? [])
-              .filter((n) => n.probeId === probe.id)
-              .map((n) => (
-                <div key={n.id} className="card soft" style={{ padding: '0.5rem 0.75rem' }}>
-                  <div className="tiny faint">{new Date(n.ts).toLocaleTimeString()}</div>
-                  <div className="small" style={{ whiteSpace: 'pre-wrap' }}>{n.text}</div>
-                </div>
-              ))}
-          </div>
-          <textarea
-            value={drafts[probe.id] ?? ''}
-            placeholder="Type what they said. Enter with cmd/ctrl to save."
-            style={{ minHeight: '4rem' }}
-            onChange={(e) => edit({ ...drafts, [probe.id]: e.target.value })}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void add(probe.id)
-            }}
-          />
-          <button className="btn sm" style={{ marginTop: '0.5rem' }} onClick={() => void add(probe.id)}>
-            Save note
-          </button>
+  const taken = (probeId: string) => (notes ?? []).filter((n) => n.probeId === probeId)
+
+  // Notes filed against a question this guide no longer asks. Shown read-only
+  // rather than dropped: the guide has been rewritten twice and a conversation
+  // has no other record, so a note whose question went away would otherwise
+  // just stop being on screen without anything saying so.
+  const retired = [...new Set((notes ?? []).map((n) => n.probeId))]
+    .filter((id) => !PROBES.some((p) => p.id === id))
+    .sort()
+
+  const bubbles = (probeId: string) => (
+    <div className="stack tight" style={{ margin: '0.75rem 0' }}>
+      {taken(probeId).map((n) => (
+        <div key={n.id} className="card soft" style={{ padding: '0.5rem 0.75rem' }}>
+          <div className="tiny faint">{new Date(n.ts).toLocaleTimeString()}</div>
+          <div className="small" style={{ whiteSpace: 'pre-wrap' }}>{n.text}</div>
         </div>
       ))}
+    </div>
+  )
+
+  return (
+    <div className="stack loose">
+      <Callout kind="accent" title="Ask them in this order">
+        Ten questions in four movements: what they could find and understand, whether they could
+        reason about it and act on it safely, whether sgt's unit of work is the one they think in,
+        and only then what version control should do. The last one is asked about version control
+        and not about sgt on purpose -- once sgt's framing is on the table, agreeing with it is the
+        easy answer and the question stops telling us anything.
+      </Callout>
+      {PROBE_GROUPS.map((group) => (
+        <div className="stack" key={group.title}>
+          <h2 style={{ margin: 0, fontSize: '1rem' }}>{group.title}</h2>
+          {group.probes.map((probe) => (
+            <div className="card" key={probe.id}>
+              <h3 style={{ marginBottom: '0.25rem' }}>
+                <span className="faint" style={{ marginRight: '0.4rem' }}>
+                  {PROBES.findIndex((p) => p.id === probe.id) + 1}.
+                </span>
+                {probe.label}
+              </h3>
+              {probe.note && (
+                <div className="tiny" style={{ color: 'var(--warn)' }}>{probe.note}</div>
+              )}
+              {bubbles(probe.id)}
+              <textarea
+                value={drafts[probe.id] ?? ''}
+                placeholder="Type what they said. Enter with cmd/ctrl to save."
+                style={{ minHeight: '4rem' }}
+                onChange={(e) => edit({ ...drafts, [probe.id]: e.target.value })}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void add(probe.id)
+                }}
+              />
+              <button
+                className="btn sm"
+                style={{ marginTop: '0.5rem' }}
+                onClick={() => void add(probe.id)}
+              >
+                Save note
+              </button>
+            </div>
+          ))}
+        </div>
+      ))}
+      {retired.length > 0 && (
+        <div className="stack">
+          <h2 style={{ margin: 0, fontSize: '1rem' }}>Notes from earlier guides</h2>
+          <div className="tiny faint">
+            Filed against questions this guide no longer asks. Read-only.
+          </div>
+          {retired.map((id) => (
+            <div className="card" key={id}>
+              <h3 style={{ marginBottom: 0 }}>{id}</h3>
+              {bubbles(id)}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

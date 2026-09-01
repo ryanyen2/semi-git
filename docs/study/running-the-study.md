@@ -333,13 +333,24 @@ with no number anywhere, and one of the six runs the other way from the rest.
 That is the published instrument. If someone asks, point at the two words at the
 ends of the rule and say nothing else.
 
-### Interview scoring
+### Interview notes
 
-The **Interview** section holds the debrief probes with space for timestamped
-notes. Ask the fourth probe — "what did you wish you could ask the history?" —
-**before** they compare the two setups. In both pilots, participants answered
-this probe with something close to what sgt actually does, one of them from
-inside the git condition. That insight is worth protecting from contamination.
+The **Interview** section holds the ten questions of the guide
+(`protocol-v2.md` section 6.4) in four headed groups, each with space for
+timestamped notes. Cmd/ctrl-Enter saves one; drafts survive a refresh, because
+nothing else in the study records a conversation.
+
+Ask them in order. Questions 1 and 6 ask for a comparison, so the interview
+cannot start before both halves are done. Question 10 — "what do you think
+version control should let you identify and act on directly?" — is asked about
+version control and not about sgt: naming sgt's unit of work first makes
+agreement the easy answer, and in both pilots participants reached for something
+close to what sgt does on their own, which is only evidence if nobody put it
+there.
+
+Notes filed against an earlier guide's questions appear read-only at the bottom
+under "Notes from earlier guides", so a rewrite of the guide does not quietly
+take them off the screen.
 
 Coding uses two independent coders, with 25% double-coded and disagreements
 resolved through negotiated agreement. See `protocol.md` §7, "Qualitative
