@@ -10849,3 +10849,26 @@ probe now also greps tracked files for surviving markers. Only `<<<<<<<` and
 `>>>>>>>` are looked for: `=======` is an ordinary Markdown underline and would
 report every heading in the project's README. Verified quiet on all four clean
 bundles, and loud on the state that produced this note.
+
+### What the git arm actually costs on footfall
+
+`protocol-v2.md` §4 states the two arms' cost measured on `bikecount`, and says
+so. Walking footfall's git arm by hand gives the other project's numbers, which
+the paper will want if it quotes either.
+
+| | bikecount (as published) | footfall (measured 2026-09-01) |
+|---|---|---|
+| Which revert conflicts | the second | the **first** |
+| Where | `pages/monthly.py`, `pages/overview.py` | `metrics.py` |
+| Then | third blocked until resolved | second conflicts in `pages/monthly.py`, third in `README.md` |
+| Conflicts to resolve | 2 | 3 |
+| The judgement each time | keep the later date-window wording, drop the `events` import | same shape: keep `round_people` / `start, end`, drop the event code |
+
+Footfall is the harder of the two for the git arm: three conflicts rather than
+two, and the third is in prose rather than code, where "which side is right" has
+no test to settle it. Both still complete, and both arms end on byte-identical
+dashboards, which the build gate already refuses to ship without. Worth stating
+because the study counterbalances projects across conditions: a participant who
+draws footfall-under-git has a measurably longer stage 3 than one who draws
+bikecount-under-git, and that is a property of the testbed rather than of the
+tool being measured.
