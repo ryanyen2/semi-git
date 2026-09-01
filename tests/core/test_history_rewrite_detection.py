@@ -145,3 +145,55 @@ def test_next_action_ranks_resync_above_a_plain_save(repo):
     action = api.now_view(repo)["next_action"]
     assert action["kind"] == "resync"
     assert action["command"] == "sgt advanced resync"
+
+
+def test_saving_re_authored_work_after_a_backward_move_is_not_a_rewrite(repo):
+    """F131: re-authoring dropped content and saving it must not read as a backward move.
+
+    This is the study's stage 1, exactly. `./stage 1` checks the branch back to an earlier tag
+    (a backward move), resyncs so the ideal matches that history, then replays the agent's edits
+    into the working tree -- edits whose content is, by construction, the work that later landed
+    on the fuller branch. `sgt save` mines those edits, and `store.add` dedups each one into the
+    *existing* op with the same content, which carries the fuller branch's now-unreachable
+    provenance. `put` then witnesses the save by trailer, not by provenance: provenance can never
+    live inside its own witnessing commit, since writing it would change that commit's tree and
+    so its sha.
+
+    The result was that a save which worked perfectly ended with `sgt status` demanding `sgt
+    advanced resync` and `sgt now` reporting "git history moved backward" -- on the one action the
+    stage asks for, in every sgt-arm session. The remedy also undid the participant's save.
+    """
+    _reset_hard(repo, "HEAD~2")
+    lens.resync(repo)  # what `./stage 1` does after the checkout: ideal matches this history
+    assert lens.dropped_ideal_ops(repo) == []
+
+    # Replay the dropped commits' content by hand -- the same bytes, so `store.add` dedups into
+    # the ops mined from the commits the reset made unreachable.
+    (repo / "a.py").write_text("def foo():\n    return 3\n", encoding="utf-8")
+    (repo / "m2.py").write_text("def m2():\n    return 2\n", encoding="utf-8")
+    (repo / "m3.py").write_text("def m3():\n    return 3\n", encoding="utf-8")
+
+    from sgt.cli.porcelain import save
+    assert save(str(repo), message="record the replayed work")["saved"] is True
+
+    view = api.status_view(repo)
+    assert lens.dropped_ideal_ops(repo) == [], "the save's own commit witnesses these ops by trailer"
+    assert view["sync_status"]["history_rewritten"] is False
+    assert not view["drift"]["any"], "the save absorbed the replayed edits"
+
+
+def test_a_backward_move_past_an_sgt_commit_is_still_detected(repo):
+    """The guard on the fix above: honouring the tip's trailers must not blunt the real check.
+
+    After a genuine backward move the tip is an *older* commit, whose trailers name the ideal as it
+    stood there -- so ops recorded after it are still uncovered and still reported. Pinned so a
+    future simplification of the trailer fallback into "anything the ideal names is live" fails
+    here instead of silently never firing again."""
+    from sgt.cli.porcelain import save
+    (repo / "a.py").write_text("def foo():\n    return 4\n", encoding="utf-8")
+    assert save(str(repo), message="an sgt save, so the tip carries trailers")["saved"] is True
+    _reset_hard(repo, "HEAD~2")
+    lens.get(repo)
+
+    assert lens.dropped_ideal_ops(repo), "ops recorded after the new tip are still dropped"
+    assert lens.sync_status(repo)["history_rewritten"] is True

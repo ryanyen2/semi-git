@@ -386,8 +386,11 @@ Run the command below first. It puts the project into this stage's starting stat
       //
       // Nothing is recorded yet at this point in the stage, and sgt has very
       // little to say about an unrecorded change: `sgt now` reports the whole
-      // eleven-file replay as "1 edit(s) in 1 feature", and `sgt status` lists
-      // seven of the eleven files. A participant told to read the change with
+      // eleven-file replay as "1 edit(s) in 5 features" (symbol-granular since
+      // the save-preview fix; it said "1 feature" when this note was written),
+      // and `sgt status` lists seven of the eleven files -- the four it leaves
+      // out are the ones whose edits its ideal already reproduces byte-for-byte.
+      // A participant told to read the change with
       // those alone is stuck, and being stuck is not the difference this study
       // is trying to measure -- the difference is what each setup RECORDS, one
       // line further down. Both arms have git, both stage bodies say "in the

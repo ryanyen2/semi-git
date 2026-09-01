@@ -396,11 +396,15 @@ def map_lines(
             trow = Text(" " * gutter)
             trow.append("  ")
             trow.append("◆ ", style=HEAD)
-            tname = fit(t["label"], name_w - 2)
-            trow.append(tname.ljust(name_w - 2), style=BODY)
-            if id_w:
-                trow.append(" " * pad)
-                trow.append(" " * id_w)
+            # A ◆ row carries no id, so its id column is blank -- give those columns to the name.
+            # This name is the one a reader has to be able to TYPE: `sgt log --focus "<name>"`,
+            # `sgt revert "<name>"` and `sgt restore "<name>"` all take it, and a ◆ has no id to
+            # fall back to the way a lane does. Truncated to the lane name width it came out as
+            # "Event Day Handl…", and that prefix does not resolve -- it offers a different,
+            # plausible feature instead. Same total prefix width, so the bar still starts in the
+            # column the lanes above align to.
+            tname_w = name_w - 2 + (pad + id_w if id_w else 0)
+            trow.append(fit(t["label"], tname_w).ljust(tname_w), style=BODY)
             trow.append(" " * pad)
             # The cells paint in the hue of the LANE the work landed on at that moment, so the
             # row is read by colour-matching against the lanes above -- a grey strip carried no
@@ -889,7 +893,18 @@ def summary_lines(view: dict, *, color: bool = True, full: bool = False,
             # says how much it is a sample OF.
             sample = ", ".join(paths[:head_n])
             more = "" if len(paths) <= head_n else f"  +{len(paths) - head_n} more (--full)"
-            emit(con, Text("     ", style=MUTE).append(fit(sample + more, width - 6), style=MUTE))
+            if full:
+                # `--full` exists to answer "which ones, all of them" -- and it did widen the sample
+                # to every path, then handed the whole join to `fit`, which clipped it back to one
+                # terminal line. So `--full` printed the same truncated line as the default, minus
+                # the "+N more" that at least admitted it was a sample: the flag looked answered and
+                # was not. Wrap instead of clipping; the default stays a short single line, which is
+                # what keeps three hundred paths out of an unasked-for summary.
+                import textwrap
+                for chunk in textwrap.wrap(sample, max(20, width - 6)) or [""]:
+                    emit(con, Text("     ", style=MUTE).append(chunk, style=MUTE))
+            else:
+                emit(con, Text("     ", style=MUTE).append(fit(sample + more, width - 6), style=MUTE))
         # A state with TWO exits names both. The staged rewrite is the case: `commit` lands the
         # candidate and `unstage` abandons it, and this line is the only place a terminal user
         # learns the state exists at all -- so offering one of the two exits leaves them stuck

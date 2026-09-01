@@ -211,18 +211,38 @@ def _store_digest(ops) -> str:
     return h.hexdigest()
 
 
-def _sync_fingerprint(gb: GitBinding, head: str, ideal_entry) -> str | None:
+# Folded into the no-op gate's fingerprint, and bumped when a *writer* bug means entries already on
+# disk cannot be trusted -- the same "old entries compare unequal and take one extra sync, no
+# migration" trick the `store` key below uses. `MINER_VERSION` is the wrong lever for that: its
+# contract (R12) is mining/untangling/identity changes, and bumping it re-mines all history.
+# "2": entries written before F130 were keyed to a *second* reading of the working tree taken at write
+# time, so a repo wedged by that race (`status` reports drift, `save` says "nothing to save") would
+# otherwise stay wedged after upgrading -- the fix stops new poisoning, only eviction heals the old.
+_FINGERPRINT_SCHEMA = "2"
+
+
+def _sync_fingerprint(gb: GitBinding, head: str, ideal_entry, digest: str | None = None,
+                     ) -> str | None:
     """The fingerprint the no-op gate compares. None (git couldn't compute the dirty digest) means
     'don't gate -- mine'. `ideal_entry` is the persisted ideal id-list for this ref, so an explicit
     ideal edit (revert/pin, U8) -- which moves neither HEAD nor the tree -- still changes the
     fingerprint and forces a fresh sync. `MINER_VERSION` is folded in so upgrading sgt invalidates
     the memo: a gate that keeps serving a prior version's mining result pins its bugs in place --
     the stale-anchor wedge (2026-08-09) survived its own fix that way until the cache was
-    hand-cleared."""
-    digest = gb.dirty_source_digest()
+    hand-cleared.
+
+    `digest`, if given, is a working-tree digest the caller already sampled, used instead of reading
+    the tree again. Writers must pass it (F130): the entry a sync stores is a claim about the tree it
+    *mined*, and re-reading the tree seconds later to key that claim attributes the result to
+    whatever happens to be on disk by then. Readers pass nothing -- they are asking about the tree
+    as it stands now, which is exactly what a fresh sample answers."""
+    if digest is None:
+        digest = gb.dirty_source_digest()
     if digest is None:
         return None
     h = hashlib.sha256()
+    h.update(_FINGERPRINT_SCHEMA.encode())
+    h.update(b"\x00")
     h.update(head.encode())
     h.update(b"\x00")
     h.update(digest.encode())
@@ -808,6 +828,16 @@ def _sync(repo: Path, treat_as_root: str | None = None) -> Ideal:
     # (F26): its conflict-marker bytes would become a permanent op. Skip the dirty pass entirely
     # while one is live -- reads still return the committed ideal, and the resolved tree is mined on
     # the next contact once the operation finishes. `save` refuses outright with a fix-it message.
+    #
+    # Sample the tree digest *first*, and key this sync's cache entry to it below rather than to a
+    # second reading taken when the entry is written (F130). The two readings are a whole sync apart
+    # -- seconds on a real repo -- and an edit landing in that window was cached as "this dirty tree
+    # mines to <the committed-only ids>", which the gate then served on every later contact: `status`
+    # reported drift, `save` answered "nothing to save", and only a *further* edit could move the
+    # fingerprint and break the loop. Taking the digest before `has_dirty_source` makes every
+    # interleaving fail safe: the entry can only ever describe a tree at or before the one that was
+    # mined, so a tree that moved mid-sync misses the gate next time and is mined, never skipped.
+    dirty_digest_at_mine = gb.dirty_source_digest()
     include_dirty = gb.has_dirty_source() and merge_in_progress(gb) is None
 
     # (1, 2) Decide this call's one chunk (KTD-1/KTD-2). Each branch below mines a single,
@@ -1071,7 +1101,7 @@ def _sync(repo: Path, treat_as_root: str | None = None) -> Ideal:
     # caching mid-backfill would let the gate skip the remaining backward chunks. Recompute the
     # fingerprint against the *new* ideal entry (this sync may have changed it).
     if treat_as_root is None and new_witness == head and reached_genesis:
-        fp = _sync_fingerprint(gb, head, sorted(committed_ids))
+        fp = _sync_fingerprint(gb, head, sorted(committed_ids), digest=dirty_digest_at_mine)
         if fp is not None:
             table = _load_sync_cache(repo)
             table[key] = {"fp": fp, "ids": sorted(result.op_ids),
@@ -1139,12 +1169,28 @@ def dropped_ideal_ops(repo: str | Path, ref: str | None = None) -> list[str]:
     reachable = set(gb.commit_shas())
     if not reachable:
         return []
+    # F131: an op re-authored by hand and then saved dedups, in `store.add`, into the *existing* op
+    # with the same content -- inheriting that op's provenance, which after a backward checkout can
+    # name only unreachable commits. Its real witness is the commit `put` just wrote, and `put`
+    # records that by trailer rather than by provenance (provenance can never live inside its own
+    # witnessing commit: writing it would change that commit's tree, hence its sha). So a live,
+    # just-saved op looks exactly like a dropped one here.
+    #
+    # The tip's `Sgt-Op:` trailers are the tree-witnessed record of which ops the tip embodies, and
+    # sgt writes the *whole* ideal into every commit it makes, so membership there is proof of life.
+    # Same fallback `opindex.earliest_commit_sha` already uses for the empty-provenance case, and
+    # the same rung `_ideal_from_ref`'s recovery ladder trusts first. This does not blunt the check:
+    # after a genuine backward move the tip is an older commit whose trailers name the older ideal,
+    # so ops beyond it are still uncovered and still reported.
+    witnessed_by_tip = _recorded_ideal_at(gb, key) or frozenset()
     by_id = {op.id: op for op in opindex.index_ops(repo)}
     dropped = []
     for op_id in recorded:
         op = by_id.get(op_id)
         if op is None or not op.provenance:
             continue  # unknown, or committed-by-trailer with no provenance yet -- not evidence
+        if op_id in witnessed_by_tip:
+            continue  # a reachable commit records embodying it -- live, whatever provenance says
         if not set(op.provenance) & reachable:
             dropped.append(op_id)
     return sorted(dropped)
