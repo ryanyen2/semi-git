@@ -463,13 +463,22 @@ function classifyAffected(result, targetId) {
 // the body of the car = what will be true. Dependencies included for free: a removed op in
 // another feature's chapter marks THAT car, which is "the dependencies also come out", in situ.
 // Pure (no DOM); the painter half applies classes.
-function classifyCarImpact(removedIds, addedIds, segments, targetOpIds) {
+function classifyCarImpact(removedIds, addedIds, segments, targetOpIds, verb) {
   const removed = new Set(removedIds || []);
-  // The op-set the user actually NAMED (emit's `target_ops`) counts as leaving even when the
-  // mechanical edit rewrites some of it in place instead of dropping ops -- `removed` alone can
-  // be a subset (or empty) there, and the asked-about chapter must never preview as untouched.
-  for (const id of targetOpIds || []) removed.add(id);
   const added = new Set(addedIds || []);
+  // The op-set the user actually NAMED (emit's `target_ops`) is forced into the direction the verb
+  // moves it, because the mechanical edit can rewrite some of it in place instead of dropping or
+  // adding ops -- `removed`/`added` alone can be a subset (or empty) there, and the asked-about
+  // chapter must never preview as untouched.
+  //
+  // The direction is the verb's, and it used to be hardcoded to `removed`. On a RESTORE that put
+  // the op-set being brought back into the leaving set, so the chapter the user asked to restore
+  // previewed as draining to hollow -- which is exactly what a revert of it would look like. Both
+  // verbs drew the same picture on the one car the user was looking at, and the picture was the
+  // wrong one. (`gcar-preview-in` and `-out` have always been distinct: 0.55 fill with a pulse
+  // versus 0.12 and dashed. Nothing was wrong with the paint; the classification never asked which
+  // way the edit went.)
+  for (const id of targetOpIds || []) (verb === "restore" ? added : removed).add(id);
   if (!removed.size && !added.size) return [];
   const out = [];
   for (const seg of segments || []) {
@@ -3615,9 +3624,10 @@ function changeMeter(added, removed, width) {
         // `staged.targetId` is already the feature id; `res.target` for a chapter is the raw
         // `<f>@<n>` ref, which matches no row.
         const focus = res.focus;
-        if (focus && focus.nodes && focus.nodes.length) enterPreviewMode(focus, staged.targetId);
+        if (focus && focus.nodes && focus.nodes.length) enterPreviewMode(focus, staged.targetId, staged.verb);
         else paintClosure(classifyAffected(res, staged.targetId));
-        paintCarPreview(classifyCarImpact(res.removed, res.added, segmentsOf(compose), res.target_ops));
+        paintCarPreview(classifyCarImpact(res.removed, res.added, segmentsOf(compose),
+                                          res.target_ops, staged.verb));
       }
       renderConfirmBar();
     });
@@ -3644,7 +3654,8 @@ function changeMeter(added, removed, width) {
       staged.blastCount = blast.size;
       renderConfirmBar();
       // Each answer adds its dependency cars in other lanes -- the blast firming up chunk by chunk.
-      paintCarPreview(classifyCarImpact(res.removed, res.added, segmentsOf(compose), res.target_ops));
+      paintCarPreview(classifyCarImpact(res.removed, res.added, segmentsOf(compose),
+                                        res.target_ops, staged.verb));
       for (const f of blast) {
         const row = findRow(f);
         if (row) row.classList.add("ghost-blast");
@@ -3881,13 +3892,14 @@ function changeMeter(added, removed, width) {
       // never miss every lane and list the acted-on feature among its own collateral.
       const targetRow = String(res.target || args[0]).split("@")[0];
       if (focus && focus.nodes && focus.nodes.length) {
-        enterPreviewMode(focus, targetRow);
+        enterPreviewMode(focus, targetRow, staged.verb);
       } else {
         paintClosure(classifyAffected(res, targetRow));
       }
       // The chunk-grain layer over the field treatment: the exact cars this verb changes, drawn
       // as the state they will end in.
-      paintCarPreview(classifyCarImpact(res.removed, res.added, segmentsOf(compose), res.target_ops));
+      paintCarPreview(classifyCarImpact(res.removed, res.added, segmentsOf(compose),
+                                        res.target_ops, verb));
     });
   }
 
@@ -4146,11 +4158,12 @@ function changeMeter(added, removed, width) {
       const resolved = String(res.target || msg.ref).split("@")[0];
       const focus = res.focus;
       if (!armedVerb && focus && focus.nodes && focus.nodes.length) {
-        enterPreviewMode(focus, resolved);
+        enterPreviewMode(focus, resolved, msg.verb);
       } else {
         paintClosure(classifyAffected(res, resolved));
       }
-      paintCarPreview(classifyCarImpact(res.removed, res.added, segmentsOf(compose)));
+      paintCarPreview(classifyCarImpact(res.removed, res.added, segmentsOf(compose),
+                                        res.target_ops, msg.verb));
     });
 
     if (msg.state === "done") {
@@ -5672,7 +5685,7 @@ function changeMeter(added, removed, width) {
   // reads as "these features shrink, everything else is context" instead of an op-id wall. The morph
   // (a fully-emptied lane fading to a dashed ghost, a gaining lane landing) is CSS; this only sets
   // the classes. Torn down by clearGhosts (the same mouseleave path the ghosts use).
-  function enterPreviewMode(focus, targetId) {
+  function enterPreviewMode(focus, targetId, verb) {
     const svg = rail.querySelector("svg");
     if (!svg) return;
     exitPreviewMode();
@@ -5688,7 +5701,13 @@ function changeMeter(added, removed, width) {
       lit.push(n.feature_id);
       row.classList.add("preview-lit");
       if (n.role === "target") {
-        row.classList.add("preview-target");
+        // The row the user clicked, and until now the ONE row with no direction on it: `target`
+        // short-circuited before either morph, so the lane being restored and the lane being
+        // reverted were painted identically -- a neutral outline and an `N → M` count. It is the
+        // row being looked at, so it is the row that most has to say which way this goes.
+        row.classList.add("preview-target", verb === "restore" ? "preview-gaining" : "preview-losing");
+        if (n.ops_after > n.ops_before) row.classList.add("preview-arriving");
+        else if (n.ops_after === 0) row.classList.add("preview-leaving");
       } else if (n.role === "foundation") {
         row.classList.add("preview-foundation");
         if (n.ops_after > n.ops_before) row.classList.add("preview-arriving"); // genuinely gains
@@ -5718,7 +5737,7 @@ function changeMeter(added, removed, width) {
     rail.querySelectorAll(".preview-lit").forEach((el) =>
       el.classList.remove(
         "preview-lit", "preview-target", "preview-blast", "preview-foundation",
-        "preview-leaving", "preview-arriving",
+        "preview-leaving", "preview-arriving", "preview-gaining", "preview-losing",
       ));
     rail.querySelectorAll(".gbar-count.preview-delta").forEach((c) => {
       if (c.hasAttribute("data-orig")) {
