@@ -213,6 +213,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     <div id="previewContext" class="preview-context-pill" hidden></div>
     <div id="previewRefusal" class="preview-refusal-pill" hidden></div>
     <div id="armedBanner" class="armed-banner" hidden></div>
+    <div id="themeBanner" class="theme-banner" hidden></div>
     <div id="confirmBar" class="confirm-bar" hidden></div>
     <div id="inspector"></div>
   </div>
