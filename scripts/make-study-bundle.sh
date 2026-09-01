@@ -219,6 +219,32 @@ WRAPPER
     # pristine copy, and handed to one participant who cannot rebuild it; a
     # minute buys a graph that is a function of the code alone, which is the same
     # argument the wheel-provenance check above makes.
+    # A provenance-less op is working-tree state from the BUILD machine -- prep's own stage
+    # flips mine the dirty tree on contact -- never part of the replayed history. Left in the
+    # store it forks the committed chain, and resync's reduction then parks the fork and drops
+    # committed producers out of the recorded ideal: the participant's stage-1 `sgt save` said
+    # "nothing to save" over eleven modified files (2026-08-31). Strip them BEFORE the rebuild,
+    # so nothing downstream (tree, op_leaf, index, pristine tar) ever references one.
+    echo "  Stripping leftover working-tree ops from the store."
+    "$staging/toolenv/bin/python" - "$staging/work" <<'PY'
+import json, pathlib, sys
+ops = pathlib.Path(sys.argv[1]) / ".sgt" / "ops"
+dropped = 0
+if ops.is_dir():
+    for f in ops.iterdir():
+        if not f.is_file() or f.name.startswith("."):
+            continue
+        try:
+            body = json.loads(f.read_text())
+        except Exception:
+            continue
+        if not body.get("provenance"):
+            f.unlink()
+            dropped += 1
+print(f"  dropped {dropped} pending op(s)")
+PY
+    (cd "$staging/work" && "$staging/bin/sgt" advanced resync) >/dev/null 2>&1 || true
+
     echo "  Rebuilding the history view. About a minute."
     refresh_log="$staging/.refresh.log"
     (
@@ -413,6 +439,73 @@ tar czf "$OUT/$name.tgz" -C "$(dirname "$staging")" \
     --exclude=".DS_Store" \
     --exclude=".pytest_cache" \
     "$name"
+
+# ---------------------------------------------------------------------------
+# The rehearsal gate: the packed bundle must survive its own study.
+# ---------------------------------------------------------------------------
+#
+# Three different silent-success bugs shipped through this pipeline in one week
+# -- a pristine tar that restored a different tree than the bundle shipped, a
+# restore that refused on a fork, and a stage-1 save that said "nothing to save"
+# over eleven modified files -- and every one of them was only caught by a
+# person running the stages. So the build now runs them itself, on the exact
+# tgz that would be served, and refuses to finish if any stage's own success
+# check fails. Costs about a minute; the alternative costs a participant.
+if [ "$condition" = sgt ]; then
+    echo "  Rehearsing the stages on the packed bundle."
+    rehearsal="$(mktemp -d)"
+    tar -xzf "$OUT/$name.tgz" -C "$rehearsal"
+    (
+        set -euo pipefail
+        cd "$rehearsal/$name/work"
+        export PATH="$staging/toolenv/bin:$PATH"
+        theme="$("$staging/toolenv/bin/python" - <<'PY'
+import json, pathlib
+squash = lambda t: "".join(c for c in t.casefold() if c.isalnum())
+for v in json.loads(pathlib.Path(".sgt/intent/themes.json").read_text()).get("data", {}).values():
+    if isinstance(v, dict) and "eventday" in squash(v.get("label", "")):
+        print(v["label"]); break
+PY
+)"
+        [ -n "$theme" ] || { echo "  REHEARSAL: no event-day theme in the bundle" >&2; exit 1; }
+
+        ./stage 1 >/dev/null
+        save_out="$(sgt save -m "rehearsal" --no-color 2>&1)"
+        printf '%s\n' "$save_out" | grep -q "✓ save" || {
+            echo "  REHEARSAL: stage-1 save recorded nothing:" >&2
+            printf '%s\n' "$save_out" | head -3 >&2
+            exit 1
+        }
+
+        ./stage 3 >/dev/null
+        revert_out="$(sgt revert "$theme" --yes 2>&1)" || {
+            echo "  REHEARSAL: stage-3 revert refused:" >&2
+            printf '%s\n' "$revert_out" | tail -3 >&2
+            exit 1
+        }
+        check3="$(./check 3 2>&1)"
+        printf '%s\n' "$check3" | grep -q "those match" || {
+            echo "  REHEARSAL: check 3 does not match after revert:" >&2
+            printf '%s\n' "$check3" | sed 's/^/    /' >&2
+            exit 1
+        }
+
+        ./stage 4 >/dev/null
+        restore_out="$(sgt restore "$theme" --yes 2>&1)" || {
+            echo "  REHEARSAL: stage-4 restore refused:" >&2
+            printf '%s\n' "$restore_out" | tail -3 >&2
+            exit 1
+        }
+        check4="$(./check 4 2>&1)"
+        printf '%s\n' "$check4" | grep -q "those match" || {
+            echo "  REHEARSAL: check 4 does not match after restore:" >&2
+            printf '%s\n' "$check4" | sed 's/^/    /' >&2
+            exit 1
+        }
+    ) || { echo "REHEARSAL FAILED -- $OUT/$name.tgz is not fit to hand out"; rm -f "$OUT/$name.tgz"; rm -rf "$rehearsal"; exit 1; }
+    rm -rf "$rehearsal"
+    echo "  Rehearsal passed: record, remove, check, restore, check."
+fi
 
 echo
 echo "Bundle: $OUT/$name.tgz  ($(du -h "$OUT/$name.tgz" | cut -f1))"
