@@ -546,13 +546,18 @@ NEWEST
             printf '%s\n' "$map_out" | head -5 >&2
             exit 1
         }
-        find_out="$(sgt find "the bit that works out the averages" --no-color 2>&1)"
+        # No `--no-color` on these two: `show` and `find` do not take it, and the
+        # flag turns the whole call into an argparse usage error whose output
+        # happens to contain neither of the words grepped for below -- so the
+        # gate fails on a bundle that is fine. The greps match plain words that
+        # no colour code sits inside.
+        find_out="$(sgt find "the bit that works out the averages" 2>&1)"
         if printf '%s\n' "$find_out" | grep -q "matched on words"; then
             echo "  REHEARSAL: sgt find fell back to word matching -- the search index has no" >&2
             echo "  embeddings, so stages 1 and 2 both lose a command they are told to use." >&2
             exit 1
         fi
-        show_out="$(sgt show "$newest" --no-color 2>&1)" || true
+        show_out="$(sgt show "$newest" 2>&1)" || true
         printf '%s\n' "$show_out" | grep -q "edits" || {
             echo "  REHEARSAL: sgt show cannot resolve stage 1's target by name ($newest):" >&2
             printf '%s\n' "$show_out" | head -3 >&2
