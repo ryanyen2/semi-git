@@ -773,18 +773,24 @@ def theme_spans(themes: dict, map_view: dict, grid_view: dict) -> list[dict]:
             continue
         feats: set[str] = set()
         per: dict[int, int] = {}
+        feat_at: dict[int, str] = {}  # dominant member lane per commit -- the row paints in ITS hue
+        best_at: dict[int, int] = {}
         for sha in t.get("atom_shas", []):
             idx = idx_of.get(sha)
             if idx is None:
                 continue
             for cell in cells_by_idx.get(idx, []):
                 feats.add(cell["feature_id"])
-                per[idx] = per.get(idx, 0) + (cell.get("op_count") or len(cell.get("op_ids") or ()))
+                n = cell.get("op_count") or len(cell.get("op_ids") or ())
+                per[idx] = per.get(idx, 0) + n
+                if n >= best_at.get(idx, 0):
+                    best_at[idx] = n
+                    feat_at[idx] = cell["feature_id"]
         if len(feats) < 2:
             continue
         out.append({"label": label, "feature_ids": feats,
                     "feature_labels": sorted(labels.get(f, f) for f in feats),
-                    "per_commit": per, "op_count": sum(per.values())})
+                    "per_commit": per, "feature_at": feat_at, "op_count": sum(per.values())})
     out.sort(key=lambda t: (-len(t["feature_ids"]), t["label"]))
     return out
 

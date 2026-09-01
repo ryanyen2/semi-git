@@ -102,7 +102,7 @@ The **workbench** panel at the bottom is the history as a map:
 - Click a row and its card lists the **files** that feature's work touches — `pages/<name>.py` is the page of the same name, so the card answers "which part of the dashboard is this" directly.
 - The blocks along a row are its **checkpoints**. Hover one to see its name; click it to select it.
 - A hollow block is work that was reverted. A dashed block right of the "now" line is work on disk that has not been saved yet.
-- A thin dotted vertical line links blocks that belong to one piece of work across several rows. Hover it for the name; click it to see (and revert) the whole thing.
+- A small ◆ on the time axis marks one piece of work that landed on several rows. Hover it and its blocks light up together; click it to see (and revert) the whole thing.
 
 You can click features and checkpoints to inspect them, and right-click for actions such as **Revert** and **Restore**.
 

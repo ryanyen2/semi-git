@@ -191,13 +191,13 @@ case "$stage" in
         label="$(theme_label)"
         echo "    ${label:-Event-Day Handling}"
         # One task's work, landed across several features. `sgt log` draws it as
-        # a ◆ row under the lanes and the workbench links its checkpoints with a
-        # vertical spine -- the name above is IN the picture, not in a separate
-        # listing the participant has to map back by hand.
+        # a ◆ row under the lanes (cells in the touched lanes' own colours) and
+        # the workbench marks it with a ◆ on the time axis -- the name above is
+        # IN the picture, not in a separate listing to map back by hand.
         echo "${dim}    That is one piece of work that touched several features."
-        echo "    \`sgt log\` draws it as a ◆ row under the lanes; the workbench"
-        echo "    links its blocks with a vertical line. Revert and restore both"
-        echo "    take that name exactly as it is written above.${off}"
+        echo "    \`sgt log\` draws it as a ◆ row under the lanes; in the workbench"
+        echo "    it is a ◆ on the time axis — click it to see it. Revert and"
+        echo "    restore both take that name exactly as it is written above.${off}"
     else
         echo "${dim}    three commits, oldest first:${off}"
         removed_commits | sed 's/^/    /'

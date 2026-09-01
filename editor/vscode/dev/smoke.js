@@ -349,9 +349,10 @@ try {
           byId.rail.querySelectorAll(".glane-quiet").length === 0);
   }
 
-  // Cross-feature spines: the spanning work draws IN the graph as one linked object. Folds are
-  // expanded first so both member lanes are visible rows (a spine links visible lanes only).
-  console.log("cross-feature spines:");
+  // Cross-feature work: by default each spanning item is ONE ◆ marker on the time axis (no
+  // always-on link lines -- several at once drew spaghetti); hovering rings its member chapters
+  // and clicking enters the focus, where exactly one spine draws.
+  console.log("cross-feature markers:");
   let unfoldGuard = 0;
   for (;;) {
     const metaFold = byId.rail.querySelectorAll(".glane").find((n) => {
@@ -361,22 +362,35 @@ try {
     if (!metaFold || !metaFold._listeners.click || unfoldGuard++ > 10) break;
     metaFold._listeners.click.forEach((fn) => fn({}));
   }
-  const spines = byId.rail.querySelectorAll(".theme-spine");
-  check("the spanning work draws as a spine in the graph", spines.length > 0, `${spines.length} spines`);
-  if (spines.length) {
-    const spine = spines[0];
-    check("the spine links at least two lanes",
-          spine.querySelectorAll(".theme-spine-dot").length >= 2,
-          `${spine.querySelectorAll(".theme-spine-dot").length} dots`);
-    check("the spine carries its name", spine.querySelectorAll(".theme-spine-label").length === 1);
-    if (spine._listeners.click) {
-      spine._listeners.click.forEach((fn) => fn({ stopPropagation() {} }));
-      check("clicking the spine enters the focus",
-            byId.themeBanner && byId.themeBanner.hidden === false);
-      const spineClear = byId.themeBanner.querySelectorAll("button");
-      const spineCb = spineClear[spineClear.length - 1];
-      if (spineCb && spineCb._listeners.click) spineCb._listeners.click.forEach((fn) => fn({}));
-    }
+  const marks = byId.rail.querySelectorAll(".theme-mark");
+  check("spanning work sits on the axis as a ◆ marker", marks.length > 0, `${marks.length} markers`);
+  check("no spine draws before anyone asks", byId.rail.querySelectorAll(".theme-spine").length === 0);
+  const mark = marks[0];
+  if (mark && mark._listeners.mouseenter) {
+    mark._listeners.mouseenter.forEach((fn) => fn({}));
+    check("hovering the marker draws its one spine",
+          byId.rail.querySelectorAll(".theme-spine").length === 1);
+    check("hovering rings the member chapters",
+          byId.rail.querySelectorAll(".gcar-theme-member").length >= 2,
+          `${byId.rail.querySelectorAll(".gcar-theme-member").length} ringed`);
+    mark._listeners.mouseleave.forEach((fn) => fn({}));
+    check("leaving retracts the spine",
+          byId.rail.querySelectorAll(".theme-spine").length === 0);
+  }
+  if (mark && mark._listeners.click) {
+    mark._listeners.click.forEach((fn) => fn({ stopPropagation() {} }));
+    check("clicking the marker enters the focus",
+          byId.themeBanner && byId.themeBanner.hidden === false);
+    const focusedSpines = byId.rail.querySelectorAll(".theme-spine-focused");
+    check("the focused work draws exactly one spine", focusedSpines.length === 1,
+          `${focusedSpines.length} spines`);
+    check("its dots mark at least two lanes",
+          focusedSpines.length > 0 && focusedSpines[0].querySelectorAll(".theme-spine-dot").length >= 2);
+    const markClear = byId.themeBanner.querySelectorAll("button");
+    const mcb = markClear[markClear.length - 1];
+    if (mcb && mcb._listeners.click) mcb._listeners.click.forEach((fn) => fn({}));
+    check("clearing the focus removes the spine",
+          byId.rail.querySelectorAll(".theme-spine-focused").length === 0);
   }
 
   // Selecting a feature: simulate a click on the first feature lane -> inspector populates.
