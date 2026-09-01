@@ -3307,7 +3307,7 @@ function changeMeter(added, removed, width) {
     const box = document.getElementById("findBox");
     const query = box ? box.value.trim() : "";
     if (query) {
-      const hits = localFindHits(query, map.nodes, checkpointsByFeature, 500,
+      const hits = localFindHits(query, (map || {}).nodes, checkpointsByFeature, 500,
                                  ((compose || {}).intent || {}).themes, (grid || {}).commits);
       const ids = new Set();
       for (const h of hits) {
@@ -3336,6 +3336,10 @@ function changeMeter(added, removed, width) {
     const lens = lensState();
     renderLensBanner(lens);
     if (!svg) return;
+    // A held revert/restore preview owns the field: its dim is deeper and says something else
+    // ("these lanes change"), and stacking a lens under it multiplies two opacities into a floor
+    // nothing can be read at. The preview's own teardown re-applies whatever lens was pinned.
+    if (previewActive) return;
     if (!lens) {
       svg.classList.remove("focus");
       svg.querySelectorAll(".lit, .ctx").forEach((el) => el.classList.remove("lit", "ctx"));
