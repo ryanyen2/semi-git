@@ -224,9 +224,17 @@ else
     mkdir -p "$profile/extensions"
     printf '%s\n' "$EDITOR_CLI" > "$stamp"
 
+    # Failures land in a log the facilitator can actually read. The install used to discard
+    # stderr entirely, so "Could not install ms-python.python" gave a name and no reason --
+    # unanswerable over a participant's shoulder. (On a healthy marketplace these pins install;
+    # the observed failures were transient downloads, which is also why install_ext retries once.)
+    ext_log="$here/install-extensions.log"
+    : > "$ext_log"
     install_ext() {
         "$EDITOR_CLI" --user-data-dir "$profile" --extensions-dir "$profile/extensions" \
-            --install-extension "$1" --force >/dev/null 2>&1
+            --install-extension "$1" --force >>"$ext_log" 2>&1 \
+        || "$EDITOR_CLI" --user-data-dir "$profile" --extensions-dir "$profile/extensions" \
+            --install-extension "$1" --force >>"$ext_log" 2>&1
     }
 
     # Into this folder only. The participant's own editor, their own extensions
@@ -268,14 +276,29 @@ PYEOF
         done
         # shellcheck disable=SC2086
         if "$EDITOR_CLI" --user-data-dir "$profile" --extensions-dir "$profile/extensions" \
-            $batched --force >/dev/null 2>&1; then
+            $batched --force >>"$ext_log" 2>&1; then
             note "Done."
         else
             note "Retrying one at a time."
             for ext in $exts; do
-                install_ext "$ext" || note "Could not install $ext. Tell your facilitator."
+                install_ext "$ext" || true
             done
             note "Done."
+        fi
+        # What matters is what is INSTALLED, not which install command exited zero: the
+        # marketplace resolves dependencies, so ms-python.python arriving as pylance's dependency
+        # is fine even when its own install call failed. Verify by listing, and only name what is
+        # really missing.
+        installed="$("$EDITOR_CLI" --user-data-dir "$profile" --extensions-dir "$profile/extensions" \
+            --list-extensions 2>/dev/null || true)"
+        missing=""
+        for ext in $exts; do
+            id="${ext%@*}"
+            printf '%s\n' "$installed" | grep -qix "$id" || missing="$missing $id"
+        done
+        if [ -n "$missing" ]; then
+            note "Could not install:$missing"
+            note "Tell your facilitator — the reason is in $ext_log"
         fi
     fi
 fi

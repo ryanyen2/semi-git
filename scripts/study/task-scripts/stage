@@ -35,6 +35,25 @@ bold=$'\033[1m'; dim=$'\033[2m'; off=$'\033[0m'
 py="$(command -v python3)"; [ -x .venv/bin/python ] && py=.venv/bin/python
 have_sgt() { [ -d .sgt ] && command -v sgt >/dev/null 2>&1; }
 
+# A dashboard server left over from an earlier stage (or an earlier session --
+# closing the editor does not always take the process with it) still holds
+# port 8000, and the next `python -m <pkg>.server` dies with "Address already
+# in use". Every stage starts here, so this is the one place that can clean it
+# up for everyone. Only python processes are touched -- the port is not ours to
+# clear if something else on the participant's machine happens to hold it, and
+# in that case the honest move is to say so rather than kill it.
+for pid in $(lsof -ti tcp:8000 -sTCP:LISTEN 2>/dev/null || true); do
+    if ps -p "$pid" -o comm= 2>/dev/null | grep -qi python; then
+        echo "${dim}Stopping the dashboard server left running from before.${off}"
+        kill "$pid" 2>/dev/null || true
+        sleep 0.3
+        kill -9 "$pid" 2>/dev/null || true
+    else
+        echo "${dim}Port 8000 is held by another program on this machine — the dashboard"
+        echo "will not start until it is closed. Tell your facilitator.${off}"
+    fi
+done
+
 # The python package this dashboard lives in -- `bikecount` or `footfall`. It is
 # the one top-level directory holding a metrics module, and reading it here is
 # what lets everything below run against either project.
@@ -171,13 +190,14 @@ case "$stage" in
     if have_sgt; then
         label="$(theme_label)"
         echo "    ${label:-Event-Day Handling}"
-        # NOT "in the history view": this is a cross-feature group, and the
-        # sidebar does not list those. Saying it was there sent people hunting
-        # through the feature tree for a name that is only in `sgt intent list`.
-        echo "${dim}    That is a group spanning several features. The sidebar does not"
-        echo "    list those. Run \`sgt intent list\` and read the bottom of what it"
-        echo "    prints, where the groups are. Revert and restore both take that"
-        echo "    name exactly as it is written above.${off}"
+        # One task's work, landed across several features. `sgt log` names these
+        # groups under the map, and the workbench lists them on its detail panel
+        # -- so the name above is findable where the participant is already
+        # looking, not only in a separate listing.
+        echo "${dim}    That is one piece of work that touched several features."
+        echo "    \`sgt log\` names these groups under the map; so does the"
+        echo "    workbench panel. Revert and restore both take that name"
+        echo "    exactly as it is written above.${off}"
     else
         echo "${dim}    three commits, oldest first:${off}"
         removed_commits | sed 's/^/    /'
