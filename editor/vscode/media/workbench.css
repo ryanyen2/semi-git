@@ -2511,3 +2511,41 @@ svg.railsvg {
   display: block;
   opacity: 1;
 }
+
+
+/* The lens -> app bridge: the files a feature's own work touches, page files first and marked.
+   The one glance that answers "which part of the dashboard is this". */
+.touched-files {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+  margin: 6px 0 2px;
+}
+
+.touched-files-label {
+  color: var(--dim);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-right: 2px;
+}
+
+.file-chip {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  border: 1px solid var(--line);
+  color: var(--fg);
+}
+
+.file-chip-page {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.touched-files-more {
+  color: var(--dim);
+  font-size: 11px;
+}

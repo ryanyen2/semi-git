@@ -59,6 +59,8 @@ Run the command below first. It resets the project and prints the two numbers th
 
 ![The by-year page, with the 2018 row marked — its average-day number is the one that disagrees with the paper](/stages/footfall-yearly.png)
 
+The pages open on the most recent year. Set the date window at the top to cover 2018 — the year both numbers are about.
+
 **Your job:** Find the piece of work in the project's history that made that change. You do not have to change any code.
 
 **You are done when:** You can name the piece of work — a commit hash, a named piece of work, or an id all count. The questions after this stage ask you which one you found. If you are not certain, choose what you have and say that you are not certain. That is more useful to us than a guess.
@@ -88,6 +90,8 @@ Run the command below first. It resets the project and names the work you have t
 **Your job:** Take that work out of the project. Three things have to go: the list of unusual days the project keeps, the marks that flag those days on the daily and monthly charts, and the rule that leaves those days out of the averages. Everything else the dashboard shows has to keep working.
 
 ![The monthly page today: the coloured bars flag months containing an unusual day. After the removal, no bar is coloured and the note under the chart is gone.](/stages/footfall-monthly.png)
+
+Set the date window to 2018 while you check the pages — the marks only show when the window contains an unusual day, and the pages open on the most recent year.
 
 **You are done when:** `./check 3` says the program still runs and the by-year page reads **42,436** for 2018 again. Run it as often as you like. It prints the same words for everyone, it does not mark you, and a red line in it is information rather than a verdict.
 

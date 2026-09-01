@@ -1261,13 +1261,20 @@ def map_view(repo) -> dict:
     # tree printed `· 5 symbol(s)` next to a `sgt show` reading `0 symbols in 0 files` whose revert
     # removes nothing. A pilot participant picked that row to "remove the waitlist" off the map.
     # Computed the same way here so every surface reports one number per feature.
+    # Kind-classified, not substring-matched: `__import__::` symbols are bookkeeping exactly like
+    # residue/anchors (an import statement is not code a person recognizes as "the feature"), but
+    # the import kind postdates this filter, so a lane holding ONLY a page file's import crumbs
+    # counted as owning real symbols -- it survived the husk filter and the labeler named it after
+    # the page, which put a phantom twin of the real page lane on the map ("Hourly Footfall" next
+    # to the lane actually holding hourly.py::render).
+    from sgt.core.op import _symbol_kind as _sym_kind
     own_symbols: dict[str, set[str]] = {}
     for op_id, leaf in op_leaf.items():
         op = by_id.get(op_id)
         if op is None:
             continue
         own_symbols.setdefault(leaf, set()).update(
-            s for s in op.footprint if "__residue__" not in s and "__anchor__" not in s
+            s for s in op.footprint if _sym_kind(s) in ("entity", "nested", "whole_file")
         )
 
     def _emit(nid: str, nd: dict) -> dict:
@@ -3199,12 +3206,15 @@ def _show_footprint(repo, op_ids, *, only: str | None = None) -> tuple[list[str]
     showing them here read as the answer."""
     from sgt.core import opindex
 
+    from sgt.core.op import _symbol_kind
+
     wanted = frozenset(op_ids)
     symbols: set[str] = set()
     for op in opindex.index_ops(repo):
         if op.id in wanted:
+            # kind-classified like map_view's own_symbols: import crumbs are bookkeeping too
             symbols.update(s for s in op.footprint
-                           if "__residue__" not in s and "__anchor__" not in s)
+                           if _symbol_kind(s) in ("entity", "nested", "whole_file"))
     if only is not None:
         symbols &= {only}
     files = sorted({s.partition("::")[0] for s in symbols})
