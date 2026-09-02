@@ -154,6 +154,15 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     view.webview.html = this.html(view.webview);
     this.disposables.push(
       view.webview.onDidReceiveMessage((msg) => void this.onMessage(msg)),
+      // This view is docked in the bottom panel, beside the Terminal -- so reading the graph and
+      // typing a command are mutually exclusive, and the panel is HIDDEN for exactly as long as
+      // the work that changes the repository takes. `retainContextWhenHidden` means it comes back
+      // with the picture it had when it left, which is the right behaviour only if something
+      // checked whether that picture is still true. Cheap enough to check every time: two small
+      // file reads, and no re-read at all unless HEAD actually moved.
+      view.onDidChangeVisibility(() => {
+        if (view.visible) void this.store.invalidateIfHeadMoved();
+      }),
       view.onDidDispose(() => {
         this.view = undefined;
       })
@@ -204,9 +213,9 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     <div id="previewRefusal" class="preview-refusal-pill" hidden></div>
     <div id="armedBanner" class="armed-banner" hidden></div>
     <div id="themeBanner" class="theme-banner" hidden></div>
-    <!-- The lens caption: a pinned lane or a live search, saying what receded and how to clear it.
-         Shares the theme banner's styling because it is the same kind of statement about the same
-         kind of state -- one thing asked about, the rest dimmed. -->
+    <!-- The lens caption: a live search, saying what receded and how to clear it. Shares the
+         theme banner's styling because it is the same kind of statement about the same kind of
+         state -- one thing asked about, the rest dimmed. -->
     <div id="lensBanner" class="theme-banner" hidden></div>
     <div id="confirmBar" class="confirm-bar" hidden></div>
     <div id="inspector"></div>
@@ -372,8 +381,24 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     }
   }
 
+  /**
+   * Refuse to answer from a cache filled before the repository moved.
+   *
+   * `pushState` clears `previewCache` on every composition push, which is enough while every
+   * change reaches us -- and a dropped `.sgt/` watcher event is exactly the case where one does
+   * not (see `Store.invalidateIfHeadMoved`). A dry run held from before an external revert is the
+   * worst thing in this cache to serve: `renderConfirmBar` disables Apply on `ok === false`, so a
+   * refusal that was true two stages ago reaches the reader as a dead button under a sentence
+   * about a fork that no longer exists. `invalidate()` re-pushes state (which clears this cache)
+   * but only after its own read returns, so drop it here too rather than racing that.
+   */
+  private async dropStaleAnswers(): Promise<void> {
+    if (await this.store.invalidateIfHeadMoved()) this.previewCache.clear();
+  }
+
   private async preview(verb: string, args: string[], seq: number): Promise<void> {
     this.latest.preview = seq;
+    await this.dropStaleAnswers();
     // Joined on U+001F (unit separator), not "": a bare join makes ["ab","c"] and ["a","bc"] the same key.
     const key = `${verb}:${args.join("")}`;
     let result = this.previewCache.get(key);
@@ -875,6 +900,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     ref: string,
     stillWanted?: () => boolean
   ): Promise<EmitView> {
+    await this.dropStaleAnswers();
     const key = `${verb}:${ref}`;
     const hit = this.previewCache.get(key) as EmitView | undefined;
     if (hit !== undefined) return hit;

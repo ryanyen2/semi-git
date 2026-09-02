@@ -2,6 +2,8 @@
 // reactive (decorations, the tree) listens to `onDidChange` and re-reads from here, so a single
 // refresh after a checkpoint/feature-verb op updates every surface at once.
 
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import * as vscode from "vscode";
 import { FoldFrontier, foldAtSpec, Sgt } from "./sgt";
 import {
@@ -58,8 +60,45 @@ export class Store {
   private _onDidChange = new vscode.EventEmitter<void>();
   readonly onDidChange = this._onDidChange.event;
 
-  constructor(repoRoot: string, out: vscode.OutputChannel) {
+  constructor(private readonly repoRoot: string, out: vscode.OutputChannel) {
     this.sgt = new Sgt(repoRoot, out);
+    void this.stampHead(); // baseline now, so the first staleness check has something to compare
+  }
+
+  // The commit the caches were filled against, or undefined before the first read of it.
+  private headStamp: string | undefined;
+
+  /** Note the repository's current commit as the one the caches now describe. */
+  private async stampHead(): Promise<void> {
+    this.headStamp = await readHead(this.repoRoot);
+  }
+
+  /**
+   * Invalidate iff the repository has moved to a different commit than the caches describe.
+   *
+   * The recursive `.sgt` json watcher (extension.ts) is the primary way an external mutation
+   * reaches this store, and it deliberately ignores writes that land while one of OUR subprocesses is
+   * active -- a `sgt map`/`compose` READ rewrites `.sgt/`, so without that guard every read would
+   * re-trigger itself. The cost is that a mutation from outside the editor whose writes overlap
+   * one of our own reads is DROPPED, with no retry: a participant's `./stage 4` rewrites the tree,
+   * replaces `.sgt/` wholesale and commits a revert over several seconds, so its watcher events
+   * routinely land inside a compose and never invalidate anything. The workbench then serves a
+   * graph -- and, worse, cached `--emit` answers -- for a world that no longer exists.
+   *
+   * HEAD is the signal that guard cannot use and this one can: our reads never move it, and our
+   * own mutations invalidate explicitly (which re-baselines this stamp), so a moved HEAD means
+   * somebody else changed the repository. Two small file reads, no subprocess -- cheap enough to
+   * check whenever the workbench comes back into view or is about to answer from a cache.
+   */
+  async invalidateIfHeadMoved(): Promise<boolean> {
+    const head = await readHead(this.repoRoot);
+    if (this.headStamp === undefined || head === this.headStamp) {
+      this.headStamp = head;
+      return false;
+    }
+    this.headStamp = head;
+    this.invalidate();
+    return true;
   }
 
   // Shares the in-flight promise like `composeView` -- activation fires several map consumers at
@@ -333,6 +372,10 @@ export class Store {
 
   /** Drop all caches and notify every surface to re-read. Call after any mutation. */
   invalidate(): void {
+    // The re-read this fires describes whatever the repository is NOW, so the staleness stamp is
+    // re-baselined here rather than only where it is checked -- otherwise our own commits (save,
+    // revert, restore) would look external to the next check and buy a second full compose.
+    void this.stampHead();
     this.generation++; // any fetch begun before now must not repopulate a cache it's about to clear
     this.mapCache = undefined;
     this.mapInFlight = undefined;
@@ -362,4 +405,36 @@ export class Store {
   dispose(): void {
     this._onDidChange.dispose();
   }
+}
+
+/**
+ * The commit HEAD points at, read off disk rather than through git.
+ *
+ * `.git/HEAD` is either a sha or `ref: refs/heads/<name>`, so the branch case costs one more
+ * read. A packed ref answers `""` for the branch half, which is still a usable stamp -- it just
+ * cannot see a commit on a ref that has never been written loose, and a commit always writes one.
+ * `.git` is a file in a linked worktree, holding the real gitdir; resolved here because a stamp
+ * that silently answers the same string forever would disable the staleness check without saying so.
+ */
+async function readHead(root: string): Promise<string> {
+  try {
+    const dir = await gitDir(root);
+    const head = (await fs.readFile(path.join(dir, "HEAD"), "utf8")).trim();
+    const ref = /^ref:\s*(.+)$/.exec(head);
+    if (!ref) return head;
+    const sha = await fs.readFile(path.join(dir, ref[1].trim()), "utf8").catch(() => "");
+    return `${head} ${sha.trim()}`;
+  } catch {
+    return ""; // not a git repo (or unreadable): every check answers "unchanged"
+  }
+}
+
+async function gitDir(root: string): Promise<string> {
+  const dot = path.join(root, ".git");
+  const stat = await fs.stat(dot).catch(() => undefined);
+  if (stat?.isFile()) {
+    const pointer = /^gitdir:\s*(.+)$/m.exec(await fs.readFile(dot, "utf8"));
+    if (pointer) return path.resolve(root, pointer[1].trim());
+  }
+  return dot;
 }

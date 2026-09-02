@@ -787,6 +787,7 @@ function changeMeter(added, removed, width) {
   let stagedAction = null; // {verb, ref, targetId, label, kind: "feature"|"chapter"|"backto", refs?, res?}
   let applyBusy = null; // {verb, phase, detail} while the host applies a staged action
   let pendingSettle = []; // feature ids to flash once the post-apply state lands (the receipt)
+  let settleDir = "out"; // which way that flash goes: "out" reverted, "in" restored
   let semanticState = null; // the meaning rung of find: {query, pending, hits, mode, message}
 
   // Composition-picker hover-preview: while the titlebar's composition QuickPick is open, arrowing
@@ -1188,7 +1189,6 @@ function changeMeter(added, removed, width) {
   // only the id; everything else re-derives from the payload on recompute.
   function setThemeFocus(themeId) {
     state.themeFocus = state.themeFocus === themeId ? null : themeId;
-    state.spotlight = null; // one lens at a time -- a spotlight under a theme focus double-dims
     saveState();
     recompute();
     render();
@@ -1768,18 +1768,29 @@ function changeMeter(added, removed, width) {
       // overlay and not a wider bar.
       const chipArgs = { car, color, x, w, midY, geom };
       if (selected && !quiet) pinnedChip = chipArgs;
+      // A held revert/restore preview does NOT block this. Reading is not previewing: a reader
+      // deciding whether to approve a consequence is exactly the reader who needs to point at a
+      // neighbouring chapter and ask "what is that one?", and until now the staged confirm made
+      // every bar on screen unidentifiable -- the OS `<title>` tooltip, a second late and drawn
+      // over the timeline it describes, was the only answer left. Nothing here previews or
+      // cancels anything (`clearGhosts` already refuses to strip a staged paint), so the only
+      // reason to gate it was that the pill it used to write is owned by the preview. It no
+      // longer writes one. `armedVerb` still returns early: arming owns the field as a crosshair.
       wrap.addEventListener("mouseenter", () => {
-        if (armedVerb || stagedAction) return;
+        if (armedVerb) return;
         wrap.classList.add("gcar-hovered");
         if (quiet) { // a compressed context lane has no room for the chip; the pill still names it
-          setPreviewContext(`${car.label} · ${car.opCount} edit(s)`, "identity");
+          if (!stagedAction) setPreviewContext(`${car.label} · ${car.opCount} edit(s)`, "identity");
           return;
         }
         // The highlight is instant (the affordance); the chip waits for the cursor to rest
         // (`chipIntent`), so sweeping the lane does not unfold a name per car crossed.
+        //
+        // The chip is the whole answer, so there is no pill. There used to be one saying the same
+        // name and count in the bottom-right corner -- which is over the detail panel, on top of
+        // whatever the reader was reading there -- for a chapter whose name was already on screen
+        // under the cursor. Two copies of one fact, one of them in the wrong pane.
         chipIntent(() => showCarChip(chipArgs));
-        setPreviewContext(`${car.label} · ${car.opCount} edit(s)`
-          + (car.reverted ? " · reverted" : "") + " — click to select", "identity");
       });
       wrap.addEventListener("mouseleave", () => {
         wrap.classList.remove("gcar-hovered");
@@ -2090,7 +2101,7 @@ function changeMeter(added, removed, width) {
     rail.appendChild(axisSvg);
     scroller.scrollTop = prevScroll;
     glideRows(svg, geom); // rows that moved glide to their new slot instead of teleporting
-    applyLens(); // re-apply a pinned lane or a live search across the re-render
+    applyLens(); // re-apply a live search across the re-render
   }
 
   // FLIP row transitions: every re-render rebuilds the SVG from scratch, which reads as the whole
@@ -2243,47 +2254,17 @@ function changeMeter(added, removed, width) {
     // Measured, and carrying its full text on hover whenever it had to be cut. A feature's name is
     // the only thing on this row a reader can identify it by, and `put a search box in the h…` had
     // no way at all to finish itself -- not a wider column, not a tooltip, not a drag.
-    const clipped = setLabel(label, l.isMeta ? `${raw} (${l.leaves.length})` : raw,
-                             geom.labelW - labelX - 4);
-    // A feature label is its own click target, and it does something different from the row it sits
-    // in: the NAME pins a lens (dim the rest, keep this lane and what changes with it), the ROW opens
-    // the lane in the detail panel. Nothing said so -- an underline on hover was the entire signal,
-    // and an underline does not name an outcome -- so the tooltip says it, and a ◉ appears in the
-    // row's left gutter while the name is hovered and stays there while it is pinned, which is the
-    // same glyph the banner is headed with. Meta (collapsed-subsystem) labels keep the row's
-    // fold-toggle behavior.
-    if (!l.isMeta) {
-      label.classList.add("glane-label-btn");
-      label.style.pointerEvents = "auto";
-      const pinned = state.spotlight === l.id;
-      if (pinned) label.classList.add("spotlit");
-      // ONE <title>, not two. `setLabel` adds its own when the name had to be cut, and a second
-      // <title> on the same element is simply never shown -- so a long name would have kept the
-      // full-text tooltip and silently lost this one, which is the half of the pair that answers
-      // the question nobody could answer from the screen.
-      label.querySelectorAll("title").forEach((t) => t.remove());
-      label.appendChild(mk("title", {
-        text: (clipped ? raw + "\n\n" : "")
-          + (pinned
-            ? "◉ pinned — click the name again to bring the other lanes back"
-            : "◉ click the NAME to dim the other lanes and keep this one and what changes with it\n"
-              + "click anywhere else on the ROW to open it in the detail panel"),
-      }));
-      label.addEventListener("click", (ev) => { ev.stopPropagation(); toggleSpotlight(l.id); });
-      g.appendChild(label);
-      // In the row's own left gutter (x=1), not beside the name: the name's x depends on nesting
-      // depth and on whether the row has a caret, and every candidate offset from it landed on the
-      // identity swatch at one depth or another. One column, every row, always free.
-      //
-      // Immediately after the label in document order, because the CSS reaches it with `:hover +`.
-      g.appendChild(mk("text", {
-        x: 1, y: midY + 4,
-        class: "glane-lens-mark" + (pinned ? " on" : ""),
-        text: "\u25c9",
-      }));
-    } else {
-      g.appendChild(label);
-    }
+    setLabel(label, l.isMeta ? `${raw} (${l.leaves.length})` : raw, geom.labelW - labelX - 4);
+    // The whole row is ONE click target: it opens the lane in the detail panel. The name used to be
+    // a second, smaller target inside it that did something else -- pin a lens: dim every other
+    // lane, keep this one and its co-change neighbours, and put a banner over the plot saying so.
+    // Two outcomes from one row, told apart by hitting a 90px word or missing it, and the common
+    // miss (clicking the name because the name is what you are pointing at) answered a question
+    // nobody had asked by dimming most of the map and covering the timeline with a caption. The
+    // lens itself is still here and still captioned -- through find, where dimming is the answer to
+    // something the reader typed. A name that had to be cut keeps `setLabel`'s own full-text
+    // <title>, which the pin tooltip used to replace.
+    g.appendChild(label);
 
     // Chunk-car train: the lane's checkpoints, packed left->right in seg_index order (see
     // renderCars) -- the visual atom is the intent segment, not a raw op or a shared time column.
@@ -2677,15 +2658,6 @@ function changeMeter(added, removed, width) {
     render();
   }
 
-  const neighborsOf = (id) => {
-    const out = new Set();
-    for (const e of layout.edges) {
-      if (e.a === id) out.add(e.b);
-      if (e.b === id) out.add(e.a);
-    }
-    return out;
-  };
-
   function opIdsFor(featureId) {
     return (layout.opsByFeature[featureId] || []).map((op) => op.id);
   }
@@ -2711,7 +2683,7 @@ function changeMeter(added, removed, width) {
       markAxisSpan(svg, null);
       svg.querySelectorAll(".glane.hovered").forEach((el) => el.classList.remove("hovered"));
       if (!armedVerb) clearGhosts();
-      applyLens(); // a pinned lane or a live search survives mouse-out; nothing pinned clears it
+      applyLens(); // a live search survives mouse-out; an empty find box clears the dim
       return;
     }
     if (armedVerb) {
@@ -2832,7 +2804,7 @@ function changeMeter(added, removed, width) {
   }
 
   // Clicking a chunk-car selects its CHECKPOINT (`f-XXXX@n`), the revert unit -- distinct from a
-  // row/swatch click (whole feature) or a label click (spotlight). The feature is selected so the
+  // click anywhere else on the row, which picks the whole feature. The feature is selected so the
   // inspector shows its checkpoint list + code fold; the matching checkpoint row is highlighted and
   // scrolled into view. Clicking the same car again clears the checkpoint focus. An armed
   // merge/move still targets the feature (a car is just a point on it), matching lane-click.
@@ -2867,21 +2839,12 @@ function changeMeter(added, removed, width) {
     renderGraph();
   }
 
-  // Clicking a feature LABEL spotlights it: dim the field, re-light this lane + its co-change
-  // neighbors (the "what moves with this feature" question) -- a viewing aid, pinned until toggled
-  // off, distinct from selecting the feature for an action. Reuses the same .focus/.lit/.ctx paint
-  // the transient hover-focus uses.
-  function toggleSpotlight(id) {
-    state.spotlight = state.spotlight === id ? null : id;
-    saveState();
-    applySpotlight();
-  }
-
   // ---- the lens
-  // ONE held, captioned state, from two sources: a pinned lane (clicking its name) or live search
-  // text. Both mean the same thing -- "these lanes, the rest is context" -- so they share the paint,
-  // the banner and the way out, and only one can be on at a time (search wins while there is text
-  // in the box, because the text is on screen and the pin is not).
+  // ONE held, captioned state: the find box's text. It means "these lanes, the rest is context",
+  // and it is captioned because a map with half its rows dimmed and no caption reads as a
+  // rendering fault. A second source used to feed it -- clicking a feature's NAME pinned the lane
+  // and its co-change neighbours -- and it is gone: dimming thirty rows is a large answer, and it
+  // was being given to a click that in this view means "show me this feature", not a question.
   //
   // Search used to do none of this. It filled a dropdown and left the map exactly as it was, so the
   // answer to "where is the thing that formats dates" was a list of names you then had to find by
@@ -2905,11 +2868,7 @@ function changeMeter(added, removed, width) {
       for (const h of (semanticState && semanticState.query === query ? semanticState.hits : [])) {
         if (h.feature) ids.add(h.feature);
       }
-      return { kind: "find", query, ids, neighbors: new Set() };
-    }
-    if (state.spotlight) {
-      return { kind: "pin", query: "", ids: new Set([state.spotlight]),
-               neighbors: neighborsOf(state.spotlight) };
+      return { query, ids };
     }
     return null;
   }
@@ -2921,11 +2880,11 @@ function changeMeter(added, removed, width) {
     if (!svg) return;
     // A held revert/restore preview owns the field: its dim is deeper and says something else
     // ("these lanes change"), and stacking a lens under it multiplies two opacities into a floor
-    // nothing can be read at. The preview's own teardown re-applies whatever lens was pinned.
+    // nothing can be read at. The preview's own teardown re-applies whatever was in the find box.
     if (previewActive) return;
     if (!lens) {
       svg.classList.remove("focus");
-      svg.querySelectorAll(".lit, .ctx").forEach((el) => el.classList.remove("lit", "ctx"));
+      svg.querySelectorAll(".lit").forEach((el) => el.classList.remove("lit"));
       return;
     }
     svg.classList.add("focus");
@@ -2936,12 +2895,8 @@ function changeMeter(added, removed, width) {
       const lane = (layout.laneById || {})[rid] || {};
       const inside = (lane.leaves || []).some((f) => lens.ids.has(f));
       el.classList.toggle("lit", lens.ids.has(rid) || inside);
-      el.classList.toggle("ctx", lens.neighbors.has(rid));
     });
   }
-
-  // Kept as the old name for the call sites that mean "re-pin after a re-render".
-  function applySpotlight() { applyLens(); }
 
   // What receded, why, and how to get it back. A map with half its rows dimmed and no caption is
   // read as a rendering fault -- the terminal's `sgt log --focus` has said so above its own rows
@@ -2956,44 +2911,31 @@ function changeMeter(added, removed, width) {
     const lanes = (layout.lanes || []).filter((l) => !l.isMeta).length;
     const name = document.createElement("span");
     name.className = "theme-banner-name";
+    name.textContent = `◉ ${lens.query}`;
     const note = document.createElement("span");
     note.className = "theme-banner-note";
-    if (lens.kind === "find") {
-      name.textContent = `◉ ${lens.query}`;
-      note.textContent = lens.ids.size
-        ? `${lens.ids.size} of ${lanes} features match — the rest are dimmed, not hidden`
-        : "nothing in this graph matches — press ⏎ to search by meaning";
-    } else {
-      const label = ((byId(lens.ids.values().next().value) || {}).label) || "this feature";
-      name.textContent = `◉ ${label}`;
-      note.textContent = lens.neighbors.size
-        ? `pinned, with the ${lens.neighbors.size} features that change alongside it`
-        : "pinned — nothing else changes alongside it";
-    }
+    note.textContent = lens.ids.size
+      ? `${lens.ids.size} of ${lanes} features match — the rest are dimmed, not hidden`
+      : "nothing in this graph matches — press ⏎ to search by meaning";
     el.append(name, note);
     const clear = document.createElement("button");
     clear.textContent = "✕ Show everything";
-    clear.title = lens.kind === "find" ? "clear the search (Esc)" : "unpin (click the name again)";
+    clear.title = "clear the search (Esc)";
     clear.addEventListener("click", () => {
-      if (lens.kind === "find") {
-        const box = document.getElementById("findBox");
-        if (box) box.value = "";
-        semanticState = null;
-        const results = document.getElementById("findResults");
-        if (results) results.hidden = true;
-      } else {
-        state.spotlight = null;
-        saveState();
-      }
+      const box = document.getElementById("findBox");
+      if (box) box.value = "";
+      semanticState = null;
+      const results = document.getElementById("findResults");
+      if (results) results.hidden = true;
       render();
     });
     el.appendChild(clear);
   }
 
-  // Reveal a feature from the editor (task 4): select it (so the inspector opens), pin a spotlight on
-  // it, and scroll its lane/row into view -- the same primitives selectRow/toggleSpotlight use, but
-  // deterministic (never toggling off). Robust to message ordering: if the graph hasn't loaded this
-  // feature yet, stash it and re-apply after the next state render (see the "state" handler).
+  // Reveal a feature from the editor (task 4): select it (so the inspector opens) and scroll its
+  // lane/row into view -- the same primitives selectRow uses, but deterministic (never toggling
+  // off). Robust to message ordering: if the graph hasn't loaded this feature yet, stash it and
+  // re-apply after the next state render (see the "state" handler).
   function revealFeature(featureId) {
     if (!featureId || !byId(featureId)) { pendingReveal = featureId || null; return; }
     pendingReveal = null;
@@ -3013,7 +2955,6 @@ function changeMeter(added, removed, width) {
     state.selectedPlanSession = null;
     state.selectedCheckpoint = null;
     selectionResult = null;
-    state.spotlight = featureId; // pin the spotlight (applySpotlight runs inside render's renderGraph)
     saveState();
     if (changed) recompute();
     render();
@@ -3191,10 +3132,21 @@ function changeMeter(added, removed, width) {
         // `<f>@<n>` ref, which matches no row.
         const focus = res.focus;
         if (focus && focus.nodes && focus.nodes.length) enterPreviewMode(focus, staged.targetId, staged.verb);
-        else paintClosure(classifyAffected(res, staged.targetId));
+        else {
+          paintClosure(classifyAffected(res, staged.targetId));
+          // The lighter paint has no morph and no dimmed field, so the sentence is the only place
+          // the direction can be stated -- and it is the same sentence either way.
+          setPreviewContext(previewCaptionText(staged.verb, null, res),
+                            staged.verb === "restore" ? "in" : "out");
+        }
         paintCarPreview(classifyCarImpact(res.removed, res.added, segmentsOf(compose),
                                           res.target_ops, staged.verb));
       }
+      // A refusal is NOT sent to the top-centered refusal card the hover path uses. That card sits
+      // exactly where the theme banner does, so a refused whole-group restore -- the one refusal a
+      // reader is most likely to hit -- drew its own explanation underneath the caption of the
+      // thing it was refusing. The bar carries the reason and the way out instead (renderConfirmBar),
+      // which is also where the click was: one surface per flow, same rule the host reports by.
       renderConfirmBar();
     });
   }
@@ -3280,6 +3232,9 @@ function changeMeter(added, removed, width) {
       // "removes nothing here") changed nothing, and a receipt for it would flash a lie later.
       const applied = applyBusy && applyBusy.phase !== "checking";
       pendingSettle = applied && stagedAction.targetId ? [stagedAction.targetId] : [];
+      // The settling lane flashes in the direction it moved, so the fourth and last moment of the
+      // sequence agrees with the three before it instead of being the one neutral one.
+      settleDir = msg.verb === "restore" ? "in" : "out";
       // What happened, left on the bar where the decision was taken. The host used to say this in
       // a VS Code notification instead, which stacked with every other notification the same click
       // produced and covered the corner of the timeline the reader was watching. The bar is the
@@ -3308,6 +3263,12 @@ function changeMeter(added, removed, width) {
   let applyDoneTimer = null;
   const RECEIPT_MS = 7000;
 
+  // What the receipt is titled. "Done" was true of both directions, which made the one line that
+  // reports the outcome the one line that could not tell a reader which outcome they got -- so
+  // after applying they were back to comparing two near-identical pictures from memory. The verb
+  // in the past tense, in the same channel the preview's own lanes wore.
+  const RECEIPT_HEAD = { revert: "Reverted", restore: "Restored", split: "Split" };
+
   function showApplyReceipt(verb, label, detail) {
     if (!detail) return;
     applyDone = { verb, label, detail };
@@ -3329,7 +3290,9 @@ function changeMeter(added, removed, width) {
     if (!staged) {
       if (!applyDone) return;
       const head = el("div", "confirm-head");
-      head.appendChild(el("span", "confirm-verb done", "Done"));
+      head.appendChild(el("span",
+        "confirm-verb done" + (applyDone.verb === "restore" ? " in" : " out"),
+        RECEIPT_HEAD[applyDone.verb] || "Done"));
       head.appendChild(el("span", "confirm-target", applyDone.label));
       confirmBar.appendChild(head);
       const line = el("div", "confirm-progress done");
@@ -3376,33 +3339,65 @@ function changeMeter(added, removed, width) {
       return;
     }
 
-    confirmBar.appendChild(el("div", "confirm-summary", stagedSummaryText(staged)));
+    const refused = !!(staged.res && staged.res.ok === false);
+    confirmBar.classList.toggle("refused", refused);
+    confirmBar.appendChild(el("div", "confirm-summary" + (refused ? " refused" : ""),
+                              stagedSummaryText(staged)));
 
     const actions = el("div", "confirm-actions");
     // The diff exists only for the exact ideal edits (one emit-able ref): feature/chapter scope.
-    if (staged.kind === "feature" || staged.kind === "chapter") {
+    // A refusal has no before → after to open -- there is no proposed state to diff against.
+    if ((staged.kind === "feature" || staged.kind === "chapter") && !refused) {
       const diff = el("button", "confirm-btn subtle", "Open diff");
       diff.title = "Open the exact before → after in editor tabs";
       diff.addEventListener("click", () =>
         vscode.postMessage({ type: "openStagedDiff", verb: staged.verb, ref: staged.ref }));
       actions.appendChild(diff);
     }
-    const cancel = el("button", "confirm-btn", "Cancel");
+    const cancel = el("button", "confirm-btn", refused ? "Close" : "Cancel");
     cancel.title = "Esc";
     cancel.addEventListener("click", cancelStaged);
     actions.appendChild(cancel);
-    const refused = staged.res && staged.res.ok === false;
+    if (refused) {
+      // A refusal drew a greyed-out Apply beside the reason, which reads as "this is loading" or
+      // "you lack permission" -- neither of which is true, and both of which leave the reader
+      // clicking a button that will never do anything. sgt is not busy and it is not asking: it
+      // has answered no, and the useful thing to put where the dead button was is the way out.
+      // On its own row, not in the action group: the reason and the remedy are both sentences, and
+      // squeezed onto one line with the buttons they ellipsised each other into uselessness.
+      confirmBar.appendChild(actions);
+      const way = refusalWayOut(staged);
+      if (way) confirmBar.appendChild(el("div", "confirm-way-out", way));
+      return;
+    }
     const apply = el("button",
       "confirm-btn confirm-apply"
         + (staged.verb === "restore" ? " restore" : staged.verb === "split" ? " split" : ""),
       staged.verb === "restore" ? "Restore" : staged.verb === "split" ? "Split" : "Revert");
     // Disabled until the consequence is known (usually instant off the hover's cached preview):
     // an Apply that runs before the picture exists would be the old blind modal wearing new paint.
-    apply.disabled = !staged.res || !!refused;
+    apply.disabled = !staged.res;
     apply.addEventListener("click", applyStagedAction);
     actions.appendChild(apply);
     confirmBar.appendChild(actions);
   }
+
+  // ---- way-out (test slice boundary)
+  // The one next move a refusal leaves, said in the bar rather than only in the overlay card.
+  // Pure over the staged payload so the node harness can hold it.
+  function refusalWayOut(staged) {
+    const res = staged.res || {};
+    if (staged.verb === "restore" && res.forked) {
+      // The one-live-version rule: something else is already live where this would land, so the
+      // move is to take THAT out first. Naming the verb matters -- "resolve the fork" is the other
+      // way and it is a CLI-only one, so the reader is told which of the two this surface offers.
+      return "way out: revert the live version first, then restore — or reconcile it with sgt resolve";
+    }
+    // Every other refusal: the humanized reason above IS the whole answer, and inventing a remedy
+    // from the absence of a known one would be guessing at the reader.
+    return null;
+  }
+  // ---- end-way-out
   // ---- end-staged-confirm
 
   function clearGhosts() {
@@ -4727,9 +4722,10 @@ function changeMeter(added, removed, width) {
 
       // Hovering the ROW identifies its car on the timeline (a cheap, local "this one"); only the
       // action button below previews the consequence. Same rule as the cars themselves: reading is
-      // not previewing.
+      // not previewing -- which is why a staged confirm does not gate it either. The button's own
+      // hover preview is gated centrally (see setHoverGate); this adds a class and nothing else.
       row.addEventListener("mouseenter", () => {
-        if (armedVerb || stagedAction) return;
+        if (armedVerb) return;
         const wrap = findCar(seg.checkpoint);
         if (wrap) wrap.classList.add("gcar-hovered");
       });
@@ -5574,7 +5570,7 @@ function changeMeter(added, removed, width) {
     exitPreviewMode();
     // The shallow co-change hover dim (.focus) would fight the deep field dim -- drop it first.
     svg.classList.remove("focus");
-    svg.querySelectorAll(".lit, .ctx").forEach((el) => el.classList.remove("lit", "ctx"));
+    svg.querySelectorAll(".lit").forEach((el) => el.classList.remove("lit"));
     svg.classList.add("preview");
     previewActive = true;
     const lit = [];
@@ -5598,19 +5594,53 @@ function changeMeter(added, removed, width) {
         row.classList.add("preview-blast");
         if (n.ops_after === 0) row.classList.add("preview-leaving"); // fully emptied -> ghost
       }
-      // The "N -> M" delta lives in the lane's own count label (kept when motion is off).
+      // The "N -> M" delta lives in the lane's own count label (kept when motion is off), now with
+      // the move SIGNED. `26 → 23` and `22 → 26` are the same shape and the same width, so telling
+      // them apart meant subtracting two numbers in your head, per lane, from memory of the
+      // previous screen. `−3` / `+4` states the thing the pair was there to imply.
       if (n.ops_before !== n.ops_after) {
         const count = row.querySelector(".gbar-count");
         if (count) {
           if (!count.hasAttribute("data-orig")) count.setAttribute("data-orig", count.textContent);
-          count.textContent = `${n.ops_before} → ${n.ops_after}`;
-          count.classList.add("preview-delta", n.ops_after < n.ops_before ? "losing" : "gaining");
+          const delta = n.ops_after - n.ops_before;
+          count.textContent = `${n.ops_before} → ${n.ops_after} ${delta < 0 ? "−" : "+"}${Math.abs(delta)}`;
+          count.classList.add("preview-delta", delta < 0 ? "losing" : "gaining");
         }
       }
     }
     renderOffscreenPills(lit);
-    if (focus.context_count > 0) setPreviewContext(`＋${focus.context_count} unchanged`);
+    setPreviewContext(previewCaptionText(verb, focus, null), verb === "restore" ? "in" : "out");
   }
+
+  // ---- preview-caption (test slice boundary)
+  // The one sentence on the field, which used to read `＋12 unchanged` for a revert and `＋12
+  // unchanged` for a restore -- the tally of what is NOT happening, and nothing about what is. It
+  // is the only prose inside the plot, so it is where the verb belongs: a reader who looks away
+  // and back has to be able to tell which direction is held without re-reading the confirm bar at
+  // the far bottom of the pane. Pure over the focus subgraph so the node harness can hold it.
+  function previewCaptionText(verb, focus, res) {
+    const nodes = (focus && focus.nodes) || [];
+    let out = 0, back = 0;
+    for (const n of nodes) {
+      const d = (n.ops_after || 0) - (n.ops_before || 0);
+      if (d < 0) out -= d; else back += d;
+    }
+    // No focus subgraph (an older CLI, or a target with no feature map behind it): the op sets the
+    // dry run always carries say the same thing at whole-edit grain.
+    if (!nodes.length && res) {
+      out = (res.removed || []).length;
+      back = (res.added || []).length;
+    }
+    const moved = verb === "restore" ? back : out;
+    const lanes = nodes.filter((n) => n.ops_before !== n.ops_after).length;
+    // Kept to one line deliberately: the pill is pinned bottom-right over the plot, and a sentence
+    // that wraps grows upward into the lanes it is describing.
+    const head = verb === "restore" ? `Restore · +${moved} edits return` : `Revert · −${moved} edits leave`;
+    const where = lanes ? ` · ${lanes} lane${lanes === 1 ? "" : "s"}` : "";
+    const rest = focus && focus.context_count > 0 ? ` · ＋${focus.context_count} unchanged` : "";
+    return head + where + rest;
+  }
+  // ---- end-preview-caption
 
   function exitPreviewMode() {
     if (!previewActive) return;
@@ -5632,8 +5662,8 @@ function changeMeter(added, removed, width) {
     setPreviewContext(null);
     clearOffscreenPills();
     // Entering a preview drops the `focus` class (the two dims would compound), so leaving one has
-    // to put it back -- otherwise previewing anything silently un-dimmed a pinned lane or a live
-    // search, and the banner went on claiming the field was dimmed.
+    // to put it back -- otherwise previewing anything silently un-dimmed a live search, and the
+    // banner went on claiming the field was dimmed.
     applyLens();
   }
 
@@ -5641,13 +5671,17 @@ function changeMeter(added, removed, width) {
   // element, and the clearer cannot live in `exitPreviewMode` alone -- that early-returns unless a
   // Focus & Morph overlay is live, so a pill set by the lighter ghost path would stay on screen.
   // `kind` marks who owns the pill, so a clear can be precise: `true`/"pending" is work in
-  // flight, "identity" is the neutral "this is what you are pointing at" a chapter hover writes.
+  // flight, "identity" is the neutral "this is what you are pointing at" a chapter hover writes,
+  // and "out"/"in" are a held consequence's direction -- which puts the sentence in the same
+  // --blast/--land channel the lanes it describes are already wearing.
   // Without that, moving the cursor off a chapter would wipe an unrelated "applying merge…".
   function setPreviewContext(text, kind) {
     previewContext.hidden = text === null;
     previewContext.textContent = text || "";
     previewContext.classList.toggle("pending", kind === true || kind === "pending");
     previewContext.classList.toggle("identity", kind === "identity");
+    previewContext.classList.toggle("dir-out", kind === "out");
+    previewContext.classList.toggle("dir-in", kind === "in");
   }
 
   // A blocked-restore overlay: sgt refuses to restore a symbol that has a competing live version
@@ -5878,11 +5912,12 @@ function changeMeter(added, removed, width) {
       // The receipt: the lane a staged action just rewrote settles with a one-shot flash, so the
       // change is visible IN the graph -- the same place the preview promised it.
       if (pendingSettle.length) {
+        const dirClass = settleDir === "in" ? "settle-in" : "settle-out";
         for (const fid of pendingSettle) {
           const row = findRow(fid);
           if (row) {
-            row.classList.add("settle-flash");
-            setTimeout(() => row.classList.remove("settle-flash"), 1500);
+            row.classList.add("settle-flash", dirClass);
+            setTimeout(() => row.classList.remove("settle-flash", dirClass), 1500);
           }
         }
         pendingSettle = [];

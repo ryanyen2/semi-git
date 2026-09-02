@@ -139,6 +139,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   sgtWatcher.onDidDelete(refresh);
   context.subscriptions.push(sgtWatcher);
 
+  // ...and a second watcher on HEAD, because the loop guard above has to drop what it cannot tell
+  // apart from our own writes. An external rewrite -- a terminal, an agent, a study stage script
+  // that resets the tree, replaces `.sgt/` wholesale and commits a revert -- takes seconds, so its
+  // `.sgt/` events land inside whatever read the editor happened to be doing and are skipped for
+  // good. HEAD is the one thing our READS never touch, so a move here is unambiguously somebody
+  // else's; `invalidateIfHeadMoved` compares against the commit the caches were filled against, so
+  // our own mutations (which invalidate explicitly) don't buy a second compose.
+  const headWatcher = vscode.workspace.createFileSystemWatcher(
+    new vscode.RelativePattern(root, ".git/{HEAD,refs/heads/**}")
+  );
+  let headPending: NodeJS.Timeout | undefined;
+  const headRefresh = () => {
+    clearTimeout(headPending);
+    headPending = setTimeout(() => void store.invalidateIfHeadMoved(), 250); // debounce a checkout
+  };
+  headWatcher.onDidChange(headRefresh);
+  headWatcher.onDidCreate(headRefresh);
+  headWatcher.onDidDelete(headRefresh);
+  context.subscriptions.push(headWatcher, new vscode.Disposable(() => clearTimeout(headPending)));
+
   void blame.render();
   void planStatusBar.refresh();
   void gitStatusBar.refresh();
