@@ -359,6 +359,29 @@ def _list(repo: str, as_json: bool) -> int:
     return 0
 
 
+def _print_context(pack: dict) -> None:
+    """The checkpoint context pack's terminal render (weave P4): asks in conversation order, the
+    recorded why (`_print_rationale`'s badges, same everywhere), what editing here disturbs, and
+    the way back into the conversation. Every section renders only what was recorded -- an empty
+    one prints nothing rather than a placeholder."""
+    if pack["asked"]:
+        print("  asked (in order):")
+        for a in pack["asked"]:
+            first = next((ln.strip() for ln in a["text"].splitlines() if ln.strip()), "")
+            print(f'    - "{first[:100]}"  ({a["channel"]})')
+    if pack["why"]:
+        print("  why (recorded):")
+        for r in pack["why"]:
+            badge = "confirmed" if r["confirmed"] else "inferred"
+            ev = f" [{r['evidence']} turn(s)]" if r["evidence"] else ""
+            print(f"    - {r['reason']}  ({r['actor']}, {badge}){ev}")
+    if pack["dependent_op_ids"]:
+        print(f"  since then: {len(pack['dependent_op_ids'])} op(s) built on this chapter -- "
+              f"an edit from here disturbs them (preview: sgt revert {pack['checkpoint']} --emit)")
+    for h in pack["resume"]:
+        print(f"  resume: {h['command']}")
+
+
 def _show(repo: str, target: str, as_json: bool) -> int:
     from sgt.api import intent_view
 
@@ -375,14 +398,23 @@ def _show(repo: str, target: str, as_json: bool) -> int:
             None,
         )
         if seg is not None:
+            # The context pack (weave P4): everything needed to go back to this chapter and keep
+            # working from it -- the asks, the recorded why, the blast radius, the way back into
+            # the conversation. One extra read; the pack resolves through the same segments_for
+            # cut this listing came from, so the two cannot describe different chapters.
+            from sgt.api import checkpoint_context
+            pack = checkpoint_context(repo, seg["checkpoint"])
             if as_json:
-                return _emit_json({"kind": "checkpoint", **seg})
+                return _emit_json({"kind": "checkpoint", **seg,
+                                   "context": pack if pack.get("ok") else None})
             print(f"{seg['feature_label']} · checkpoint {seg['seg_index']}  "
                   f"[{seg['feature_id'][:10]}@{seg['seg_index']}]  ({seg['tier']}, {seg['source']})")
             print(f"  intent: {seg['intent']}")
             print(f"  {seg['rationale']}")
             print(f"  {seg['op_count']} op(s), commits {seg['first_index']}-{seg['last_index']}, "
                   f"novelty {seg['novelty']}")
+            if pack.get("ok"):
+                _print_context(pack)
             print(f"  rewind: sgt revert {seg['feature_id'][:10]}@{seg['seg_index']}")
             return 0
 

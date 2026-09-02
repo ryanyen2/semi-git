@@ -338,6 +338,28 @@ def why_view(repo, op_ref: str, for_feature: str | None = None) -> dict:
     }
 
 
+def _rationale_rows(repo, op_ids) -> list[dict]:
+    """The recorded-why rows for a set of ops, deduped by reason, superseded and empty records
+    dropped -- the one projection `sgt why <sha>` (`_commit_why`) and the checkpoint context pack
+    (`checkpoint_context`) both render, so a reason reads identically wherever it appears."""
+    from sgt.intent.rationale import for_op
+
+    rows: list[dict] = []
+    seen: set[str] = set()
+    for op_id in op_ids:
+        for r in for_op(repo, op_id):
+            reason = r.get("reason")
+            if r.get("superseded") or not reason or reason in seen:
+                continue
+            seen.add(reason)
+            rows.append({
+                "reason": reason, "actor": r["actor"], "confirmed": r["confirmed"],
+                "open": r.get("open", False), "superseded": False,
+                "evidence": len(r.get("evidence", [])),
+            })
+    return rows
+
+
 def _commit_why(repo, ref: str) -> dict | None:
     """Resolve `ref` as a commit sha (full or a unique prefix over the intent atoms) and answer with
     that commit's aligned words -- the `sgt why <sha>` selector. `None` when `ref` matches no commit
@@ -358,20 +380,7 @@ def _commit_why(repo, ref: str) -> dict | None:
     sha = cand[0]
     atom = next(a for a in atoms if a["commit_sha"] == sha)
 
-    from sgt.intent.rationale import for_op
-    rationale: list[dict] = []
-    seen: set[str] = set()
-    for op_id in atom["op_ids"]:
-        for r in for_op(repo, op_id):
-            reason = r.get("reason")
-            if r.get("superseded") or not reason or reason in seen:
-                continue
-            seen.add(reason)
-            rationale.append({
-                "reason": reason, "actor": r["actor"], "confirmed": r["confirmed"],
-                "open": r.get("open", False), "superseded": False,
-                "evidence": len(r.get("evidence", [])),
-            })
+    rationale = _rationale_rows(repo, atom["op_ids"])
     return {
         "kind": "commit", "ok": True, "message": "", "sha": sha,
         "subject": atom["subject"], "op_count": len(atom["op_ids"]),
@@ -1667,6 +1676,99 @@ def _checkpoint_preview(repo, verb: str, target: str):
     op_ids, _label = resolved
     return (core_verbs.plan_revert_op_set(repo, target, op_ids) if verb == "revert"
             else core_verbs.plan_restore_op_set(repo, target, op_ids))
+
+
+def checkpoint_context(repo, spec: str) -> dict:
+    """The context pack for one checkpoint (capture weave P4, design doc 2026-09-01 §4f): what a
+    human -- or an agent -- needs in hand to go back to a chapter and keep working from it.
+
+    Four sections, each already recorded, joined here rather than re-derived: **asked** -- the
+    verbatim asks whose stints ground the chapter's ops, plus the save's own sha-keyed words and
+    the committed sidecar digest, in conversation order (the durable copy: this must survive the
+    source transcript being compacted or deleted, case 13); **why** -- the recorded rationale,
+    same rows `sgt why` renders; **touches / disturb** -- the chapter's footprint symbols and the
+    real blast radius of editing here, from the SAME revert planner a `sgt revert <spec>` would
+    run (`_checkpoint_preview`), so the warning and the verb cannot disagree; **resume** -- a
+    `claude --resume` handle per conversation the asks came from, best-effort by design (the
+    words above are the payload, the handle is an accelerator).
+
+    `{"ok": False, "message": ...}` when `spec` names no checkpoint -- never a guessed pack."""
+    from sgt.intent.manifest import load_manifests
+    from sgt.intent.segment import resolve_checkpoint_segment
+    from sgt.intent.stint import derive_stints, whole_save_turns
+
+    resolved = resolve_checkpoint_segment(repo, spec)
+    if resolved is None:
+        return {"ok": False, "message": f"{spec!r} names no checkpoint (see `sgt intent list`)"}
+    feature_id, feature_label, idx, seg = resolved
+
+    # Asked, in conversation order: grounded stint turns per save (already ts-ordered within one),
+    # then the save's whole-save claims (`whole_save_turns` -- the same rule the rationale
+    # emission applies), then the committed sidecar digest -- saves iterate chronologically, so
+    # the whole list reads as the conversation did.
+    from sgt.intent.prompts import prompt_for
+    manifests = load_manifests(repo)
+    asked: list[dict] = []
+    seen: set[str] = set()
+    for sha in seg.commit_shas:
+        if sha in manifests:
+            for st in derive_stints(manifests, sha, root=repo)["stints"]:
+                t = st["turn"]
+                if (st["op_ids"] and frozenset(st["op_ids"]) & seg.op_ids
+                        and t["id"] not in seen):
+                    seen.add(t["id"])
+                    asked.append({"text": t["text"], "channel": t["channel"], "actor": t["actor"],
+                                  "ts": t["ts"], "claude_session_id": t["key"]})
+        for t in whole_save_turns(repo, manifests.get(sha), sha):
+            if t["id"] not in seen:
+                seen.add(t["id"])
+                asked.append({"text": t["text"], "channel": t["channel"], "actor": t["actor"],
+                              "ts": t["ts"],
+                              "claude_session_id": t["key"] if t["key_kind"] == "chat" else None})
+        digest = prompt_for(repo, sha)
+        if digest and digest not in {a["text"] for a in asked}:
+            asked.append({"text": digest, "channel": "sidecar", "actor": "human",
+                          "ts": None, "claude_session_id": None})
+
+    # The blast radius of editing from here: the same op-set revert plan `sgt revert <spec>`
+    # would run. Its removals beyond the chapter's own ops are the work built on top.
+    plan = _checkpoint_preview(repo, "revert", spec)
+    dependents = sorted(frozenset(plan.removed) - seg.op_ids) if plan and plan.ok else []
+
+    from sgt.core import opindex
+    by_id = {op.id: op for op in opindex.index_ops(repo)}
+    touches = sorted({sym for oid in seg.op_ids for sym in (by_id[oid].footprint if oid in by_id else ())})
+
+    # Resume handles: every conversation the asks came from, plus any plan session stamped into
+    # the ops' attribution (the plan loop's own resume path). Best-effort: a compacted or deleted
+    # transcript makes a handle dangle, which is why `asked` carries the words themselves.
+    sessions: list[str] = []
+    for a in asked:
+        sid = a["claude_session_id"]
+        if sid and sid not in sessions:
+            sessions.append(sid)
+    from sgt import state
+    plan_ids = sorted({att.plan for oid in seg.op_ids if oid in by_id
+                       for att in by_id[oid].attribution if att.plan})
+    plan_sessions = state.load_json(repo, "plan_sessions", default={})
+    for p in plan_ids:
+        sid = (plan_sessions.get(p) or {}).get("claude_session_id")
+        if sid and sid not in sessions:
+            sessions.append(sid)
+
+    return {
+        "ok": True,
+        "checkpoint": f"{feature_id}@{idx}",
+        "feature_id": feature_id, "feature_label": feature_label,
+        "seg_index": idx, "label": seg.label, "source": seg.source,
+        "op_count": seg.op_count, "commit_shas": list(seg.commit_shas),
+        "asked": asked,
+        "why": _rationale_rows(repo, sorted(seg.op_ids)),
+        "touches": touches,
+        "dependent_op_ids": dependents,
+        "plan_ids": plan_ids,
+        "resume": [{"claude_session_id": s, "command": f"claude --resume {s}"} for s in sessions],
+    }
 
 
 def feature_verb_preview_view(repo, verb: str, *args: str) -> dict:

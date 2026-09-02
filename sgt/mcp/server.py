@@ -407,6 +407,19 @@ def tool_show(repo_path: str, args: dict) -> dict:
     return show_view(repo_path, sel)
 
 
+def tool_checkpoint_context(repo_path: str, args: dict) -> dict:
+    """The checkpoint context pack (capture weave P4): the asks, the recorded why, the blast
+    radius, and the resume handles for one chapter -- what an agent reads before editing from it."""
+    from sgt.api import checkpoint_context
+    from sgt.core.lens import get
+
+    spec = (args.get("checkpoint") or "").strip()
+    if not spec:
+        return {"error": "missing 'checkpoint'"}
+    get(repo_path)  # mine-on-contact so the chapter reflects current reality (R9)
+    return checkpoint_context(repo_path, spec)
+
+
 def tool_plan_done(repo_path: str, args: dict) -> dict:
     """Close a finished plan session (plan U14). A fully-matched session already completes on its
     own via `sgt_checkpoint`'s confirm; this is the explicit close for a plan whose remaining steps
@@ -563,6 +576,19 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         "Verify the op store's content-address integrity.",
         _schema({}, []),
         tool_fsck,
+    ),
+    "sgt_checkpoint_context": (
+        "Prepare to continue work from a checkpoint: the verbatim asks that drove the chapter "
+        "(`asked`), the recorded why, the symbols it touches, the ops later work built on it "
+        "(`dependent_op_ids` -- what an edit from here disturbs), and `claude --resume` handles "
+        "back into the conversations that produced it. Call this BEFORE editing or reverting from "
+        "a `<feature>@<n>` checkpoint, so you act on what was actually asked rather than a guess. "
+        "Read-only.",
+        _schema({"checkpoint": {"type": "string",
+                                "description": "a `<feature>@<n>` / `<feature>:<slug>` handle, as "
+                                               "printed by `sgt log` or the checkpoint list"}},
+                ["checkpoint"]),
+        tool_checkpoint_context,
     ),
     "sgt_find": (
         "Find something you can describe but cannot name: ranks features, saves and symbols "

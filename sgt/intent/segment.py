@@ -392,22 +392,36 @@ def resolve_checkpoint(repo: str | Path, spec: str) -> tuple[frozenset[str], str
     segment's deterministic op-set -- exactly what `sgt revert` removes -- so a checkpoint revert
     runs the identical `plan_revert_op_set` path every other revert uses (the KTD6 safety
     invariant: the boundary/label may be LLM-chosen, the op membership never is)."""
+    resolved = resolve_checkpoint_segment(repo, spec)
+    if resolved is None:
+        return None
+    _fid, label, idx, seg = resolved
+    return seg.op_ids, f"{label}@{idx}: {seg.label}"
+
+
+def resolve_checkpoint_segment(repo: str | Path, spec: str,
+                               ) -> tuple[str, str, int, Segment] | None:
+    """`resolve_checkpoint`, keeping the whole segment: `(feature_id, feature_label, seg_index,
+    Segment)`. The context pack (`sgt.api.checkpoint_context`, weave P4) needs the chapter's
+    commit shas and op set, not just the op ids -- and the selection logic must stay THE one
+    `resolve_checkpoint` applies, so the chapter a pack describes is the chapter a revert of the
+    same spec removes."""
     parts = _checkpoint_parts(repo, spec)
     if parts is None:
         return None
-    _, by_index, want, label, segs = parts
+    feature_id, _, by_index, want, label, segs = parts
 
     if by_index:
         idx = int(want)
         if not (0 <= idx < len(segs)):
             return None
-        return segs[idx].op_ids, f"{label}@{idx}: {segs[idx].label}"
+        return feature_id, label, idx, segs[idx]
 
     hits = [(i, s) for i, s in enumerate(segs) if checkpoint_slug(s.label) == want]
     if len(hits) != 1:  # 0 = unknown slug, >1 = ambiguous -- `@n` disambiguates either way
         return None
     idx, seg = hits[0]
-    return seg.op_ids, f"{label}@{idx}: {seg.label}"
+    return feature_id, label, idx, seg
 
 
 def resolve_checkpoint_label(repo: str | Path, label: str) -> tuple[frozenset[str], str] | None:
@@ -484,9 +498,9 @@ def checkpoint_label_candidates(repo: str | Path, label: str) -> list[str]:
 
 def _checkpoint_parts(
     repo: str | Path, spec: str,
-) -> tuple[str, bool, str, str, list[Segment]] | None:
-    """Split a checkpoint spec and resolve its *feature* part: `(feat_part, by_index, want,
-    feature_label, segments)`, or `None` when the spec isn't checkpoint-shaped or names no unique
+) -> tuple[str, str, bool, str, str, list[Segment]] | None:
+    """Split a checkpoint spec and resolve its *feature* part: `(feature_id, feat_part, by_index,
+    want, feature_label, segments)`, or `None` when the spec isn't checkpoint-shaped or names no unique
     feature. Stops one step short of applying the selector, which is the step `resolve_checkpoint`
     and `checkpoint_miss` answer differently -- sharing everything before it is what keeps the two
     from disagreeing about which specs are even in scope."""
@@ -530,7 +544,7 @@ def _checkpoint_parts(
     persisted = state.load_json(repo, "intent_segments", default={})
     segs = segments_for(repo, runs, persisted.get(feature_id))
     label = nodes.get(feature_id, {}).get("label", feature_id)
-    return feat_part, by_index, want, label, segs
+    return feature_id, feat_part, by_index, want, label, segs
 
 
 def checkpoint_miss(repo: str | Path, spec: str) -> tuple[str, str, list[str]] | None:
@@ -547,7 +561,7 @@ def checkpoint_miss(repo: str | Path, spec: str) -> tuple[str, str, list[str]] |
     parts = _checkpoint_parts(repo, spec)
     if parts is None:
         return None
-    feat_part, by_index, want, label, segs = parts
+    _fid, feat_part, by_index, want, label, segs = parts
     if by_index:
         if 0 <= int(want) < len(segs):
             return None
