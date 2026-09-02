@@ -130,6 +130,27 @@ real recorded agent sessions building the two dashboards (`scripts/study/harvest
 so the work a participant reads in every stage is work an agent did -- it is
 committed rather than in flight, which is the part that changed.
 
+Those sessions were driven by written briefs (`harvest/roles-<project>.json`), and
+the sgt condition shows, against each piece of work, what it was asked for. The
+prompt hook that records this was not running during the harvest, so the capture
+stores would have shipped empty and the attribute would have been blank on every
+chapter -- an arm missing one of the things it is being read for. It is therefore
+replayed into each bundle at build time (`scripts/study/backfill_capture.py`): each
+save's window carries the brief that produced it, re-typed the way a prompt is
+actually sent rather than as a clean stakeholder paragraph, and the derivation that
+joins words to code is the shipped one, run over that evidence at build time
+exactly as it runs live. Three things about this are worth stating plainly, because
+each could otherwise be mistaken for a stronger claim than it is. The asks are the
+real briefs -- the same words that produced the code -- but their surface (lower
+case, typos, the request buried after the reasoning) is staged, and a small number
+of conversational turns are additions rather than renderings: one question per
+project that produced no code, and one correction per project. Every save has words
+except the initial commit of each dashboard, which had no brief and is left with
+none, so a participant also meets the state where the tool has nothing to say. And
+no `claude --resume` handle is offered for a replayed session, because the
+transcript does not exist on the participant's machine and a command that fails
+when typed would teach them that the whole line is decoration.
+
 ### Scripted states, and why stages are independent
 
 Each workspace ships a `stage` script. `./stage 1` through `./stage 4` reset

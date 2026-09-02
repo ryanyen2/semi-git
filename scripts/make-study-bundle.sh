@@ -269,6 +269,39 @@ else:
     sys.exit("  history sync did not complete after 24 contacts")
 PY
 
+    # The conversation behind the history, replayed (scripts/study/backfill_capture.py). The
+    # testbeds are built by replaying commits with no prompt hook running, so their capture stores
+    # ship empty -- and a participant in this arm would meet a tool whose most human attribute,
+    # what each piece of work was asked for in the words somebody typed, is blank on every chapter.
+    # That is the one thing this arm is being evaluated on.
+    #
+    # Here, and in this order, for two reasons. AFTER the op strip and the sync, because the
+    # manifests anchor the ops each save minted and a later re-mine would leave them pointing at
+    # ops that no longer exist. BEFORE the rebuild, because the labeler reads a save's dominant ask
+    # as context (`theme_segment.label_prompt_for`), so running it first is what lets a chapter be
+    # named after what was asked for rather than after the commit subject alone.
+    echo "  Replaying the conversation behind the history."
+    "$staging/toolenv/bin/python" "$SGT_SOURCE/scripts/study/backfill_capture.py" \
+        "$staging/work" "$project" || {
+        echo "  Could not replay the captured conversation. Not shipping this bundle: the sgt" >&2
+        echo "  arm would ship with no words on any chapter." >&2
+        exit 1
+    }
+
+    # Re-cut every chapter from scratch, rather than letting the incremental path freeze the
+    # boundaries this repo was built with. `build_segments` (which `sgt log --rebuild` runs) keeps
+    # all but a feature's live tail chapter by design -- the §3.4 hysteresis that makes a
+    # checkpoint survive a rebuild -- and that discipline is exactly wrong here: the asks were
+    # replayed a moment ago, so EVERY seam in this history is one they have never weighed on. With
+    # no persisted record to overlay, each feature is cut fresh with the captured asks scoring its
+    # boundaries and each chapter named with its ask in hand.
+    #
+    # The cost is stated rather than hidden: checkpoint indices move, so the answer key has to be
+    # regenerated from the built bundles afterwards (`harvest/write_answer_key.py`, which already
+    # documents running against the bundles' `work/` directories). The build says so at the end.
+    echo "  Clearing the persisted chapter cut, so the asks can reorganise it."
+    rm -f "$staging/work/.sgt/intent/segments.json"
+
     echo "  Rebuilding the history view. About a minute."
     refresh_log="$staging/.refresh.log"
     (
@@ -297,6 +330,20 @@ PY
         echo >&2
         echo "  Not shipping this bundle. Re-run the build; if it happens twice on the" >&2
         echo "  same project, the repo needs looking at rather than rebuilding." >&2
+        exit 1
+    fi
+
+    # Stage 3 and stage 4 name the work to remove by its ◆ theme label, and `./stage` finds that
+    # label by looking for "event day" in it (task-scripts/stage, `theme_label`). The rebuild above
+    # now names themes with the captured asks as context, which is exactly the kind of change that
+    # could reword it into something that no longer matches -- and the failure would appear as a
+    # participant being handed a stage card naming work they cannot find.
+    echo "  Checking the event-day theme still names itself."
+    if ! "$staging/toolenv/bin/python" "$SGT_SOURCE/scripts/study/check_event_theme.py" \
+            "$staging/work"; then
+        echo >&2
+        echo "  The cross-feature theme the stage cards name no longer says \"event day\"." >&2
+        echo "  Stage 3 and 4 would hand out a name the repository does not have. Not shipping." >&2
         exit 1
     fi
 
@@ -340,6 +387,16 @@ PY
     echo "  Refreshing the pristine .sgt snapshot to the rebuilt tree."
     rm -f "$staging/work/.study/sgt-pristine.tar"
     tar -cf "$staging/work/.study/sgt-pristine.tar" -C "$staging/work" .sgt
+
+    # Checkpoint indices moved with the re-cut above, and the key names chapters. Say it here, in
+    # the build that caused it, rather than leaving it to be discovered by a participant being
+    # scored against a chapter list the repository no longer has.
+    echo
+    echo "  NOTE: this bundle's chapters were re-cut, so checkpoint names and indices have moved."
+    echo "  Regenerate the answer key from the BUILT bundles once both arms are packed:"
+    echo "    python3 scripts/study/harvest/write_answer_key.py \\"
+    echo "      <bikecount-bundle>/work <footfall-bundle>/work docs/study/answer-key.json"
+    echo
 
     # Freeze the names. The rebuild's LLM answers live in caches inside this
     # staging copy, which is thrown away after packing -- so the NEXT build
