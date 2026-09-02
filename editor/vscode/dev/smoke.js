@@ -192,6 +192,9 @@ const src = fs.readFileSync(jsPath, "utf8");
 // The file defines top-level functions then an IIFE; eval in this global scope.
 eval(src);
 
+// ---- end-domshim (slice boundary: `render-bundle.js` reuses everything above this line, so the
+// real study bundle can be rendered through the real webview code without a second DOM shim)
+
 const compose = require("./fixture.js")(
   JSON.parse(fs.readFileSync(path.join(__dirname, "fixture-compose.json"), "utf8")));
 
