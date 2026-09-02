@@ -32,18 +32,19 @@ _MAX_TITLE = 72
 _IDLE_PROMPT_SECONDS = 1800
 
 
-def _first_line(text: str) -> str:
-    """The ask itself. Prompts are often several sentences; the first line is nearly always what
-    was wanted and the rest is qualification."""
-    return next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
-
-
 def _shorten(text: str) -> str:
-    """`_first_line`, trimmed to what a status row can hold."""
-    first = _first_line(text)
-    if len(first) <= _MAX_TITLE:
-        return first
-    return first[:_MAX_TITLE - 1].rstrip() + "…"
+    """The ask inside `text`, trimmed to what a status row can hold (`sgt.intent.gist`)."""
+    from sgt.intent.gist import ask_gist
+
+    return ask_gist(text, _MAX_TITLE)
+
+
+def _whole_ask(text: str) -> str:
+    """The same ask, unclipped -- what a suggested `sgt save -m "..."` pastes. An ellipsis in a
+    command is not pasteable, and the raw prompt is a paragraph, so this is the ask clause whole."""
+    from sgt.intent.gist import ask_gist
+
+    return ask_gist(text, 10_000)
 
 
 def latest_prompt(repo: str | Path, *, since_ts: float | None = None,
@@ -84,7 +85,7 @@ def working_on(repo: str | Path, *, active_plans: list[dict] | None = None,
     for plan in active_plans or []:
         title = plan.get("current_title")
         if title:
-            return {"title": _shorten(title), "full_title": _first_line(title),
+            return {"title": _shorten(title), "full_title": _whole_ask(title),
                     "source": "plan", "ts": None,
                     "session_id": plan.get("claude_session_id")}
     prompt = latest_prompt(repo, since_ts=last_save_ts, turns=turns)
@@ -99,5 +100,5 @@ def working_on(repo: str | Path, *, active_plans: list[dict] | None = None,
         age = (now if now is not None else _t.time()) - (prompt.get("ts") or 0)
         if age > _IDLE_PROMPT_SECONDS:
             return None
-    return {"title": _shorten(prompt["text"]), "full_title": _first_line(prompt["text"]),
+    return {"title": _shorten(prompt["text"]), "full_title": _whole_ask(prompt["text"]),
             "source": "prompt", "ts": prompt.get("ts"), "session_id": prompt.get("key")}

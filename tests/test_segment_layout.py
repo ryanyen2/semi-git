@@ -59,12 +59,18 @@ def _grid(*specs):
 
 
 def _seg(feature_id, seg_index, op_ids, first_index, last_index,
-         label=None, tier="co-changed", source="fallback", words=None):
+         label=None, tier="co-changed", source="fallback", asks=None):
     return {"feature_id": feature_id, "seg_index": seg_index,
             "checkpoint": f"{feature_id}@{seg_index}", "intent": label or f"seg {seg_index}",
             "rationale": "", "op_ids": list(op_ids), "op_count": len(op_ids),
             "commit_shas": [], "first_index": first_index, "last_index": last_index,
-            "novelty": 0.0, "tier": tier, "source": source, "words": words or []}
+            "novelty": 0.0, "tier": tier, "source": source,
+            # Excerpts plus whose words they were (`sgt.intent.stint.ask_record`), never raw
+            # prompt text: this list is carried for every chapter of every feature.
+            "asks": [{"gist": a, "trimmed": False, "chars": len(a), "channel": "hook",
+                      "source": "you, in a Claude Code chat", "actor": "human", "ts": None,
+                      "claude_session_id": None, "resumable": False, "claimed": 1,
+                      "scope": "stint"} for a in (asks or [])]}
 
 
 def test_cars_carry_segment_metadata_and_are_ordered_by_seg_index():
@@ -79,14 +85,16 @@ def test_cars_carry_segment_metadata_and_are_ordered_by_seg_index():
     assert cars[0]["tier"] == "co-changed" and cars[0]["source"] == "fallback"
 
 
-def test_cars_carry_captured_words():
-    """The VSCode chunk-car carries a chapter's captured words (intent-ledger P1), parallel to the
-    terminal layout, so the extension can surface 'the history in my own words' on hover."""
+def test_cars_carry_captured_asks():
+    """The VSCode chunk-car carries a chapter's captured asks, parallel to the terminal layout, so
+    the hover can say what the work was asked for -- as an excerpt with whose words it was, since
+    the tooltip is a native one with no wrapping and a real prompt is a paragraph."""
     m = {"roots": ["A"], "nodes": [_node("A", None, [])], "edges": []}
     hist = _grid(("A", 0))
-    segs = [_seg("A", 0, ["o0"], 0, 0, words=["remove all completed tasks"])]
+    segs = [_seg("A", 0, ["o0"], 0, 0, asks=["remove all completed tasks"])]
     car = _run(m, hist, segs)["laneById"]["A"]["cars"][0]
-    assert car["words"] == ["remove all completed tasks"]
+    assert [a["gist"] for a in car["asks"]] == ["remove all completed tasks"]
+    assert car["asks"][0]["source"] == "you, in a Claude Code chat"
 
 
 def test_cars_carry_whether_a_revert_took_them_out_of_head():

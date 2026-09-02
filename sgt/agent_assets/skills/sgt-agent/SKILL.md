@@ -158,6 +158,24 @@ Theirs, and deliberately not exposed to you as tools:
 When one of these is the right next step, say so and hand it over with the exact command. That is
 more useful than doing it, because they can see the consequence in the terminal that you cannot.
 
+## What the work was asked for
+
+Every answer from `sgt show` carries an `asked` attribute: the words the human typed that produced
+that work. `asked.top.gist` is an excerpt starting at the request (a real prompt opens with
+throat-clearing and carries its reasoning after the ask, so the excerpt is the part worth quoting),
+`asked.top.source` says whose words they were -- their own typing, your relay of it, or your
+paraphrase -- and `asked.count` says how many asks there were. `asked: true` returns every one in
+full (`asked.asks[].text`).
+
+Two rules follow from it. **Quote it, do not paraphrase it.** When you tell somebody what a piece of
+work was for, their own sentence is the answer, and a paraphrase of a paraphrase is how a record
+stops being trustworthy. **Read it before you edit from a chapter** -- `sgt_checkpoint_context`
+carries the same words with the blast radius beside them -- because the fastest way to undo somebody
+else's decision is to re-derive their intent from the code instead of reading what they asked for.
+
+An empty `asked` is not a hint to invent one. It means this work predates the prompt hook or was
+saved outside a conversation, and saying so is the honest answer.
+
 ## Showing sgt output to a human
 
 sgt's terminal output is built for a terminal: ANSI colour, box drawing, wide aligned columns. Pasted

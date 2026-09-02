@@ -48,12 +48,20 @@ def _grid(*specs):
 
 
 def _seg(feature_id, seg_index, op_ids, first_index, last_index,
-         label=None, tier="co-changed", source="fallback", words=None):
+         label=None, tier="co-changed", source="fallback", asks=None):
     return {"feature_id": feature_id, "seg_index": seg_index,
             "checkpoint": f"{feature_id}@{seg_index}", "intent": label or f"seg {seg_index}",
             "rationale": "", "op_ids": list(op_ids), "op_count": len(op_ids),
             "commit_shas": [], "first_index": first_index, "last_index": last_index,
-            "novelty": 0.0, "tier": tier, "source": source, "words": words or []}
+            "novelty": 0.0, "tier": tier, "source": source,
+            # The projection carries excerpts, not prompts (`sgt.intent.stint.ask_record`).
+            "asks": [_ask(a) for a in (asks or [])]}
+
+
+def _ask(gist, source="you, in a Claude Code chat"):
+    return {"gist": gist, "trimmed": False, "chars": len(gist), "channel": "hook",
+            "source": source, "actor": "human", "ts": None, "claude_session_id": None,
+            "resumable": False, "claimed": 1, "scope": "stint"}
 
 
 def test_only_features_with_ops_are_placed():
@@ -309,8 +317,8 @@ def test_focus_view_renders_a_chapters_captured_words():
     m = {"roots": ["A"], "nodes": [_node("A", None, [])], "edges": []}
     hist = _grid(("A", 0), ("A", 1))
     segs = [
-        _seg("A", 0, ["o0"], 0, 0, label="add clear cmd", words=["remove all completed tasks"]),
-        _seg("A", 1, ["o1"], 1, 1, label="polish", words=[]),
+        _seg("A", 0, ["o0"], 0, 0, label="add clear cmd", asks=["remove all completed tasks"]),
+        _seg("A", 1, ["o1"], 1, 1, label="polish", asks=[]),
     ]
     body = "\n".join(render_graph_lines(m, hist, segs, focus="A", color=False))
     assert "remove all completed tasks" in body  # chapter 0's words are on screen
@@ -318,16 +326,17 @@ def test_focus_view_renders_a_chapters_captured_words():
 
 
 def test_focus_view_caps_the_words_shown_per_chapter():
-    """A busy multi-commit chapter shows at most three captured words with a '+N more' tail, so the
+    """A busy multi-commit chapter shows at most two captured asks with a '+N more' tail, so the
     zoom stays scannable rather than becoming a wall of prose (Epicea's information-overload
-    warning)."""
+    warning). Two rather than three, because each row now carries the ask rather than the prompt's
+    opening -- two excerpts say more about a chapter than three throat-clearings did."""
     m = {"roots": ["A"], "nodes": [_node("A", None, [])], "edges": []}
     hist = _grid(("A", 0))
-    segs = [_seg("A", 0, ["o0"], 0, 0, words=[f"turn {i}" for i in range(5)])]
+    segs = [_seg("A", 0, ["o0"], 0, 0, asks=[f"turn {i}" for i in range(5)])]
     body = "\n".join(render_graph_lines(m, hist, segs, focus="A", color=False))
-    assert "turn 0" in body and "turn 2" in body
-    assert "turn 3" not in body and "turn 4" not in body
-    assert "+2 more" in body
+    assert "turn 0" in body and "turn 1" in body
+    assert "turn 2" not in body and "turn 4" not in body
+    assert "+3 more ask(s)" in body
 
 
 def test_reverted_work_no_lane_can_draw_is_named_on_screen():

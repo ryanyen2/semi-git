@@ -148,3 +148,106 @@ def test_absolute_event_paths_ground_repo_relative_footprints(tmp_path):
 
     assert out["stints"][0]["op_ids"] == ["op-a"]
     assert out["residual_op_ids"] == ["op-b"]
+
+
+# ── asks_for_ops: what a *selection* was asked for ──────────────────────────────────────────────
+#
+# The join behind the `asked` attribute on `sgt show`, the checkpoint context pack, and the
+# editor's checkpoint card. It answers for an op SET rather than for a save, because that is what
+# a reader points at -- a chapter, a feature, a symbol's history, a ◆ row of work spread across
+# features -- and all four have to be answered by one function or two of them will quote different
+# words back for the same code.
+
+def _store(tmp_path, manifests):
+    from sgt import state
+    state.save_json_if_changed(tmp_path, "intent_manifests", manifests)
+
+
+def test_the_asks_of_a_selection_carry_an_excerpt_and_whose_words_they_were(tmp_path):
+    from sgt.intent.stint import asks_for_ops
+
+    _store(tmp_path, {"c1": _manifest(
+        "c1", 0.0, 100.0,
+        turns=[_turn("t1", "cs-1", 10.0,
+                     "so i think we shoudl proably add teh csv download for teh daily totals, "
+                     "becuase the committee keeps emailing me")],
+        events=[_event("cs-1", 20.0, "pages.py")],
+        ops=[{"id": "op-a", "symbols": ["pages.py::render"]}])})
+
+    asks = asks_for_ops(tmp_path, {"op-a"}, ["c1"])
+
+    assert len(asks) == 1
+    # The request, verbatim and typos kept, without the opening it was buried in.
+    assert asks[0]["gist"] == "add teh csv download for teh daily totals"
+    assert asks[0]["trimmed"] is True and asks[0]["chars"] > 60
+    assert asks[0]["source"] == "you, in a Claude Code chat"
+    assert asks[0]["claimed"] == 1
+    assert asks[0]["text"].startswith("so i think")  # the whole prompt is still there to open
+
+
+def test_only_the_asks_that_ground_the_selection_answer_for_it(tmp_path):
+    """A save's other work is not this chapter's why. Without this the attribute would quote the
+    prompt for the logging that happened to land in the same commit."""
+    from sgt.intent.stint import asks_for_ops
+
+    _store(tmp_path, {"c1": _manifest(
+        "c1", 0.0, 100.0,
+        turns=[_turn("t1", "cs-1", 10.0, "add auth"), _turn("t2", "cs-1", 50.0, "add logging")],
+        events=[_event("cs-1", 20.0, "auth.py"), _event("cs-1", 60.0, "log.py")],
+        ops=[{"id": "op-a", "symbols": ["auth.py::login"]},
+             {"id": "op-b", "symbols": ["log.py::emit"]}])})
+
+    assert [a["gist"] for a in asks_for_ops(tmp_path, {"op-a"}, ["c1"])] == ["add auth"]
+
+
+def test_one_prompt_across_two_saves_is_one_ask_with_both_claims(tmp_path):
+    """Case 4 (one prompt, many saves): the same words must not appear twice on a card because the
+    session kept working, and the claim they account for is the sum."""
+    from sgt.intent.stint import asks_for_ops
+
+    _store(tmp_path, {
+        "c1": _manifest("c1", 0.0, 100.0,
+                        turns=[_turn("t1", "cs-1", 10.0, "split the page in two")],
+                        events=[_event("cs-1", 20.0, "a.py")],
+                        ops=[{"id": "op-a", "symbols": ["a.py::foo"]}]),
+        # The session says nothing new in the second window, so its earlier turn still owns the
+        # work -- the manifest carries no turn of its own.
+        "c2": _manifest("c2", 100.0, 200.0, turns=[],
+                        events=[_event("cs-1", 150.0, "b.py")],
+                        ops=[{"id": "op-b", "symbols": ["b.py::bar"]}]),
+    })
+
+    asks = asks_for_ops(tmp_path, {"op-a", "op-b"}, ["c1", "c2"])
+
+    assert len(asks) == 1
+    assert asks[0]["claimed"] == 2
+
+
+def test_the_dominant_ask_is_the_one_a_single_line_quotes(tmp_path):
+    """A correction chain keeps both asks -- supersedence is a human judgement, not a heuristic --
+    so a surface with one line to spend has to choose, and it chooses by how much of the selection
+    each accounts for, latest first on a tie (the correction is the standing word)."""
+    from sgt.intent.stint import asks_for_ops, dominant_ask
+
+    _store(tmp_path, {"c1": _manifest(
+        "c1", 0.0, 100.0,
+        turns=[_turn("t1", "cs-1", 10.0, "mark the event days on both charts"),
+               _turn("t2", "cs-1", 50.0, "no not a red background, use a tick")],
+        events=[_event("cs-1", 20.0, "a.py"), _event("cs-1", 25.0, "b.py"),
+                _event("cs-1", 60.0, "c.py")],
+        ops=[{"id": "op-a", "symbols": ["a.py::x"]}, {"id": "op-b", "symbols": ["b.py::y"]},
+             {"id": "op-c", "symbols": ["c.py::z"]}])})
+
+    asks = asks_for_ops(tmp_path, {"op-a", "op-b", "op-c"}, ["c1"])
+
+    assert len(asks) == 2
+    assert dominant_ask(asks)["gist"] == "mark the event days on both charts"
+
+
+def test_a_save_with_no_manifest_says_nothing_rather_than_guessing(tmp_path):
+    """Every commit made before the prompt hook existed is this case, which is most of the history
+    in most repositories. Silence is the honest answer and the renderers show nothing."""
+    from sgt.intent.stint import asks_for_ops, dominant_ask
+
+    assert asks_for_ops(tmp_path, {"op-a"}, ["c1"]) == []
+    assert dominant_ask([]) is None

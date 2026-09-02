@@ -827,18 +827,22 @@ def focus_lines(
         elif not gone_n and not c.get("is_future"):
             example_live = c["seg_index"]  # the NEWEST live one: the usual place to go back to
         emit(con, line)
-        # The chapter in the developer's own words, when they were captured. Never a guessed reason:
-        # silence here means nothing was recorded, which is itself worth being able to see.
-        words = c.get("words") or []
-        for w in words[:3]:
-            # The words get the whole rest of the line, not the label column's width: they are
-            # sentences, and fitting them to a column sized for short commit subjects cut every one
-            # of them at the same arbitrary point.
+        # The chapter in the developer's own words, when they were captured. Never a guessed
+        # reason: silence here means nothing was recorded, which is itself worth being able to see.
+        #
+        # The ask, not the prompt (`sgt.intent.gist`, carried on `asks`). This used to print each
+        # captured prompt cut to the line width, which on a real prompt is its opening
+        # throat-clearing -- three rows of "so i think we shoudl proably" under a chapter whose
+        # name was built from the same words. One excerpt per ask, and the second one is where the
+        # count of the rest goes, since a reader scanning chapters is not reading a transcript.
+        asks = c.get("asks") or []
+        for a in asks[:2]:
+            room = width - gutter - idx_w - pad - 3
             emit(con, Text(" " * (gutter + idx_w + pad), style=FAINT).append(
-                f"“{fit(w, width - gutter - idx_w - pad - 3)}”", style=FAINT))
-        if len(words) > 3:
+                f"“{fit(a.get('gist') or '', room)}”", style=FAINT))
+        if len(asks) > 2:
             emit(con, Text(" " * (gutter + idx_w + pad), style=FAINT).append(
-                f"… +{len(words) - 3} more", style=FAINT))
+                f"… +{len(asks) - 2} more ask(s)", style=FAINT))
 
     # ── Footer ───────────────────────────────────────────────────────────────────────────────────
     emit(con, "")

@@ -22,7 +22,9 @@ def test_the_latest_prompt_is_the_current_task(tmp_path):
 
     out = working_on(tmp_path)
 
-    assert out["title"] == "Actually make it back off exponentially"
+    # The ask, not the whole prompt: "Actually" is throat-clearing, and every surface that shows
+    # captured words now takes the excerpt (`sgt.intent.gist`) rather than the first line.
+    assert out["title"] == "make it back off exponentially"
     assert out["source"] == "prompt"
     assert out["ts"] == 200.0
 

@@ -36,7 +36,8 @@ from sgt import state
 from sgt.intent.turns import capture_lock, turns_for
 
 _ARTIFACT = "intent_rationale"
-REFLECTOR_VERSION = "1"
+# 2: a reason is the ask excerpt (`sgt.intent.gist`), not the prompt's first line.
+REFLECTOR_VERSION = "2"
 
 
 def load_rationale(repo: str | Path) -> dict[str, dict]:

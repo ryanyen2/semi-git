@@ -1689,46 +1689,23 @@ def checkpoint_context(repo, spec: str) -> dict:
     same rows `sgt why` renders; **touches / disturb** -- the chapter's footprint symbols and the
     real blast radius of editing here, from the SAME revert planner a `sgt revert <spec>` would
     run (`_checkpoint_preview`), so the warning and the verb cannot disagree; **resume** -- a
-    `claude --resume` handle per conversation the asks came from, best-effort by design (the
-    words above are the payload, the handle is an accelerator).
+    `claude --resume` handle per conversation the asks came from, offered only where the
+    transcript still exists (the words above are the payload, the handle is an accelerator, and an
+    accelerator that fails when it is typed is worse than none).
 
     `{"ok": False, "message": ...}` when `spec` names no checkpoint -- never a guessed pack."""
-    from sgt.intent.manifest import load_manifests
     from sgt.intent.segment import resolve_checkpoint_segment
-    from sgt.intent.stint import derive_stints, whole_save_turns
+    from sgt.intent.stint import asks_for_ops
 
     resolved = resolve_checkpoint_segment(repo, spec)
     if resolved is None:
         return {"ok": False, "message": f"{spec!r} names no checkpoint (see `sgt intent list`)"}
     feature_id, feature_label, idx, seg = resolved
 
-    # Asked, in conversation order: grounded stint turns per save (already ts-ordered within one),
-    # then the save's whole-save claims (`whole_save_turns` -- the same rule the rationale
-    # emission applies), then the committed sidecar digest -- saves iterate chronologically, so
-    # the whole list reads as the conversation did.
-    from sgt.intent.prompts import prompt_for
-    manifests = load_manifests(repo)
-    asked: list[dict] = []
-    seen: set[str] = set()
-    for sha in seg.commit_shas:
-        if sha in manifests:
-            for st in derive_stints(manifests, sha, root=repo)["stints"]:
-                t = st["turn"]
-                if (st["op_ids"] and frozenset(st["op_ids"]) & seg.op_ids
-                        and t["id"] not in seen):
-                    seen.add(t["id"])
-                    asked.append({"text": t["text"], "channel": t["channel"], "actor": t["actor"],
-                                  "ts": t["ts"], "claude_session_id": t["key"]})
-        for t in whole_save_turns(repo, manifests.get(sha), sha):
-            if t["id"] not in seen:
-                seen.add(t["id"])
-                asked.append({"text": t["text"], "channel": t["channel"], "actor": t["actor"],
-                              "ts": t["ts"],
-                              "claude_session_id": t["key"] if t["key_kind"] == "chat" else None})
-        digest = prompt_for(repo, sha)
-        if digest and digest not in {a["text"] for a in asked}:
-            asked.append({"text": digest, "channel": "sidecar", "actor": "human",
-                          "ts": None, "claude_session_id": None})
+    # Asked, in conversation order -- the same join the `asked` attribute on `sgt show` reads
+    # (`sgt.intent.stint.asks_for_ops`), so the chapter's context pack and the card a user sees
+    # before reverting it can never quote different words.
+    asked = asks_for_ops(repo, seg.op_ids, seg.commit_shas)
 
     # The blast radius of editing from here: the same op-set revert plan `sgt revert <spec>`
     # would run. Its removals beyond the chapter's own ops are the work built on top.
@@ -1740,12 +1717,18 @@ def checkpoint_context(repo, spec: str) -> dict:
     touches = sorted({sym for oid in seg.op_ids for sym in (by_id[oid].footprint if oid in by_id else ())})
 
     # Resume handles: every conversation the asks came from, plus any plan session stamped into
-    # the ops' attribution (the plan loop's own resume path). Best-effort: a compacted or deleted
-    # transcript makes a handle dangle, which is why `asked` carries the words themselves.
+    # the ops' attribution (the plan loop's own resume path) -- and only the ones whose transcript
+    # is still on this machine. A compacted, foreign or replayed session used to be offered anyway
+    # and failed when the command was typed, which is why `asked` carries the words themselves:
+    # they are the durable copy, and the handle is only ever an accelerator onto it.
+    from sgt.intent.stint import resumable
+
     sessions: list[str] = []
     for a in asked:
         sid = a["claude_session_id"]
-        if sid and sid not in sessions:
+        # Only handles that resolve to a transcript on this machine: a `claude --resume` printed
+        # for a compacted, foreign, or replayed session fails when it is typed.
+        if sid and sid not in sessions and a.get("resumable"):
             sessions.append(sid)
     from sgt import state
     plan_ids = sorted({att.plan for oid in seg.op_ids if oid in by_id
@@ -1753,7 +1736,7 @@ def checkpoint_context(repo, spec: str) -> dict:
     plan_sessions = state.load_json(repo, "plan_sessions", default={})
     for p in plan_ids:
         sid = (plan_sessions.get(p) or {}).get("claude_session_id")
-        if sid and sid not in sessions:
+        if sid and sid not in sessions and resumable(sid):
             sessions.append(sid)
 
     return {
@@ -2940,6 +2923,7 @@ def _segments_out(repo, op_leaf, tree_result) -> list[dict]:
     words_for = _commit_words_join(repo)
     # The capture evidence (weave P3): loaded once for every feature's cut, so the boundaries and
     # words labels here match what `resolve_checkpoint` derives -- both go through `segments_for`.
+    from sgt.intent import stint as stint_mod
     from sgt.intent.stint import stint_words
     words_by_sha = stint_words(repo)
     # Which of a chapter's ops are still in HEAD's ideal. A revert removes ops from the ideal and
@@ -2959,21 +2943,38 @@ def _segments_out(repo, op_leaf, tree_result) -> list[dict]:
         feature_label = nodes.get(feature_id, {}).get("label", feature_id)
         for s in segs:
             commit_shas = frozenset(s.commit_shas)
-            # Per-chapter captured words (intent-ledger P1 zoom): the user's own words for each
-            # commit this chapter covers, so the TUI/editor zoom answers "in my own words" -- the
-            # data `intent_view` already holds per atom, made addressable per chapter. Deduped,
-            # chapter order preserved.
-            words: list[str] = []
+            # Per-chapter captured asks (weave P3 + the P4 render): the grounded chat prompts
+            # whose stints claimed this chapter's ops, each as an excerpt with the provenance to
+            # say whose words they were (`stint.ask_record`). The stint join is what makes a
+            # chat-keyed word per-commit-safe -- the exclusion `_commit_words_join` maintains no
+            # longer applies to these.
+            #
+            # Excerpts, not prompts: this list feeds the timeline tooltip and the checkpoint panel,
+            # which draw every chapter of every feature. Full prompts here were both unreadable (a
+            # 900-character paragraph in a native tooltip) and the bulk of the payload, for words
+            # nobody reads until they open one -- which is what `sgt show --asked` is for.
+            asks: list[dict] = []
+            seen_words: set[str] = set()
             for sha in s.commit_shas:
-                w = words_for(sha)
-                if w and w not in words:
-                    words.append(w)
-                # ...and the grounded asks (weave P3): the chat prompts whose stints claimed this
-                # chapter's ops. The stint join is what makes a chat-keyed word per-commit-safe --
-                # the exclusion `_commit_words_join` maintains no longer applies to these.
                 for e in words_by_sha.get(sha, ()):
-                    if s.op_ids & frozenset(e["op_ids"]) and e["text"] not in words:
-                        words.append(e["text"])
+                    if not (s.op_ids & frozenset(e["op_ids"])) or e["text"] in seen_words:
+                        continue
+                    seen_words.add(e["text"])
+                    asks.append(stint_mod.ask_record(
+                        e["text"], channel=e.get("channel", "hook"),
+                        actor=e.get("actor", "human"), ts=e["ts"], session=e["session"],
+                        claimed=len(s.op_ids & frozenset(e["op_ids"])), full=False))
+            # Nothing grounded claims this chapter: fall back to whatever prompt its commits
+            # recorded (`_atom_prompt`'s ladder). Marked `recorded` rather than as a chat capture,
+            # because that ladder reaches sidecars and save messages too and the channel is not
+            # knowable from here -- naming a source we cannot vouch for would be the one thing
+            # this attribute must never do.
+            if not asks:
+                for sha in s.commit_shas:
+                    w = words_for(sha)
+                    if w and w not in seen_words:
+                        seen_words.add(w)
+                        asks.append(stint_mod.ask_record(w, channel="recorded", full=False))
             # A segment's ops all belong to ONE feature by construction (feature-scoped cut), so
             # `feature_span` is always a single feature -- `group.tier` would degenerate to its
             # single-feature branch anyway. Compute that branch directly (no `components_in` walk):
@@ -2991,7 +2992,7 @@ def _segments_out(repo, op_leaf, tree_result) -> list[dict]:
                 "op_count": s.op_count,
                 "present_op_count": (len(s.op_ids & head_op_ids) if head_op_ids else None),
                 "commit_shas": list(s.commit_shas),
-                "words": words,
+                "asks": asks,
                 "first_index": s.first_index,
                 "last_index": s.last_index,
                 "novelty": round(s.novelty, 3),
@@ -3188,7 +3189,7 @@ def now_view(repo, *, include_preview: bool = True, recent_limit: int = 5) -> di
 
 
 def show_view(repo, target: str, *, symbol_limit: int = 12, save_limit: int = 5,
-              include_ops: bool = False) -> dict:
+              include_ops: bool = False, include_asked: bool = False) -> dict:
     """`sgt show <sel>` -- "what is this thing?" for any id sgt ever printed.
 
     Every other view is organized around a *question* the user already knows how to ask (history,
@@ -3262,6 +3263,7 @@ def show_view(repo, target: str, *, symbol_limit: int = 12, save_limit: int = 5,
                 "saves": provenance["saves"],
                 "save_count": provenance["save_count"],
                 "span": provenance["span"],
+                "asked": _show_asked(repo, op_ids, provenance["witnessing"], include_asked),
                 "consequences": consequences,
                 "next": [
                     {"cmd": f"sgt log --focus {quoted}",
@@ -3376,6 +3378,10 @@ def show_view(repo, target: str, *, symbol_limit: int = 12, save_limit: int = 5,
         "saves": provenance["saves"],
         "save_count": provenance["save_count"],
         "span": provenance["span"],
+        # What was asked for, as an attribute of the thing being shown. A symbol's extent is its
+        # whole live history (above), so its asks are every prompt that ever wrote it -- which is
+        # the answer to "why does this function look like this", asked of the function.
+        "asked": _show_asked(repo, extent, provenance["witnessing"], include_asked),
         "consequences": consequences,
         "next": _show_next(found, consequences),
     }
@@ -3512,11 +3518,42 @@ def _show_provenance(repo, op_ids, limit: int) -> tuple[list[dict], dict]:
     stamps = sorted(times[sha] for sha in witnessing if sha in times)
     return {
         "saves": [{"sha": sha[:7], "subject": subject.get(sha, "")} for sha in kept],
+        # Full shas, chronological and uncapped -- the key for the capture stores, which are keyed
+        # by whole sha and have no view of a display limit. Free here: the pass is already done.
+        "witnessing": chronological,
         # The true total, so a renderer can say how many it isn't showing. A silent truncation reads
         # as "this is all of it", which is the same class of quiet mislead as a silent no-op.
         "save_count": len(chronological),
         "span": {"first": stamps[0] if stamps else None, "last": stamps[-1] if stamps else None},
     }
+
+
+def _show_asked(repo, op_ids, shas, include_all: bool = False) -> dict:
+    """The `asked` attribute: what the developer asked for, for whatever `show` is describing.
+
+    `sgt show` deliberately does not re-derive *why* -- that is `sgt why`'s job, and two views
+    deriving the same answer drift apart. This is not that. It is one attribute of the thing on
+    screen, in the same class as `symbols` and `saves`: the words that produced it, as an excerpt,
+    with enough provenance to say whose words they were and where they were typed. The recorded
+    reasoning stays behind `sgt why`, which `next` still points at.
+
+    `top` is the ask grounding most of the selection (`dominant_ask`) and carries its verbatim text
+    so a card can expand in place; `count` is how many asks there were in total, so a renderer can
+    say what it is not showing rather than implying the one line is all of it. `include_all` adds
+    the rest -- `sgt show --asked`, the read for someone who wants the conversation.
+
+    Never raises: an unmanifested selection (all pre-weave history) is `count: 0`, which every
+    renderer treats as "say nothing" rather than "say nothing was asked"."""
+    from sgt.intent.stint import asks_for_ops, dominant_ask
+
+    try:
+        asks = asks_for_ops(repo, op_ids, shas)
+    except Exception:  # noqa: BLE001 -- an attribute must never take down the verb carrying it
+        return {"top": None, "count": 0}
+    out = {"top": dominant_ask(asks), "count": len(asks)}
+    if include_all:
+        out["asks"] = asks
+    return out
 
 
 def _show_consequences(repo, found, core_verbs, symbol_limit: int = 12) -> dict:

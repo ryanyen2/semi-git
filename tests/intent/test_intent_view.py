@@ -91,13 +91,17 @@ def test_segments_carry_documented_keys_and_addressable_checkpoint(tmp_path):
         # `present_op_count` is how many of `op_ids` are still in HEAD's ideal: a revert takes ops
         # out of the ideal and leaves them in the store, so a chapter the user reverted has to be
         # kept and *say* it is gone rather than silently shrink its `op_count`.
-        "op_ids", "op_count", "present_op_count", "commit_shas", "words", "first_index",
+        "op_ids", "op_count", "present_op_count", "commit_shas", "asks", "first_index",
         "last_index", "novelty", "tier", "source",
     }
     assert s["checkpoint"] == "F-A@0"
     assert s["feature_label"] == "Foo Feature"
     assert s["op_count"] == len(s["op_ids"]) > 0
-    assert isinstance(s["words"], list)  # per-chapter captured words (intent-ledger P1 zoom)
+    # Per-chapter captured asks: an excerpt plus whose words they were, never the raw prompt --
+    # this list draws every chapter of every feature (`stint.ask_record`, `full=False`).
+    assert isinstance(s["asks"], list)
+    assert all({"gist", "source", "trimmed", "chars"} <= set(a) and "text" not in a
+               for a in s["asks"])
 
 
 def test_cross_feature_theme_reports_both_features_with_correct_tier(tmp_path, monkeypatch):

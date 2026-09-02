@@ -469,7 +469,12 @@ def test_checkpoint_context_prepares_an_agent_to_edit_from_a_chapter(tmp_path):
     assert pack["ok"] is True
     assert "make foo return 99" in [a["text"] for a in pack["asked"]]
     assert "make foo return 99" in [r["reason"] for r in pack["why"]]
-    assert {"claude_session_id": "cs-42", "command": "claude --resume cs-42"} in pack["resume"]
+    # An ask carries whose words it was, so an agent reporting it back can say so rather than
+    # implying every recorded line is the user's own typing.
+    assert [a["source"] for a in pack["asked"]] == ["you, relayed by the assistant"]
+    # ...and no resume handle, because this session's transcript is not on this machine: a
+    # `claude --resume` that fails when typed is worse than not offering one.
+    assert pack["resume"] == []
 
 
 def test_checkpoint_context_requires_a_checkpoint_arg(tmp_path):

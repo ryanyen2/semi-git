@@ -655,7 +655,7 @@ def apply_words_labels(segments: list[Segment], words_by_sha: dict[str, list[dic
     state through a label (design decision 5, the case-15 privacy seam)."""
     if not words_by_sha:
         return segments
-    from sgt.intent.working import _first_line
+    from sgt.intent.gist import LABEL_WIDTH, ask_gist
 
     out: list[Segment] = []
     for seg in segments:
@@ -671,7 +671,7 @@ def apply_words_labels(segments: list[Segment], words_by_sha: dict[str, list[dic
                 cur = claims.setdefault(e["turn_id"], [0, e["ts"], e["text"]])
                 cur[0] += n
         best = max(claims.values(), key=lambda c: (c[0], c[1]), default=None)
-        label = clip_label(_first_line(best[2]))[:60] if best else ""
+        label = ask_gist(best[2], LABEL_WIDTH) if best else ""
         if best and best[0] / len(seg.op_ids) >= WORDS_DOMINANCE and label:
             out.append(_relabel(seg, label, seg.rationale, "words"))
         else:

@@ -505,6 +505,27 @@ export interface ComposeProposalSummary {
 // history sharing one intent, addressable as `<feature_id>@<seg_index>` and revertable as a unit.
 // `intent` is the chapter's label in the developer's language; `novelty` (0..1) weights how much
 // behavior it changed, so trivial chapters can be dimmed. From `sgt.api.intent_view`.
+// One captured ask, as every surface renders it (`sgt.intent.stint.ask_record`). `gist` is the
+// excerpt to put on a line -- the request inside a real prompt, which opens with throat-clearing
+// and carries its reasoning after the ask (`sgt.intent.gist`); `source` is whose words they were,
+// in words, so the reader can tell their own typing from an agent's paraphrase. `text` is the
+// verbatim prompt and arrives only on demand (`sgt show <ref> --asked`), because a panel listing
+// every chapter of every feature would otherwise carry every prompt in the repository.
+export interface CapturedAsk {
+  gist: string;
+  trimmed: boolean;
+  chars: number;
+  channel: string;
+  source: string;
+  actor: string;
+  ts: number | null;
+  claude_session_id: string | null;
+  resumable: boolean;
+  claimed: number;
+  scope: "stint" | "save";
+  text?: string;
+}
+
 export interface IntentSegment {
   feature_id: string;
   feature_label: string;
@@ -519,7 +540,8 @@ export interface IntentSegment {
   last_index: number;
   novelty: number;
   tier: "coupled" | "co-changed" | "thematic";
-  source: "llm" | "fallback";
+  source: "llm" | "fallback" | "words";
+  asks: CapturedAsk[];
 }
 
 // One commit-keyed `IntentAtom` from `sgt.api.intent_view` (only the fields the hover reads are

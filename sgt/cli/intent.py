@@ -367,8 +367,12 @@ def _print_context(pack: dict) -> None:
     if pack["asked"]:
         print("  asked (in order):")
         for a in pack["asked"]:
-            first = next((ln.strip() for ln in a["text"].splitlines() if ln.strip()), "")
-            print(f'    - "{first[:100]}"  ({a["channel"]})')
+            # The excerpt and whose words it was -- the same pair `sgt show` prints. The raw first
+            # 100 characters of a prompt is its opening throat-clearing, and `channel` is a word
+            # from the store's vocabulary, not the reader's.
+            print(f'    - “{a["gist"]}”')
+            print(f'      {a["source"]}'
+                  + (f' · {a["chars"]} characters in full' if a.get("trimmed") else ""))
     if pack["why"]:
         print("  why (recorded):")
         for r in pack["why"]:

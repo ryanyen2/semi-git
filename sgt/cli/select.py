@@ -172,7 +172,21 @@ def _render_commit_why(view: dict) -> int:
     read; the words are only ever those truly keyed to this commit, so it cannot misattribute."""
     print(f"{view['sha'][:8]}: {view['subject'] or '(no subject)'}  ·  {view['op_count']} op(s)")
     words = view.get("words")
-    print(f'  words: "{words}"' if words else "  words: (none captured)")
+    if words:
+        # The ask, not the prompt. This line used to print the captured words verbatim, which for a
+        # real prompt is a 900-character paragraph on one unwrapped terminal line -- it buried the
+        # resume handle and the recorded reasons under it. The excerpt is the same one the chapter
+        # name and the `sgt show` attribute use (`sgt.intent.gist`), and the pointer is offered only
+        # when there is genuinely more to read.
+        from sgt.intent.gist import ROW_WIDTH, ask_parts
+
+        ask = ask_parts(words, ROW_WIDTH)
+        print(f'  words: “{ask.gist}”')
+        if ask.trimmed:
+            print(f'         ({len(words)} characters in full: '
+                  f'sgt show {view["sha"][:8]} --asked)')
+    else:
+        print("  words: (none captured)")
     for sid in view.get("claude_session_ids", []):
         print(f"  resume: claude --resume {sid}")
     _print_rationale(view.get("rationale", []))

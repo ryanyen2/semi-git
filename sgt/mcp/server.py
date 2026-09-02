@@ -404,7 +404,7 @@ def tool_show(repo_path: str, args: dict) -> dict:
         return show_at_view(repo_path, spec, sel or None)
     if not sel:
         return {"error": "pass 'sel' (what is this?) or 'at' (what existed at a past point)"}
-    return show_view(repo_path, sel)
+    return show_view(repo_path, sel, include_asked=bool(args.get("asked")))
 
 
 def tool_checkpoint_context(repo_path: str, args: dict) -> dict:
@@ -564,11 +564,18 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         "`at` to read the past instead: `sel` is then a file and you get its content as it was at "
         "that point (a commit index like `12`, an op set `op:<id>,...`, or a ref), or the list of "
         "what existed there if you omit `sel`. Read-only either way — nothing is checked out, and "
-        "the id reading never calls an LLM.",
+        "the id reading never calls an LLM.\n\n"
+        "`asked` on the answer is what the user asked for, in their own words: an excerpt of the "
+        "prompt that produced this work, with who typed it and how much of the selection it "
+        "accounts for. Quote it back rather than paraphrasing when you report what a piece of "
+        "work was for. Pass `asked: true` to get every ask in full (`asked.asks[].text`) when the "
+        "excerpt is not enough to act on.",
         _schema({"sel": {"type": "string",
                          "description": "an id/label/symbol to explain, or (with `at`) a file to read"},
                  "at": {"type": "string",
-                        "description": "read it as it was at this point: a commit index, `op:<id>,...`, or a ref"}},
+                        "description": "read it as it was at this point: a commit index, `op:<id>,...`, or a ref"},
+                 "asked": {"type": "boolean",
+                           "description": "include every captured ask in full, verbatim, not just the excerpt"}},
                 []),
         tool_show,
     ),
