@@ -2,7 +2,7 @@
 
 Read your code by **feature**, not by diff. This extension is a full sgt workbench: it shows which
 feature owns each line, draws the feature tree as a rail alongside a commit timeline with a
-draggable playhead, lets you merge/split/rename/move/revert a feature or resolve a fork from the
+draggable playhead, lets you revert or restore a feature or one of its checkpoints from the
 editor, and drives sgt's git bridge (`switch`/`save`/`undo`/`sync`/`push`/`land`) so day-to-day git
 work never has to leave VS Code.
 
@@ -17,12 +17,12 @@ and drives `sgt`'s read views and its feature, kernel, and git-bridge verbs.
   OKLCH hash of the feature id, identical across the editor, the workbench, and the terminal UI.
 - **Composition Workbench** (`semi-git: Open Composition Workbench`) — a full-window rail (feature
   tree + commit timeline) and inspector, grounded in a GitKraken/GitHub-Graph-style layout. A
-  draggable playhead scrubs any commit-index frontier and re-folds `code(I)` + the oracle verdict
-  live, without materializing the working tree. Hovering an action paints its blast/foundation
-  effect before you commit to it.
-- **Activity bar** (`semi-git`) — four tree views: **Features** (the feature/subsystem tree),
-  **Forks** (the conflict inbox, badge = open count), **Changes** (drift, unmanaged paths, the
-  trust queue), **Compositions** (sessions and proposals — the switch/land/publish surface).
+  draggable playhead scrubs any commit-index frontier and re-folds `code(I)` live, without
+  materializing the working tree. Selecting a feature or a checkpoint shows what it changed, down
+  to the lines. Hovering an action paints its blast/foundation effect before you commit to it.
+- **Activity bar** (`semi-git`) — three tree views: **Now** (what is unsaved, what needs you,
+  what you just did), **Features** (the feature/subsystem tree), **Changes** (drift, unmanaged
+  paths, the trust queue).
 - **Fork resolution** — an N-column view of a fork's tip images, plus the `merge-op` → hand-edit →
   `fulfill` → `land` wizard, entirely through real kernel verbs.
 - **Hovers, diagnostics, inlay hints** — a symbol hover with label, rationale, and cross-feature

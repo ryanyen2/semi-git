@@ -373,71 +373,6 @@ function computeSegmentLayout(map, grid, segments, opts) {
 }
 // ---- end-segment-layout (test slice boundary) ----
 
-// The episodic projection (Stage C): roll the flat op stream into EPISODES -- one per commit that
-// carried ops -- and group episodes by their dominant feature into collapsible episode-groups (the
-// "co-commit cluster" a developer rewinds as a unit). Sessions are empty on mined history (only
-// sgt's own land/checkpoint stamp them), so the episode axis is projected from provenance: an op's
-// commit_index identifies its earliest provenance commit, so ops sharing a commit_index were
-// advanced in the same commit = one episode -- exactly the co-commit signal Stage B clusters on.
-// Real sgt sessions supersede this going forward; the shape is identical. Pure (no DOM); the Python
-// counterpart is `episodes()` in sgt/tui/graph.py, kept behaviour-parallel.
-function rollupEpisodes(map, grid) {
-  const labels = {};
-  for (const n of (map && map.nodes) || []) labels[n.id] = n.label || n.id;
-  const subjectOf = {}, shaOf = {};
-  for (const c of (grid && grid.commits) || []) {
-    subjectOf[c.index] = c.subject || "";
-    shaOf[c.index] = c.sha;
-  }
-  // Re-roll `grid_view`'s per-(feature, commit) cells back across features into one episode per
-  // commit (plan U3). An op with no feature has no cell, so an all-unattributed commit forms no
-  // episode -- the same omission the grid itself makes.
-  const byIndex = new Map();
-  for (const cell of (grid && grid.cells) || []) {
-    const idx = cell.commit_index;
-    let ep = byIndex.get(idx);
-    if (!ep) {
-      ep = { index: idx, sha: shaOf[idx], subject: subjectOf[idx] || "", opIds: [], features: {}, kinds: {} };
-      byIndex.set(idx, ep);
-    }
-    for (const oid of cell.op_ids || []) ep.opIds.push(oid);
-    ep.features[cell.feature_id] = (ep.features[cell.feature_id] || 0) + cell.op_count;
-    for (const k of Object.keys(cell.kinds || {})) ep.kinds[k] = (ep.kinds[k] || 0) + cell.kinds[k];
-  }
-  const episodes = [...byIndex.keys()].sort((a, b) => a - b).map((idx) => {
-    const ep = byIndex.get(idx);
-    ep.opCount = ep.opIds.length;
-    // Dominant feature: most ops in this commit; ties broken by larger id for determinism.
-    let dom = null, best = -1;
-    for (const f of Object.keys(ep.features)) {
-      const c = ep.features[f];
-      if (c > best || (c === best && f > dom)) { best = c; dom = f; }
-    }
-    ep.dominantFeature = dom;
-    return ep;
-  });
-  // Episode-groups: episodes sharing a dominant feature (the collapsible "thing I was doing"),
-  // ordered by first appearance; unattributed episodes (no feature) fall under a null group.
-  const groups = new Map();
-  for (const ep of episodes) {
-    const key = ep.dominantFeature;
-    let g = groups.get(key);
-    if (!g) {
-      g = { featureId: key, label: key ? (labels[key] || key) : "(unattributed)",
-            episodeIndices: [], opCount: 0, kinds: {}, firstIndex: ep.index, lastIndex: ep.index };
-      groups.set(key, g);
-    }
-    g.episodeIndices.push(ep.index);
-    g.opCount += ep.opCount;
-    g.lastIndex = ep.index; // episodes are index-sorted, so the latest append is the last index
-    for (const k of Object.keys(ep.kinds)) g.kinds[k] = (g.kinds[k] || 0) + ep.kinds[k];
-  }
-  const groupsOut = [...groups.values()].sort(
-    (a, b) => a.firstIndex - b.firstIndex || String(a.featureId).localeCompare(String(b.featureId)));
-  return { episodes, groups: groupsOut };
-}
-// ---- end-episodes (test slice boundary) ----
-
 // Classify a verb preview's affected features into the three roles the closure overlay paints, so
 // the graph reads the same as `sgt revert`'s terminal preview (blast/foundation are the CLI's own
 // buckets -- sgt.api._affected_rows). `target` = the acted-on feature; `blast` = OTHER features
@@ -501,52 +436,6 @@ function classifyCarImpact(removedIds, addedIds, segments, targetOpIds, verb) {
 }
 // ---- end-car-impact
 
-// Lay episodes out as a vertical git-log rail (Stage C): newest episode on top (row 0), each
-// feature a lane column (its episodes a straight vertical line), lanes reused by features whose
-// row-spans don't overlap (greedy interval-graph coloring) -- the compaction that keeps the column
-// count small no matter how many features exist. Pure; the Python counterpart is
-// `episode_rail_layout` in sgt/tui/graph.py, kept behaviour-parallel. Sliced for the node harness.
-function episodeRailLayout(epView) {
-  const episodes = (epView && epView.episodes) || [];
-  const ordered = episodes.slice().sort((a, b) => b.index - a.index); // newest (largest index) top
-  const rowOf = new Map();
-  ordered.forEach((e, r) => rowOf.set(e.index, r));
-
-  const span = new Map(); // fid -> [top, bot] (fid may be null -> Map, not an object, allows it)
-  for (const e of episodes) {
-    const fid = e.dominantFeature;
-    const r = rowOf.get(e.index);
-    const s = span.get(fid);
-    if (!s) span.set(fid, [r, r]);
-    else { s[0] = Math.min(s[0], r); s[1] = Math.max(s[1], r); }
-  }
-
-  // Greedy interval coloring: features top-first; a lane is reusable once its last occupant ends
-  // above (smaller row than) this feature's top. Lowest free lane wins (minimal columns).
-  const feats = [...span.keys()].sort((a, b) =>
-    span.get(a)[0] - span.get(b)[0] || String(a).localeCompare(String(b)));
-  const laneOf = new Map();
-  const laneBot = [];
-  for (const fid of feats) {
-    const [top, bot] = span.get(fid);
-    let lane = -1;
-    for (let L = 0; L < laneBot.length; L++) { if (laneBot[L] < top) { lane = L; break; } }
-    if (lane < 0) { lane = laneBot.length; laneBot.push(bot); }
-    else laneBot[lane] = bot;
-    laneOf.set(fid, lane);
-  }
-
-  const rows = ordered.map((e) => ({
-    index: e.index, row: rowOf.get(e.index), feature: e.dominantFeature,
-    lane: laneOf.has(e.dominantFeature) ? laneOf.get(e.dominantFeature) : 0,
-    subject: e.subject, opCount: e.opCount, sha: e.sha,
-    // The save's per-feature attribution (mirrors sgt/tui/graph.py::episode_rail_layout): a row is
-    // a save, and its chips name every feature it touched, `feature` (the dominant one) first.
-    features: e.features,
-  }));
-  return { rows, laneCount: Math.max(1, laneBot.length), rowCount: ordered.length };
-}
-// ---- end-rail (test slice boundary) ----
 
 // ---- change-tree (test slice boundary) ----
 // What a feature -- or one of its chapters -- CHANGED, as a tree the reader can scan and click
@@ -683,7 +572,7 @@ function fileChange(path, pair, withSide, maxD) {
   const otherOwner = spanOwners(pair[other + "_spans"], otherLines.length);
 
   const entities = new Map();
-  const bump = (span, side) => {
+  const bump = (span, side, line, text) => {
     const key = span ? span.symbol : " top";
     let e = entities.get(key);
     if (!e) {
@@ -693,7 +582,7 @@ function fileChange(path, pair, withSide, maxD) {
         name: entityName(span),
         entityKind: span ? span.kind : null,
         order: span ? span.start_line : Infinity,
-        added: 0, removed: 0,
+        added: 0, removed: 0, lines: [],
       }));
     }
     // Document order comes from the with-side where the entity is on it; an entity this work
@@ -701,9 +590,19 @@ function fileChange(path, pair, withSide, maxD) {
     // the rest rather than being dumped at the end.
     if (span && e.order === Infinity) e.order = span.start_line;
     e[side]++;
+    // The line itself, not only the tally. Counting was all this did, and a panel of counts answers
+    // "how much" for a reader who asked "what" -- the whole reason they opened the checkpoint.
+    // Carried here because both sides' text is already in hand and neither is fetched again.
+    e.lines.push({ side: side === "added" ? "+" : "-", line, text });
   };
-  for (const ln of d.bOnly) bump(withOwner[ln], "added");
-  for (const ln of d.aOnly) bump(otherOwner[ln], "removed");
+  for (const ln of d.bOnly) bump(withOwner[ln], "added", ln, withLines[ln - 1]);
+  for (const ln of d.aOnly) bump(otherOwner[ln], "removed", ln, otherLines[ln - 1]);
+  // Removed lines are collected on the other side's numbering, so a plain concat interleaves two
+  // unrelated coordinate systems. Sort each entity's lines by position within its own side, with a
+  // removal placed before the addition that replaces it -- which is how a diff reads.
+  for (const e of entities.values()) {
+    e.lines.sort((p, q) => p.line - q.line || (p.side === "-" ? -1 : 1));
+  }
 
   const children = [...entities.values()].sort(
     (p, q) => p.order - q.order || String(p.name).localeCompare(String(q.name)));
@@ -800,7 +699,6 @@ function changeMeter(added, removed, width) {
   if (state.selectedStep === undefined) state.selectedStep = null;
   if (state.selectedPlanSession === undefined) state.selectedPlanSession = null;
   if (!Array.isArray(state.multi)) state.multi = state.selected ? [state.selected] : [];
-  if (state.view !== "rail") state.view = "gantt"; // "gantt" (feature timeline) | "rail" (episodes)
   // "tree" (the subsystem hierarchy, folded to its top level) | "flat" (feature rows,
   // newest-touched first). Tree is the default again: the grey-wall objection that made flat the
   // default is gone (the host now gives subsystems an identity hue too, see workbench.ts), and a
@@ -963,17 +861,11 @@ function changeMeter(added, removed, width) {
 
   const rail = document.getElementById("rail");
   const inspector = document.getElementById("inspector");
-  const compositionBtn = document.getElementById("compositionBtn");
-  const oracleChip = document.getElementById("oracleChip");
   const offscreenAbove = document.getElementById("offscreenAbove");
   const offscreenBelow = document.getElementById("offscreenBelow");
   const previewContext = document.getElementById("previewContext"); // "＋N unchanged" context tally
   const armedBanner = document.getElementById("armedBanner"); // the armed merge/move mode, stated
   const previewRefusal = document.getElementById("previewRefusal"); // blocked-restore remedies overlay
-  const viewSeg = document.getElementById("viewSeg"); // segmented Timeline│Rail control
-  const plansChip = document.getElementById("plansChip"); // consolidated "Plans M/N" chip + popover trigger
-  const plansPopover = document.getElementById("plansPopover");
-  const driftChip = document.getElementById("driftChip"); // ◇ unplanned / ⑂ unplaced-fork indicator
   const inspectorToggle = document.getElementById("inspectorToggle");
   const confirmBar = document.getElementById("confirmBar"); // staged-action consequence + Apply/Cancel
 
@@ -1196,50 +1088,6 @@ function changeMeter(added, removed, width) {
     return flattenLayout(computeSegmentLayout(m, g, segmentsOf(comp), { collapsed: [] }));
   }
 
-  // The three "nowhere to attach" signals -- unplanned drift, unplaced forks, and reverted work whose
-  // symbol is off disk -- as one chip each. This was one merged chip: one glyph string, one merged
-  // tooltip, and one click that resolved a fork however you aimed. A chip is a hit target, so the
-  // thing a click does has to be the thing the reader pointed at -- clicking `░4` to ask about
-  // reverted work and landing in fork resolution is the wrong action, not a shortcut. Only the chip
-  // that has an action carries a `symbol`, and only it says so in its tooltip.
-  function signalChips(drift, forks, gap) {
-    // Name a few whole and count the rest: a list silently cut at 4 understates the scope of the very
-    // thing the chip exists to disclose. Same rule the terminal's gap note follows.
-    const cap = (items, n) => {
-      const keep = items.slice(0, n);
-      const left = items.length - keep.length;
-      return keep.concat(left ? [`+${left} more`] : []).join(", ");
-    };
-    const chips = [];
-    if (drift.length) {
-      chips.push({
-        glyph: `◇${drift.length}`,
-        title: `${drift.length} edit(s) outside any plan\n` +
-               cap(drift.map((e) => (e.footprint || []).join(", ")), 4),
-      });
-    }
-    if (forks.length) {
-      const rest = forks.length - 1;
-      chips.push({
-        glyph: `⑂${forks.length}`,
-        symbol: forks[0].symbol,
-        // Which one the click takes was unknowable before: the tooltip listed all N and opened the
-        // first. It names the one it will open, and counts the others as still waiting.
-        title: `click to resolve the fork in ${forks[0].symbol}` +
-               (rest ? `\n+${rest} more fork(s) after this one` : ""),
-      });
-    }
-    const goneN = (gap && gap.op_count) || 0;
-    if (goneN) {
-      chips.push({
-        glyph: `░${goneN}`,
-        title: `${goneN} reverted edit(s) sit in no lane: ` + cap(gap.symbols || [], 4) +
-               "\n`sgt undo` reverses the whole revert; `sgt restore <symbol>` brings one back",
-      });
-    }
-    return chips;
-  }
-
   // The Save/Undo pair, derived from whichever verb is running in the host. They had no in-flight
   // state at all, so the only feedback was the toast at the end -- and a reader who sees nothing
   // clicks again. Both go inert while either one runs, not just the one clicked: they mutate the
@@ -1259,121 +1107,17 @@ function changeMeter(added, removed, width) {
   // ---- end-signals
 
   function renderTitlebar() {
-    // ── Nav zone: composition + segmented view control ──────────────────────────────────────────
-    compositionBtn.textContent = `${state.compositionLabel || "HEAD"} ▾`;
-    for (const btn of viewSeg.querySelectorAll(".seg-btn")) {
-      btn.classList.toggle("active", btn.dataset.view === state.view);
-    }
     // The button is labelled with what it SHOWS, not with what clicking it does. A toggle labelled
     // with its action makes the reader work out which state they are currently in from the label of
     // the state they are not in.
     if (groupBtn) {
       groupBtn.textContent = state.grouping === "tree" ? "Subsystems" : "Features";
-      groupBtn.hidden = state.view !== "gantt";  // the rail has no grouping to choose
-    }
-
-    // ── Status zone: oracle dot, consolidated plans chip, drift indicator ───────────────────────
-    const oracle = (compose.status && compose.status.oracle) || { configured: false, status: "pending" };
-    const st = oracle.configured ? oracle.status : "unconfigured";
-    oracleChip.dataset.state = st;
-    oracleChip.querySelector(".oracle-label").textContent = st === "unconfigured" ? "oracle" : `oracle · ${st}`;
-
-    // Fold the N per-session chips into one "Plans matched/total" chip whose ring shows aggregate
-    // progress; the per-session breakdown moves into a click popover (renderPlansPopover).
-    const sessions = planMarks.sessions;
-    const totalMatched = sessions.reduce((n, s) => n + s.matchedCount, 0);
-    const totalSteps = sessions.reduce((n, s) => n + s.stepCount, 0);
-    const allComplete = sessions.length > 0 && totalMatched === totalSteps;
-    plansChip.classList.toggle("complete", allComplete);
-    plansChip.hidden = sessions.length === 0;
-    const ringSvg = plansChip.querySelector(".plans-ring");
-    ringSvg.innerHTML = "";
-    ringSvg.appendChild(renderPlanRing(0, totalMatched, totalSteps));
-    plansChip.querySelector(".plans-label").textContent = `Plans ${totalMatched}/${totalSteps}`;
-    if (!plansPopover.hidden) renderPlansPopover(); // keep an open popover in sync with fresh state
-
-    // Drift/forks with no matching row have nowhere on the rail to attach -- a compact indicator
-    // rather than the signal being dropped silently. Reverted work belongs here for the same reason:
-    // clustering keeps only alive symbols, so a reverted symbol's ops lose their leaf and with it
-    // their cell and their chapter, and every lane on the rail then draws whole while the code is off
-    // disk. `░` is the glyph the terminal map and the revert preview both spend on removal, so the
-    // three surfaces name one state one way.
-    const chips = signalChips(driftMarks.unplaced, forkMarks.unplaced,
-                              grid.reverted_unaccounted || { op_count: 0, symbols: [] });
-    driftChip.hidden = chips.length === 0;
-    driftChip.replaceChildren();
-    for (const c of chips) {
-      const el = document.createElement("span");
-      el.className = "sig-chip";
-      el.textContent = c.glyph;
-      el.title = c.title;
-      // The only actionable chip is the one that says so, and it now looks it: the click has been
-      // here all along under `cursor: default` with a tooltip that never mentioned it, which is an
-      // action no reader could find.
-      if (c.symbol) {
-        el.dataset.action = "resolveFork";
-        el.addEventListener("click", () => vscode.postMessage({ type: "resolveFork", symbol: c.symbol }));
-      }
-      driftChip.appendChild(el);
     }
 
     // ── Actions zone: inspector toggle (Save/Commit/Undo are wired once at init) ─────────────────
     inspectorToggle.textContent = state.inspectorCollapsed ? "◨" : "◧";
     inspectorToggle.title = state.inspectorCollapsed ? "Show detail panel" : "Hide detail panel";
     document.getElementById("app").classList.toggle("inspector-collapsed", !!state.inspectorCollapsed);
-  }
-
-  // The plans popover: one row per active session (○/● glyph + name + matched/total, ✓ when
-  // complete). Built from the same planMarks.sessions data the consolidated chip aggregates.
-  function renderPlansPopover() {
-    plansPopover.innerHTML = "";
-    if (!planMarks.sessions.length) {
-      const empty = document.createElement("div");
-      empty.className = "plans-pop-empty";
-      empty.textContent = "No active plan sessions";
-      plansPopover.appendChild(empty);
-      return;
-    }
-    for (const session of planMarks.sessions) {
-      const done = session.stepCount > 0 && session.matchedCount === session.stepCount;
-      const stalled = session.derivedStatus === "stalled";
-      const floatingN = planMarks.floating.filter((s) => s.sessionId === session.sessionId).length;
-      const row = document.createElement("button");
-      row.className = "plans-pop-row" + (done ? " complete" : "") + (stalled ? " stalled" : "");
-      row.title = stalled ? `Interrupted — ${session.planText}` : session.planText;
-      const glyph = document.createElement("span");
-      glyph.className = "plans-pop-glyph";
-      // A stalled plan reads paused (⏸), distinct from building (●/○) and done (✓).
-      glyph.textContent = stalled ? "⏸" : done ? "✓" : session.matchedCount > 0 ? "●" : "○";
-      const name = document.createElement("span");
-      name.className = "plans-pop-name";
-      name.textContent = session.planText;
-      const count = document.createElement("span");
-      count.className = "plans-pop-count";
-      count.textContent = `${session.matchedCount}/${session.stepCount}` + (floatingN ? ` · ${floatingN}⤶` : "");
-      row.append(glyph, name, count);
-      row.addEventListener("click", () => {
-        plansPopover.hidden = true;
-        selectPlanSession(session.sessionId);
-      });
-      plansPopover.appendChild(row);
-      // Stalled plans get the one clear next action right in the list -- hand it back to Claude
-      // Code. A <span role=button> (not a nested <button>, which is invalid inside the row button).
-      if (stalled) {
-        const resume = document.createElement("span");
-        resume.className = "plan-resume";
-        resume.setAttribute("role", "button");
-        resume.setAttribute("tabindex", "0");
-        resume.textContent = "Resume";
-        resume.title = "Relaunch this Claude Code session in a terminal";
-        resume.addEventListener("click", (e) => {
-          e.stopPropagation();
-          plansPopover.hidden = true;
-          vscode.postMessage({ type: "resumePlan", sessionId: session.sessionId });
-        });
-        row.appendChild(resume);
-      }
-    }
   }
 
   function render() {
@@ -1448,7 +1192,7 @@ function changeMeter(added, removed, width) {
     name.textContent = `◈ ${themeMarks.label}`;
     const note = document.createElement("span");
     note.className = "theme-banner-note";
-    note.textContent = `one piece of work across ${themeMarks.featureIds.size} features — its chapters are ringed, other lanes compressed`;
+    note.textContent = `one piece of work across ${themeMarks.featureIds.size} features — its checkpoints are ringed, other lanes compressed`;
     el.append(name, note);
     const mkBtn = (label, title, fn) => {
       const b = document.createElement("button");
@@ -1508,7 +1252,7 @@ function changeMeter(added, removed, width) {
   function renderPresence() {
     const el = document.getElementById("presence");
     if (!el) return;
-    const parts = [`◆ ${state.compositionLabel || "HEAD"}`, state.view === "rail" ? "rail" : "timeline"];
+    const parts = [`◆ ${state.compositionLabel || "HEAD"}`];
     const multi = state.multi || [];
     if (multi.length >= 2) {
       const view = selectionResult && selectionResult.view;
@@ -1567,10 +1311,11 @@ function changeMeter(added, removed, width) {
   // recording, and invisible to anyone scanning for "what can I go back to". The names were there;
   // nothing put them on screen.
   //
-  // The chip is an overlay, not a resize. Widening the hovered bar to fit its name was the obvious
-  // move and it is a lie: x means WHEN on this plot, so a bar that grows to fit its text is claiming
-  // time it does not own, and its neighbours appear to shift. Instead the bar keeps its geometry and
-  // a chip is drawn over the row in the lane's own hue, centred on the bar, with a tick pointing at
+  // The chip is an overlay, not a resize, and it does not animate its geometry either (see the
+  // `.gchip` rules: it fades, it never unfolds). Widening the hovered bar to fit its name was the
+  // obvious move and it is a lie: x means WHEN on this plot, so a bar that grows to fit its text is
+  // claiming time it does not own, and its neighbours appear to shift. Instead the bar keeps its
+  // geometry and a chip is drawn over the row in the lane's own hue, centred on the bar, with a tick pointing at
   // the bar's true centre so the chip still names the right thing after it has been clamped inside
   // the plot. Overlapping neighbouring bars is fine here in a way it is not for the persistent
   // in-row tag: this appears only under the cursor and only for the one chapter being pointed at.
@@ -1608,17 +1353,6 @@ function changeMeter(added, removed, width) {
     }
     const y = midY - CHIP.h / 2;
     const g = mk("g", { class: "gchip" + (pinned ? " gchip-pinned" : "") });
-    // Container transform: the chip's first frame IS the bar. This maps the finished capsule
-    // exactly onto the hovered car's rectangle (about the view-box origin, so it is pure
-    // arithmetic: p' = T + S·p), and the unfold animates from it to identity. The tick survives
-    // for the clamped case — after the morph lands, it is what still points at a chapter whose
-    // chip could not be centred over it.
-    const barY = midY - GANTT.barH / 2;
-    const fsx = Math.max(0.02, w / cw);
-    const fsy = GANTT.barH / CHIP.h;
-    g.style.setProperty("--flip-from",
-      `translate(${(x - fsx * cx).toFixed(2)}px, ${(barY - fsy * y).toFixed(2)}px) `
-      + `scale(${fsx.toFixed(4)}, ${fsy.toFixed(4)})`);
     g.appendChild(mk("rect", {
       x: cx, y, width: cw, height: CHIP.h, rx: 4, class: "gchip-bg", fill: color,
     }));
@@ -2273,7 +2007,6 @@ function changeMeter(added, removed, width) {
   }
 
   function renderGraph() {
-    if (state.view === "rail") { renderRail(); return; }
     if (!paneMeasurable()) return;
     resetFontCache(); // the editor font can change under us; re-resolve before measuring anything
     const prevScroll = rail.scrollTop;
@@ -2374,171 +2107,6 @@ function changeMeter(added, removed, width) {
       }
     }
     prevRowYById = next;
-  }
-
-  // ─── The episode rail (vertical git-log) ────────────────────────────────────────────────────
-  // "What I did, in order": newest commit-episode on top, each feature a lane column (its episodes
-  // a straight vertical spine), lanes reused across non-overlapping spans (episodeRailLayout's
-  // interval coloring). Clicking a row selects that episode's feature -- the same select path the
-  // Gantt uses, so revert/preview/multi-select all work identically from here.
-  const RAIL = { rowH: 22, laneW: 16, padT: 10, dotR: 4, padL: 12, shaW: 58, maxRows: 200 };
-
-  function renderRail() {
-    if (!paneMeasurable()) return;
-    const prevScrollEl = rail.querySelector(".plot-scroll");
-    const prevScroll = prevScrollEl ? prevScrollEl.scrollTop : 0;
-    rail.innerHTML = "";
-    graphView = null; // no frontier scrubber in rail mode; drop the stale Gantt handle
-    const rlayout = episodeRailLayout(rollupEpisodes(map, grid));
-    // Cap the DOM to the newest RAIL.maxRows episodes: one <g> per episode (5+ nodes each) meant
-    // ~20k live nodes on a multi-thousand-commit repo, freezing the webview. Rows come newest-first,
-    // so the head is the recent history a reader wants; the tail is summarized in a footer line.
-    const allRows = rlayout.rows;
-    const rows = allRows.slice(0, RAIL.maxRows);
-    const hiddenRows = allRows.length - rows.length;
-    const scroller = mk("div", { class: "plot-scroll" });
-    const paneW = panePx().w;
-    // Lane columns narrow so the whole gutter fits a fixed share of the pane. At the flat 16px it
-    // used to be, this repo's twelve concurrent features spent 204px -- a fifth of the view -- on a
-    // column of connectors, before the first word of any save. Every lane still gets its own
-    // column; they just stop being the widest thing on screen.
-    const laneW = Math.max(6, Math.min(RAIL.laneW,
-      Math.floor((paneW * 0.16 - RAIL.padL) / Math.max(1, rlayout.laneCount))));
-    const gutterW = RAIL.padL + rlayout.laneCount * laneW;
-    const h = RAIL.padT * 2 + rows.length * RAIL.rowH + (hiddenRows > 0 ? RAIL.rowH : 0);
-    const svg = mk("svg", { width: paneW, height: Math.max(h, 40), class: "railsvg rail" });
-    const yOf = (row) => RAIL.padT + row * RAIL.rowH + RAIL.rowH / 2;
-    const xOf = (lane) => RAIL.padL + lane * laneW + laneW / 2;
-
-    if (!allRows.length) {
-      const t = mk("text", { x: RAIL.padL, y: 24, class: "rail-subject", text: "No episodes yet." });
-      svg.appendChild(t);
-      scroller.appendChild(svg);
-      rail.appendChild(scroller);
-      return;
-    }
-
-    // Feature spines: one vertical line per feature across its row-span (drawn behind the dots), so
-    // a feature touched across many commits reads as one continuous column.
-    const span = new Map(); // fid -> {top, bot, lane}
-    for (const r of rows) {
-      const s = span.get(r.feature);
-      if (!s) span.set(r.feature, { top: r.row, bot: r.row, lane: r.lane });
-      else { s.top = Math.min(s.top, r.row); s.bot = Math.max(s.bot, r.row); }
-    }
-    const spineLayer = mk("g", { class: "rail-spines" });
-    for (const [fid, s] of span) {
-      if (s.bot === s.top) continue;
-      spineLayer.appendChild(mk("line", {
-        x1: xOf(s.lane), x2: xOf(s.lane), y1: yOf(s.top), y2: yOf(s.bot),
-        class: "rail-spine", stroke: laneColor(fid || ""), "data-feature": fid || "",
-      }));
-    }
-    svg.appendChild(spineLayer);
-
-    const textX = gutterW + 8;
-    // Reserve a right-hand zone for each save's feature name; the subject takes what's left. The
-    // zone is inset from the pane's right edge, not flush to it -- flush, the longest name sat hard
-    // against the inspector's border with no air, and read as clipped whether or not it was.
-    const chipZoneW = Math.min(Math.round(paneW * 0.42), 280);
-    const chipX0 = paneW - chipZoneW;
-    // Measured, not estimated. A 6.2px-per-character guess is wrong in both directions in a
-    // proportional UI font -- `docs(plan): record the MCP parity work` is far narrower than 6.2px a
-    // glyph and `Implement persistent caching` far wider -- so subjects ran straight through the
-    // feature column on the right and the two texts overlapped, unreadably, on most rows. The same
-    // canvas `measureText` the Gantt's gutter labels are cut with answers this exactly.
-    const subjPx = Math.max(40, chipX0 - 8 - (textX + RAIL.shaW));
-    for (const r of rows) {
-      const inSel = r.feature === state.selected || (state.multi || []).includes(r.feature);
-      const g = mk("g", { class: "rail-row" + (inSel ? " selected" : ""), "data-id": r.feature || "" });
-      g.appendChild(mk("rect", {
-        x: 0, y: RAIL.padT + r.row * RAIL.rowH, width: paneW, height: RAIL.rowH, class: "rail-hit",
-      }));
-      g.appendChild(mk("circle", {
-        cx: xOf(r.lane), cy: yOf(r.row), r: RAIL.dotR, class: "rail-dot",
-        fill: laneColor(r.feature || ""), "data-feature": r.feature || "",
-      }));
-      g.appendChild(mk("text", { x: textX, y: yOf(r.row) + 4, class: "rail-sha", text: (r.sha || "").slice(0, 7) }));
-      const subj = mk("text", { x: textX + RAIL.shaW, y: yOf(r.row) + 4, class: "rail-subject" });
-      const raw = (r.subject || "").replace(/\n/g, " ");
-      const cut = fitText(raw, subjPx, "rail-subject");
-      subj.textContent = cut.text;
-      // An `<text>` ignores a `title` ATTRIBUTE, so a cut subject carries its full text as a
-      // `<title>` CHILD or it is simply lost.
-      if (cut.clipped) subj.appendChild(mk("title", { text: raw }));
-      g.appendChild(subj);
-      renderRailChips(g, r, chipX0, yOf(r.row) + 4, chipZoneW - 16);
-      if (r.feature) {
-        g.addEventListener("click", (ev) => selectRow(r.feature, ev.metaKey || ev.ctrlKey || ev.shiftKey));
-      }
-      // Hover a save-row -> light the lane columns of EVERY feature that save touched (task 5), not
-      // just its dominant one, so the save->feature spread reads at a glance.
-      g.addEventListener("mouseenter", () => lightRailFeatures(Object.keys(r.features || {})));
-      g.addEventListener("mouseleave", () => lightRailFeatures(null));
-      svg.appendChild(g);
-    }
-    // The capped tail: older episodes stay off the DOM but are accounted for, so a big repo doesn't
-    // look like its history stops at RAIL.maxRows.
-    if (hiddenRows > 0) {
-      svg.appendChild(mk("text", {
-        x: textX, y: RAIL.padT + rows.length * RAIL.rowH + RAIL.rowH / 2 + 4,
-        class: "rail-chip-more", text: `+${hiddenRows} older episode(s) not shown`,
-      }));
-    }
-    scroller.appendChild(svg);
-    rail.appendChild(scroller);
-    scroller.scrollTop = prevScroll;
-  }
-
-  // One save-row's feature chips: each touched feature's label in its own identity hue, the
-  // dominant feature first -- the save -> feature mapping, on every row. Widths come from canvas
-  // `measureText` in the real font (`fitText`/`textWidth`), never a per-character estimate: the
-  // estimate is what let these spans overlap the subject column on most rows.
-  function renderRailChips(g, r, x0, y, maxW) {
-    const feats = r.features || {};
-    const ids = Object.keys(feats);
-    if (!ids.length) return;
-    const main = r.feature;
-    ids.sort((a, b) => {
-      const am = a === main ? 0 : 1, bm = b === main ? 0 : 1;
-      if (am !== bm) return am - bm;
-      if (feats[a] !== feats[b]) return feats[b] - feats[a];
-      return a < b ? -1 : a > b ? 1 : 0;
-    });
-    // ONE name, whole, plus an honest count of the rest. Three names packed into this zone were
-    // three HALF names -- `Semantic Versioni…`, `Operation Match…`, `Intent Cluster…` -- and a
-    // reader can identify none of them; the dot in the gutter already attributes the row, so the
-    // column's whole job is to name the one feature the save is about. This is the rule the
-    // terminal's rail follows too; keep the two in step.
-    const extra = ids.length - 1;
-    const tag = extra > 0 ? ` +${extra}` : "";
-    const fid = ids[0];
-    const node = byId(fid);
-    const full = (node && node.label) || fid || "(unattributed)";
-    const cut = fitText(full, Math.max(0, maxW - textWidth(tag, "rail-chip-more")), "rail-chip");
-    if (!cut.text) return;
-    const t = mk("text", { x: x0, y, class: "rail-chip", fill: laneColor(fid || "") });
-    t.textContent = cut.text;
-    if (cut.clipped) t.appendChild(mk("title", { text: full }));
-    g.appendChild(t);
-    if (extra > 0) {
-      g.appendChild(mk("text", {
-        x: x0 + textWidth(cut.text, "rail-chip") + 4, y, class: "rail-chip-more", text: `+${extra}`,
-      }));
-    }
-  }
-
-  // Light the rail lane-columns (feature spines + dots) of a hovered save's touched features, so a
-  // save reads as "these feature columns". Hover-only; clears when `featureIds` is null/empty.
-  function lightRailFeatures(featureIds) {
-    const svg = rail.querySelector("svg");
-    if (!svg) return;
-    svg.querySelectorAll(".rail-lit").forEach((el) => el.classList.remove("rail-lit"));
-    if (!featureIds || !featureIds.length) return;
-    const set = new Set(featureIds);
-    svg.querySelectorAll(".rail-spine, .rail-dot").forEach((el) => {
-      if (set.has(el.getAttribute("data-feature"))) el.classList.add("rail-lit");
-    });
   }
 
   // The divider between the name column and the plot -- draggable, the way a column header edge is
@@ -2949,21 +2517,6 @@ function changeMeter(added, removed, width) {
     el.textContent = fit.text;
     if (fit.clipped) el.appendChild(mk("title", { text: String(full) }));
     return fit.clipped;
-  }
-
-  // A circular progress arc for a plan session's `matchedCount/stepCount` -- geometric, no
-  // side-text. Used by the titlebar session chip.
-  function renderPlanRing(cx, matched, total) {
-    const r = 5;
-    const c = 2 * Math.PI * r;
-    const frac = total ? matched / total : 0;
-    const g = mk("g", { class: "plan-ring-group", transform: `translate(${cx}, 0)` });
-    g.appendChild(mk("circle", { cx: 0, cy: 0, r, class: "plan-ring plan-ring-track" }));
-    g.appendChild(mk("circle", {
-      cx: 0, cy: 0, r, class: "plan-ring plan-ring-fill", transform: "rotate(-90)",
-      "stroke-dasharray": `${c} ${c}`, "stroke-dashoffset": `${(c * (1 - frac)).toFixed(2)}`,
-    }));
-    return g;
   }
 
   // ─── Frontier scrubber ──────────────────────────────────────────────────────────────────────
@@ -3464,14 +3017,6 @@ function changeMeter(added, removed, width) {
     render();
   }
 
-  function selectPlanSession(sessionId) {
-    state.selectedPlanSession = state.selectedPlanSession === sessionId ? null : sessionId;
-    state.selected = null;
-    state.selectedStep = null;
-    saveState();
-    render();
-  }
-
   // ---- hover-intent
   // Every hover preview shells out: the host runs `sgt <verb> --emit` in a subprocess to compute the
   // consequence. Fired straight off `mouseenter` that meant one process per row *crossed* -- a sweep
@@ -3544,12 +3089,12 @@ function changeMeter(added, removed, width) {
     }
     if (staged.kind === "backto") {
       const n = (staged.refs || []).length;
-      const head = `removes ${plural(n, "later chapter")} · ${plural(staged.opCount || 0, "edit")}`;
+      const head = `removes ${plural(n, "later checkpoint")} · ${plural(staged.opCount || 0, "edit")}`;
       const blast = staged.blastCount || 0;
       const tail = staged.blastDone
         ? (blast ? `touches ${plural(blast, "other feature")}` : "no other feature touched")
         : (blast ? `touches ≥${blast} other feature(s) · still checking…` : "checking other features…");
-      return `${head} · ${tail} · this chapter stays`;
+      return `${head} · ${tail} · this checkpoint stays`;
     }
     // Prefer the backend's own so-what headline -- one vocabulary across CLI, TUI and here.
     const soWhat = res.so_what || (res.focus && res.focus.so_what);
@@ -3714,6 +3259,11 @@ function changeMeter(added, removed, width) {
       // "removes nothing here") changed nothing, and a receipt for it would flash a lie later.
       const applied = applyBusy && applyBusy.phase !== "checking";
       pendingSettle = applied && stagedAction.targetId ? [stagedAction.targetId] : [];
+      // What happened, left on the bar where the decision was taken. The host used to say this in
+      // a VS Code notification instead, which stacked with every other notification the same click
+      // produced and covered the corner of the timeline the reader was watching. The bar is the
+      // place the question was asked, so it is the place the answer belongs.
+      showApplyReceipt(msg.verb, stagedAction.label || stagedAction.ref, msg.detail);
       stagedAction = null;
       applyBusy = null;
       renderConfirmBar();
@@ -3731,12 +3281,45 @@ function changeMeter(added, removed, width) {
     renderConfirmBar();
   }
 
+  // The receipt an applied action leaves behind: the same bar, for a few seconds, saying what it
+  // did. Long enough to read a sentence and short enough that it is gone before it becomes chrome.
+  let applyDone = null;
+  let applyDoneTimer = null;
+  const RECEIPT_MS = 7000;
+
+  function showApplyReceipt(verb, label, detail) {
+    if (!detail) return;
+    applyDone = { verb, label, detail };
+    clearTimeout(applyDoneTimer);
+    applyDoneTimer = setTimeout(() => { applyDone = null; renderConfirmBar(); }, RECEIPT_MS);
+  }
+
+  function dismissReceipt() {
+    clearTimeout(applyDoneTimer);
+    applyDone = null;
+    renderConfirmBar();
+  }
+
   function renderConfirmBar() {
     if (!confirmBar) return;
     confirmBar.innerHTML = "";
     const staged = stagedAction;
-    confirmBar.hidden = !staged;
-    if (!staged) return;
+    confirmBar.hidden = !staged && !applyDone;
+    if (!staged) {
+      if (!applyDone) return;
+      const head = el("div", "confirm-head");
+      head.appendChild(el("span", "confirm-verb done", "Done"));
+      head.appendChild(el("span", "confirm-target", applyDone.label));
+      confirmBar.appendChild(head);
+      const line = el("div", "confirm-progress done");
+      line.appendChild(el("span", "confirm-detail", applyDone.detail));
+      const dismiss = el("button", "confirm-btn", "Dismiss");
+      dismiss.addEventListener("click", dismissReceipt);
+      line.appendChild(dismiss);
+      confirmBar.appendChild(line);
+      return;
+    }
+    applyDone = null; // a new question replaces the last answer
 
     const head = el("div", "confirm-head");
     head.appendChild(el("span",
@@ -3941,14 +3524,25 @@ function changeMeter(added, removed, width) {
       for (const m of n.members || []) {
         const sym = m.split("::").pop();
         const ss = score(sym);
-        if (ss > 0) hits.push({ kind: "symbol", label: sym, detail: m.split("::")[0], feature: n.id, s: ss - 0.2 });
+        // `symbol` and `file` ride along so the click can open the code rather than only light up
+        // the lane the code lives in. A result that says `metrics.py` and then does not take you
+        // to `metrics.py` is the search saying it found something and then declining to show it.
+        if (ss > 0) {
+          hits.push({ kind: "symbol", label: sym,
+                      detail: `${m.split("::")[0]} · in ${n.label || n.id}`, feature: n.id,
+                      symbol: m, file: m.split("::")[0], s: ss - 0.2 });
+        }
       }
     }
     for (const fid in segsByFeature || {}) {
       for (const seg of segsByFeature[fid]) {
         const sc = score(seg.intent);
         if (sc > 0) {
-          hits.push({ kind: "chapter", label: seg.intent, detail: seg.checkpoint,
+          // Not `seg.checkpoint`: that is the handle (`f-0252…@1`), which is the one string on the
+          // row a reader cannot use to decide whether this is their result. The lane it sits in is.
+          const owner = (nodes || []).find((n) => n.id === fid);
+          hits.push({ kind: "checkpoint", label: seg.intent,
+                      detail: `in ${(owner && owner.label) || fid}`,
                       feature: fid, checkpoint: seg.checkpoint, s: sc });
         }
       }
@@ -4031,11 +3625,21 @@ function changeMeter(added, removed, width) {
     });
   }
 
+  // One result row. The kind is a badge rather than a word in the same ink as the name: a reader
+  // scanning ten results is sorting them by kind first, and a column of grey nouns does not sort.
   function findHitRow(hit) {
-    const row = el("div", "find-hit");
-    row.appendChild(el("span", "find-kind", hit.kind));
-    row.appendChild(el("span", "find-label", hit.label));
-    row.appendChild(el("span", "find-detail", hit.detail || ""));
+    const row = el("div", `find-hit find-hit-${hit.kind}`);
+    row.appendChild(el("span", "find-kind", FIND_KIND_GLYPH[hit.kind] || "•"));
+    const text = el("div", "find-text");
+    text.appendChild(el("span", "find-label", hit.label));
+    if (hit.detail) text.appendChild(el("span", "find-detail", hit.detail));
+    row.appendChild(text);
+    // What clicking does, on the row, before it is clicked. Every kind lands somewhere different
+    // and none of them said so, so the only way to learn what a result was for was to click it.
+    row.appendChild(el("span", "find-go", FIND_KIND_ACTION[hit.kind] || ""));
+    // The dropdown is only as wide as the box above it, so a commit subject clips. The tooltip
+    // carries the whole row -- a result you cannot read the name of is not a result.
+    row.title = [hit.label, hit.detail, FIND_KIND_ACTION[hit.kind]].filter(Boolean).join(" — ");
     row.addEventListener("click", () => {
       const results = document.getElementById("findResults");
       if (results) results.hidden = true;
@@ -4049,9 +3653,24 @@ function changeMeter(added, removed, width) {
         saveState();
         render();
       }
+      // A symbol result is a piece of code. Lighting its lane says which work it belongs to;
+      // opening it says what it is. Both, in that order, so the map keeps its place.
+      if (hit.file) vscode.postMessage({ type: "openFile", path: hit.file, symbol: hit.symbol });
     });
     return row;
   }
+
+  const FIND_KIND_GLYPH = {
+    work: "◆", feature: "▤", checkpoint: "▸", symbol: "ƒ", save: "◇",
+  };
+
+  const FIND_KIND_ACTION = {
+    work: "show the lanes this work touched",
+    feature: "go to this row on the timeline",
+    checkpoint: "go to this checkpoint",
+    symbol: "open this code",
+    save: "show what this save touched",
+  };
 
   function renderFind(query) {
     const results = document.getElementById("findResults");
@@ -4065,7 +3684,7 @@ function changeMeter(added, removed, width) {
     const local = localFindHits(query, map.nodes, checkpointsByFeature, 12,
                                 ((compose || {}).intent || {}).themes, (grid || {}).commits);
     if (local.length) {
-      results.appendChild(el("div", "find-section", "in this graph"));
+      results.appendChild(el("div", "find-section", "matching by name"));
       for (const h of local) results.appendChild(findHitRow(h));
     }
     if (semanticState && semanticState.query === query) {
@@ -4090,9 +3709,9 @@ function changeMeter(added, removed, width) {
         }
       }
     } else if (local.length) {
-      results.appendChild(el("div", "find-note", "⏎ also searches by meaning"));
+      results.appendChild(el("div", "find-note", "press ⏎ to also search by meaning"));
     } else {
-      results.appendChild(el("div", "find-note", "nothing here matches — ⏎ searches by meaning"));
+      results.appendChild(el("div", "find-note", "no name matches — press ⏎ to search by meaning"));
     }
   }
 
@@ -4102,15 +3721,27 @@ function changeMeter(added, removed, width) {
     semanticState.mode = msg.mode || null;
     semanticState.message = msg.message || null;
     const idxOfSha = new Map(((grid && grid.commits) || []).map((c) => [String(c.sha || "").slice(0, 8), c.index]));
-    semanticState.hits = (msg.hits || []).map((h) => ({
-      kind: h.kind,
-      label: h.label,
-      detail: h.detail || "",
-      feature: h.feature || (h.kind === "feature" ? h.id : null),
-      // `sgt find` names a save by its sha; joining it to a commit index is what makes the hit
-      // land somewhere instead of being a dead row.
-      commitIndex: h.kind === "save" ? idxOfSha.get(String(h.id || h.detail || "").slice(0, 8)) : undefined,
-    }));
+    semanticState.hits = (msg.hits || []).map((h) => {
+      // `sgt find` labels a symbol with its whole `path::name`, and the local rung labels the same
+      // symbol with its bare name. Two spellings of one thing read as two results, and the dedupe
+      // below (keyed on the label) could not see they were the same. One shape for both rungs:
+      // the name is the label, the file is part of the detail, and the full symbol travels
+      // separately so the click can open it.
+      const isSym = h.kind === "symbol";
+      const full = String(h.id || "");
+      const file = isSym && full.includes("::") ? full.split("::")[0] : null;
+      return {
+        kind: h.kind,
+        label: isSym && file ? full.split("::").pop() : h.label,
+        detail: isSym ? [file, h.detail || ""].filter(Boolean).join(" · ") : (h.detail || ""),
+        feature: h.feature || (h.kind === "feature" ? h.id : null),
+        symbol: isSym ? full : undefined,
+        file: file || undefined,
+        // `sgt find` names a save by its sha; joining it to a commit index is what makes the hit
+        // land somewhere instead of being a dead row.
+        commitIndex: h.kind === "save" ? idxOfSha.get(String(h.id || h.detail || "").slice(0, 8)) : undefined,
+      };
+    });
     renderFind(semanticState.query);
     applyLens(); // the meaning rung usually reaches lanes the substring rung did not
   }
@@ -4236,9 +3867,15 @@ function changeMeter(added, removed, width) {
       why.textContent = node.why || "";
       inspector.appendChild(why);
 
+      // The member count, not the id. `f-05845707a7cefe2e0e42f8e3f99484f8bc69b6f5e966fbabef90…`
+      // led this line: 64 hex characters of internal handle, wrapped over three lines, directly
+      // under the name -- so the most prominent thing about a piece of work was the one string
+      // about it a reader can neither use nor remember. Nothing on this surface asks anyone to
+      // type an id; the panels that need one carry it themselves.
       const meta = document.createElement("div");
       meta.className = "detail-meta";
-      meta.textContent = `${node.id} · ${node.size} member(s)`;
+      meta.textContent = `${node.size} member(s)`;
+      meta.title = node.id;
       inspector.appendChild(meta);
 
       if (node.kind === "feature") {
@@ -4953,18 +4590,21 @@ function changeMeter(added, removed, width) {
 
     const head = document.createElement("div");
     head.className = "checkpoints-head";
-    const built = segs.some((s) => s.source === "llm");
     // A reverted chapter stays on this list -- it is still recorded and still addressable, and a
     // restore needs it named -- so the head says how many are gone rather than quietly shrinking.
+    //
+    // It used to end with "(run sgt intent build to name)" whenever the names were fallbacks. That
+    // is a maintenance instruction, printed in the reader's way, for a job the reader did not ask
+    // to do and mostly cannot do anything about -- and the names it offers to improve are already
+    // on screen beneath it.
     const nGone = segs.filter((s) => s.present_op_count === 0).length;
-    head.textContent = `Checkpoints · ${segs.length}` + (nGone ? ` · ${nGone} reverted` : "") +
-      (built ? "" : "  (run sgt intent build to name)");
+    head.textContent = `Checkpoints · ${segs.length}` + (nGone ? ` · ${nGone} reverted` : "");
     wrap.appendChild(head);
     // Retired work is the half of this list nobody found. Name the way back once, at the top,
     // where the count already is -- rather than leaving it to a glyph on a faded row.
     if (nGone) {
       wrap.appendChild(el("div", "checkpoints-hint",
-        "Faded chapters were reverted — click one, then Restore to bring it back."));
+        "Faded checkpoints were reverted — click one, then Restore to bring it back."));
     }
 
     for (const seg of segs) {
@@ -4980,7 +4620,7 @@ function changeMeter(added, removed, width) {
       row.title = `${seg.rationale} · ${seg.tier}\n` + (gone
         ? `Reverted — restore: sgt restore ${seg.checkpoint}`
         : (partial ? `${seg.op_count - seg.present_op_count} of ${seg.op_count} edit(s) reverted\n` : "") +
-          `Revert this chapter: sgt revert ${seg.checkpoint}`);
+          `Revert this checkpoint: sgt revert ${seg.checkpoint}`);
       row.addEventListener("click", () => highlightCheckpoint(seg.checkpoint)); // sync with the gantt car
 
       const dot = document.createElement("span");
@@ -5001,8 +4641,8 @@ function changeMeter(added, removed, width) {
       rewind.className = "checkpoint-rewind";
       rewind.textContent = gone ? "⤻" : "⤺";
       rewind.title = gone
-        ? `Restore this chapter — bring "${seg.intent}" back`
-        : `Revert this chapter — take out "${seg.intent}"; later chapters stay`;
+        ? `Restore this checkpoint — bring "${seg.intent}" back`
+        : `Revert this checkpoint — take out "${seg.intent}"; later checkpoints stay`;
       rewind.addEventListener("mouseenter", () =>
         onHoverIntent(() => previewAndBlast(gone ? "restore" : "revert", [seg.checkpoint])));
       rewind.addEventListener("mouseleave", () => clearGhosts());
@@ -5089,14 +4729,14 @@ function changeMeter(added, removed, width) {
     const dot = el("span", "chapter-scope-dot");
     dot.style.background = (node && node.color) || "var(--dim)";
     head.appendChild(dot);
-    head.appendChild(el("span", "chapter-scope-label", `Chapter · ${seg.intent}`));
+    head.appendChild(el("span", "chapter-scope-label", `Checkpoint · ${seg.intent}`));
     wrap.appendChild(head);
 
     const bar = el("div", "action-bar");
-    const one = el("button", "action", scope.gone ? "⤻ Restore this chapter" : "⤺ Revert this chapter");
+    const one = el("button", "action", scope.gone ? "⤻ Restore this checkpoint" : "⤺ Revert this checkpoint");
     one.title = scope.gone
-      ? `sgt restore ${seg.checkpoint} — bring this chapter's ${seg.op_count} edit(s) back`
-      : `sgt revert ${seg.checkpoint} — take out this chapter's edits only; later chapters stay`;
+      ? `sgt restore ${seg.checkpoint} — bring this checkpoint's ${seg.op_count} edit(s) back`
+      : `sgt revert ${seg.checkpoint} — take out this checkpoint's edits only; later ones stay`;
     one.addEventListener("mouseenter", () =>
       onHoverIntent(() => previewAndBlast(scope.gone ? "restore" : "revert", [seg.checkpoint])));
     one.addEventListener("mouseleave", () => clearGhosts());
@@ -5109,10 +4749,10 @@ function changeMeter(added, removed, width) {
     if (!scope.gone && scope.laterCount) {
       const back = el("button", "action", "⇤ Revert to here");
       back.title = `Revert the feature to "${seg.intent}" — removes the ${scope.laterCount} `
-        + `chapter(s) after it; this one stays`;
+        + `checkpoint(s) after it; this one stays`;
       back.addEventListener("mouseenter", () => onHoverIntent(() => {
         paintBackToCars(id, scope.laterRefs);
-        setPreviewContext(`revert to "${seg.intent}" — the ${scope.laterCount} chapter(s) after `
+        setPreviewContext(`revert to "${seg.intent}" — the ${scope.laterCount} checkpoint(s) after `
           + `it come out · ${scope.laterOps} edit(s)`);
       }));
       back.addEventListener("mouseleave", () => clearGhosts());
@@ -5201,8 +4841,11 @@ function changeMeter(added, removed, width) {
     const segs = checkpointsByFeature[id] || [];
     const scope = state.selectedCheckpoint && chapterScope(segs, state.selectedCheckpoint);
     if (scope) {
+      // "checkpoint", the word the list above this panel uses. It said "chapter" -- sgt's internal
+      // name for the same thing -- so one panel headed `Checkpoints · 10` sat directly above another
+      // reading `changed by this chapter`, and a reader had to work out that the two were one noun.
       return { ref: scope.seg.checkpoint, verb: scope.gone ? "restore" : "revert",
-               label: scope.seg.intent, noun: "chapter" };
+               label: scope.seg.intent, noun: "checkpoint" };
     }
     const retired = retiredWork(segs);
     const gone = segs.length > 0 && retired.chapters === segs.length;
@@ -5269,7 +4912,11 @@ function changeMeter(added, removed, width) {
     // Files start folded only when the tree is long enough that leaving them open would push the
     // action bar off screen. A panel you have to scroll past to reach the verbs is worse than one
     // you click into.
-    const rows = tree.fileCount + countEntityRows(tree.root);
+    //
+    // Counted WITH the changed lines under each entity, not just the entity rows. They are rows on
+    // this list like any other, and leaving them out made the threshold mean roughly a tenth of
+    // what it says -- 39 entities reads as "short enough to leave open" and draws four hundred rows.
+    const rows = tree.fileCount + countEntityRows(tree.root) + countLineRows(tree.root);
     const list = el("div", "ctree");
     appendChangeRows(list, tree.root, 0, scope, rows > 40);
     section.appendChild(list);
@@ -5279,6 +4926,21 @@ function changeMeter(added, removed, width) {
     if (node.kind === "file") return node.children.length;
     let n = 0;
     for (const c of node.children || []) n += countEntityRows(c);
+    return n;
+  }
+
+  // The changed lines an unfolded file would draw: each entity's own, capped, plus its "+N more".
+  function countLineRows(node) {
+    if (node.kind === "file") {
+      let n = 0;
+      for (const e of node.children || []) {
+        const len = (e.lines || []).length;
+        n += Math.min(len, CHANGED_LINES_CAP) + (len > CHANGED_LINES_CAP ? 1 : 0);
+      }
+      return n;
+    }
+    let n = 0;
+    for (const c of node.children || []) n += countLineRows(c);
     return n;
   }
 
@@ -5292,8 +4954,47 @@ function changeMeter(added, removed, width) {
       } else if (!folded) {
         for (const entity of node.children) {
           list.appendChild(changeRow(entity, depth + 1, scope, false));
+          appendChangedLines(list, entity, depth + 2);
         }
       }
+    }
+  }
+
+  // The lines themselves, under the entity that holds them.
+  //
+  // This panel used to stop at counts: `render  +4 −2`, and the code was one click away in a diff
+  // editor that opens as a separate tab. Reading a history is the task here, not editing it, and
+  // "what did this change" was answered with a number and a way to go and find out. Somebody
+  // looking for where a wrong figure comes from read the whole panel, found no code in it, and
+  // concluded the tool would not show them the change.
+  //
+  // Capped, because an entity can be a whole rewritten file and this sits inside a scrolling
+  // inspector. The cap says what it hid, and the row above still opens the full diff.
+  const CHANGED_LINES_CAP = 10;
+
+  function appendChangedLines(list, entity, depth) {
+    const lines = entity.lines || [];
+    if (!lines.length) return;
+    const shown = lines.slice(0, CHANGED_LINES_CAP);
+    for (const ln of shown) {
+      const row = el("div", `cline cline-${ln.side === "+" ? "add" : "del"}`);
+      row.style.paddingLeft = `${4 + depth * 12}px`;
+      row.appendChild(el("span", "cline-no", String(ln.line)));
+      row.appendChild(el("span", "cline-sign", ln.side));
+      // Leading whitespace is meaning in Python, and a span collapses it. Kept verbatim in the
+      // text node; `white-space: pre` on `.cline-text` is what preserves it on screen.
+      const text = el("span", "cline-text", ln.text == null ? "" : ln.text);
+      // The panel is narrow and a clipped line can hide the half that matters, so the whole line
+      // is on the row itself rather than only in the diff a click away.
+      text.title = ln.text == null ? "" : ln.text;
+      row.appendChild(text);
+      list.appendChild(row);
+    }
+    if (lines.length > shown.length) {
+      const rest = el("div", "cline cline-more",
+        `+${lines.length - shown.length} more changed line(s) — click the row above for the full diff`);
+      rest.style.paddingLeft = `${4 + depth * 12}px`;
+      list.appendChild(rest);
     }
   }
 
@@ -5376,23 +5077,27 @@ function changeMeter(added, removed, width) {
     const segs = checkpointsByFeature[id] || [];
     const chapters = segs.length;
     const retired = retiredWork(segs);
-    bar.appendChild(btn("Rename", "rename"));
-    bar.appendChild(btn("Merge into…", "merge"));
-    bar.appendChild(btn("Split", "split"));
-    bar.appendChild(btn("Move ops…", "move"));
+    // Two verbs, and they are the two this surface is for: take this work out, put it back.
+    //
+    // Rename, Merge into…, Split and Move ops… used to sit ahead of them, in that order, so the
+    // first four things offered about a piece of work were four ways to reorganise the RECORD of
+    // it -- before either of the two ways to act on the code. They are real verbs and they are not
+    // this panel's job: reading a history is what someone opens this for, and a reader who reaches
+    // for the leftmost button to see what it does has restructured their own graph. Reorganising
+    // the record is deliberate work and belongs where it is asked for by name, on the CLI.
     // The whole-feature blast radius, said out loud -- and pointing at the narrower tool, so the
     // person who meant one chapter learns the distinction BEFORE the click, not from the wreckage.
     bar.appendChild(btn("Revert", "revert", chapters > 1
-      ? `Removes the whole feature — all ${chapters} chapters. To act on one, click a checkpoint below.`
+      ? `Removes the whole feature — all ${chapters} checkpoints. To act on one, click a checkpoint below.`
       : "Removes this feature's edits."));
     // Restore only exists when something is actually retired. Offering it otherwise was a button
     // whose only possible outcome was a refusal -- and the refusal was the hex wall.
     if (retired.any) {
       const label = `Restore ${retired.edits} edit(s)`;
       const r = btn(label, "restore",
-        `Brings back what was reverted here — ${retired.chapters} retired chapter(s)`
+        `Brings back what was reverted here — ${retired.chapters} retired checkpoint(s)`
         + (retired.partial ? ` and part of ${retired.partial} more` : "")
-        + ". To bring back one chapter, click it below.");
+        + ". To bring back one, click it below.");
       bar.appendChild(r);
     } else {
       const inert = document.createElement("button");
@@ -5919,45 +5624,6 @@ function changeMeter(added, removed, width) {
       vscode.postMessage({ type: "applyVerb", verb: "move", args: [...opIdsFor(feature), targetId] });
     }
   }
-
-  compositionBtn.addEventListener("click", () => vscode.postMessage({ type: "pickComposition" }));
-
-  // The oracle chip is a live control, not a label: a plain click runs the configured tiers
-  // (unconfigured/pending -> running -> pass/fail is a CSS color/border transition, not a text
-  // swap); alt-click records a human override for cases the tiers can't decide. Both post through
-  // the host so the CLI does the real work -- this never fakes a verdict client-side.
-  oracleChip.addEventListener("click", (ev) => {
-    if (ev.altKey) {
-      vscode.postMessage({ type: "overrideOracle" });
-      return;
-    }
-    oracleChip.dataset.state = "pending";
-    oracleChip.querySelector(".oracle-label").textContent = "oracle · running…";
-    vscode.postMessage({ type: "runOracle" });
-  });
-
-  // Segmented Timeline│Rail control: each segment sets state.view directly (active segment is filled
-  // via .active in renderTitlebar).
-  for (const btn of viewSeg.querySelectorAll(".seg-btn")) {
-    btn.addEventListener("click", () => {
-      if (state.view === btn.dataset.view) return;
-      state.view = btn.dataset.view;
-      saveState();
-      render();
-    });
-  }
-
-  // Consolidated plans chip toggles the per-session popover; dismiss on any outside click.
-  plansChip.addEventListener("click", (ev) => {
-    ev.stopPropagation();
-    plansPopover.hidden = !plansPopover.hidden;
-    if (!plansPopover.hidden) renderPlansPopover();
-  });
-  document.addEventListener("click", (ev) => {
-    if (!plansPopover.hidden && !plansPopover.contains(ev.target) && ev.target !== plansChip) {
-      plansPopover.hidden = true;
-    }
-  });
 
   // Minimize/restore the detail pane -- hands the full width to the timeline when docked narrow.
   inspectorToggle.addEventListener("click", () => {

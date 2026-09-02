@@ -9,65 +9,117 @@
 <head>
 <meta charset="UTF-8">
 <link href="../media/workbench.css" rel="stylesheet">
+<style>
+/* VS Code "Dark Modern" tokens. The header above used to say these were unused because
+   workbench.css was self-themed -- it is not, and has not been for a long time: it reads
+   --vscode-editor-background, --vscode-foreground and a dozen more. Without them the preview drew
+   every panel with NO background and a serif body font, so the find dropdown appeared transparent
+   over the timeline and the whole page looked like a rendering bug. A preview that misrepresents
+   the surface is worse than no preview: it is what a screenshot gets checked against. */
+:root {
+  --vscode-editor-background: #1f1f1f;
+  --vscode-editorWidget-background: #202020;
+  --vscode-foreground: #cccccc;
+  --vscode-descriptionForeground: #9d9d9d;
+  --vscode-panel-border: #2b2b2b;
+  --vscode-widget-border: #313131;
+  --vscode-focusBorder: #0078d4;
+  --vscode-charts-blue: #4daafc;
+  --vscode-charts-green: #6bbf7b;
+  --vscode-charts-red: #e5675f;
+  --vscode-charts-yellow: #d9a441;
+  --vscode-editorWarning-foreground: #cca700;
+  --vscode-testing-iconPassed: #73c991;
+  --vscode-testing-iconFailed: #f14c4c;
+  --vscode-textCodeBlock-background: #181818;
+  --vscode-input-background: #313131;
+  --vscode-input-foreground: #cccccc;
+  --vscode-input-border: #3c3c3c;
+  --vscode-list-hoverBackground: #2a2d2e;
+  --vscode-list-inactiveSelectionBackground: #37373d;
+  --vscode-toolbar-hoverBackground: #383b41;
+  --vscode-button-background: #0078d4;
+  --vscode-button-foreground: #ffffff;
+  --vscode-button-hoverBackground: #026ec1;
+  --vscode-button-secondaryBackground: #313131;
+  --vscode-button-secondaryHoverBackground: #3c3c3c;
+  --vscode-diffEditor-insertedLineBackground: rgba(70, 149, 74, 0.22);
+  --vscode-diffEditor-removedLineBackground: rgba(219, 76, 63, 0.22);
+  --vscode-editor-font-family: "SF Mono", Menlo, Consolas, monospace;
+  --vscode-font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+  color-scheme: dark;
+}
+html, body { margin: 0; height: 100%; background: var(--vscode-editor-background);
+             color: var(--vscode-foreground); font-family: var(--vscode-font-family); }
+#app { height: 100%; }
+</style>
 </head>
 <body>
 <div id="app">
+  <!-- Five controls, and every one of them is something a reader of this history needs.
+       What used to be here as well: a Timeline│Rail view toggle, a composition selector over
+       HEAD-plus-sessions, an oracle chip, a Plans M/N chip with a popover, and a drift indicator
+       drawn as a bare glyph. Each was a live control -- the oracle chip RAN the tiers on click --
+       for machinery nobody reading a history is engaged in, and together they made the first
+       thing in the eyeline a row of terms that have to be dismissed before the work is visible. -->
   <div id="titlebar">
-    <button id="compositionBtn" class="composition-btn">HEAD</button>
-    <span id="oracleChip" class="oracle-chip" data-state="pending">oracle: pending</span>
+    <div class="tb-zone tb-nav">
+      <button id="groupBtn" class="group-btn" title="Group rows by subsystem, or list features by what you touched last">Features</button>
+    </div>
+    <div class="tb-zone tb-find">
+      <input id="findBox" class="find-box" type="search" spellcheck="false"
+             placeholder="find… e.g. the thing that formats dates"
+             title="describe what you are looking for; Enter to search, Esc to clear" />
+      <div id="findResults" class="find-results" hidden></div>
+    </div>
+    <div id="titlebarActions" class="titlebar-actions">
+      <button id="inspectorToggle" title="Hide detail panel">◧</button>
+      <button id="saveBtn" class="btn-primary" title="sgt save — record and commit">Save</button>
+      <button id="undoBtn" title="sgt undo">Undo</button>
+    </div>
   </div>
   <div id="main">
     <div id="rail"></div>
+    <button id="offscreenAbove" class="offscreen-pill offscreen-pill-top" hidden></button>
+    <button id="offscreenBelow" class="offscreen-pill offscreen-pill-bottom" hidden></button>
+    <div id="previewContext" class="preview-context-pill" hidden></div>
+    <div id="previewRefusal" class="preview-refusal-pill" hidden></div>
+    <div id="armedBanner" class="armed-banner" hidden></div>
+    <div id="themeBanner" class="theme-banner" hidden></div>
+    <!-- The lens caption: a pinned lane or a live search, saying what receded and how to clear it.
+         Shares the theme banner's styling because it is the same kind of statement about the same
+         kind of state -- one thing asked about, the rest dimmed. -->
+    <div id="lensBanner" class="theme-banner" hidden></div>
+    <div id="confirmBar" class="confirm-bar" hidden></div>
     <div id="inspector"></div>
   </div>
+  <div id="presence" title="where you are: composition · view · selection closure · uncommitted work"></div>
 </div>
 <script>
   let _st = null;
+  // Kept, not just logged: the panels that ask the host a question (a change projection, a fold)
+  // sequence their replies, so anything driving this page has to answer with the seq the page
+  // actually asked on. Without the record there is no way to reach those panels from outside.
+  window.__posted = [];
   window.acquireVsCodeApi = () => ({
-    postMessage(msg) { console.log("[webview -> host]", msg); },
+    postMessage(msg) { window.__posted.push(msg); console.log("[webview -> host]", msg); },
     getState: () => _st,
     setState: (s) => { _st = s; },
   });
 </script>
 <script src="../media/workbench.js"></script>
+<script src="./fixture.js"></script>
 <script>
-  const node = (id, parent, children, extra) =>
-    Object.assign({ id, parent, children, label: id, size: 1, op_count: 1, dir: `src/${id}/`, why: `why ${id}`, split_reason: null }, extra);
-  const map = {
-    roots: ["subsys"],
-    nodes: [
-      node("subsys", null, ["auth", "billing"], { kind: "subsystem", label: "Core" }),
-      node("auth", "subsys", [], { kind: "feature" }),
-      node("billing", "subsys", [], { kind: "feature" }),
-    ],
-    edges: [{ a: "auth", b: "billing", weight: 2.0 }],
-    identity_events: [], feature_count: 2,
-  };
-  const history = {
-    commits: [{ sha: "a", subject: "c0", index: 0 }, { sha: "b", subject: "c1", index: 1 }, { sha: "c", subject: "c2", index: 2 }],
-    ops: [
-      { id: "op1", kind: "add", feature_id: "auth", commit_index: 0 },
-      { id: "op2", kind: "rework", feature_id: "billing", commit_index: 1 },
-      { id: "op3", kind: "extend", feature_id: "auth", commit_index: 2 },
-    ],
-  };
-  const compose = {
-    map, history,
-    status: {
-      files: 4, symbols: 12, features: 2, coverage_fraction: 0.9,
-      oracle: { configured: true, status: "pass" },
-      drift: { any: false, paths: [] }, unmanaged: [], backstop_kept: [],
-      forks: { open: 0, records: [] },
-    },
-    forks: { open: 0, forks: [] },
-    plan: { sessions: [], checkpoint: { matches: [], drift_op_ids: [] } },
-    drift: { entries: [] },
-    sessions: { sessions: [{ name: "sess-1", branch: "feat/auth", target_branch: "main", scratch: "/tmp/x", new_op_count: 2, owner_pid: 123, alive: true }], overlaps: [] },
-    trust: { groups: [], total_ops: 0 },
-    oracle_verdict: null,
-    proposals: [{ id: "p1", title: "Ship auth", base_ref: "main", created_ts: 0, delta_op_count: 2, feature_delta: ["auth"] }],
-  };
-  window.dispatchEvent(new MessageEvent("message", { data: { type: "state", compose } }));
+  // The same payload `smoke.js` renders, built by the same code (dev/fixture.js). This page used
+  // to carry its own three-node map with no `grid`, so it drew an empty plot -- the one thing a
+  // preview exists to rule out.
+  fetch("./fixture-compose.json")
+    .then((r) => r.json())
+    .then((raw) => {
+      window.__fixture = buildComposeFixture(raw);
+      window.dispatchEvent(new MessageEvent("message", { data: { type: "state", compose: window.__fixture } }));
+    })
+    .catch((e) => { window.__err = String(e); });
 </script>
 </body>
 </html>

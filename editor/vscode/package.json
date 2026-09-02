@@ -100,20 +100,8 @@
           "icon": "media/sgt-icon.svg"
         },
         {
-          "id": "sgtForks",
-          "name": "Forks",
-          "icon": "media/sgt-icon.svg",
-          "when": "sgt.hasRoot"
-        },
-        {
           "id": "sgtChanges",
           "name": "Changes",
-          "icon": "media/sgt-icon.svg",
-          "when": "sgt.hasRoot"
-        },
-        {
-          "id": "sgtCompositions",
-          "name": "Compositions",
           "icon": "media/sgt-icon.svg",
           "when": "sgt.hasRoot"
         }

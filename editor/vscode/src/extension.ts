@@ -17,9 +17,7 @@ import { findSgtRoot, Sgt } from "./sgt";
 import { GitStatusBar } from "./statusBar";
 import { Store } from "./store";
 import { ChangesTreeProvider } from "./tree/changesTree";
-import { CompositionsTreeProvider } from "./tree/compositionsTree";
 import { FeaturesTreeProvider } from "./tree/featuresTree";
-import { ForksTreeProvider } from "./tree/forksTree";
 import { NowTreeProvider } from "./tree/nowTree";
 import { WorkbenchProvider } from "./workbench";
 
@@ -96,32 +94,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     })
   );
 
+  // Three views, and the sidebar used to carry five. `sgtForks` was an inbox for same-symbol chain
+  // forks and `sgtCompositions` was the sessions-and-proposals switch/land/publish surface. Both
+  // are permanently empty on a repository one person is reading -- so what they contributed was two
+  // more names to work out, and, in Compositions' case, a Publish-to-GitHub row sitting one click
+  // deep in a panel somebody opened to look at their own history. Neither verb was removed; they
+  // are asked for by name on the CLI, which is where an outward-facing action belongs.
   const nowTree = new NowTreeProvider(store);
   const featuresTree = new FeaturesTreeProvider(store);
-  const forksTree = new ForksTreeProvider(store);
   const changesTree = new ChangesTreeProvider(store);
-  const compositionsTree = new CompositionsTreeProvider(store);
-  context.subscriptions.push(nowTree, featuresTree, forksTree, changesTree, compositionsTree);
+  context.subscriptions.push(nowTree, featuresTree, changesTree);
 
   const nowView = vscode.window.createTreeView("sgtNow", { treeDataProvider: nowTree });
   const featuresView = vscode.window.createTreeView("sgtFeatures", { treeDataProvider: featuresTree });
-  const forksView = vscode.window.createTreeView("sgtForks", { treeDataProvider: forksTree });
   const changesView = vscode.window.createTreeView("sgtChanges", { treeDataProvider: changesTree });
-  const compositionsView = vscode.window.createTreeView("sgtCompositions", { treeDataProvider: compositionsTree });
-  context.subscriptions.push(nowView, featuresView, forksView, changesView, compositionsView);
-
-  const refreshForksBadge = async () => {
-    try {
-      const forks = await store.forksView();
-      forksView.badge = forks.open
-        ? { value: forks.open, tooltip: `${forks.open} open fork(s)` }
-        : undefined;
-    } catch {
-      forksView.badge = undefined;
-    }
-  };
-  void refreshForksBadge();
-  context.subscriptions.push(store.onDidChange(() => void refreshForksBadge()));
+  context.subscriptions.push(nowView, featuresView, changesView);
 
   // Refresh only on .sgt changes -- a mined op, checkpoint, or feature verb rewrites the op store
   // and tree.json/pins.json under `.sgt/`. We deliberately do NOT watch `**/*.py`: every read
