@@ -1,5 +1,5 @@
 {
-  "version": "answer-key-v7",
+  "version": "answer-key-v8",
   "episodes": {
     "bikecount": [
       {
@@ -168,6 +168,7 @@
           "6980520",
           "7e81c4c",
           "9fa083e",
+          "Event Day Averages",
           "Event Day Handling",
           "Event Days",
           "Exclude Event Days",
