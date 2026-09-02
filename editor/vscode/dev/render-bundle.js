@@ -104,6 +104,49 @@ if (req) {
   chk("no raw feature id leads the panel",
       !/f-[0-9a-f]{40}/.test([...insp.querySelectorAll(".detail-meta")].map((e) => e._text || "").join(" ")));
   chk("the checkpoint list carries no maintenance instruction", !/sgt intent build/.test(words));
+
+  // The words. This arm's claim is that its history says what each piece of work was asked for,
+  // and the testbeds are replayed with no prompt hook running -- so an empty capture store is a
+  // failure that every other check passes over: the panel still renders, the verbs still work,
+  // and the one attribute the arm is judged on is simply not there.
+  const rows = [...insp.querySelectorAll(".checkpoint")];
+  chk("checkpoint rows drawn", rows.length > 0, rows.length);
+  const row = rows.find((r) => r._listeners && r._listeners.click);
+  if (row) {
+    row._listeners.click.forEach((fn) => fn({ stopPropagation() {}, preventDefault() {} }));
+    const quote = byId.inspector.querySelector(".asked-quote");
+    chk("selecting a checkpoint shows what it was asked for", !!quote,
+        quote ? "" : "no .asked-quote — the bundle's capture stores may be empty");
+    if (quote) {
+      const text = quote.textContent || "";
+      // An excerpt, not the prompt. Real prompts in these testbeds run 400-900 characters, and
+      // the whole point of the attribute is that it shows the request rather than the paragraph
+      // around it.
+      chk("the ask reads as an excerpt", text.length > 2 && text.length <= 130, text.length);
+      chk("the ask is quoted as somebody's words", /^“/.test(text.trim()), text.slice(0, 12));
+      chk("it says whose words they are",
+          /(you|assistant|recorded)/i.test(byId.inspector.querySelector(".asked-meta")._text || ""));
+    }
+    // ...and the whole prompt is reachable, or the excerpt is a summary with nothing behind it.
+    const more = byId.inspector.querySelector(".asked-more");
+    if (more) {
+      posted = [];
+      more._listeners.click.forEach((fn) => fn({ stopPropagation() {} }));
+      const ask = posted.filter((m) => m.type === "requestAsked").pop();
+      chk("opening it asks the host for the whole prompt", !!ask,
+          JSON.stringify(posted.map((m) => m.type)));
+      if (ask) {
+        global.window.dispatchEvent(new global.MessageEvent("message", { data: {
+          type: "askedResult", seq: ask.seq, ref: ask.ref, ok: true,
+          asks: [{ gist: "g", text: "the whole prompt, verbatim", source: "you, in a Claude Code chat",
+                   ts: null, claimed: 1, chars: 25, trimmed: true, resumable: false,
+                   claude_session_id: null, channel: "hook", actor: "human", scope: "stint" }] } }));
+        const full = byId.inspector.querySelector(".asked-text");
+        chk("the whole prompt reads back in the panel",
+            !!full && /the whole prompt, verbatim/.test(full.textContent || ""));
+      }
+    }
+  }
 }
 `);
 

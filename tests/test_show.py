@@ -499,3 +499,83 @@ def test_show_answers_a_row_of_work_across_features(tmp_path, monkeypatch):
 
     # Still not a phrase resolver: a name that merely mentions the work misses, as `show` promises.
     assert api.show_view(tmp_path, "the bit that handles event days")["ok"] is False
+
+
+# ── the `asked` attribute ───────────────────────────────────────────────────────────────────────
+#
+# `show` deliberately does not re-derive *why* -- that is `sgt why`'s job, and two views deriving
+# one answer drift apart. This is a different thing: one attribute of the thing on screen, in the
+# same class as `symbols` and `saves`, saying what somebody asked for in the words they typed. It
+# is here rather than behind `sgt intent show <cp>` because a reader holding a commit or a
+# checkpoint reaches for `show`, and a verb nobody runs is provenance nobody sees.
+
+def _asked_repo(tmp_path):
+    """A one-save repo whose save closed a capture window with a real, messy prompt in it."""
+    from sgt.core.store import Store
+    from sgt.intent.activity import record_activity
+    from sgt.intent.manifest import record_manifest
+    from sgt.intent.turns import record_turn
+    from sgt.store.gitbind import init_store
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "pages.py").write_text("def render():\n    return 1\n", encoding="utf-8")
+    sha = gb.commit_all("add the daily page")
+    get(repo)
+    prompt = ("so i think we shoudl proably add teh daily page for teh committee, becuase they "
+              "keep emailing me spreadsheets and i do it by hand every single time")
+    record_turn(repo, key="cs-1", key_kind="chat", actor="human", channel="hook", text=prompt,
+                ts=10.0)
+    record_activity(repo, tool="Edit", file="pages.py", session_id="cs-1", ts=20.0)
+    ops = [op for op in Store(repo).all_ops()]
+    record_manifest(repo, sha=sha, ops=ops, end=30.0, prev_save_ts=0.0)
+    return repo, sha, prompt
+
+
+def test_show_says_what_a_save_was_asked_for(tmp_path):
+    repo, sha, prompt = _asked_repo(tmp_path)
+
+    view = api.show_view(repo, sha[:7])
+
+    top = view["asked"]["top"]
+    assert view["asked"]["count"] == 1
+    # The request, not the prompt: an excerpt starting at the ask, verbatim, with the size of what
+    # it came out of -- so a renderer can offer the rest instead of implying this is all of it.
+    assert top["gist"] == "add teh daily page for teh committee"
+    assert top["trimmed"] is True
+    assert top["chars"] == len(prompt)
+    assert top["source"] == "you, in a Claude Code chat"
+    # No `asks` list unless asked for: `show` is a read a user repeats, and every prompt in a
+    # selection's history is a payload nobody has opened yet.
+    assert "asks" not in view["asked"]
+
+
+def test_show_asked_reads_the_conversation_back_in_full(tmp_path):
+    repo, sha, prompt = _asked_repo(tmp_path)
+
+    view = api.show_view(repo, sha[:7], include_asked=True)
+
+    assert [a["text"] for a in view["asked"]["asks"]] == [prompt]
+
+
+def test_show_says_nothing_about_asks_for_history_that_predates_capture(tmp_path):
+    """Most commits in most repositories. "No ask recorded" on every card would be a line about
+    sgt, in the reader's way, about something they cannot change."""
+    repo, _result = _repo(tmp_path)
+
+    view = api.show_view(repo, _a_logged_save_id(repo))
+
+    assert view["asked"] == {"top": None, "count": 0}
+
+
+def test_the_asked_line_is_an_excerpt_when_the_card_is_rendered(tmp_path, capsys, monkeypatch):
+    repo, sha, prompt = _asked_repo(tmp_path)
+    monkeypatch.chdir(repo)
+
+    assert main(["show", sha[:7]]) == 0
+    out = capsys.readouterr().out
+
+    assert '“add teh daily page for teh committee”' in out
+    assert "you, in a Claude Code chat" in out
+    assert "--asked" in out  # the way to the rest of it
+    assert prompt not in out  # ...and never the paragraph itself on the card

@@ -313,4 +313,51 @@ stay the state-movement verbs they already are; the pack is the narrative that r
   words.
 - **P4 — context pack**: `checkpoint_context` view, `--context`, MCP tool, workbench wiring.
 
+- **P5 — the ask, and where it shows** (2026-09-02): the excerpt rule (`sgt.intent.gist`), the
+  `asked` attribute on `sgt show`, and the read surfaces in the terminal map and the editor.
+
 Each phase lands independently green; P2 is where the batch aligner demotes.
+
+## Part 8. P5, and what P1–P4 got wrong about reading
+
+P1–P4 captured, joined and delivered the words. What they got wrong was what to *show* of them.
+Every surface printed the prompt's first **line** -- the chapter's name, the recorded reason,
+`sgt now`'s current task, the context pack, the timeline tooltip -- which is the ask only when the
+prompt was typed like a commit message. The dogfood turn store says they are not. Of 164 real
+prompts, the median opens with throat-clearing ("so i think we shoudl proably…"), carries its
+reasoning before or after the request, runs several asks together with commas, and a long one has
+no line break in it at all -- so "the first line" *is* the paragraph, and a 60-character chapter
+name built from it was 40 characters of throat-clearing. The words were captured, joined and
+delivered, and still said nothing.
+
+So P5 adds one rule and applies it everywhere: **an excerpt starts at the ask.** Strip the
+conversational opening from each clause; take the first clause that then begins with a verb someone
+would type at a coding agent; clip on a word boundary. Nothing else about the words changes --
+typos, casing and grammar stay exactly as typed, because the whole claim a recorded reason makes is
+that nobody rewrote it. Deterministic and offline, for the reason `show` is: this runs in read
+paths a cautious user repeats, and a name that came back different on the second read would be
+worse than a clumsy one.
+
+Three things fall out of it:
+
+- **`asked` is an attribute, not a verb.** `sgt intent show <cp>` and `sgt intent edit` exist and
+  are the right shape for an agent or for a deliberate correction, but they are not how a person
+  arrives: a reader holding a commit or a checkpoint runs `sgt show`, so that is where the words
+  are, in the same class as `symbols` and `saves`. `sgt show <sel> --asked` reads the conversation
+  in full, and it is the only place the verbatim paragraph is printed, because it is the only place
+  somebody asked for it. `why` keeps the recorded reasoning; `show` says what was asked. Two
+  different questions, so two answers rather than one view deriving both.
+- **Provenance travels with the words.** Every ask carries `source` -- "you, in a Claude Code
+  chat", "you, relayed by the assistant", "the assistant's note", "your save message" -- computed
+  once and rendered identically by the CLI, the terminal map and the webview, because "whose words
+  are these" is the one thing two surfaces must not answer differently. The trust tier from §4a is
+  visible in words rather than implied by a field name.
+- **An accelerator that fails is worse than none.** `claude --resume <id>` is now offered only when
+  that transcript is on this machine (`stint.resumable`). A handle printed beside real words and
+  failing when typed teaches the reader that the whole line is decoration -- and it would have been
+  printed for every replayed study session, which is what forced the check.
+
+The excerpt is a display concern only. The LLM labeler still reads the whole prompt
+(`label_prompt_for`), because it can extract an ask better than a heuristic can, and the store
+still holds every prompt verbatim and unpruned. What the heuristic is for is the line a reader is
+given for free, before anybody clicks.

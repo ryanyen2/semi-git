@@ -21,6 +21,13 @@ The rules, each carrying one of the design's cases:
   "no, sessions not JWTs" are BOTH the why of the code that survived -- `for_op` renders them in
   order, and supersedence stays a human judgement via `sgt intent edit`).
 
+`asks_for_ops` is the read side, and it answers for an op SET rather than for a save: what a
+reader points at is a chapter, a feature, a symbol's history, or a ◆ row of work spread across
+features, and all of those have to be answered by one function or two surfaces will quote different
+words back for the same code. `ask_record` is the shape they all render -- an excerpt
+(`sgt.intent.gist`) plus whose words they were and how much of the selection they account for --
+and `dominant_ask` picks the one a single line quotes.
+
 `reflect_save` is the save-beat emitter: it turns each grounded stint into a standard
 `sgt.intent.rationale` record (actor `human`, unconfirmed, evidence = the turn ids), plus
 save-wide records for the words that are explicit claims about the whole save -- a sha-keyed turn
@@ -122,7 +129,10 @@ def stint_words(repo: str | Path, shas: frozenset[str] | set[str] | None = None,
     for sha in manifests if shas is None else (s for s in shas if s in manifests):
         entries = [
             {"turn_id": s["turn"]["id"], "session": s["turn"]["key"], "ts": s["turn"]["ts"],
-             "text": s["turn"]["text"], "op_ids": s["op_ids"]}
+             "text": s["turn"]["text"], "op_ids": s["op_ids"],
+             # Whose words these are travels WITH them: every surface that renders an ask says so
+             # (`_SOURCE`), and a feed that dropped the channel forced each caller to guess.
+             "channel": s["turn"]["channel"], "actor": s["turn"]["actor"]}
             for s in derive_stints(manifests, sha, root=repo)["stints"] if s["op_ids"]
         ]
         if entries:
@@ -153,9 +163,9 @@ def reflect_save(repo: str | Path, sha: str) -> list[str]:
     the whole-save claims (sha-keyed turns; `agent`-channel carries in the window). Returns the
     record ids (fresh or pre-existing -- everything here is idempotent). The caller guards; a
     reflection hiccup must never disturb the verb it rides."""
+    from sgt.intent.gist import ROW_WIDTH, ask_gist
     from sgt.intent.manifest import load_manifests
     from sgt.intent.rationale import _subject_for, record_rationale
-    from sgt.intent.working import _first_line
 
     manifests = load_manifests(repo)
     target = manifests.get(sha)
@@ -167,7 +177,7 @@ def reflect_save(repo: str | Path, sha: str) -> list[str]:
     for st in derived["stints"]:
         if not st["op_ids"]:
             continue
-        reason = _first_line(st["turn"]["text"])
+        reason = ask_gist(st["turn"]["text"], ROW_WIDTH)
         rid = record_rationale(
             repo, subject=_subject_for(repo, st["op_ids"]), reason=reason, actor="human",
             evidence=[st["turn"]["id"]], recorded_by="stint",
@@ -178,7 +188,7 @@ def reflect_save(repo: str | Path, sha: str) -> list[str]:
     all_op_ids = [o["id"] for o in target["ops"]]
     if all_op_ids:
         for t in whole_save_turns(repo, target, sha):
-            reason = _first_line(t["text"])
+            reason = ask_gist(t["text"], ROW_WIDTH)
             if reason in emitted:  # its stint (or the hook twin's) already said this
                 continue
             rid = record_rationale(
@@ -189,3 +199,135 @@ def reflect_save(repo: str | Path, sha: str) -> list[str]:
                 ids.append(rid)
                 emitted.add(reason)
     return ids
+
+
+# Where a captured ask came from, in words. Here rather than in each renderer because there are
+# three of them -- the CLI, the terminal map, the editor's webview -- in two languages, and "whose
+# words are these" is the one thing the reader must not be told differently by two of them. The
+# distinction is the capture channel's trust tier (`sgt.intent.turns`): a harness capture is the
+# developer's own typing, an agent carry is an agent's claim about it, a note is a paraphrase.
+_SOURCE = {
+    "hook": "you, in a Claude Code chat",
+    "agent": "you, relayed by the assistant",
+    "note": "the assistant's note",
+    "cli": "your save message",
+    "sidecar": "a recorded prompt",
+    # The `_atom_prompt` fallback ladder reaches sidecars, save messages and turns alike, so a word
+    # that arrived through it has no knowable channel. Say that rather than picking one.
+    "recorded": "a recorded prompt",
+}
+
+
+def resumable(session_id: str | None) -> bool:
+    """Whether `claude --resume <session_id>` would actually reopen anything.
+
+    Every surface that shows a captured ask offers the way back into the conversation it came from,
+    and until this check the offer was made blind -- for a session whose transcript had been
+    compacted away, for one recorded on another machine, and (the case that forced this) for the
+    replayed history a study bundle ships, where the command is printed beside real words and fails
+    when anybody types it. A command that cannot work is worse than no command: it teaches the
+    reader that the lines here are decoration.
+
+    The words themselves are the payload and are always there; this only gates the accelerator.
+    Reads `CLAUDE_CONFIG_DIR` so an isolated Claude Code install answers for its own transcripts."""
+    if not session_id:
+        return False
+    import os
+
+    root = Path(os.environ.get("CLAUDE_CONFIG_DIR") or (Path.home() / ".claude")) / "projects"
+    try:
+        return any(root.glob(f"*/{session_id}.jsonl"))
+    except OSError:  # an unreadable or absent config dir is simply "cannot resume"
+        return False
+
+
+def ask_record(text: str, *, channel: str, actor: str = "human", ts: float | None = None,
+               session: str | None = None, claimed: int = 0, scope: str = "stint",
+               full: bool = True) -> dict:
+    """One captured ask, in the shape every surface renders.
+
+    `gist` is the excerpt to put on a line, `trimmed` whether the prompt held more, `chars` how
+    much more (a reader deciding whether to open it wants the size, not a guess), and `source` who
+    typed it in words. `full=False` drops the verbatim `text` -- what a list of forty chapters
+    sends, where forty prompts would be most of the payload and none of them would be read until
+    one is opened."""
+    from sgt.intent.gist import CARD_WIDTH, ask_parts
+
+    parts = ask_parts(text, CARD_WIDTH)
+    out = {"gist": parts.gist, "trimmed": parts.trimmed, "chars": len(text or ""),
+           "channel": channel, "source": _SOURCE.get(channel, channel), "actor": actor,
+           "ts": ts, "claude_session_id": session, "resumable": resumable(session),
+           "claimed": claimed, "scope": scope}
+    if full:
+        out["text"] = text
+    return out
+
+
+def asks_for_ops(repo: str | Path, op_ids, shas) -> list[dict]:
+    """Every captured ask that grounds any of `op_ids`, in conversation order.
+
+    The one join behind every surface that shows captured words for a *selection* rather than for a
+    save: the `asked` attribute on `sgt show`, the checkpoint context pack, the workbench card. It
+    has to be one function -- a second copy of "which prompts claim these ops" is a copy that will
+    disagree with the first about what a chapter was for, which is the whole thing these surfaces
+    exist to say.
+
+    Each ask carries `claimed` (how many of `op_ids` its stint grounds) so a caller can pick the
+    dominant one for a one-line render, `scope` ("stint" for grounded ambient words, "save" for an
+    explicit claim about the whole save), and both the excerpt and the verbatim text -- the excerpt
+    for a row, the text for the reader who opens it. `shas` are the saves that witness these ops
+    (chronological); a sha with no manifest contributes only its committed sidecar digest, which is
+    how pre-weave history stays honestly empty rather than guessed at.
+    """
+    from sgt.intent.manifest import load_manifests
+    from sgt.intent.prompts import prompt_for
+
+    wanted = frozenset(op_ids)
+    manifests = load_manifests(repo)
+    order: list[str] = []
+    by_key: dict[str, dict] = {}
+
+    def add(key: str, *, text: str, channel: str, actor: str, ts: float | None,
+            session: str | None, claimed: int, scope: str) -> None:
+        """One ask per turn, its claim summed across the saves it reached (case 4: one prompt, many
+        saves). A key seen twice is the same words, not two asks."""
+        if not (text or "").strip():
+            return
+        if key in by_key:
+            by_key[key]["claimed"] += claimed
+            return
+        by_key[key] = ask_record(text, channel=channel, actor=actor, ts=ts, session=session,
+                                 claimed=claimed, scope=scope)
+        order.append(key)
+
+    for sha in shas:
+        target = manifests.get(sha)
+        if target is not None:
+            for st in derive_stints(manifests, sha, root=repo)["stints"]:
+                claimed = len(wanted & frozenset(st["op_ids"]))
+                if claimed:
+                    t = st["turn"]
+                    add(t["id"], text=t["text"], channel=t["channel"], actor=t["actor"],
+                        ts=t["ts"], session=t["key"], claimed=claimed, scope="stint")
+        save_ops = frozenset(o["id"] for o in target["ops"]) if target else frozenset()
+        for t in whole_save_turns(repo, target, sha):
+            add(t["id"], text=t["text"], channel=t["channel"], actor=t["actor"], ts=t["ts"],
+                session=t["key"] if t["key_kind"] == "chat" else None,
+                claimed=len(wanted & save_ops), scope="save")
+        digest = prompt_for(repo, sha)
+        # A digest that repeats an ask already listed is the same words twice, not a second ask:
+        # the sidecar is written FROM a turn, so the two agree by construction more often than not.
+        if digest and digest not in {a["text"] for a in by_key.values()}:
+            add(f"sidecar:{sha}", text=digest, channel="sidecar", actor="human", ts=None,
+                session=None, claimed=len(wanted & save_ops), scope="save")
+
+    return [by_key[k] for k in order]
+
+
+def dominant_ask(asks: list[dict]) -> dict | None:
+    """The one ask to put on a single line: the one grounding the most of the selection, latest
+    first on a tie -- a correction is the standing word, the same rule `_dominant_turn` uses for a
+    chapter's name. `None` for a selection nothing captured claims."""
+    if not asks:
+        return None
+    return max(asks, key=lambda a: (a["claimed"], a["ts"] or 0.0))

@@ -261,6 +261,13 @@ export class Sgt {
     return this.json<MapView>(["log", "--tree", "--refresh", "--json"]);
   }
 
+  // The conversation behind a selection, in full: `asked.asks` carries each captured prompt
+  // verbatim, which the light per-chapter payload deliberately does not (it ships excerpts). Read
+  // on demand, when a reader opens one -- so the panel stays cheap and the words stay reachable.
+  asked(ref: string, stillWanted?: () => boolean): Promise<any> {
+    return this.json<any>(["show", ref, "--asked", "--json"], 30_000, stillWanted);
+  }
+
   // U14 demoted `sgt blame` under `advanced` (same handler, re-homed path).
   blame(file: string): Promise<BlameView> {
     return this.json<BlameView>(["advanced", "blame", "--json", file]);

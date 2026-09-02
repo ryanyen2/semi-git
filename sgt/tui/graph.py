@@ -398,7 +398,7 @@ def segment_layout(
                     "last_index": seg["last_index"],
                     "sub_bins": sorted(bins.items()),
                     "is_future": seg["first_index"] > fr,
-                    "words": seg.get("words", []),  # captured words for this chapter (zoom render)
+                    "asks": seg.get("asks", []),  # captured asks for this chapter (zoom render)
                 })
         cars.sort(key=lambda c: (c["first_index"], c["feature_id"], c["seg_index"]))
         lanes.append({**l, "cars": cars})

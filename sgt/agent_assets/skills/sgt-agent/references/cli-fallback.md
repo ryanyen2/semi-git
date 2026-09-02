@@ -12,6 +12,7 @@ reachable that way, because the MCP tools are thin wrappers over the same projec
 | `sgt_now` | `sgt now --json` |
 | `sgt_show` (id) | `sgt show <sel> --json` |
 | `sgt_show` (with `at`) | `sgt show <file> --at <spec> --json` |
+| `sgt_show` (`asked: true`) | `sgt show <sel> --asked --json` |
 | `sgt_log` | `sgt log --ops --json --limit 30` |
 | `sgt_status` | `sgt log --summary --json` |
 | `sgt_diff` | `sgt diff <ref_a> <ref_b> --json` |

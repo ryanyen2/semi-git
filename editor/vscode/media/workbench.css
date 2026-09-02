@@ -2524,3 +2524,142 @@ svg.railsvg {
   fill: var(--accent);
   stroke: var(--accent);
 }
+
+/* ── What a chapter was asked for ───────────────────────────────────────────────────────────────
+   The block on the checkpoint card, between the chapter's name and the verb that removes it. It
+   carries the one thing on this panel written by a person rather than derived by the tool, so it is
+   set apart from the derived facts around it -- and quoted, because a paraphrase of somebody's ask
+   would be worth nothing here.
+
+   It takes the accent bar (`inset 2px 0 0`) and `--panel-bg` of a selected row rather than drawing
+   a border of its own: the same visual vocabulary as the chapter it belongs to, so the card reads
+   as one object rather than as a card with a second card inside it. */
+.asked {
+  background: var(--panel-bg);
+  box-shadow: inset 2px 0 0 var(--accent);
+  border-radius: 0 5px 5px 0;
+  margin: 0 4px 4px;
+  padding: 7px 9px;
+}
+
+/* Opened, the conversation is capped and scrolls as ONE region. Capping each turn instead gave
+   four scrollers that summed to a block taller than the panel, pushing everything below it -- the
+   changed-lines tree, the whole-feature control -- off the bottom of the view. The count and the
+   close control sit outside this box, so neither scrolls away from the reader. */
+.asked-turns {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.asked-head {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--dim);
+  margin-bottom: 5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Enter only, and only when the block is new (`asked-enter` is set once per chapter): the panel
+   re-renders on every poll, and an animation that replayed each time would flicker under a reader
+   who is in the middle of a sentence. No exit -- deselecting removes the node with the render, and
+   holding a node alive to animate its removal would make the list feel slower to answer than it
+   is. A transition rather than a keyframe, so a second render mid-animation interrupts it. */
+.asked-enter {
+  animation: asked-in 140ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+@keyframes asked-in {
+  from { opacity: 0; transform: translateY(-2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* The excerpt. Slightly under the row label's weight: the list above is scanned by name, and a
+   quote at full strength competed with the name it belongs to. Not italic: this is somebody's typing, typos and all, and italic makes a messy
+   sentence harder to read rather than more clearly a quotation -- the quote marks do that job.
+   `pretty` keeps a two-line quote from ending on an orphan. */
+.asked-quote {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--fg);
+  opacity: 0.92;
+  text-wrap: pretty;
+}
+
+/* Whose words, when, and how much of the chapter they account for. Dim: it is the provenance of
+   the line above, not a second fact competing with it. */
+.asked-meta {
+  font-size: 11px;
+  color: var(--dim);
+  margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* One turn of the opened conversation. The rule between turns is what says "somebody typed again"
+   -- a correction chain read as one paragraph without it. */
+.asked-turn + .asked-turn {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+/* The verbatim prompt. `pre-wrap` because the paragraph breaks in it are the writer's, and
+   collapsing them turns a structured ask into a wall. It flows to its full height: the cap that
+   keeps a 900-character prompt from pushing the rest of the inspector off screen is on
+   `.asked-turns` around it, so several turns share one scroller instead of nesting several. */
+.asked-text {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+  margin-top: 3px;
+}
+
+.asked-error {
+  font-size: 11px;
+  color: var(--blast);
+  margin-top: 4px;
+}
+
+/* The disclosure control. It states the size of what it opens, so the reader is choosing rather
+   than finding out by clicking. Radius 3 inside the block's 5 (5 = 3 + the 2px it sits in from the
+   padded edge), which is what keeps the corners looking concentric rather than merely rounded. */
+.asked-more,
+.asked-resume {
+  display: inline-block;
+  margin-top: 7px;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  color: var(--dim);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1.6;
+  padding: 3px 8px;
+  transition-property: color, border-color, background-color;
+  transition-duration: 90ms;
+  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+
+.asked-more:hover:not(:disabled),
+.asked-resume:hover {
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
+/* Pressed, not just hovered: a control that reads text out of the repository should feel like it
+   was pushed, since the answer can take a moment to arrive. */
+.asked-more:active:not(:disabled),
+.asked-resume:active {
+  scale: 0.96;
+}
+
+/* Reading. The label already changed to "reading…", so this only has to stop the control looking
+   clickable -- a spinner in a panel this size would be more motion than the wait deserves. */
+.asked-more:disabled {
+  cursor: default;
+  opacity: 0.6;
+}

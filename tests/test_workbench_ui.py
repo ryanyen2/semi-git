@@ -869,3 +869,61 @@ def test_the_real_projection_reaches_the_tree_at_entity_granularity(tmp_path):
     # The extractor's `__import__::` marker is machinery. It must not reach a row verbatim, and the
     # import must still be its own row -- a revert can take one out on its own.
     assert not any(r["name"].startswith("__") for r in rows), [r["name"] for r in rows]
+
+
+# ── What a chapter was asked for ──────────────────────────────────────────────────────────────────
+#
+# Three pure derivations behind the `asked` block on the checkpoint card. They are here rather than
+# only behind `dev/render-bundle.js` because each encodes a decision -- which ask speaks for a
+# chapter, and what the reader is told they are opening -- and a render check can only see that
+# *something* was drawn.
+
+def _ask(**over) -> dict:
+    base = {"gist": "add a csv download", "trimmed": False, "chars": 18, "channel": "hook",
+            "source": "you, in a Claude Code chat", "actor": "human", "ts": None,
+            "claude_session_id": None, "resumable": False, "claimed": 1, "scope": "stint"}
+    base.update(over)
+    return base
+
+
+def _asked(expr: str):
+    return _node(_slice("  // ---- ask derivations", "  // ---- end-ask-derivations"),
+                 f"console.log(JSON.stringify({expr}));\n")
+
+
+def test_the_ask_that_accounts_for_most_of_the_chapter_speaks_for_it():
+    asks = [_ask(gist="mark the event days", claimed=6, ts=100),
+            _ask(gist="no, a tick under the axis", claimed=2, ts=200)]
+
+    assert _asked(f"dominantAsk({json.dumps(asks)}).gist") == "mark the event days"
+
+
+def test_a_correction_wins_a_tie():
+    """Both asks are kept -- supersedence is a human judgement, not a heuristic -- so when they
+    account for the same amount the later one is the standing word. Same rule as
+    `sgt.intent.stint.dominant_ask`, or the CLI and the panel would quote different sentences."""
+    asks = [_ask(gist="mark the event days", claimed=3, ts=100),
+            _ask(gist="no, a tick under the axis", claimed=3, ts=200)]
+
+    assert _asked(f"dominantAsk({json.dumps(asks)}).gist") == "no, a tick under the axis"
+
+
+def test_a_chapter_nothing_claims_has_no_ask_rather_than_an_empty_one():
+    assert _asked("dominantAsk([])") is None
+    assert _asked("dominantAsk(undefined)") is None
+
+
+def test_the_provenance_line_says_whose_words_and_how_much_more_there_is():
+    """A reader deciding whether to open a prompt wants its size, not a guess -- and the share of
+    the chapter is only worth a clause when there is more than one ask to distinguish."""
+    one = _asked(f"askedMeta({json.dumps(_ask(trimmed=True, chars=649))}, 0, false)")
+    assert one == "you, in a Claude Code chat · 649 characters in full"
+
+    many = _asked(f"askedMeta({json.dumps(_ask(claimed=7))}, 2, true)")
+    assert many == "2. you, in a Claude Code chat · accounts for 7 edits"
+
+
+def test_the_control_says_what_it_opens():
+    """A bare "more" makes the reader click to find out what they are getting."""
+    assert _asked(f"askedMoreLabel({json.dumps(_ask(trimmed=True))}, 0)") == "Read the whole prompt"
+    assert _asked(f"askedMoreLabel({json.dumps(_ask())}, 3)") == "Read all 4 asks"

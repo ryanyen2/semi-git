@@ -60,7 +60,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
   // them all; each read now checks this when its queue turn arrives and a superseded one is
   // dropped before it spawns. Sequence numbers already existed for result-ordering -- this reuses
   // them for cancellation.
-  private readonly latest = { preview: 0, fold: 0, playhead: 0, find: 0, change: 0 };
+  private readonly latest = { preview: 0, fold: 0, playhead: 0, find: 0, change: 0, asked: 0 };
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -322,6 +322,9 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
       case "requestFold":
         await this.requestFold(msg.featureId, msg.ref, msg.seq);
         return;
+      case "requestAsked":
+        await this.requestAsked(msg.ref, msg.seq);
+        break;
       case "requestChange":
         await this.requestChange(msg.verb, msg.ref, msg.seq);
         return;
@@ -903,6 +906,29 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
       if (e instanceof StaleRequestError) return; // a newer selection's projection answers instead
       void this.view?.webview.postMessage({
         type: "changeResult", seq, ref, verb, ok: false, message: e.message, files: {},
+      });
+    }
+  }
+
+  // The words behind a chapter, on demand. The panel already holds an excerpt of the dominant ask
+  // for every chapter; this is the reader opening one, which is the only moment the verbatim
+  // prompts are worth sending. Failures answer rather than going quiet: a disclosure that opened
+  // onto nothing would read as "there is nothing here", which is a different claim from "this
+  // could not be read".
+  private async requestAsked(ref: string, seq: number): Promise<void> {
+    this.latest.asked = seq;
+    try {
+      const view = await this.store.sgt.asked(String(ref), () => this.latest.asked === seq);
+      void this.view?.webview.postMessage({
+        type: "askedResult", seq, ref,
+        ok: view?.ok !== false,
+        asks: view?.asked?.asks || [],
+        message: view?.message,
+      });
+    } catch (e: any) {
+      if (e instanceof StaleRequestError) return; // a newer selection answers instead
+      void this.view?.webview.postMessage({
+        type: "askedResult", seq, ref, ok: false, asks: [], message: e.message,
       });
     }
   }

@@ -622,7 +622,7 @@ def test_intent_activity_skips_an_edit_outside_this_repo(tmp_path, monkeypatch):
     assert load_activity(tmp_path) == []
 
 
-def test_a_grounded_ask_names_the_checkpoint_and_resolves_back(tmp_path):
+def test_a_grounded_ask_names_the_checkpoint_and_resolves_back(tmp_path, monkeypatch):
     """The weave end to end (P3): a hook-captured prompt, its session's activity, and the save meet
     at the save beat -- and the checkpoint list names the chapter with the user's ask (source
     `words`), surfaces the ask in `words`, and the SAME label resolves back through the bare-name
@@ -652,7 +652,11 @@ def test_a_grounded_ask_names_the_checkpoint_and_resolves_back(tmp_path):
 
     seg = next(s for s in segments_view(tmp_path) if s["source"] == "words")
     assert seg["intent"] == "teach foo to count higher"
-    assert "teach foo to count higher" in seg["words"]
+    # The ask travels with the chapter as an excerpt plus its provenance, not as raw prompt text:
+    # this list draws every chapter of every feature (`stint.ask_record`).
+    assert [a["gist"] for a in seg["asks"]] == ["teach foo to count higher"]
+    assert seg["asks"][0]["source"] == "you, in a Claude Code chat"
+    assert seg["asks"][0]["trimmed"] is False
 
     resolved = resolve_checkpoint_label(tmp_path, "teach foo to count higher")
     assert resolved is not None
@@ -671,6 +675,15 @@ def test_a_grounded_ask_names_the_checkpoint_and_resolves_back(tmp_path):
     assert "teach foo to count higher" in [r["reason"] for r in pack["why"]]
     assert "a.py::ceiling" in pack["touches"]
     assert pack["dependent_op_ids"] == []  # nothing built on this chapter yet
+    # The way back into the conversation is offered only when that conversation is still on this
+    # machine. A `claude --resume` printed for a compacted or replayed session fails when it is
+    # typed, which is worse than not offering it -- the words in `asked` are the durable copy.
+    assert pack["resume"] == []
+    transcripts = tmp_path / "cfg" / "projects" / "some-repo"
+    transcripts.mkdir(parents=True)
+    (transcripts / "cs-9.jsonl").write_text("{}\n", encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "cfg"))
+    pack = checkpoint_context(tmp_path, seg["checkpoint"])
     assert pack["resume"] == [{"claude_session_id": "cs-9", "command": "claude --resume cs-9"}]
 
     # The CLI show surface carries the pack too, under the same checkpoint target.

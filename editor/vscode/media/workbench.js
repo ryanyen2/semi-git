@@ -357,7 +357,7 @@ function computeSegmentLayout(map, grid, segments, opts) {
           firstIndex: seg.first_index, lastIndex: seg.last_index,
           subBins: [...bins.entries()].sort((a, b) => a[0] - b[0]),
           isFuture: seg.first_index > frontier,
-          words: seg.words || [],  // the chapter's captured words (intent-ledger P1 zoom)
+          asks: seg.asks || [],  // the chapter's captured asks: excerpt + whose words (weave P4)
         });
       }
     }
@@ -755,6 +755,22 @@ function changeMeter(added, removed, width) {
   let changeCache = {};
   const changeFolded = new Set();
   const changeUnfolded = new Set();
+
+  // The words behind the selected chapter. Two levels, because they cost different things: the
+  // excerpt is already in the payload for every chapter and is drawn for free, and the verbatim
+  // prompts are fetched only when a reader opens one (`requestAsked` -> `sgt show --asked`). A
+  // prompt is a paragraph; forty of them would be most of a panel refresh, for words nobody is
+  // reading yet.
+  //
+  // `askedOpen` is the checkpoint whose full text is showing -- one at a time, since this is a
+  // reading state and two open transcripts in a narrow panel is neither. `askedAnimated` records
+  // which chapter's block has already played its enter, so a poll that re-renders the panel does
+  // not replay the animation under the reader's eyes.
+  let askedSeq = 0;
+  let pendingAsked = null; // {seq, ref}
+  let askedCache = {};     // checkpoint -> {asks} | {error}
+  let askedOpen = null;    // checkpoint whose verbatim prompts are expanded
+  let askedAnimated = null;
 
   // Multi-select union closure (Stage C): ⌘/ctrl/shift-click accretes a set of feature lanes; the
   // host resolves the union via `sgt select` and we show the closure count + paint it. Transient
@@ -1623,12 +1639,15 @@ function changeMeter(added, removed, width) {
       carRects.set(car.checkpoint, { x, w, midY, laneId: l.id, subBins: car.subBins || [] });
       // Native tooltip: an SVG element ignores a `title` attribute, so the hover text has to be a
       // `<title>` child of the rect (not attrs.title) to actually show on hover.
+      const ask = dominantAsk(car.asks);
       const tip = `${car.label}\n${car.tier}` +
         (car.source === "fallback" ? "" : ` · ${car.source}`) +
-        // The chapter in the user's own words on hover (intent-ledger P1): the words captured for
-        // its commits, up to two. `sgt feature why <sha>` carries the full text + resume handle.
-        ((car.words && car.words.length)
-          ? "\n" + car.words.slice(0, 2).map((w) => `“${w}”`).join("\n") : "") +
+        // The chapter in the user's own words on hover: the ask that accounts for most of it, as
+        // an excerpt, with whose words they were. This used to print up to two captured prompts
+        // verbatim -- and a real prompt is a 900-character paragraph, so a native tooltip (no
+        // wrapping, no scrolling, no styling) became a wall that covered the timeline it was
+        // describing. Selecting the chapter opens the rest.
+        (ask ? `\n“${ask.gist}”\n— ${ask.source}` : "") +
         // No raw `f-<64 hex>@n` here. The ref is unreadable, unmemorable, and nobody retypes it
         // -- it filled the tooltip with the one string on screen carrying no information. What a
         // reader wants from a chapter they are pointing at is its size, its state, and the fact
@@ -2829,6 +2848,7 @@ function changeMeter(added, removed, width) {
       selectionResult = null;
     }
     state.selectedCheckpoint = state.selectedCheckpoint === car.checkpoint ? null : car.checkpoint;
+    if (askedOpen !== state.selectedCheckpoint) askedOpen = null;
     saveState();
     render();
     const row = inspector.querySelector(".checkpoint.selected");
@@ -2841,6 +2861,7 @@ function changeMeter(added, removed, width) {
   function highlightCheckpoint(ref) {
     if (stagedAction && !applyBusy) cancelStaged(); // navigating away withdraws the question
     state.selectedCheckpoint = state.selectedCheckpoint === ref ? null : ref;
+    if (askedOpen !== state.selectedCheckpoint) askedOpen = null;
     saveState();
     renderInspector();
     renderGraph();
@@ -3745,6 +3766,54 @@ function changeMeter(added, removed, width) {
     renderFind(semanticState.query);
     applyLens(); // the meaning rung usually reaches lanes the substring rung did not
   }
+
+  // ---- ask derivations (test slice boundary)
+  //
+  // The one ask to put on a single line: the one accounting for most of the chapter, latest first
+  // on a tie -- a correction is the standing word. Same rule as `sgt.intent.stint.dominant_ask`,
+  // so the tooltip, the panel and the CLI all quote the same sentence back.
+  function dominantAsk(asks) {
+    if (!asks || !asks.length) return null;
+    return asks.reduce((best, a) =>
+      !best || a.claimed > best.claimed || (a.claimed === best.claimed && (a.ts || 0) > (best.ts || 0))
+        ? a : best, null);
+  }
+
+  // "9 days ago" for a captured timestamp (seconds since the epoch, as the store keeps it).
+  function askAge(ts) {
+    if (!ts) return "";
+    const secs = Math.max(0, Date.now() / 1000 - ts);
+    if (secs < 90) return "just now";
+    if (secs < 5400) return `${Math.round(secs / 60)} min ago`;
+    if (secs < 172800) return `${Math.round(secs / 3600)}h ago`;
+    return `${Math.round(secs / 86400)}d ago`;
+  }
+
+  // Whose words, when, and -- only when it distinguishes anything -- how much of the chapter they
+  // account for. On a single-ask chapter that share is every edit in it, so the clause would be a
+  // second line saying what the card above already said; the prompt's length goes there instead,
+  // which is what the reader needs to decide whether to open it.
+  function askedMeta(ask, index, withClaim) {
+    const bits = [ask.source];
+    const age = askAge(ask.ts);
+    if (age) bits.push(age);
+    if (withClaim && ask.claimed) {
+      bits.push(`accounts for ${ask.claimed} edit${ask.claimed === 1 ? "" : "s"}`);
+    }
+    if (ask.trimmed && !withClaim) bits.push(`${ask.chars} characters in full`);
+    return (index ? `${index}. ` : "") + bits.join(" · ");
+  }
+
+  // What is behind the control, in a label short enough to stay an inline control: a longer prompt
+  // or more asks. Full-width, it read as a second action equal to "Revert this checkpoint", which
+  // is not a pair a panel should offer at the same weight. The length of what it opens is on the
+  // provenance line above it.
+  function askedMoreLabel(top, more) {
+    if (more > 0) return `Read all ${more + 1} asks`;
+    return "Read the whole prompt";
+  }
+
+  // ---- end-ask-derivations
 
   function el(tag, cls, text) {
     const node = document.createElement(tag);
@@ -4672,6 +4741,101 @@ function changeMeter(added, removed, width) {
     return wrap;
   }
 
+  // ---- the asked disclosure
+  //
+  // What a chapter was asked for, on the card the reader is deciding from. Two levels, and the
+  // reader chooses: the excerpt (drawn as soon as a checkpoint is selected -- it is already in the
+  // payload and costs nothing) and the verbatim prompts (fetched on click). The excerpt is not a
+  // summary anybody wrote: it is a cut of the prompt starting at the request (`sgt.intent.gist`),
+  // so opening the full text shows the same sentence again inside the paragraph it came from --
+  // which is what makes the excerpt trustworthy rather than a claim to take on faith.
+  //
+  // Drawn once per screen. It was briefly under the selected row in the checkpoint list as well,
+  // which put the same quotation on screen twice with two open/close controls for one reading
+  // state.
+  function askedBlock(seg) {
+    const asks = seg.asks || [];
+    if (!asks.length) return null;
+    const top = dominantAsk(asks);
+    const open = askedOpen === seg.checkpoint;
+    const cached = askedCache[seg.checkpoint];
+    const loading = !!pendingAsked && pendingAsked.ref === seg.checkpoint;
+
+    const block = el("div", "asked" + (askedAnimated === seg.checkpoint ? "" : " asked-enter"));
+    askedAnimated = seg.checkpoint;
+
+    if (open && cached && cached.asks && cached.asks.length) {
+      // How many turns there are, before the first one -- the scroller below is capped, and a
+      // reader who cannot see the extent of what they opened reads the visible part as all of it.
+      if (cached.asks.length > 1) {
+        block.appendChild(el("div", "asked-head",
+                             `${cached.asks.length} asks, oldest first`));
+      }
+      // The conversation, in order, in ONE capped scroller -- outside it go the count above and
+      // the control below, because a control that scrolls away with the content is a control the
+      // reader has to go looking for to close what they opened.
+      const turns = el("div", "asked-turns");
+      block.appendChild(turns);
+      // Each turn keeps its own attribution line: a chapter's words can be one ask, an ask and its
+      // correction, or an ask relayed by an agent, and collapsing them would lose which is which.
+      cached.asks.forEach((a, i) => {
+        const turn = el("div", "asked-turn");
+        turn.appendChild(el("div", "asked-meta",
+                              askedMeta(a, cached.asks.length > 1 ? i + 1 : 0, cached.asks.length > 1)));
+        turn.appendChild(el("div", "asked-text", a.text || a.gist));
+        if (a.resumable && a.claude_session_id) {
+          // Offered only when the transcript is still on this machine (the host checks). A
+          // `claude --resume` that fails teaches the reader that these lines are decoration.
+          const resume = el("button", "asked-resume", "Reopen this conversation");
+          resume.title = `claude --resume ${a.claude_session_id}`;
+          resume.addEventListener("click", (e) => {
+            e.stopPropagation();
+            vscode.postMessage({ type: "resumePlan", sessionId: a.claude_session_id });
+          });
+          turn.appendChild(resume);
+        }
+        turns.appendChild(turn);
+      });
+    } else {
+      const quote = el("div", "asked-quote", `“${top.gist}”`);
+      block.appendChild(quote);
+      block.appendChild(el("div", "asked-meta", askedMeta(top, 0, asks.length > 1)));
+      if (open && cached && cached.error) {
+        // A disclosure that opened onto nothing would read as "there is nothing here", which is a
+        // different claim from "this could not be read".
+        block.appendChild(el("div", "asked-error", `Could not read the conversation — ${cached.error}`));
+      }
+    }
+
+    // The control says what it will do, and only appears when there is something behind it: an
+    // excerpt that IS the whole prompt, with no other asks, has nothing to open.
+    const more = asks.length - 1;
+    if (top.trimmed || more > 0) {
+      const toggle = el("button", "asked-more",
+        loading ? "reading…" : open ? "Show less" : askedMoreLabel(top, more));
+      toggle.disabled = loading;
+      toggle.addEventListener("click", (e) => {
+        e.stopPropagation(); // the row underneath toggles the selection; this toggles the reading
+        if (open) {
+          askedOpen = null;
+          renderInspector();
+          return;
+        }
+        askedOpen = seg.checkpoint;
+        if (!askedCache[seg.checkpoint]) requestAsked(seg.checkpoint);
+        renderInspector();
+      });
+      block.appendChild(toggle);
+    }
+    return block;
+  }
+
+  function requestAsked(ref) {
+    const seq = ++askedSeq;
+    pendingAsked = { seq, ref };
+    vscode.postMessage({ type: "requestAsked", ref, seq });
+  }
+
   // ---- retired-work (test slice boundary)
   // What a feature has RECORDED but no longer has LIVE. `present_op_count` is how many of a
   // chapter's ops survive in the ideal, so a chapter at 0 is fully retired and one below its
@@ -4731,6 +4895,13 @@ function changeMeter(added, removed, width) {
     head.appendChild(dot);
     head.appendChild(el("span", "chapter-scope-label", `Checkpoint · ${seg.intent}`));
     wrap.appendChild(head);
+
+    // What this chapter was asked for, between its name and the verb that removes it. Here rather
+    // than under its row in the list below: this is the card the reader is deciding from, and the
+    // words somebody typed are the thing that says whether the chapter under the cursor is the one
+    // they meant. A name can be a generated approximation; the ask is evidence.
+    const asked = askedBlock(seg);
+    if (asked) wrap.appendChild(asked);
 
     const bar = el("div", "action-bar");
     const one = el("button", "action", scope.gone ? "⤻ Restore this checkpoint" : "⤺ Revert this checkpoint");
@@ -5764,6 +5935,13 @@ function changeMeter(added, removed, width) {
     } else if (msg.type === "compositionPreviewEnd") {
       compositionPreviewActive = null;
       renderInspector();
+    } else if (msg.type === "askedResult" && pendingAsked && pendingAsked.seq === msg.seq) {
+      const ref = pendingAsked.ref;
+      pendingAsked = null;
+      askedCache[ref] = msg.ok !== false && (msg.asks || []).length
+        ? { asks: msg.asks }
+        : { error: msg.message || "nothing was captured for it" };
+      if (askedOpen === ref) renderInspector();
     } else if (msg.type === "findResult") {
       renderFindResults(msg);
     } else if (msg.type === "agentAction") {
