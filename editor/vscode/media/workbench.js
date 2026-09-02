@@ -4909,16 +4909,23 @@ function changeMeter(added, removed, width) {
         "warn"));
     }
 
-    // Files start folded only when the tree is long enough that leaving them open would push the
-    // action bar off screen. A panel you have to scroll past to reach the verbs is worse than one
-    // you click into.
+    // Files start folded only when the change is genuinely big.
     //
-    // Counted WITH the changed lines under each entity, not just the entity rows. They are rows on
-    // this list like any other, and leaving them out made the threshold mean roughly a tenth of
-    // what it says -- 39 entities reads as "short enough to leave open" and draws four hundred rows.
+    // The old rule -- fold past 40 rows, to keep the action bar on screen -- was written when this
+    // panel sat above the verbs. It does not: the bar renders before it, so folding protects
+    // nothing, and 40 counted rows is three files on a real feature. Folding there hides the one
+    // thing this panel is for.
+    //
+    // So: one rule, total rows, and a ceiling set from what real work actually measures rather
+    // than from a round number. Every feature in the two study projects lands between 29 and 107
+    // rows (7 files is typical, not large), and all of them should open: a reader who selected a
+    // feature to find out what it did is not helped by seven folded rows. Past the ceiling the
+    // panel is no longer readable as a whole and folding is the kinder default. Rows are counted
+    // with the changed lines under each entity, because those are rows on this list like any other.
     const rows = tree.fileCount + countEntityRows(tree.root) + countLineRows(tree.root);
+    const foldFiles = rows > 250;
     const list = el("div", "ctree");
-    appendChangeRows(list, tree.root, 0, scope, rows > 40);
+    appendChangeRows(list, tree.root, 0, scope, foldFiles);
     section.appendChild(list);
   }
 
