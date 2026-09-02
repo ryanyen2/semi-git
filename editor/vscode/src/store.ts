@@ -103,7 +103,10 @@ export class Store {
 
   // Shares the in-flight promise like `composeView` -- activation fires several map consumers at
   // once, so without this each misses the (still-unset) cache and spawns its own `sgt log --tree`.
-  // A forced call starts a fresh fetch rather than joining a possibly-stale in-flight one.
+  // A forced call starts a fresh fetch rather than joining a possibly-stale in-flight one -- it
+  // means "do not reuse the cache", NOT "rebuild the tree". The rebuild is `rebuildMap()`, kept
+  // apart because it re-mines and a re-mine between a revert and its restore destroys the removal
+  // record (`Sgt.map`).
   async map(force = false): Promise<MapView> {
     if (this.mapCache && !force) return this.mapCache;
     if (!this.mapInFlight || force) {
@@ -123,6 +126,20 @@ export class Store {
       this.mapInFlight = p;
     }
     return this.mapInFlight;
+  }
+
+  // The one deliberate tree rebuild, cached like `map()` so the readers that follow see it. Not a
+  // mode of `map(force)`: a rebuild re-mines, and a mine that lands between a `revert` and its
+  // `restore` leaves the removal with nothing to invert (`Sgt.map`). So it lives behind its own
+  // name, with one caller -- the empty-tree heal, where there is nothing yet to lose.
+  async rebuildMap(): Promise<MapView> {
+    const gen = this.generation;
+    const v = await this.sgt.rebuildMap();
+    if (gen === this.generation) {
+      this.mapCache = v;
+      this.nodeById = new Map(v.nodes.map((n) => [n.id, n]));
+    }
+    return v;
   }
 
   // Cached alongside `map()` -- both are invalidated together off the same `.sgt/**/*.json`

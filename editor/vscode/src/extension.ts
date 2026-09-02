@@ -112,12 +112,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // Refresh only on .sgt changes -- a mined op, checkpoint, or feature verb rewrites the op store
   // and tree.json/pins.json under `.sgt/`. We deliberately do NOT watch `**/*.py`: every read
-  // surface (blame/hover/inlay/tree) reaches the tree through `store.map()` -> `sgt map`, which
-  // *rebuilds* (re-clusters + labels). Watching every keystroke-save invalidated that cache and
-  // re-ran the rebuild on each edit -- a full Leiden re-cluster (and, before the label cache was
-  // persisted, a fresh non-deterministic LLM relabel) on every save. Scoping invalidation to
-  // `.sgt/` means the tree refreshes exactly when the op store actually changes; a symbol written
-  // between checkpoints shows up in blame on the next mined op rather than mid-typing.
+  // surface (blame/hover/inlay/tree) reaches the tree through `store.map()`, which back when it
+  // passed `--refresh` *rebuilt* (re-clusters + labels). Watching every keystroke-save invalidated
+  // that cache and re-ran the rebuild on each edit -- a full Leiden re-cluster (and, before the
+  // label cache was persisted, a fresh non-deterministic LLM relabel) on every save. Scoping
+  // invalidation to `.sgt/` means the tree refreshes exactly when the op store actually changes; a
+  // symbol written between checkpoints shows up in blame on the next mined op rather than
+  // mid-typing.
   const sgtWatcher = vscode.workspace.createFileSystemWatcher(
     new vscode.RelativePattern(root, ".sgt/**/*.json")
   );

@@ -23,8 +23,13 @@ WORK="$(mktemp -d "${TMPDIR:-/tmp}/verify-bundles.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 
 fails=0
+warns=0
 ok()   { printf '  \033[32m✓\033[0m %s\n' "$*"; }
 bad()  { printf '  \033[31m✗\033[0m %s\n' "$*"; fails=$((fails + 1)); }
+# A known defect that does not block this bundle: a real symptom with a path to it, but not one
+# this artefact can be held back over. Loud enough to read at every publish, so it cannot quietly
+# become the way things are.
+warn() { printf '  \033[33m!\033[0m %s\n' "$*"; warns=$((warns + 1)); }
 check() { if [ "$1" = 0 ]; then ok "$2"; else bad "$2${3:+ — $3}"; fi; }
 
 # The name this project gives the work stages 3 and 4 are about, read out of the
@@ -155,6 +160,47 @@ for tgz in "$BUNDLES"/study-*.tgz; do
     checks_match "$w" 4 && ok "check 4: the page reads what it read before" \
                         || bad "check 4 does not match after the restore"
 
+    # ...and the same task with the workbench reading over the participant's shoulder.
+    #
+    # A participant did stage 3 in the terminal, ran `./stage 4`, clicked the ◆ in the workbench,
+    # and got a restore that printed ✓ and changed no files. The sequence above cannot see it:
+    # nothing reads between the revert and the restore, and every read the extension performs is
+    # a read, so it looks like it could not matter. It matters. `sgt log --refresh` re-mines
+    # (`_map_for_view` -> `get(repo)`, mine-on-contact) and a mine absorbs HEAD's bytes as newly
+    # authored work -- so one landing in that gap leaves the removal with nothing to invert. Every
+    # read below used to go through `store.map()`, which passed `--refresh`; opening a file or
+    # clicking a lane re-mined.
+    #
+    # So this walks the reads the extension actually performs now, in that gap, and gates on the
+    # restore still landing. Held apart from the trial above because it needs its own fresh
+    # stage 4, and named for the surface rather than the flag: the next reader added to the
+    # extension belongs on this list.
+    ( cd "$w" && ./stage 4 ) >/dev/null 2>&1
+    ( cd "$w" && "$sgt_bin" advanced compose --json --full ) >/dev/null 2>&1   # the primary poll
+    ( cd "$w" && "$sgt_bin" log --tree --json ) >/dev/null 2>&1                # tree/hover/inlay/fold
+    ( cd "$w" && "$sgt_bin" now --json ) >/dev/null 2>&1
+    ( cd "$w" && "$sgt_bin" restore "$label" --yes ) >/dev/null 2>&1
+    checks_match "$w" 4 && ok "check 4: the workbench's own reads leave the restore intact" \
+                        || bad "a workbench read between the revert and the restore breaks it"
+
+    # The half of the same defect that is still open: the kernel absorbing a revert's own bytes.
+    # No surface reaches it automatically any more, but `sgt log`'s own help offers `--refresh` as
+    # the way to reflect new edits, so a participant can still type their way into it. Reported,
+    # not gated -- it must not block shipping the bundle that fixes the reachable half. Promote it
+    # to `bad` when a re-mine stops swallowing a recorded removal.
+    ( cd "$w" && ./stage 4 ) >/dev/null 2>&1
+    ( cd "$w" && "$sgt_bin" log --tree --refresh --json ) >/dev/null 2>&1
+    out="$( cd "$w" && "$sgt_bin" restore "$label" --yes 2>&1 )"
+    if checks_match "$w" 4; then
+        ok "check 4: the restore survives a hand-typed re-mine before it"
+    else
+        case "$out" in
+            *"two live versions"*) shape="it refuses over two live versions" ;;
+            *)                     shape="it reports success and changes no files" ;;
+        esac
+        warn "\`sgt log --refresh\` between the revert and the restore still breaks it — $shape"
+    fi
+
     # The half of this arm that is not the CLI. `render-bundle.js` drives the shipped
     # `workbench.js` off THIS bundle's own views -- the panel that failed a participant was one
     # the extension's own fixture never exercised, so the fixture could not have caught it.
@@ -183,4 +229,5 @@ if [ "$fails" = 0 ]; then
 else
     echo "$fails check(s) failed — do not publish."
 fi
+[ "$warns" = 0 ] || echo "$warns known defect(s) reported above, not blocking."
 exit $((fails > 0))

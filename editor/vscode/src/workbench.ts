@@ -255,14 +255,16 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     // `compose_view`'s `map` is a *pure read* of the last-built `tree.json`; `history` is projected
     // straight from git ops. Right after `sgt init` (which writes the ideal.json marker but never
     // builds the tree) that leaves `map.nodes` empty while `history.ops` is full -- the timeline
-    // renders no lanes even though the ops exist. The feature tree heals itself because it calls
-    // `sgt map` (a rebuild), but that rebuild's `.sgt/` write is swallowed by the watcher's own
-    // loop-guard, so the compose cache is never refreshed and the timeline stays blank until a
-    // window reload. Build the tree once here (`store.map(true)` == `sgt map`, which saves
-    // tree.json) and re-read compose so the lanes appear without a reload.
+    // renders no lanes even though the ops exist, and no reader will heal it: every read surface
+    // in this extension is a pure read too, deliberately (`Sgt.map` -- a rebuild re-mines, and a
+    // mine landing between a revert and its restore destroys the removal record). A rebuild's
+    // `.sgt/` write is also swallowed by the watcher's own loop-guard, so even one that happened
+    // by accident would not refresh the compose cache: the timeline stayed blank until a window
+    // reload. So build the tree once, here and nowhere else -- this is the one state where there
+    // is no tree to lose -- and re-read compose so the lanes appear without a reload.
     if (!compose.map.nodes.length && compose.history.ops.length) {
       try {
-        await this.store.map(true);
+        await this.store.rebuildMap();
         compose = await this.store.composeView(true);
       } catch {
         // Fall through with the empty map; the rail just shows no lanes rather than erroring.
