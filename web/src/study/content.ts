@@ -164,7 +164,7 @@ To cancel a revert while resolving conflicts, run \`git revert --abort\`.
 const SGT_OPENING = `
 Practice reading, finding, and undoing changes with sgt. You can use the history views or the terminal.
 
-A **feature** is a part of the project, such as "hourly charts." A **checkpoint** is a set of changes to a feature, such as "split weekday and weekend averages." Some views call checkpoints **chapters**.
+A **feature** is a part of the project, such as "hourly charts." A **checkpoint** is a set of changes to a feature, such as "split weekday and weekend averages."
 `
 
 const SGT_BODY = `
@@ -174,7 +174,7 @@ The **workbench** shows a row for each feature. Blocks along a row are its check
 
 ![Features and checkpoints in the workbench](/materials/sgt_workbench.png)
 
-Click a feature or checkpoint to see its changes and files. A ◆ marks work that changed several features. Click it to see those changes together. A hollow block marks work that has been reverted.
+Click a feature or checkpoint and the panel on the right lists the files it changed and the changed lines themselves. A ◆ marks work that changed several features. Click it to see those changes together. A hollow block marks work that has been reverted.
 
 You can also read the history in the terminal:
 
@@ -233,7 +233,7 @@ sgt restore "<checkpoint id>" --yes
 python3 check.py
 \`\`\`
 
-Both commands also accept the name of work marked with a ◆. In the workbench, right-click a feature or checkpoint for **Revert** and **Restore**.
+Both commands also accept the name of work marked with a ◆. In the workbench, click a feature or checkpoint and the panel on the right has **Revert** and **Restore**, along with the lines that feature or checkpoint changed.
 
 Use \`sgt undo\` to reverse your most recent sgt action. Use \`sgt now\` to see the current state.
 `

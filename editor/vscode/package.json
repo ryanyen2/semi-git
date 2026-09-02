@@ -273,27 +273,7 @@
         },
         {
           "command": "sgt.refresh",
-          "when": "view == sgtForks",
-          "group": "navigation"
-        },
-        {
-          "command": "sgt.refresh",
           "when": "view == sgtChanges",
-          "group": "navigation"
-        },
-        {
-          "command": "sgt.refresh",
-          "when": "view == sgtCompositions",
-          "group": "navigation"
-        },
-        {
-          "command": "sgt.sync",
-          "when": "view == sgtCompositions",
-          "group": "navigation"
-        },
-        {
-          "command": "sgt.push",
-          "when": "view == sgtCompositions",
           "group": "navigation"
         }
       ],
@@ -325,18 +305,6 @@
         {
           "command": "sgt.edit",
           "when": "view == sgtFeatures && viewItem == sgtFeature"
-        },
-        {
-          "command": "sgt.resolveFork",
-          "when": "view == sgtForks && viewItem == sgtFork"
-        },
-        {
-          "command": "sgt.proposeLand",
-          "when": "view == sgtCompositions && viewItem == sgtProposal"
-        },
-        {
-          "command": "sgt.proposePublish",
-          "when": "view == sgtCompositions && viewItem == sgtProposal"
         },
         {
           "command": "sgt.previewRevert",
