@@ -11156,3 +11156,84 @@ background and the find dropdown appeared transparent over the timeline. Both no
 build the same payload from `dev/fixture.js`, and the preview supplies a real
 Dark Modern token set. A preview that misrepresents the surface is worse than no
 preview: it is what a screenshot gets checked against.
+
+## F138 -- a read re-mined, so clicking a lane broke the restore that followed
+
+Reported from the participant's own path, in their words: stage 3 reverted in the
+terminal, `./stage 4`, then "click on the dimaon 'Event Day Handling', click
+restore button, the restore button is disabled" -- and once it did run, "from its
+graph its really difficult to tell whether its revert sucessfully or restore
+correctly".
+
+The disabled button was a cached dry run outliving the world it described, and
+0.6.3 fixed it with a `.git/HEAD` watcher. What that watcher left behind was
+worse, and it took the same participant's next run to see it: the restore ran,
+printed `✓ restore applied — 9 edits removed, 39 added`, and put nothing back.
+Their restore commit is empty:
+
+```
+$ git show --stat --format="" 9d3955f   # "sgt restore Event Day Handling"
+                                        # (no files)
+$ git show --stat --format="" a071e44   # stage 4's own revert
+ 6 files changed, 15 insertions(+), 70 deletions(-)
+```
+
+`./check 4` read 42,436 against the 42,545 it wants and said "those do not match
+yet", which was true and was the only thing in the session that said so.
+
+### Where it comes from
+
+`sgt log --tree --refresh` re-mines -- `_map_for_view` calls `get(repo)`,
+mine-on-contact -- and a mine absorbs HEAD's bytes as newly authored work. Put one
+between a `revert` and its `restore` and the removal has nothing left to invert.
+Measured against the packed `study-footfall-b.tgz`, one command injected before
+the restore, a fresh `./stage 4` before each row:
+
+| injected before `sgt restore`     | restore says                          | check 4 |
+| --------------------------------- | ------------------------------------- | ------- |
+| *(nothing)*                       | ✓ 11 removed, 20 added                | 42,545  |
+| `log --tree --json`               | ✓                                     | 42,545  |
+| `now --json`                      | ✓                                     | 42,545  |
+| `log --summary --json`            | ✓                                     | 42,545  |
+| `advanced compose --json --full`  | ✓                                     | 42,545  |
+| `log --tree --refresh --json`     | ✗ "would leave two live versions of `metrics.py::_exclude_events`" | 42,436 |
+| `advanced resync`                 | ✓ 2 removed, 20 added                 | 42,436  |
+
+Two shapes of one defect, and the second is the silent-success class again
+(findings 59, 88): a verb that changed nothing printing ✓.
+
+It reached a participant because `Sgt.map()` passed `--refresh`, and every
+automatic reader in the extension goes through it -- hover, inlay hints, the three
+tree views, the feature quick-pick, and `requestFold`, which runs on every feature
+selection. Opening a file or clicking a lane re-mined. 0.6.3's HEAD watcher is
+what made a *terminal* revert reachable: before it, a terminal revert left the map
+cache stale-but-intact, and the participant met the dead button instead of the
+empty restore. The stale view and the broken restore were the same watcher's two
+faces.
+
+Neither the suites nor the bundle walk could see it. `tsc` cannot read a string,
+the render tests never shell out, and `verify-bundles.sh` walked
+revert → check → stage 4 → restore → check with nothing in the gaps, so it proved
+exactly the sequence a participant does not perform.
+
+### Fix
+
+Reads are reads. `Sgt.map()` is `log --tree --json`; the rebuild moved to
+`rebuildMap()`, whose only caller is the empty-tree heal in `WorkbenchProvider`
+-- the one state where there is no tree to lose. Nothing is given up for it:
+`save`/`revert`/`restore` mine on their own way through, and a pure read already
+prints its own dim `new edits not shown yet — sgt log --refresh` when it is
+behind, so a reader who wants the rebuild is told where to get it.
+
+Guarded on both sides of the artefact, because the repair is one word long.
+`dev/smoke.js` audits the host as text: no reader may pass `--refresh` (it names
+the offending method), and the rebuild keeps exactly one caller. Both were
+confirmed to fail with their bug put back. `verify-bundles.sh` now walks the
+workbench's own reads -- compose, the tree read, `now` -- between the revert and
+the restore in each packed bundle, and gates on 42,545 still landing.
+
+The kernel half is open: a mine should not swallow a recorded removal. Nothing
+reaches it automatically any more, but `sgt log`'s own help offers `--refresh` as
+the way to reflect new edits, so a participant can still type their way in. It is
+reported at every publish as a warning rather than gating one -- a bundle that
+fixes the reachable half must not be held back by the half that is left.
