@@ -794,7 +794,7 @@ def _kernel_edit_verb(
                 ambiguous = checkpoint_label_candidates(repo, target)
                 if len(ambiguous) > 1:
                     return _fail_json(
-                        f"{target!r} names {len(ambiguous)} chapters: "
+                        f"{target!r} names {len(ambiguous)} checkpoints: "
                         + ", ".join(ambiguous)
                         + f". Say which -- e.g. `sgt {cmd} {ambiguous[0]}`.",
                         as_json,
@@ -1195,7 +1195,7 @@ def _resolve_via_intent(repo: str, cmd: str, target: str, as_json: bool, yes: bo
             keyed = False
         return _fail_json(
             f"nothing in this repository matches {target!r}. Names that work: a feature or "
-            "chapter name exactly as a view prints it, `<feature>@<n>`, a commit sha, or "
+            "checkpoint name exactly as a view prints it, `<feature>@<n>`, a commit sha, or "
             "`file.py::Symbol`."
             if keyed else
             f"could not resolve {target!r} to a ref; set OPENAI_API_KEY to enable "

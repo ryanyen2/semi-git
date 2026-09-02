@@ -376,7 +376,7 @@ def _print_context(pack: dict) -> None:
             ev = f" [{r['evidence']} turn(s)]" if r["evidence"] else ""
             print(f"    - {r['reason']}  ({r['actor']}, {badge}){ev}")
     if pack["dependent_op_ids"]:
-        print(f"  since then: {len(pack['dependent_op_ids'])} op(s) built on this chapter -- "
+        print(f"  since then: {len(pack['dependent_op_ids'])} op(s) built on this checkpoint -- "
               f"an edit from here disturbs them (preview: sgt revert {pack['checkpoint']} --emit)")
     for h in pack["resume"]:
         print(f"  resume: {h['command']}")
