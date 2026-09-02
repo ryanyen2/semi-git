@@ -253,11 +253,30 @@ export class Sgt {
     return JSON.parse(stdout) as T;
   }
 
-  // The feature tree (rebuilds it first — clustering, Greene identity, pins, labeling — then
-  // reads the kernel-backed projection). U14 folded `sgt map` onto `sgt log --tree`; `--refresh`
-  // preserves the rebuild-first contract this method relies on (a cached read would return an
-  // empty tree on first build).
+  // The feature tree, as a PURE READ of the last-built tree. Never `--refresh` here.
+  //
+  // A refresh re-mines (`_map_for_view` -> `get(repo)`, mine-on-contact) and re-clusters, and that
+  // absorbs HEAD's bytes as newly authored work. Landing one between a `revert` and its `restore`
+  // therefore leaves the removal with nothing to invert: measured on the shipped footfall bundle,
+  // the restore afterwards either refuses ("would leave two live versions of
+  // `metrics.py::_exclude_events`") or prints ✓ having changed no files. Both read as "sgt cannot
+  // put the work back", and the second one lies.
+  //
+  // Every automatic reader comes through here — hover, inlay hints, the three tree views, the
+  // workbench's per-selection fold, the feature quick-pick — so a rebuild on this path means a
+  // lane click or a mouse-over can break the next restore. Nothing is lost by reading: the verbs
+  // that change the record (`save`/`revert`/`restore`) mine on their own way through, and a pure
+  // read prints its own dim "new edits not shown yet — `sgt log --refresh`" when it is behind.
+  //
+  // `rebuildMap` is the one deliberate rebuild; see its note.
   map(): Promise<MapView> {
+    return this.json<MapView>(["log", "--tree", "--json"]);
+  }
+
+  // The rebuild-first read: re-mines, re-clusters, labels, and saves `tree.json`. U14 folded
+  // `sgt map` onto `sgt log --tree --refresh`. Only for the empty-tree heal in `WorkbenchView`,
+  // where there is no tree yet and so no removal to lose — never from a reader. See `map`.
+  rebuildMap(): Promise<MapView> {
     return this.json<MapView>(["log", "--tree", "--refresh", "--json"]);
   }
 

@@ -974,6 +974,55 @@ try {
   check("no top-level selector sets the same property in two rules", clashes.length === 0,
     clashes.join("; "));
 
+  // ── The host's reads, audited as text ─────────────────────────────────────────────────────────
+  // `sgt log --tree --refresh` re-mines, and a mine absorbs HEAD's bytes as newly authored work.
+  // One landing between a `revert` and its `restore` leaves the removal with nothing to invert:
+  // measured on the shipped footfall bundle, the restore then either refuses ("would leave two
+  // live versions of `metrics.py::_exclude_events`") or prints ✓ having changed no files.
+  //
+  // `Sgt.map()` used to pass `--refresh`, and every automatic reader goes through it -- hover,
+  // inlay hints, the tree views, the workbench's per-selection fold. So opening a file or clicking
+  // a lane after a terminal `sgt revert` broke the restore that followed. This is invisible to
+  // `tsc` (the flag is a string) and to the render tests (they never shell out), and the repair is
+  // one word long, so it is exactly the shape that comes back.
+  console.log("\nhost reads:");
+  const srcDir = path.join(__dirname, "..", "src");
+  const hostSrc = new Map(
+    fs.readdirSync(srcDir).filter((f) => f.endsWith(".ts"))
+      .map((f) => [f, fs.readFileSync(path.join(srcDir, f), "utf8")]));
+
+  // Every `--refresh` in the host, with the method it sits in -- the nearest preceding line that
+  // declares one. Only `rebuildMap` is allowed to hold one.
+  const refreshers = [];
+  for (const [file, text] of hostSrc) {
+    const lines = text.split("\n");
+    lines.forEach((ln, i) => {
+      if (!ln.includes('"--refresh"')) return;
+      let owner = `${file}:${i + 1}`;
+      for (let k = i; k >= 0; k--) {
+        const m = /^\s{0,4}(?:async\s+)?(?:private\s+)?([A-Za-z_][\w]*)\s*\(/.exec(lines[k]);
+        if (m && !["if", "for", "while", "catch", "switch", "return"].includes(m[1])) {
+          owner = m[1];
+          break;
+        }
+      }
+      refreshers.push(owner);
+    });
+  }
+  check("only the deliberate rebuild re-mines (no reader passes --refresh)",
+    refreshers.length === 1 && refreshers[0] === "rebuildMap",
+    `--refresh reached from: ${refreshers.join(", ") || "nowhere — rebuildMap lost its flag"}`);
+
+  // ...and it stays a rebuild nobody calls by reflex. One caller: the empty-tree heal, which is
+  // gated on there being no tree at all, so there is no removal to lose. `Store`'s own hop down to
+  // the `Sgt` client is not a caller, so `sgt.rebuildMap()` does not count.
+  const rebuildCallers = [...hostSrc]
+    .flatMap(([file, text]) => text.split("\n")
+      .map((ln, i) => (/\.rebuildMap\(/.test(ln) && !/sgt\.rebuildMap\(/.test(ln)
+        ? `${file}:${i + 1}` : null)).filter(Boolean));
+  check("the rebuild has exactly one caller", rebuildCallers.length === 1,
+    rebuildCallers.join(", ") || "none — the heal path lost its rebuild");
+
   console.log(failures === 0 ? "\nSMOKE OK" : `\nSMOKE FAILED (${failures})`);
   process.exit(failures === 0 ? 0 : 1);
 } catch (e) {
