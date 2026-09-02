@@ -130,6 +130,24 @@ def stint_words(repo: str | Path, shas: frozenset[str] | set[str] | None = None,
     return out
 
 
+def whole_save_turns(repo: str | Path, target: dict | None, sha: str) -> list[dict]:
+    """The turns that are explicit claims about the WHOLE save `sha`, as opposed to ambient
+    conversation. Two sources: a sha-keyed turn (`-m` via the CLI, or an MCP-carried prompt with
+    no chat key -- read from the turn store, not the manifest, because that carry lands *after*
+    the window closed and tool_save re-reflects to pick it up), and an `agent`-channel chat turn
+    inside the save's window (an MCP client without hooks produces no events, so its deliberate
+    carry must not count for *less* than passing no session id at all would). A hook turn is
+    never here -- ambient words need event grounding (case 5). ONE rule, shared by the rationale
+    emission (`reflect_save`) and the context pack (`sgt.api.checkpoint_context`), so what a save
+    claims cannot differ between the why and the asked."""
+    from sgt.intent.turns import turns_for
+
+    wide = list(turns_for(repo, sha, key_kind="sha"))
+    if target:
+        wide += [t for t in target["turns"] if t["key_kind"] == "chat" and t["channel"] == "agent"]
+    return wide
+
+
 def reflect_save(repo: str | Path, sha: str) -> list[str]:
     """Emit rationale records for the save `sha`: one per grounded stint, plus save-wide ones for
     the whole-save claims (sha-keyed turns; `agent`-channel carries in the window). Returns the
@@ -137,7 +155,6 @@ def reflect_save(repo: str | Path, sha: str) -> list[str]:
     reflection hiccup must never disturb the verb it rides."""
     from sgt.intent.manifest import load_manifests
     from sgt.intent.rationale import _subject_for, record_rationale
-    from sgt.intent.turns import turns_for
     from sgt.intent.working import _first_line
 
     manifests = load_manifests(repo)
@@ -158,18 +175,9 @@ def reflect_save(repo: str | Path, sha: str) -> list[str]:
         if rid:
             ids.append(rid)
             emitted.add(reason)
-    # Save-wide words ground every op the save minted. Two sources, both explicit claims about
-    # this very save rather than ambient conversation: a sha-keyed turn (`-m` via the CLI, or an
-    # MCP-carried prompt with no chat key -- read from the turn store, not the manifest, because
-    # that carry lands *after* the window closed and tool_save re-reflects to pick it up), and an
-    # `agent`-channel chat turn inside the window (an MCP client without hooks produces no events,
-    # so its deliberate carry must not ground *less* than passing no session id at all would).
-    # A hook turn never grounds save-wide -- ambient words need event grounding (case 5).
     all_op_ids = [o["id"] for o in target["ops"]]
     if all_op_ids:
-        wide = list(turns_for(repo, sha, key_kind="sha"))
-        wide += [t for t in target["turns"] if t["key_kind"] == "chat" and t["channel"] == "agent"]
-        for t in wide:
+        for t in whole_save_turns(repo, target, sha):
             reason = _first_line(t["text"])
             if reason in emitted:  # its stint (or the hook twin's) already said this
                 continue

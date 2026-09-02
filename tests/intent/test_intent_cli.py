@@ -659,3 +659,35 @@ def test_a_grounded_ask_names_the_checkpoint_and_resolves_back(tmp_path):
     op_ids, display = resolved
     assert set(seg["op_ids"]) <= set(op_ids) or set(op_ids) <= set(seg["op_ids"])
     assert "teach foo to count higher" in display
+
+    # ...and the context pack (P4): the ask verbatim, the recorded why, the symbols, and the way
+    # back into the conversation -- resolved through the same cut the list and the revert use.
+    from sgt.api import checkpoint_context
+
+    pack = checkpoint_context(tmp_path, seg["checkpoint"])
+    assert pack["ok"] is True and pack["checkpoint"] == seg["checkpoint"]
+    assert [a["text"] for a in pack["asked"]] == ["teach foo to count higher"]
+    assert pack["asked"][0]["channel"] == "hook"
+    assert "teach foo to count higher" in [r["reason"] for r in pack["why"]]
+    assert "a.py::ceiling" in pack["touches"]
+    assert pack["dependent_op_ids"] == []  # nothing built on this chapter yet
+    assert pack["resume"] == [{"claude_session_id": "cs-9", "command": "claude --resume cs-9"}]
+
+    # The CLI show surface carries the pack too, under the same checkpoint target.
+    import io
+    from contextlib import redirect_stdout
+
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        assert _in(tmp_path, ["intent", "show", seg["checkpoint"], "--json"]) == 0
+    shown = json.loads(buf.getvalue())
+    assert shown["kind"] == "checkpoint"
+    assert [a["text"] for a in shown["context"]["asked"]] == ["teach foo to count higher"]
+
+
+def test_checkpoint_context_refuses_a_non_checkpoint(tmp_path):
+    from sgt.api import checkpoint_context
+
+    _seed(tmp_path)
+    pack = checkpoint_context(tmp_path, "no-such-thing@7")
+    assert pack["ok"] is False and "names no checkpoint" in pack["message"]

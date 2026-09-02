@@ -67,7 +67,11 @@ def test_tools_list_advertises_kernel_surface(tmp_path):
                       # Every other tool here needs an id the caller already holds. Without a way
                       # in from a description, an agent asked to remove "the waitlist" had to
                       # guess at symbols or read the whole graph to find one.
-                      "sgt_find"}
+                      "sgt_find",
+                      # Read-only context pack for one checkpoint (weave P4): the asks, the
+                      # recorded why, the blast radius, the resume handles -- what an agent reads
+                      # before editing from a chapter, instead of inferring intent from a diff.
+                      "sgt_checkpoint_context"}
 
 
 def test_unknown_method_is_method_not_found(tmp_path):
@@ -439,6 +443,39 @@ def test_save_without_a_chat_key_keys_the_prompt_by_the_new_commit(tmp_path):
     from sgt.api import why_view
     reasons = [r["reason"] for r in why_view(repo, payload["commit"])["rationale"]]
     assert "make foo return 99" in reasons
+
+
+def test_checkpoint_context_prepares_an_agent_to_edit_from_a_chapter(tmp_path):
+    """Weave P4, the hookless-MCP path end to end: the carry on `sgt_save` is the only capture
+    channel, and the pack still answers with the user's ask (`whole_save_turns` -- the same
+    whole-save rule the rationale emission applies), the recorded why, and the resume handle."""
+    from sgt.core.store import Store
+    from sgt.lens import tree
+
+    repo = _seed(tmp_path, 1)
+    (tmp_path / "a.py").write_text("def foo():\n    return 99\n", encoding="utf-8")
+    _, saved = _call(repo, "sgt_save", {"prompt": "make foo return 99",
+                                        "claude_session_id": "cs-42"})
+    assert saved["saved"] is True
+
+    nodes = {"F-A": {"parent": None, "children": [], "members": ["a.py::foo"], "size": 1,
+                     "dir": "", "label": "F-A"}}
+    tree.save(tmp_path, {"nodes": nodes, "roots": ["F-A"],
+                         "op_leaf": tree.assign_ops_to_leaves(nodes, Store(tmp_path).all_ops()),
+                         "max_depth": 0, "cannot_link_moves": [], "identity_events": []})
+
+    _, pack = _call(repo, "sgt_checkpoint_context", {"checkpoint": "F-A@0"})
+
+    assert pack["ok"] is True
+    assert "make foo return 99" in [a["text"] for a in pack["asked"]]
+    assert "make foo return 99" in [r["reason"] for r in pack["why"]]
+    assert {"claude_session_id": "cs-42", "command": "claude --resume cs-42"} in pack["resume"]
+
+
+def test_checkpoint_context_requires_a_checkpoint_arg(tmp_path):
+    repo = _seed(tmp_path, 1)
+    _, payload = _call(repo, "sgt_checkpoint_context", {})
+    assert payload["error"] == "missing 'checkpoint'"
 
 
 def test_save_on_a_clean_tree_says_so_rather_than_committing_nothing(tmp_path):
