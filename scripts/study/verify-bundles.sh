@@ -57,6 +57,22 @@ for tgz in "$BUNDLES"/study-*.tgz; do
     tar xzf "$tgz" -C "$dest" --strip-components=1 || { bad "could not unpack"; continue; }
     w="$dest/work"
 
+    # The wheel and the extension inside a bundle are built from the working tree, so a bundle is
+    # only current if it was built from the commit that is checked out now. A build can stop
+    # part-way and leave some of the four behind without saying so -- `publish-study.sh | tail`
+    # reports tail's exit code, not the build's -- and every check below still passes on a stale
+    # bundle, because stale does not mean broken. Ask the artefact what it was built from.
+    built="$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['toolBuild'])" \
+        "$dest/study.json" 2>/dev/null)"
+    head="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null)"
+    if [ "${built%-dirty}" != "$built" ]; then
+        bad "built from a dirty tree ($built) — commit, rebuild, then publish"
+    elif [ "$built" = "$head" ]; then
+        ok "built from the checked-out commit ($built)"
+    else
+        bad "built from $built, but HEAD is $head — rebuild before publishing"
+    fi
+
     # What setup.sh builds, minus the parts that need the study server.
     ( cd "$w" && uv venv -q --clear -p 3.12 && uv pip install -q -p .venv/bin/python pytest ) \
         >/dev/null 2>&1 || { bad "could not build the project environment"; continue; }

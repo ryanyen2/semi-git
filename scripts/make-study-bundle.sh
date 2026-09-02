@@ -168,7 +168,25 @@ case "$smoke" in
     *) echo "The dashboard does not render. Not shipping this." >&2; exit 1 ;;
 esac
 
-tool_build=""
+# Which commit made this bundle. Recorded for BOTH arms, not just the one that
+# ships a wheel: the git arm still carries `stage`, `check`, setup.sh and the
+# telemetry shims out of this tree, so "which build did participant 7 run" is
+# the same question there, and a git bundle that recorded nothing could not be
+# told apart from one built a fortnight earlier.
+#
+# The tree has to be clean for a bare sha to describe the shipped code. Recording
+# one beside uncommitted changes claims a reproducibility the bundle does not
+# have, so a dirty tree is marked as such.
+tool_build="$(cd "$SGT_SOURCE" && git rev-parse --short HEAD)"
+if [ -n "$(cd "$SGT_SOURCE" && git status --porcelain -- sgt/ pyproject.toml scripts/ editor/vscode/)" ]; then
+    tool_build="$tool_build-dirty"
+    echo
+    echo "  WARNING: this tree has uncommitted changes, so the bundle is not any commit."
+    echo "  Recorded as $tool_build. Commit before building the bundles you hand"
+    echo "  out, or the study cannot say which build each participant ran."
+    echo
+fi
+
 tool_version=""
 if [ "$condition" = sgt ]; then
     echo "  Building the tool wheel."
@@ -178,20 +196,6 @@ if [ "$condition" = sgt ]; then
     # on, so both are recorded rather than either being derived later.
     tool_version="$(cd "$SGT_SOURCE" && python3 -c \
         'import re,pathlib;print(re.search(r"^version = \"([^\"]+)\"", pathlib.Path("pyproject.toml").read_text(), re.M).group(1))')"
-    # The wheel is built from the working tree, so a commit id alone describes
-    # the shipped code only when that tree is clean. Recording a bare sha beside
-    # uncommitted changes claims a reproducibility the bundle does not have, and
-    # "which build did participant 7 run" is a question the paper has to answer.
-    tool_build="$(cd "$SGT_SOURCE" && git rev-parse --short HEAD)"
-    if [ -n "$(cd "$SGT_SOURCE" && git status --porcelain -- sgt/ pyproject.toml)" ]; then
-        tool_build="$tool_build-dirty"
-        echo
-        echo "  WARNING: sgt has uncommitted changes, so this wheel is not any commit."
-        echo "  Recorded as $tool_build. Commit before building the bundles you hand"
-        echo "  out, or the study cannot say which build each participant ran."
-        echo
-    fi
-
     echo "  Installing it here, to warm the history view."
     uv venv -q --clear "$staging/toolenv"
     uv pip install -q -p "$staging/toolenv/bin/python" "$SGT_SOURCE"
