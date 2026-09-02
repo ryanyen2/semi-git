@@ -304,7 +304,21 @@ def label_prompt_for(repo: str | Path, sha: str) -> str | None:
     if recorded:
         return recorded
     hits = turns_for(repo, sha, key_kind="sha")
-    return hits[-1]["text"] if hits else None
+    if hits:
+        return hits[-1]["text"]
+    # The commit's dominant grounded ask (weave P3): the chat prompt whose stint claimed the most
+    # of this save's ops. So the LLM names chapters with the user's words as context even when
+    # nothing was typed at the save itself -- the words arrived earlier, through the conversation.
+    from sgt.intent.manifest import load_manifests
+    from sgt.intent.stint import derive_stints
+
+    manifests = load_manifests(repo)
+    if sha in manifests:
+        grounded = [s for s in derive_stints(manifests, sha, root=repo)["stints"] if s["op_ids"]]
+        if grounded:
+            best = max(grounded, key=lambda s: (len(s["op_ids"]), s["turn"]["ts"]))
+            return best["turn"]["text"]
+    return None
 
 
 def build_segments(repo: str | Path, recut: str | None = None) -> dict[str, list[dict]]:

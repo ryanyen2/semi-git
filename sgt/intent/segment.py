@@ -59,6 +59,18 @@ SEAM_BONUS = 0.5     # (η, plan §3.4) hysteresis added to a seam that already 
 # never invent one -- and it survives `_cap_cuts` re-ranking (a previously-kept seam scores higher
 # and is strictly less likely to be dropped as the weakest). PROVISIONAL: the boundary-flicker
 # sweep (§5) is deferred; 0.5 (half the cut threshold) is the shipping default pending it.
+W_WORDS_BRIDGE = 1.0  # capture weave P3 (design doc 2026-09-01 §4d): adjacent runs whose dominant
+# stint is the SAME turn were asked for in one breath -- one ask spanning saves is one chapter
+# (case 4), so the seam is *suppressed* at full strength, enough to cancel a scope shift. A bridge
+# can only merge; it can never invent a boundary.
+W_WORDS_SHIFT = 0.5   # ...and dominant stints from DIFFERENT sessions mark a genuine context
+# switch (two conversations, case 6). Deliberately sub-threshold, like SEAM_BONUS: it tips a seam
+# already hovering (some novelty, a near-gap), never cuts on its own. Different turns of the SAME
+# session contribute nothing -- that shape is continuation or correction (case 8), and
+# scope/gap/novelty already carry it.
+WORDS_DOMINANCE = 0.6  # a stint must claim this fraction of a chapter's ops before its words may
+# name the chapter -- the same dominance bar `lens.label`'s subject_label rule uses, so "enough of
+# this chapter to name it" means one thing across features and checkpoints.
 
 
 @dataclass(frozen=True)
@@ -170,12 +182,28 @@ def feature_runs(repo: str | Path, op_leaf: dict[str, str]) -> dict[str, list[Ru
     return runs
 
 
-def _boundary_score(a: Run, b: Run, prior_boundaries: frozenset[str] = frozenset()) -> float:
+def _dominant_turn(run: Run, words_by_sha: dict[str, list[dict]]) -> tuple[str, str] | None:
+    """The `(turn_id, session)` whose stint claims the most of this run's ops -- the run's ask, by
+    plurality. Ties break toward the later turn (the correction is the standing word), then the
+    turn id (pure determinism). `None` when nothing grounded claims any of the run's ops."""
+    best: tuple[int, float, str, str] | None = None
+    for e in words_by_sha.get(run.commit_sha, ()):
+        n = len(run.op_ids & frozenset(e["op_ids"]))
+        if n and (best is None or (n, e["ts"], e["turn_id"]) > (best[0], best[1], best[2])):
+            best = (n, e["ts"], e["turn_id"], e["session"])
+    return None if best is None else (best[2], best[3])
+
+
+def _boundary_score(a: Run, b: Run, prior_boundaries: frozenset[str] = frozenset(),
+                    words_by_sha: dict[str, list[dict]] | None = None) -> float:
     """How strongly runs `a` -> `b` (consecutive in one feature) should be cut apart. Scope shift
     and a dormancy gap are full boundaries; a novel `b` opens a chapter proportional to how much
     new behavior it introduces. A same-scope, no-gap, modify-only `b` scores 0 and merges. A seam
     whose `b` already *started a chapter* in the persisted record gets `SEAM_BONUS` -- pure
-    hysteresis (§3.4), sub-threshold, so it can only keep a near-threshold boundary, never add one."""
+    hysteresis (§3.4), sub-threshold, so it can only keep a near-threshold boundary, never add one.
+    With capture evidence (`words_by_sha`, weave P3), the runs' dominant asks weigh in: the same
+    ask bridges the seam, a different conversation tips it -- see `W_WORDS_BRIDGE`/`W_WORDS_SHIFT`.
+    The words only ever move *where to cut*; op membership stays a function of whole runs (KTD6)."""
     score = 0.0
     if a.scope and b.scope and a.scope != b.scope:
         score += W_SCOPE
@@ -184,10 +212,18 @@ def _boundary_score(a: Run, b: Run, prior_boundaries: frozenset[str] = frozenset
     score += b.novelty * W_NOVELTY
     if b.commit_sha in prior_boundaries:
         score += SEAM_BONUS
+    if words_by_sha:
+        da, db = _dominant_turn(a, words_by_sha), _dominant_turn(b, words_by_sha)
+        if da and db:
+            if da[0] == db[0]:
+                score -= W_WORDS_BRIDGE
+            elif da[1] != db[1]:
+                score += W_WORDS_SHIFT
     return score
 
 
-def _cut_points(runs: list[Run], prior_boundaries: frozenset[str] = frozenset()) -> list[int]:
+def _cut_points(runs: list[Run], prior_boundaries: frozenset[str] = frozenset(),
+                words_by_sha: dict[str, list[dict]] | None = None) -> list[int]:
     """Indices `k` (1..len-1) where run `k` starts a new segment, cheapest-seam-first capped at
     `MAX_SEGMENTS`. First collects every seam scoring >= `CUT_THRESHOLD`; if that leaves too many
     segments, drops the lowest-scoring seams until within the cap (a long-lived feature stays
@@ -196,7 +232,8 @@ def _cut_points(runs: list[Run], prior_boundaries: frozenset[str] = frozenset())
     scope) merges into a few evenly-sized cars, not a wall of untouched singles plus one lopsided
     blob at whichever end commit-index ordering favored. `prior_boundaries` (persisted chapter
     starts) biases the score toward keeping last build's boundaries (§3.4 hysteresis)."""
-    seams = [(i, _boundary_score(runs[i - 1], runs[i], prior_boundaries)) for i in range(1, len(runs))]
+    seams = [(i, _boundary_score(runs[i - 1], runs[i], prior_boundaries, words_by_sha))
+             for i in range(1, len(runs))]
     cuts = [i for i, s in seams if s >= CUT_THRESHOLD]
     if len(cuts) + 1 > MAX_SEGMENTS:
         cuts = _cap_cuts(cuts, dict(seams), MAX_SEGMENTS - 1)
@@ -256,13 +293,14 @@ def _segment_label(runs: list[Run]) -> tuple[str, str]:
     return label, rationale
 
 
-def _partition_runs(runs: list[Run], prior_boundaries: frozenset[str] = frozenset()) -> list[list[Run]]:
+def _partition_runs(runs: list[Run], prior_boundaries: frozenset[str] = frozenset(),
+                    words_by_sha: dict[str, list[dict]] | None = None) -> list[list[Run]]:
     """Group chronological runs into contiguous chunks at `_cut_points`' boundaries -- the capped
     partition both `segment_runs` and `overlay_persisted`'s un-persisted tail share, so `MAX_SEGMENTS`
     bounds a feature's segment count the same way regardless of which path produced the runs."""
     if not runs:
         return []
-    cuts = set(_cut_points(runs, prior_boundaries))
+    cuts = set(_cut_points(runs, prior_boundaries, words_by_sha))
     groups: list[list[Run]] = []
     current: list[Run] = []
     for i, run in enumerate(runs):
@@ -275,13 +313,17 @@ def _partition_runs(runs: list[Run], prior_boundaries: frozenset[str] = frozense
     return groups
 
 
-def segment_runs(runs: list[Run], prior_boundaries: frozenset[str] = frozenset()) -> list[Segment]:
+def segment_runs(runs: list[Run], prior_boundaries: frozenset[str] = frozenset(),
+                 words_by_sha: dict[str, list[dict]] | None = None) -> list[Segment]:
     """Rung 1: cut one feature's chronological runs into contiguous `Segment`s. Every run lands in
     exactly one segment (a total partition of the feature's ops -- KTD2), boundaries chosen by
     `_cut_points`, each segment labeled from its own commits. `source="fallback"`; the LLM rung
     renames/re-cuts on top of this. `prior_boundaries` (persisted chapter starts) applies the §3.4
-    seam hysteresis; empty (the default) is byte-identical to a first, prior-free cut."""
-    return [_finish_segment(m, i) for i, m in enumerate(_partition_runs(runs, prior_boundaries))]
+    seam hysteresis; empty (the default) is byte-identical to a first, prior-free cut.
+    `words_by_sha` (weave P3, `sgt.intent.stint.stint_words`) lets the runs' asks weigh on the
+    boundaries; absent, the cut is byte-identical to the pre-weave one."""
+    return [_finish_segment(m, i)
+            for i, m in enumerate(_partition_runs(runs, prior_boundaries, words_by_sha))]
 
 
 def _finish_segment(runs: list[Run], seg_index: int) -> Segment:
@@ -397,11 +439,14 @@ def resolve_checkpoint_label(repo: str | Path, label: str) -> tuple[frozenset[st
     runs_by_feature = feature_runs(repo, tree_result["op_leaf"])
     persisted = state.load_json(repo, "intent_segments", default={})
     nodes = tree_result["nodes"]
+    from sgt.intent.stint import stint_words
+
+    words_by_sha = stint_words(repo)
     hits: list[tuple[frozenset[str], str]] = []
     for feature_id, runs in runs_by_feature.items():
         if not runs:
             continue
-        for idx, seg in enumerate(overlay_persisted(runs, persisted.get(feature_id))):
+        for idx, seg in enumerate(segments_for(repo, runs, persisted.get(feature_id), words_by_sha)):
             if checkpoint_slug(seg.label) != want:
                 continue
             flabel = nodes.get(feature_id, {}).get("label", feature_id)
@@ -422,11 +467,15 @@ def checkpoint_label_candidates(repo: str | Path, label: str) -> list[str]:
     tree_result = load_tree(repo) if want else None
     if tree_result is None:
         return []
+    from sgt.intent.stint import stint_words
+
     runs_by_feature = feature_runs(repo, tree_result["op_leaf"])
     persisted = state.load_json(repo, "intent_segments", default={})
+    words_by_sha = stint_words(repo)
     out: list[str] = []
     for feature_id, runs in runs_by_feature.items():
-        for idx, seg in enumerate(overlay_persisted(runs, persisted.get(feature_id)) if runs else []):
+        for idx, seg in enumerate(
+                segments_for(repo, runs, persisted.get(feature_id), words_by_sha) if runs else []):
             if checkpoint_slug(seg.label) == want:
                 short = feature_id[2:10] if feature_id.startswith("f-") else feature_id[:8]
                 out.append(f"{short}@{idx}")
@@ -479,7 +528,7 @@ def _checkpoint_parts(
     if not runs:
         return None
     persisted = state.load_json(repo, "intent_segments", default={})
-    segs = overlay_persisted(runs, persisted.get(feature_id))
+    segs = segments_for(repo, runs, persisted.get(feature_id))
     label = nodes.get(feature_id, {}).get("label", feature_id)
     return feat_part, by_index, want, label, segs
 
@@ -526,7 +575,8 @@ def resolve_feature_spec(spec: str, nodes: dict) -> str | None:
     return matches[0] if len(matches) == 1 else None
 
 
-def overlay_persisted(runs: list[Run], record: list[dict] | None) -> list[Segment]:
+def overlay_persisted(runs: list[Run], record: list[dict] | None,
+                      words_by_sha: dict[str, list[dict]] | None = None) -> list[Segment]:
     """Build one feature's segments, preferring persisted LLM boundaries+labels when present.
 
     `record` is `.sgt/intent/segments.json`'s per-feature entry (written by `sgt intent build`):
@@ -541,7 +591,7 @@ def overlay_persisted(runs: list[Run], record: list[dict] | None) -> list[Segmen
     `record=None` (never built, or the feature is new) falls straight through to the deterministic
     rung-1 cut."""
     if not record:
-        return segment_runs(runs)
+        return segment_runs(runs, words_by_sha=words_by_sha)
 
     run_by_sha = {r.commit_sha: r for r in runs}
     claimed: set[str] = set()
@@ -558,7 +608,7 @@ def overlay_persisted(runs: list[Run], record: list[dict] | None) -> list[Segmen
     # this feature can't grow without bound just because it has a partial/stale persisted record.
     leftover = sorted((r for r in runs if r.commit_sha not in claimed),
                       key=lambda r: (r.commit_index, r.commit_sha))
-    for member in _partition_runs(leftover):
+    for member in _partition_runs(leftover, words_by_sha=words_by_sha):
         groups.append((member, None))
 
     groups.sort(key=lambda g: (g[0][0].commit_index, g[0][0].commit_sha))
@@ -576,6 +626,59 @@ def overlay_persisted(runs: list[Run], record: list[dict] | None) -> list[Segmen
 def _relabel(seg: Segment, label: str, rationale: str, source: str) -> Segment:
     from dataclasses import replace
     return replace(seg, label=label, rationale=rationale, source=source)
+
+
+def apply_words_labels(segments: list[Segment], words_by_sha: dict[str, list[dict]] | None,
+                       ) -> list[Segment]:
+    """Name a chapter with the ask that dominated it (weave P3, design doc 2026-09-01 §4d): when
+    one turn's stints claim >= `WORDS_DOMINANCE` of a segment's ops, the segment's label becomes
+    that turn's first line, marked `source="words"`.
+
+    Only a `fallback` (commit-subject) label is ever displaced -- an LLM name was already written
+    with the words as context (`label_prompt_for`), and a user relabel outranks everything
+    (`apply_label_pins` runs after this). Applied at read time and never persisted: the committed
+    `segments.json` keeps its subject-derived labels, so a verbatim prompt cannot leak into shared
+    state through a label (design decision 5, the case-15 privacy seam)."""
+    if not words_by_sha:
+        return segments
+    from sgt.intent.working import _first_line
+
+    out: list[Segment] = []
+    for seg in segments:
+        if seg.source != "fallback" or not seg.op_ids:
+            out.append(seg)
+            continue
+        claims: dict[str, list] = {}  # turn_id -> [claimed op count, ts, text]
+        for sha in seg.commit_shas:
+            for e in words_by_sha.get(sha, ()):
+                n = len(seg.op_ids & frozenset(e["op_ids"]))
+                if not n:
+                    continue
+                cur = claims.setdefault(e["turn_id"], [0, e["ts"], e["text"]])
+                cur[0] += n
+        best = max(claims.values(), key=lambda c: (c[0], c[1]), default=None)
+        label = clip_label(_first_line(best[2]))[:60] if best else ""
+        if best and best[0] / len(seg.op_ids) >= WORDS_DOMINANCE and label:
+            out.append(_relabel(seg, label, seg.rationale, "words"))
+        else:
+            out.append(seg)
+    return out
+
+
+def segments_for(repo: str | Path, runs: list[Run], record: list[dict] | None,
+                 words_by_sha: dict[str, list[dict]] | None = None) -> list[Segment]:
+    """The ONE cut+label pass every reading surface shares: persisted boundaries overlaid on the
+    runs with the capture evidence weighing on the un-persisted seams, then the words labels. Every
+    reader -- the checkpoint list, `<feature>@<n>` resolution, the bare-name resolver -- must come
+    through here, so the chapter a user reads and the chapter a revert resolves can never disagree
+    about where a boundary sits or what a chapter is called (the husk-filter lesson: a filter
+    duplicated per call site is a filter one call site will lose). `words_by_sha=None` loads the
+    evidence itself; a caller iterating many features passes `sgt.intent.stint.stint_words(repo)`
+    once instead."""
+    if words_by_sha is None:
+        from sgt.intent.stint import stint_words
+        words_by_sha = stint_words(repo, frozenset(r.commit_sha for r in runs))
+    return apply_words_labels(overlay_persisted(runs, record, words_by_sha), words_by_sha)
 
 
 def prior_boundaries(record: list[dict] | None) -> frozenset[str]:
