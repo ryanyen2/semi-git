@@ -106,6 +106,30 @@ for tgz in "$BUNDLES"/study-*.tgz; do
                     || bad "no Event Day theme in the shipped record"
     [ -n "$label" ] || continue
 
+    # The words. This arm's headline claim is that history carries what each piece of work was
+    # asked for, and the testbeds are built by replaying commits with no prompt hook running -- so
+    # "the capture stores shipped empty" is a failure that is invisible from every other angle:
+    # every stage still passes, every verb still works, and the attribute the arm is judged on is
+    # simply blank. Read through `sgt show` rather than off the store, because what matters is not
+    # that the words are on disk but that a participant pointing at the work sees them.
+    asked="$( cd "$w" && "$sgt_bin" show "$label" 2>&1 | sed -n 's/^  asked *//p' )"
+    [ -n "$asked" ] && ok "the work carries what it was asked for: ${asked:0:60}" \
+                    || bad "no asked attribute on '$label' — this bundle's capture stores are empty"
+    # ...and as an EXCERPT. Real prompts are 400-900 characters; the whole point of the attribute
+    # is that it shows the ask rather than the paragraph around it, and a regression here is a card
+    # with a wall of text where its most readable line should be.
+    if [ -n "$asked" ]; then
+        [ "${#asked}" -le 120 ] && ok "the ask reads as an excerpt (${#asked} chars on the line)" \
+                                || bad "the asked line is ${#asked} chars — it is printing the raw prompt"
+    fi
+    # The full text has to be reachable, or the excerpt is the only version a participant can ever
+    # see and the attribute is a summary with nothing behind it.
+    full="$( cd "$w" && "$sgt_bin" show "$label" --asked 2>&1 )"
+    case "$full" in
+        *"ask"*"behind this"*) ok "the conversation behind it reads back in full" ;;
+        *) bad "sgt show --asked did not read back the conversation: ${full%%$'\n'*}" ;;
+    esac
+
     # F135: the wrong verb for this stage is where a tool says what it is for.
     ( cd "$w" && ./stage 3 ) >/dev/null 2>&1
     out="$( cd "$w" && "$sgt_bin" restore "$label" 2>&1 )"

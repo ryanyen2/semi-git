@@ -1,0 +1,181 @@
+{
+  "_note": "The conversation behind each study testbed's history, replayed post hoc by scripts/study/backfill_capture.py.\n\nWhy it is needed: the testbeds were built by replaying harvested agent sessions (scripts/study/harvest/), so no prompt hook was running while the commits were made and the capture stores ship empty. A participant in the sgt arm would then meet a tool whose most human attribute -- what each piece of work was asked for, in the words somebody typed -- is blank on every chapter, which is one of the things the arm is being evaluated on.\n\nWhere the words come from: each entry renders the REAL brief that drove that session, from scripts/study/harvest/roles-<project>.json, named in `brief`. The asks and their specifics are that brief's -- the February 2019 snowstorm, the busiest hour called out at the top, the totals that must not lose the event days -- because the code in the repository was produced by them, and words that merely sounded plausible would make every surface that quotes them a fiction.\n\nWhat is staged: the SURFACE. A harvested brief is a clean stakeholder paragraph; a prompt typed at an agent is not. Each one is re-typed the way it would actually have been sent -- lower case, typos left in, the request buried after the reasoning, some of them long and unwieldy -- because a testbed of tidy one-line prompts would exercise none of what the reading surfaces have to do with a real one. Two kinds of turn are additions rather than renderings, and both are marked: `\"question\": true` is a turn that produced no code (it must own no edits), and a second speaking turn in a window is a correction (both turns then claim the part of the save they were followed by).\n\nKeyed by commit SUBJECT, which survives a testbed rebuild where shas do not; `brief` is checked against the roles file by tests/test_study_prompts.py, so a fixture that drifted from the harvest fails at test time rather than shipping. The initial dashboard commit has no brief and gets none -- one save in each testbed carries no words at all, which is a state the surfaces have to be seen in.",
+
+  "bikecount": {
+    "add a by-hour page showing average rides per hour": {
+      "session": "chat-bc-1",
+      "brief": "hour-profile",
+      "prompts": [
+        {"text": "so the committee paper needs a chart of what time of day people actually ride, which i cant get out of the csv by hand. can you add a page showing the average count for each hour of the day, and call out the busiest hour at the top so nobody has to read the chart to get the headline. link it from the nav as well"}
+      ]
+    },
+    "split the by-hour page into weekday and weekend charts": {
+      "session": "chat-bc-1",
+      "brief": "weekday-weekend",
+      "prompts": [
+        {"text": "commuters and weekend riders are two different crowds and the paper treats them seperately, so the single line we have now describes neither of them. split the hour of day page so weekdays and weekends can be seen side by side. keep the combined view as well though, i still want it"},
+        {"text": "does friday evening count as weekday or weekend for this? the shape looks more like a weekend to me but i dont know", "question": true}
+      ]
+    },
+    "track known non-normal days like storms and holidays": {
+      "session": "chat-bc-2",
+      "brief": "event-days",
+      "prompts": [
+        {"text": "there are days in here that are nothing like a normal day. the february 2019 snowstorm, christmas, the fourth of july, that sort of thing. start keeping track of which days those are so we can tell them apart later. theres a list in my email i will paste in later, for now put in the handful you can find by looking at the numbers and leave it easy to add more"}
+      ]
+    },
+    "add a monthly totals page to see the seasonal swing": {
+      "session": "chat-bc-2",
+      "brief": "monthly-trend",
+      "prompts": [
+        {"text": "add a page showing the total for each month back to the start of the file, as a chart. the point of it is to see the summer dip when the weather turns. put the highest and lowest month in words above the chart"}
+      ]
+    },
+    "mark tracked event days on the daily and monthly charts": {
+      "session": "chat-bc-3",
+      "brief": "event-annotation",
+      "prompts": [
+        {"text": "on the daily and monthly charts, make the event days we track stand out from the ordinary ones, so nobody reads a spike as growth when it was a heat wave. however you think is clearest"},
+        {"text": "hm no, not a shaded band behind the whole day, that made the chart look like it was broken. a small marker under the axis is enough"}
+      ]
+    },
+    "add an east vs west comparison page": {
+      "session": "chat-bc-3",
+      "brief": "side-compare",
+      "prompts": [
+        {"text": "theres a sensor on each side of the bridge and people keep asking me whether the two sides are balanced, which i cant answer. add a page comparing east and west: totals for each, and how the split changes across the hours of the day"}
+      ]
+    },
+    "add a by-year summary table": {
+      "session": "chat-bc-4",
+      "brief": "year-table",
+      "prompts": [
+        {"text": "i need a page with one row per year: total, average day, busiest day and its date. this is the table that goes at the front of the paper"}
+      ]
+    },
+    "exclude event days from averages, keep them in totals": {
+      "session": "chat-bc-4",
+      "brief": "event-exclusion",
+      "prompts": [
+        {"text": "ok this is the one thats been bugging me for weeks. the averages are being pulled around by the event days -- a snowbound monday is not what an average sunday looks like, and the quiet-day figure we quoted in the report is basically wrong because of it. keep them out of the averages wherever we show one, but do not lose them from the totals or the daily table, the totals are what the funding number is built on and dropping a real ride out of a total would be misreporting. and it has to be the same rule on every page, i dont want the monthly page doing one thing and the by-year table doing another"}
+      ]
+    },
+    "add a csv download link for daily totals": {
+      "session": "chat-bc-5",
+      "brief": "csv-download",
+      "prompts": [
+        {"text": "we shoudl proably have a csv download somewhere. the reason is people keep asking me to email them the daily numbers and i export it by hand out of the notebook every time, which takes ten minutes and i get it wrong about a third of the time. add a download link that gives back the daily totals as a csv so i can stop doing it by hand"}
+      ]
+    },
+    "show the east/west split drifting over time, keep totals summed": {
+      "session": "chat-bc-5",
+      "brief": "quiet-sensor",
+      "prompts": [
+        {"text": "someone said one of the two sensors reads low and has done for a while. have a look at the two series yourself, decide whether we should still be adding them together for the headline numbers, and do whatever you conclude is right. put your reasoning in the message so i can point at it when somebody files a fault report"}
+      ]
+    },
+    "scope every page to a picked date window, default last complete year": {
+      "session": "chat-bc-6",
+      "brief": "date-window",
+      "prompts": [
+        {"text": "right, bigger job, and im not sure how much work it is. the dashboard always shows the whole file which is seven years now, so the seasonal chart is a hairball and two people looking at two pages are looking at different periods without knowing it. let me pick a start and end date and have every page respect it. default to the last complete year, not the last 365 days, because when the paper says 2024 it has to mean 2024. the picker can be as dumb as two text boxes, i genuinely dont care what it looks like, but everything has to respect it including the csv download, otherwise someone downloads the csv, gets different numbers to the page they were just looking at, and i have to explain that in a meeting"}
+      ]
+    },
+    "round bike counts on the overview page to the nearest 10": {
+      "session": "chat-bc-6",
+      "brief": "rounding",
+      "prompts": [
+        {"text": "the numbers on the front page are quoted down to the single bike and thats false precision for a sensor like this. round them sensibly wherever we show them"}
+      ]
+    }
+  },
+
+  "footfall": {
+    "add an hourly footfall page for the committee paper": {
+      "session": "chat-ff-1",
+      "brief": "hour-profile",
+      "prompts": [
+        {"text": "so the committee paper needs a chart of what time of day people walk past, and i cant produce that from the spreadsheet. can you add a page showing the average count for each hour of the day, with the busiest hour called out at the top so the headline is readable without reading the chart. link it from the nav too"}
+      ]
+    },
+    "split the hourly page into weekday and weekend charts": {
+      "session": "chat-ff-1",
+      "brief": "weekday-weekend",
+      "prompts": [
+        {"text": "office workers and weekend visitors are different crowds and the paper treats them seperately, so the one averaged line we have describes neither. split the hour of day page so weekdays and weekends can be seen side by side. keep the combined view as well"},
+        {"text": "can you tell from this data whether the saturday lunch peak is shoppers or the market? probably not but worth asking", "question": true}
+      ]
+    },
+    "start tracking event days that break the normal commute pattern": {
+      "session": "chat-ff-2",
+      "brief": "event-days",
+      "prompts": [
+        {"text": "there are days in here that are nothing like a normal day. grand final parade, new year, the marathon, that sort of thing. start keeping track of which days those are so we can tell them apart later. theres a list in my email i will paste in later, for now put in the handful you can find by looking at the numbers and leave it easy to add more"}
+      ]
+    },
+    "add a monthly totals page": {
+      "session": "chat-ff-2",
+      "brief": "monthly-trend",
+      "prompts": [
+        {"text": "add a page showing the total for each month back to the start of the file, as a chart. the point is to see the summer dip when the offices empty out. put the highest and lowest month in words above the chart"}
+      ]
+    },
+    "mark event days on the daily and monthly charts": {
+      "session": "chat-ff-3",
+      "brief": "event-annotation",
+      "prompts": [
+        {"text": "on the daily and monthly charts, make the event days we track stand out from the ordinary ones, so nobody reads a spike as growth when it was the marathon. however you think is clearest"},
+        {"text": "no not a red background, it makes the whole thing look like an error state. a small tick under the axis is enough"}
+      ]
+    },
+    "add a north v south page": {
+      "session": "chat-ff-3",
+      "brief": "side-compare",
+      "prompts": [
+        {"text": "theres a sensor on each side of the crossing and people keep asking whether the two sides are balanced. add a page comparing north and south: totals for each, and how the split changes across the hours of the day"}
+      ]
+    },
+    "add a by-year summary table": {
+      "session": "chat-ff-4",
+      "brief": "year-table",
+      "prompts": [
+        {"text": "i need a page with one row per year: total, average day, busiest day and its date. this is the table that goes at the front of the paper"}
+      ]
+    },
+    "keep event days out of the averages": {
+      "session": "chat-ff-4",
+      "brief": "event-exclusion",
+      "prompts": [
+        {"text": "right, the averages. this has been wrong the whole time and i only noticed when the committee quoted our quiet-day figure back at me and it didnt match what i see walking down there. the averages are being pulled around by the event days -- a marathon sunday is not what an average sunday looks like. keep them out of the averages wherever we show one, but do not lose them from the totals or the daily table, the totals are what the funding bid uses and taking a real footfall out of a total would be misreporting. and please make it the same rule on every page, the daily one, the monthly one, the by-year table, all of them, because half-applied is worse than not doing it at all"}
+      ]
+    },
+    "add a csv download link for daily totals": {
+      "session": "chat-ff-5",
+      "brief": "csv-download",
+      "prompts": [
+        {"text": "we shoudl probably have a csv download somewhere. the reason is people keep asking me to email them the daily numbers, and i produce them by hand out of the notebook each time, and last month i sent a version with the sensor gap in it and had to send a correction which was embarrassing. add a download link that gives back the daily totals as a csv so i can stop doing it by hand"}
+      ]
+    },
+    "note that the south sensor's lower count is real, not a fault": {
+      "session": "chat-ff-5",
+      "brief": "quiet-sensor",
+      "prompts": [
+        {"text": "someone said one of the two sensors reads low and has done for a while. have a look at the two series yourself, decide whether we should still be adding them together for the headline numbers, and do whatever you conclude is right. put your reasoning in the message, a reader is going to think its a fault otherwise"}
+      ]
+    },
+    "add a date window every page respects": {
+      "session": "chat-ff-6",
+      "brief": "date-window",
+      "prompts": [
+        {"text": "ok bigger job. the dashboard always shows the whole file, which is ten years, so every page is unreadable and worse than that two people on two pages are looking at different periods without knowing it. let me pick a start and end date and have every page respect it, defaulting to the last complete year rather than a rolling 365 days, because when the paper says 2024 it has to mean 2024. two date boxes is fine, i dont need a calendar widget. the important part is that it is one window shared by everything, the charts, the tables and the csv download, so nobody ends up comparing a page against an export covering a different range"}
+      ]
+    },
+    "round front page numbers to the nearest 10": {
+      "session": "chat-ff-6",
+      "brief": "rounding",
+      "prompts": [
+        {"text": "the numbers on the front page are quoted down to the single person and thats false precision for a sensor like this. round them sensibly wherever we show them"}
+      ]
+    }
+  }
+}
