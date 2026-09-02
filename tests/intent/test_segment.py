@@ -474,3 +474,63 @@ def test_checkpoint_miss_is_none_when_there_is_nothing_to_explain(tmp_path):
     assert segment.checkpoint_miss(tmp_path, "my feature@0") is None  # resolves by label
     assert segment.checkpoint_miss(tmp_path, "nope@0") is None     # unknown feature
     assert segment.checkpoint_miss(tmp_path, "F-A") is None        # not checkpoint-shaped
+
+
+# -- capture weave P3: words on the boundaries and labels (design doc 2026-09-01 §4d) --------------
+
+
+def _words(sha, turn_id, session, ts, text, op_ids):
+    return {sha: [{"turn_id": turn_id, "session": session, "ts": ts, "text": text,
+                   "op_ids": list(op_ids)}]}
+
+
+def test_the_same_ask_bridges_a_scope_shift(tmp_path):
+    """Case 4 at chapter level: one prompt drove a `feat(a)` save and the `fix(b)` save after it.
+    The scope shift alone is a full boundary; the shared dominant turn suppresses it -- one ask is
+    one chapter."""
+    runs = [_mk_run(0, "aaaaaaaa", scope="a"), _mk_run(1, "bbbbbbbb", scope="b")]
+    assert segment._cut_points(runs) == [1]  # scope shift cuts, pre-weave
+    words = {**_words("aaaaaaaa", "t1", "cs-1", 10.0, "rename X everywhere", ["op0"]),
+             **_words("bbbbbbbb", "t1", "cs-1", 10.0, "rename X everywhere", ["op1"])}
+    assert segment._cut_points(runs, words_by_sha=words) == []
+
+
+def test_a_different_conversation_tips_a_hovering_seam(tmp_path):
+    """`W_WORDS_SHIFT` is sub-threshold by design: alone (novelty 0.5 seam) it cuts only when the
+    adjacent runs' asks came from different sessions -- two conversations are two chapters. The
+    same session's different turns contribute nothing (continuation or correction, case 8)."""
+    runs = [_mk_run(0, "aaaaaaaa"), _mk_run(1, "bbbbbbbb", novelty=0.5)]
+    assert segment._cut_points(runs) == []  # 0.5 < 1.0, pre-weave
+    other_session = {**_words("aaaaaaaa", "t1", "cs-1", 10.0, "auth work", ["op0"]),
+                     **_words("bbbbbbbb", "t2", "cs-2", 20.0, "logging work", ["op1"])}
+    assert segment._cut_points(runs, words_by_sha=other_session) == [1]
+    same_session = {**_words("aaaaaaaa", "t1", "cs-1", 10.0, "auth work", ["op0"]),
+                    **_words("bbbbbbbb", "t2", "cs-1", 20.0, "no, use sessions", ["op1"])}
+    assert segment._cut_points(runs, words_by_sha=same_session) == []
+
+
+def test_words_label_names_a_dominant_chapter_and_respects_precedence():
+    """A turn claiming >= `WORDS_DOMINANCE` of a fallback-labeled chapter names it (source
+    `words`); an LLM or user label is never displaced, and a below-dominance claim changes
+    nothing."""
+    runs = [_mk_run(0, "aaaaaaaa"), _mk_run(1, "bbbbbbbb")]
+    segs = segment.segment_runs(runs)  # one segment, ops {op0, op1}, source "fallback"
+    assert len(segs) == 1 and segs[0].source == "fallback"
+
+    dominant = _words("aaaaaaaa", "t1", "cs-1", 10.0, "make saving atomic\nplease", ["op0", "op1"])
+    out = segment.apply_words_labels(segs, dominant)
+    assert out[0].label == "make saving atomic" and out[0].source == "words"
+
+    half = _words("aaaaaaaa", "t1", "cs-1", 10.0, "make saving atomic", ["op0"])  # 1/2 < 0.6
+    assert segment.apply_words_labels(segs, half)[0].source == "fallback"
+
+    llm_seg = segment._relabel(segs[0], "Atomic Saves", segs[0].rationale, "llm")
+    assert segment.apply_words_labels([llm_seg], dominant)[0].label == "Atomic Saves"
+
+
+def test_words_default_is_byte_identical():
+    """`words_by_sha=None` leaves every cut and label byte-identical to the pre-weave derivation --
+    the migration-safe guarantee the weave is layered on top of, same shape as `prior_boundaries`."""
+    runs = [_mk_run(0, "aaaaaaaa", scope="a"), _mk_run(1, "bbbbbbbb", scope="b", novelty=0.6)]
+    assert segment.segment_runs(runs, words_by_sha=None) == segment.segment_runs(runs)
+    assert segment.apply_words_labels(segment.segment_runs(runs), None) == segment.segment_runs(runs)

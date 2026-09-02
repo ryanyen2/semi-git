@@ -620,3 +620,42 @@ def test_intent_activity_skips_an_edit_outside_this_repo(tmp_path, monkeypatch):
     monkeypatch.setattr("sys.stdin", io.StringIO(payload))
     assert _in(tmp_path, ["intent", "activity"]) == 0
     assert load_activity(tmp_path) == []
+
+
+def test_a_grounded_ask_names_the_checkpoint_and_resolves_back(tmp_path):
+    """The weave end to end (P3): a hook-captured prompt, its session's activity, and the save meet
+    at the save beat -- and the checkpoint list names the chapter with the user's ask (source
+    `words`), surfaces the ask in `words`, and the SAME label resolves back through the bare-name
+    resolver, proving the list and the resolvers share one cut (`segments_for`)."""
+    from sgt.api import segments_view
+    from sgt.intent.activity import record_activity
+    from sgt.intent.segment import resolve_checkpoint_label
+    from sgt.intent.turns import record_turn
+    from sgt.lens import tree
+
+    _seed(tmp_path)
+    record_turn(tmp_path, key="cs-9", key_kind="chat", actor="human", channel="hook",
+                text="teach foo to count higher")
+    record_activity(tmp_path, tool="Edit", file="a.py", session_id="cs-9")
+    (tmp_path / "a.py").write_text(
+        "def foo():\n    return 2\n\n\ndef ceiling():\n    return 99\n", encoding="utf-8")
+    assert _in(tmp_path, ["save"]) == 0  # 2 new ops of the feature's 3: past WORDS_DOMINANCE
+
+    # A hand-authored one-leaf feature tree (same idiom as tests/intent/test_segment.py): the
+    # checkpoint projection reads features from the persisted tree, not from the cut itself.
+    nodes = {"F-A": {"parent": None, "children": [], "members": ["a.py::foo", "a.py::ceiling"],
+                     "size": 2, "dir": "", "label": "F-A"}}
+    ops = Store(tmp_path).all_ops()
+    tree.save(tmp_path, {"nodes": nodes, "roots": ["F-A"],
+                         "op_leaf": tree.assign_ops_to_leaves(nodes, ops),
+                         "max_depth": 0, "cannot_link_moves": [], "identity_events": []})
+
+    seg = next(s for s in segments_view(tmp_path) if s["source"] == "words")
+    assert seg["intent"] == "teach foo to count higher"
+    assert "teach foo to count higher" in seg["words"]
+
+    resolved = resolve_checkpoint_label(tmp_path, "teach foo to count higher")
+    assert resolved is not None
+    op_ids, display = resolved
+    assert set(seg["op_ids"]) <= set(op_ids) or set(op_ids) <= set(seg["op_ids"])
+    assert "teach foo to count higher" in display

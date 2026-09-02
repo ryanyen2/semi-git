@@ -108,6 +108,28 @@ def derive_stints(manifests: dict[str, dict], sha: str, root: str | Path) -> dic
     return {"stints": stints, "residual_op_ids": residual}
 
 
+def stint_words(repo: str | Path, shas: frozenset[str] | set[str] | None = None,
+                ) -> dict[str, list[dict]]:
+    """The segmentation weave's evidence feed (P3, §4d): per commit, every grounded stint as
+    `{turn_id, session, ts, text, op_ids}` -- what `segments_for` weighs on boundaries
+    (`_dominant_turn`) and names chapters with (`apply_words_labels`). One manifest-store read for
+    however many shas; `shas=None` covers every manifested save. A sha with no manifest, or no
+    grounded stint, is simply absent -- pre-weave history stays subject-labeled."""
+    from sgt.intent.manifest import load_manifests
+
+    manifests = load_manifests(repo)
+    out: dict[str, list[dict]] = {}
+    for sha in manifests if shas is None else (s for s in shas if s in manifests):
+        entries = [
+            {"turn_id": s["turn"]["id"], "session": s["turn"]["key"], "ts": s["turn"]["ts"],
+             "text": s["turn"]["text"], "op_ids": s["op_ids"]}
+            for s in derive_stints(manifests, sha, root=repo)["stints"] if s["op_ids"]
+        ]
+        if entries:
+            out[sha] = entries
+    return out
+
+
 def reflect_save(repo: str | Path, sha: str) -> list[str]:
     """Emit rationale records for the save `sha`: one per grounded stint, plus save-wide ones for
     the whole-save claims (sha-keyed turns; `agent`-channel carries in the window). Returns the

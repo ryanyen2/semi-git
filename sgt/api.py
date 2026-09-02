@@ -2836,6 +2836,10 @@ def _segments_out(repo, op_leaf, tree_result) -> list[dict]:
     label_pins = state.load_json(repo, "intent_segment_pins", default={})
     runs_by_feature = seg_mod.feature_runs(repo, op_leaf)
     words_for = _commit_words_join(repo)
+    # The capture evidence (weave P3): loaded once for every feature's cut, so the boundaries and
+    # words labels here match what `resolve_checkpoint` derives -- both go through `segments_for`.
+    from sgt.intent.stint import stint_words
+    words_by_sha = stint_words(repo)
     # Which of a chapter's ops are still in HEAD's ideal. A revert removes ops from the ideal and
     # leaves them in the store -- that asymmetry is what makes `sgt restore` possible -- so the
     # chapter list must keep a reverted chapter and *say* it is gone. `current_ideal` (not
@@ -2847,7 +2851,8 @@ def _segments_out(repo, op_leaf, tree_result) -> list[dict]:
 
     out: list[dict] = []
     for feature_id in sorted(runs_by_feature):
-        segs = seg_mod.overlay_persisted(runs_by_feature[feature_id], persisted.get(feature_id))
+        segs = seg_mod.segments_for(repo, runs_by_feature[feature_id], persisted.get(feature_id),
+                                    words_by_sha)
         segs = seg_mod.apply_label_pins(segs, label_pins.get(feature_id))
         feature_label = nodes.get(feature_id, {}).get("label", feature_id)
         for s in segs:
@@ -2861,6 +2866,12 @@ def _segments_out(repo, op_leaf, tree_result) -> list[dict]:
                 w = words_for(sha)
                 if w and w not in words:
                     words.append(w)
+                # ...and the grounded asks (weave P3): the chat prompts whose stints claimed this
+                # chapter's ops. The stint join is what makes a chat-keyed word per-commit-safe --
+                # the exclusion `_commit_words_join` maintains no longer applies to these.
+                for e in words_by_sha.get(sha, ()):
+                    if s.op_ids & frozenset(e["op_ids"]) and e["text"] not in words:
+                        words.append(e["text"])
             # A segment's ops all belong to ONE feature by construction (feature-scoped cut), so
             # `feature_span` is always a single feature -- `group.tier` would degenerate to its
             # single-feature branch anyway. Compute that branch directly (no `components_in` walk):
