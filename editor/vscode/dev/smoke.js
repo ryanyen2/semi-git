@@ -881,30 +881,49 @@ try {
     `line(s) ${strays.join(", ")}`);
 
   // 2. A rule that declares a property AND composes a keyframe that animates the same property.
-  // The animation wins, so the declaration is decoration -- which is how an ARRIVING chapter came
-  // to be drawn at the fill of a leaving one, borrowing a pulse written for a much fainter state.
+  // The animation sits in a higher cascade origin than a normal author declaration, so the
+  // declaration is decoration -- which is how an ARRIVING chapter came to be drawn at the fill of a
+  // leaving one, borrowing a pulse written for a much fainter state. Not `fill-opacity` only: three
+  // of the rules this catches are one property rename away from the same accident in `opacity`,
+  // `stroke-width` or `stroke-dashoffset`, so every plain-numeric property is compared.
+  //
+  // Overlapping IS the idiom, and the band is what expresses that: reduced motion strips the
+  // animation and the declared value is what remains on screen, so it has to be the value the
+  // motion was breathing around. A declaration INSIDE its keyframe's range is therefore correct and
+  // a declaration outside it is the bug. A keyframe that names a property once (a one-way drift
+  // with an implicit `from`) is skipped: there the declaration legitimately IS the starting value.
   const declText = stripped.map(([c]) => c).join("");
+  const num = /(?:^|[;{\s])([a-z-]+):\s*(-?[\d.]+)\s*(?=[;}]|$)/g;
   const frames = new Map();
   for (const m of declText.matchAll(/@keyframes\s+([\w-]+)\s*\{([\s\S]*?)\n\}/g)) {
-    const vals = [...m[2].matchAll(/fill-opacity:\s*([\d.]+)/g)].map((v) => Number(v[1]));
-    if (vals.length) frames.set(m[1], [Math.min(...vals), Math.max(...vals)]);
+    const bands = new Map();
+    for (const d of m[2].matchAll(num)) {
+      const seen = bands.get(d[1]) || [];
+      seen.push(Number(d[2]));
+      bands.set(d[1], seen);
+    }
+    frames.set(m[1], bands);
   }
   const overridden = [];
   for (const m of declText.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     const sel = m[1].trim(), body = m[2];
     if (sel.startsWith("@") || sel.includes("%")) continue;
-    const declared = /fill-opacity:\s*([\d.]+)/.exec(body);
-    if (!declared) continue;
-    for (const name of (body.match(/animation:\s*([\s\S]*?);/) || ["", ""])[1]
-      .split(",").map((a) => a.trim().split(/\s+/)[0]).filter(Boolean)) {
-      const band = frames.get(name);
-      const v = Number(declared[1]);
-      if (band && (v < band[0] || v > band[1])) {
-        overridden.push(`${sel} declares ${v} but ${name} animates ${band[0]}-${band[1]}`);
+    const named = (body.match(/animation:\s*([\s\S]*?);/) || ["", ""])[1]
+      .split(",").map((a) => a.trim().split(/\s+/)[0]).filter(Boolean);
+    if (!named.length) continue;
+    for (const d of body.matchAll(num)) {
+      const prop = d[1], v = Number(d[2]);
+      for (const name of named) {
+        const vals = (frames.get(name) || new Map()).get(prop);
+        if (!vals || new Set(vals).size < 2) continue; // no oscillation to be inside of
+        const lo = Math.min(...vals), hi = Math.max(...vals);
+        if (v < lo || v > hi) {
+          overridden.push(`${sel} declares ${prop}: ${v} but ${name} animates it ${lo}-${hi}`);
+        }
       }
     }
   }
-  check("no rule's fill-opacity is thrown away by the keyframe it composes",
+  check("no rule's declared value is thrown away by the keyframe it composes",
     overridden.length === 0, overridden.join("; "));
 
   // 3. The same selector written twice at the TOP level, both times setting the same property.
