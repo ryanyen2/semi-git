@@ -62,14 +62,32 @@ function toggle(key: string): void {
  * thought worth a ⚠ outranks the success line here, because a toast is the only
  * part of this a person reliably reads.
  */
-function showMutationReport(report: string): void {
+function mutationHeadline(report: string): string {
   const lines = report.trim().split("\n").map((l) => l.trim()).filter(Boolean);
-  const caveat = lines.filter((l) => l.startsWith("⚠")).pop();
-  if (caveat) {
-    vscode.window.showWarningMessage(caveat);
-    return;
-  }
-  vscode.window.showInformationMessage(lines[0] || "Done.");
+  return lines.filter((l) => l.startsWith("⚠")).pop() || lines[0] || "Done.";
+}
+
+/**
+ * Where a flow's outcome is reported.
+ *
+ * Every flow below used to do both: hand the outcome to `onPhase` (which the workbench draws in
+ * its confirm bar, where the decision was taken) AND raise a VS Code notification with the same
+ * sentence. One click could produce three of them -- the caveat, the result, and whatever the
+ * refresh said -- stacked in the corner, each covering the last, over the part of the timeline the
+ * reader was watching to see what the action did.
+ *
+ * So: exactly one surface per flow. A caller with a phase sink owns its own reporting and gets no
+ * notifications; the palette and the tree views have no surface of their own, so they still get
+ * them. Errors follow the same rule -- the confirm bar draws a failure with its own Dismiss.
+ */
+function reportTo(opts: IdealEditFlowOpts) {
+  const inSurface = Boolean(opts.onPhase);
+  return {
+    phase: opts.onPhase ?? (() => undefined),
+    info: (m: string) => { if (!inSurface) { vscode.window.showInformationMessage(m); } },
+    warn: (m: string) => { if (!inSurface) { vscode.window.showWarningMessage(m); } },
+    error: (m: string) => { if (!inSurface) { vscode.window.showErrorMessage(m); } },
+  };
 }
 
 /** First `n` of a list, comma-joined, with the remainder counted rather than printed -- a modal
@@ -145,25 +163,31 @@ export interface IdealEditFlowOpts {
   onPhase?: (phase: IdealEditPhase, detail?: string) => void;
 }
 
-/** The shared apply tail: mutate → invalidate → toast, with phases. The caller has already taken
+/** The shared apply tail: mutate → invalidate → report, with phases. The caller has already taken
  * a real confirmation (the modal, or the workbench's staged Apply), so the CLI must not go looking
  * for another one it has no terminal to ask on -- `mutate` passes the `--yes` that says so (see
- * `mutationArgs` in cliSeam.ts). */
+ * `mutationArgs` in cliSeam.ts).
+ *
+ * The headline goes through `phase("done", ...)` rather than only into a notification, so the
+ * caveat line -- what did NOT happen -- reaches a workbench caller too. It used to be raised as a
+ * warning toast and the phase carried the success line, so the two surfaces disagreed about what
+ * the same apply had done. */
 async function applyIdealEdit(
   store: Store,
   run: () => Promise<string>,
-  phase: (p: IdealEditPhase, detail?: string) => void
+  report: ReturnType<typeof reportTo>
 ): Promise<void> {
-  phase("applying");
+  report.phase("applying");
   try {
-    const report = await run();
-    phase("refreshing");
+    const text = await run();
+    report.phase("refreshing");
     store.invalidate();
-    showMutationReport(report);
-    phase("done", report.trim().split("\n")[0]);
+    const headline = mutationHeadline(text);
+    report.info(headline);
+    report.phase("done", headline);
   } catch (e: any) {
-    phase("failed", e.message);
-    vscode.window.showErrorMessage(e.message);
+    report.phase("failed", e.message);
+    report.error(e.message);
   }
 }
 
@@ -182,14 +206,15 @@ async function revertWithFrontier(
   preview: PreviewProvider,
   opts: IdealEditFlowOpts = {}
 ): Promise<void> {
-  const phase = opts.onPhase ?? (() => undefined);
+  const report = reportTo(opts);
+  const phase = report.phase;
   phase("checking");
   let view: EmitView;
   try {
     view = await store.sgt.emit(sel);
   } catch (e: any) {
     phase("failed", e.message);
-    vscode.window.showErrorMessage(e.message);
+    report.error(e.message);
     return;
   }
   // A checkpoint target comes back carrying its own chapter name; anything else is named by the
@@ -199,7 +224,7 @@ async function revertWithFrontier(
 
   if (!view.ok) {
     phase("failed", view.message || `Cannot revert ${name}.`);
-    vscode.window.showWarningMessage(view.message || `Cannot revert ${name}.`);
+    report.warn(view.message || `Cannot revert ${name}.`);
     return;
   }
 
@@ -207,8 +232,9 @@ async function revertWithFrontier(
   // this composition. Asking anyway and then reporting success is precisely the "wait, is that
   // done?" the preview exists to prevent. Mirrors `restoreWithPreview`'s already-live guard below.
   if (view.removed.length === 0) {
-    phase("done", `${name} removes nothing here — it is already out of this composition.`);
-    vscode.window.showInformationMessage(`${name} removes nothing here — it is already out of this composition.`);
+    const nothing = `${name} removes nothing here — it is already out of this composition.`;
+    phase("done", nothing);
+    report.info(nothing);
     return;
   }
 
@@ -235,7 +261,7 @@ async function revertWithFrontier(
         return;
       }
     }
-    await applyIdealEdit(store, () => store.sgt.mutate(["revert", sel]), phase);
+    await applyIdealEdit(store, () => store.sgt.mutate(["revert", sel]), report);
     return;
   }
 
@@ -275,7 +301,7 @@ async function revertWithFrontier(
       return;
     }
   }
-  await applyIdealEdit(store, () => store.sgt.revertKeep(sel, keep), phase);
+  await applyIdealEdit(store, () => store.sgt.revertKeep(sel, keep), report);
 }
 
 /** `sgt restore` with the same feedforward `revert` gets: the resulting diff first, then a confirm
@@ -290,27 +316,29 @@ async function restoreWithPreview(
   preview: PreviewProvider,
   opts: IdealEditFlowOpts = {}
 ): Promise<void> {
-  const phase = opts.onPhase ?? (() => undefined);
+  const report = reportTo(opts);
+  const phase = report.phase;
   phase("checking");
   let view: EmitView;
   try {
     view = await store.sgt.emit(sel, "restore");
   } catch (e: any) {
     phase("failed", e.message);
-    vscode.window.showErrorMessage(e.message);
+    report.error(e.message);
     return;
   }
   if (!view.ok) {
     phase("failed", view.message || `Cannot restore ${sel}.`);
-    vscode.window.showWarningMessage(view.message || `Cannot restore ${sel}.`);
+    report.warn(view.message || `Cannot restore ${sel}.`);
     return;
   }
 
   // An `ok` restore that adds nothing is the "already live" case, not a change to confirm. Asking
   // the user to approve a no-op teaches them the confirm means nothing.
   if (view.added.length === 0) {
-    phase("done", `${sel} is already present — nothing to restore.`);
-    vscode.window.showInformationMessage(`${sel} is already present — nothing to restore.`);
+    const nothing = `${sel} is already present — nothing to restore.`;
+    phase("done", nothing);
+    report.info(nothing);
     return;
   }
 
@@ -331,7 +359,7 @@ async function restoreWithPreview(
   } else if (opts.openDiff !== false) {
     await preview.openDiff(view);
   }
-  await applyIdealEdit(store, () => store.sgt.mutate(["restore", sel]), phase);
+  await applyIdealEdit(store, () => store.sgt.mutate(["restore", sel]), report);
 }
 
 export function registerCommands(

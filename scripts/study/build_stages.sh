@@ -104,8 +104,13 @@ say() { printf '  %s\n' "$*"; }
 # The two task scripts live in the work dir and are untracked, so they need the
 # same protection: without it the first `./stage N` deletes `./check` and the
 # `./stage` script it is running from, and the next stage has nothing to call.
+#
+# `.env` and `.venv` are here for the same reason and were missed for a long
+# time, because neither is written by this script: setup.sh builds the venv and
+# provision.py writes the key onto the participant's own machine, long after a
+# bundle is built. Untracked all the same, so the first `./stage N` deleted both.
 mkdir -p "$repo/.study"
-for keep in '/.study/' '/stage' '/check'; do
+for keep in '/.study/' '/stage' '/check' '/.env' '/.venv/'; do
     grep -qxF "$keep" "$repo/.git/info/exclude" 2>/dev/null \
         || echo "$keep" >> "$repo/.git/info/exclude"
 done

@@ -576,6 +576,41 @@ def _revert_scaffolding_over(requested: frozenset[str], ideal, ops: list[Op]) ->
     )
 
 
+def _restorable(missing: frozenset[str], ideal: Ideal, ops: list[Op]) -> frozenset[str]:
+    """Of the requested ops that are not in the ideal, the ones a restore could actually put back.
+
+    "Not in the ideal" is not the same as "was removed". A record that has been re-mined by a newer
+    segmenter -- which is what every shipped bundle is, since its per-commit ideals were written by
+    whatever version recorded them -- carries older ops for the same chain steps the live ones now
+    occupy. They are not missing work; they are a superseded spelling of work that is right there.
+
+    Re-admitting one puts two ops on the same `(symbol, before_version)` step, and the kernel
+    correctly refuses the whole edit. What it said while refusing was the problem: `would leave two
+    live versions of footfall/metrics.py::__anchor__::_exclude_events: 5b6e3c62 and 5f8614b3 both
+    claim the same next version` -- to somebody who typed the name of their own afternoon's work and
+    is being told about an anchor symbol they have never heard of. It is also the wrong answer:
+    nothing had been removed, so the true answer was "there is nothing to restore".
+
+    So a step the ideal already claims is dropped here rather than carried into a refusal. Nothing
+    is lost by dropping it: the live op holds that step, restore never displaces live work, and the
+    only way to re-admit it would be to remove what is there. A genuinely competing later edit still
+    refuses downstream exactly as before -- it claims a *different* step, so it never lands here."""
+    if not missing:
+        return frozenset()
+    by_id = {op.id: op for op in ops}
+    claimed = {
+        (sym, before)
+        for oid in ideal.op_ids
+        if oid in by_id
+        for sym, (before, _after) in by_id[oid].footprint.items()
+    }
+    return frozenset(
+        oid for oid in missing
+        if oid in by_id
+        and not any((sym, before) in claimed for sym, (before, _a) in by_id[oid].footprint.items())
+    )
+
+
 def plan_restore_op_set(repo: str | Path, tag: str, op_ids: frozenset[str]) -> VerbPreview:
     """`plan_revert_op_set`'s inverse: re-admit an already-resolved op-set X as the exact ideal edit
     `I ∪ downset_in_many(X)` against the full provenance ideal (`HEAD`, which still holds reverted
@@ -597,7 +632,7 @@ def plan_restore_op_set(repo: str | Path, tag: str, op_ids: frozenset[str]) -> V
     if exact is not None:
         return exact
     source = lens.ideal_for_ref(repo, "HEAD")
-    op_ids = requested - ideal.op_ids
+    op_ids = _restorable(requested - ideal.op_ids, ideal, ops)
     if not op_ids:
         # Every requested op is still live, and its effect can still be gone. A checkpoint revert
         # removes nothing: it layers a rework op over the symbols the checkpoint touched, carrying
@@ -611,11 +646,20 @@ def plan_restore_op_set(repo: str | Path, tag: str, op_ids: frozenset[str]) -> V
                 _validated("restore", tag, ideal.op_ids, ideal.op_ids - masking, ops, declared),
                 requested)
         return _named(_preview("restore", tag, ideal.op_ids, ideal.op_ids, ops,
-                               message=f"{tag}: already in the current ideal; no change"), requested)
+                               message=f"nothing of {tag} has been removed \u2014 there is nothing "
+                                       f"to restore."), requested)
 
     added = _with_layout_siblings(order.downset_in_many(op_ids, source.op_ids, ops, declared),
                                   ops, ideal.op_ids, source.op_ids, declared)
-    candidate = ideal.op_ids | added
+    # The closure and the layout siblings are drawn from the provenance ideal, which is the ideal
+    # as it was RECORDED -- so on a re-mined record they reach the superseded spelling of anchors
+    # and residues the same way the requested set did. Same filter, same reason (see `_restorable`),
+    # and applied here too because `op_ids` alone was not where they entered.
+    added = _restorable(added - ideal.op_ids, ideal, ops)
+    # Dropping a step the ideal already holds can leave whatever was built on it without footing;
+    # keep only what still bottoms out, so the refusal below is about real conflicts rather than
+    # about the hole this filter just made.
+    candidate = order._grounded(ideal.op_ids | added, ops, declared)
 
     # A revert does not only remove: it synthesizes stand-in ops to hold the layout the removal
     # would otherwise have torn out (`sgt.core.subtract`). Re-admitting the originals then puts two
@@ -643,7 +687,15 @@ def plan_restore_op_set(repo: str | Path, tag: str, op_ids: frozenset[str]) -> V
             break
         candidate -= drop
 
-    return _named(_validated("restore", tag, ideal.op_ids, candidate, ops, declared), requested)
+    plan = _validated("restore", tag, ideal.op_ids, candidate, ops, declared)
+    # A plan that came out empty means the same thing as an empty one computed earlier -- every
+    # requested op is either live or a superseded spelling of something live -- so it says the same
+    # sentence. Without this it reached the caller as a successful restore of nothing, which reads
+    # as "it worked" and leaves the reader looking for the change it made.
+    if plan.ok and plan.after_ids == plan.before_ids and not plan.message:
+        plan = replace(plan, message=f"nothing of {tag} has been removed \u2014 there is nothing "
+                                     f"to restore.")
+    return _named(plan, requested)
 
 
 def plan_after(repo: str | Path, a: str, b: str) -> VerbPreview:

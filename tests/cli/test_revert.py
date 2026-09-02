@@ -252,7 +252,7 @@ def test_restoring_a_checkpoint_that_was_never_reverted_changes_nothing(tmp_path
     before = current_ideal(repo).op_ids
     assert _in(repo, ["restore", ckpt, "--yes"]) == 0
     assert current_ideal(repo).op_ids == before
-    assert "changed nothing" in capsys.readouterr().out
+    assert "there is nothing to restore" in capsys.readouterr().out
 
 
 def _no_llm(monkeypatch):
@@ -664,7 +664,7 @@ def test_reverting_a_referenced_last_entity_removes_the_file_not_just_the_ideal(
 
     assert _in(repo, ["revert", op_id, "--yes"]) == 0
     out = capsys.readouterr().out
-    assert "still references removed code" in out, out  # the shape under test
+    assert "still calls what this removes" in out, out  # the shape under test
 
     assert not (repo / "mod.py").exists(), (
         "revert reported success over an untouched file: "
@@ -963,7 +963,7 @@ def test_the_dry_run_carries_the_two_consequence_reports(tmp_path, capsys, monke
     assert "kept_conflicts" in dry, sorted(dry)
 
     _in(repo, ["revert", "m.py::helper", "--emit"])
-    assert "still references removed code" in capsys.readouterr().out
+    assert "still calls what this removes" in capsys.readouterr().out
 
 
 def test_reverting_a_save_sha_says_it_is_a_save_and_names_the_features_it_touched(tmp_path, capsys):

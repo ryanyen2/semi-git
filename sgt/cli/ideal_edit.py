@@ -306,6 +306,23 @@ def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict
             print(line)
         return rc
 
+    # A plan that changes nothing is an answer, not a proposal. Restoring work nobody removed
+    # reaches here with `after_ids == before_ids`, and the confirm path below then drew an empty
+    # blast radius, printed `restores 0 edits`, and asked `apply this restore? [y/N]` -- offering
+    # to do a thing it had just finished saying there was nothing to do. Say the one sentence and
+    # stop.
+    #
+    # Only when the sentence is the whole answer. A no-op restore can still have something to
+    # report -- an earlier revert that took work this restore does not bring back -- and that
+    # report is the reason anyone would run it. `--json` keeps the full view either way: a machine
+    # caller reads the counts, not the prose.
+    if preview.ok and not as_json and preview.message and preview.after_ids == preview.before_ids:
+        tail = _subtraction_report(preview) + (
+            _restore_gap_report(repo, preview) if preview.verb == "restore" else [])
+        if not tail:
+            print(f"  {preview.message}")
+            return 0
+
     # Plain-text apply: the confirm step draws the feedforward inline -- the same before/after
     # `sgt log` region the edit lands in (`render_verb_preview_lines`) -- in the normal terminal
     # flow, then gates on `[y/N]`. `--yes` skips the prompt; a non-tty stdin without `--yes` prints
@@ -582,8 +599,13 @@ def _subtraction_report(preview) -> list[str]:
         lines.append(f"  ⚠ kept unchanged (the removal overlaps later edits — needs your edit): "
                      f"{', '.join(kept)}")
     if broken:
-        lines.append(f"  ⚠ still references removed code (fix or revert separately): "
-                     f"{', '.join(broken)}")
+        # The consequence, not the mechanism. "still references removed code" is true and was read
+        # by nobody: it printed as one dim line in the middle of a dozen, and the next thing that
+        # happened was a dashboard that would not start with an ImportError naming a module the
+        # reader had not asked about. Say what it costs, and say the way back, on the line where
+        # the decision is still open.
+        lines.append(f"  ⚠ code that stays still calls what this removes: {', '.join(broken)}")
+        lines.append("    the project will not run until those are fixed — `sgt undo` puts it back")
     return lines
 
 

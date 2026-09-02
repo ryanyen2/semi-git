@@ -21,6 +21,10 @@ class El {
     this.attrs = {};
     this._classes = new Set();
     this._text = "";
+    // Inputs answer `.value`. The find box reads its own value on every render (the lens is a
+    // function of what is typed), so without this the harness died in `lensState` before drawing a
+    // single node -- and had been dying there, so nothing below was being exercised at all.
+    this.value = "";
     // A real `style` answers `setProperty`/`getPropertyValue` as well as named properties, and the
     // chip's growth origin is a CSS custom property -- which can ONLY be set that way. A plain
     // object silently lacked the method and the harness died on the first hover chip.
@@ -188,61 +192,8 @@ const src = fs.readFileSync(jsPath, "utf8");
 // The file defines top-level functions then an IIFE; eval in this global scope.
 eval(src);
 
-const compose = JSON.parse(fs.readFileSync(path.join(__dirname, "fixture-compose.json"), "utf8"));
-
-// The real host enriches EVERY node with a concrete identity hex before posting (see
-// `colorForNode` in workbench.ts) -- subsystems included, which is what lets the folded tree be
-// the default view without opening as a grey wall. The harness fed the raw capture, so every lane
-// came back grey and it could not have caught a regression where lanes lose their hue. The exact
-// hue is `tests/test_color_parity.py`'s business; what matters here is that every lane has one.
-compose.map = {
-  ...compose.map,
-  nodes: (compose.map.nodes || []).map((n, i) => ({
-    ...n,
-    color: `#${(0x334455 + i * 0x010203).toString(16).padStart(6, "0")}`,
-  })),
-};
-
-// The real host injects `grid_view`'s cell table (plan U3) into the state message alongside the
-// compose_view aggregate; the fixture is a raw compose_view capture, so derive the equivalent
-// cell join from its history here (the same op -> (feature, commit) grouping `grid_view` does).
-compose.grid = (function gridFromHistory(history) {
-  const commits = (history && history.commits) || [];
-  const byCell = new Map();
-  for (const op of (history && history.ops) || []) {
-    if (op.feature_id == null) continue;
-    const key = op.feature_id + "|" + op.commit_index;
-    let c = byCell.get(key);
-    if (!c) byCell.set(key, (c = { feature_id: op.feature_id, commit_index: op.commit_index, op_ids: [], kinds: {} }));
-    c.op_ids.push(op.id);
-    c.kinds[op.kind] = (c.kinds[op.kind] || 0) + 1;
-  }
-  const cells = [...byCell.values()].map((c) => ({
-    feature_id: c.feature_id, commit_index: c.commit_index, op_ids: c.op_ids.slice().sort(),
-    op_count: c.op_ids.length, kinds: c.kinds, fidelity: "full",
-  }));
-  return { commits, cells, commit_count: commits.length };
-})(compose.history);
-
-// Two lanes' worth of commits grouped as one cross-feature theme, so the TableLens focus path
-// renders under test. The fixture predates themes; membership arrives as commit shas exactly like
-// the real payload's, so resolveThemeMarks' sha -> commit-index join is the code under test.
-(function synthesizeTheme() {
-  const byFeature = new Map();
-  for (const c of compose.grid.cells) {
-    if (!byFeature.has(c.feature_id)) byFeature.set(c.feature_id, []);
-    byFeature.get(c.feature_id).push(c.commit_index);
-  }
-  const feats = [...byFeature.keys()].slice(0, 2);
-  if (feats.length < 2) return;
-  const idx = new Set(feats.flatMap((f) => byFeature.get(f).slice(0, 2)));
-  const shas = compose.grid.commits.filter((c) => idx.has(c.index)).map((c) => c.sha);
-  compose.intent = compose.intent || {};
-  compose.intent.themes = [{
-    theme_id: "theme-smoke", label: "Smoke Theme", rationale: "", source: "fallback",
-    atom_shas: shas, stale_shas: [], op_ids: [], feature_span: feats, tier: "co-changed",
-  }];
-})();
+const compose = require("./fixture.js")(
+  JSON.parse(fs.readFileSync(path.join(__dirname, "fixture-compose.json"), "utf8")));
 
 function feed(msg) {
   ALL.length = 0; // reset registry so counts reflect this render only
@@ -398,7 +349,11 @@ try {
   if (featureLane && featureLane._listeners.click) {
     posted = [];
     featureLane._listeners.click.forEach((fn) => fn({}));
-    check("select posts requestFold", posted.some((m) => m.type === "requestFold"), JSON.stringify(posted.map((m) => m.type)));
+    // `requestChange`, not `requestFold`: selecting a lane asks "what did this DO", and the change
+    // panel is what answers it. The code-at-this-frontier fold is the fallback the panel falls to
+    // when there is no projection to read, so it is not what a plain select posts any more.
+    check("select asks the host what this selection changed",
+      posted.some((m) => m.type === "requestChange"), JSON.stringify(posted.map((m) => m.type)));
   }
 
   // Clicking a chunk-car selects its CHECKPOINT (distinct target from the whole-feature row click).
@@ -643,28 +598,16 @@ try {
     // Leaving retracts the hover chip. What may remain is the SELECTED chapter's pinned chip --
     // an earlier test in this run clicks a car, and the name of the thing you picked is supposed to
     // stay on screen.
-    // Frame 0 of the unfold must BE the bar: `--flip-from` has to map the capsule's rect exactly
-    // onto the hovered car's rect, or the reveal starts from somewhere the reader was not pointing.
-    // Verified by APPLYING the transform to the capsule and comparing rectangles, not by
-    // pattern-matching the property's text.
-    const flipChip = chipLayer.querySelectorAll(".gchip")
+    // The chip must not carry a geometry transform of its own. It used to unfold out of the bar's
+    // rectangle, which read at pointer speed as the row rearranging itself under the question; it
+    // now fades at its final size. Asserted as an ABSENCE because the regression this guards is a
+    // re-introduced morph, and a morph is exactly what a transform on this node would be.
+    const hoverChip = chipLayer.querySelectorAll(".gchip")
       .find((c) => !c.classList.contains("gchip-pinned"));
-    const ffm = flipChip && flipChip.style.getPropertyValue("--flip-from")
-      .match(/translate\(([-\d.]+)px, ([-\d.]+)px\) scale\(([-\d.]+), ([-\d.]+)\)/);
-    let flipOk = false, flipDetail = "no --flip-from on the chip";
-    if (ffm) {
-      const [ftx, fty, fsx, fsy] = ffm.slice(1).map(Number);
-      const bg2 = flipChip.querySelector(".gchip-bg");
-      const carR = narrow.querySelector(".gcar");
-      const n = (el, a) => Number(el.getAttribute(a));
-      const dx = Math.abs(ftx + fsx * n(bg2, "x") - n(carR, "x"));
-      const dw = Math.abs(fsx * n(bg2, "width") - n(carR, "width"));
-      const dy = Math.abs(fty + fsy * n(bg2, "y") - n(carR, "y"));
-      const dh = Math.abs(fsy * n(bg2, "height") - n(carR, "height"));
-      flipOk = dx < 0.6 && dw < 0.6 && dy < 0.6 && dh < 0.6;
-      flipDetail = `Δx ${dx.toFixed(2)} Δw ${dw.toFixed(2)} Δy ${dy.toFixed(2)} Δh ${dh.toFixed(2)}`;
-    }
-    check("the chip's first frame maps exactly onto the bar (container transform)", flipOk, flipDetail);
+    const moved = hoverChip
+      && (hoverChip.style.transform || hoverChip.style.getPropertyValue("--flip-from"));
+    check("the name arrives without moving the bar", !!hoverChip && !moved,
+      hoverChip ? `transform: ${moved}` : "no hover chip");
 
     narrow._listeners.mouseleave.forEach((fn) => fn({}));
     // Leaving RETRACTS the hover chip along the way it came -- it is not deleted where it stands.

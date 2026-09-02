@@ -132,7 +132,15 @@ reset_to() {
     # one the project shipped with. It still reverted, but the restore in stage 4
     # then resolved against the wrong removal and put back two files out of five.
     git checkout -q -f -B main "$1" 2>/dev/null || { echo "this project is missing $1" >&2; exit 1; }
-    git clean -qfd
+    # `-e`, not a plain clean. Two things live in this folder that the project's
+    # history has never heard of and that setup put here once: `.env`, holding
+    # the key the history tool needs, and `.venv`, the interpreter every command
+    # runs through. Both are untracked, so a plain `git clean -fd` deleted them --
+    # and every stage begins with a reset, so the key was gone before the first
+    # command of every stage. The tool then answered "set OPENAI_API_KEY" to
+    # things that had nothing to do with a key, and the only way anyone found
+    # back was to write the file out by hand between stages.
+    git clean -qfd -e /.env -e /.venv/
     if have_sgt; then
         # Putting the files back is not the whole reset. sgt keeps a record of
         # every removal, and carrying stage 3's record into stage 4 makes the

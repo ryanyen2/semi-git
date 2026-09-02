@@ -1,11 +1,5 @@
 """The workbench webview's pure UI derivations (`editor/vscode/media/workbench.js`), sliced out and
-run under node the way the rail-layout tests do. Four blocks, each marked off in the source:
-
-`signalChips` turns the three nowhere-to-attach signals (unplanned drift, unplaced forks, reverted
-work with no lane) into one chip each. The contract is a UI one: a chip is a hit target, so the thing
-a click does has to be the thing the reader pointed at, and the tooltip has to name it. It used to be
-one merged chip with one merged tooltip and one click that resolved a fork no matter which glyph you
-aimed at.
+run under node. Three blocks, each marked off in the source:
 
 `loopButtonState` derives the Save/Undo buttons from whichever verb is running in the host. They had
 no in-flight state at all, so a reader with no feedback clicks again.
@@ -49,48 +43,9 @@ def _node(snippet: str, tail: str):
 
 
 def _call(expr: str):
-    """Evaluate `expr` against the titlebar block (signalChips + loopButtonState)."""
-    return _node(_slice("function signalChips", "// ---- end-signals"),
+    """Evaluate `expr` against the titlebar block (loopButtonState)."""
+    return _node(_slice("function loopButtonState", "// ---- end-signals"),
                  f"console.log(JSON.stringify({expr}));\n")
-
-
-def _run(drift: list, forks: list, gap: dict) -> list:
-    return _call(f"signalChips({json.dumps(drift)}, {json.dumps(forks)}, {json.dumps(gap)})")
-
-
-def _forks(*symbols):
-    return [{"symbol": s} for s in symbols]
-
-
-# ── The titlebar signal chips ────────────────────────────────────────────────────────────────────
-def test_only_the_fork_chip_is_actionable():
-    """Pointing at reverted work must never fire fork resolution: the glyphs are separate chips and
-    only the fork one carries a symbol to act on."""
-    chips = _run([{"footprint": ["a.py::f"]}, {"footprint": ["b.py::g"]}],
-                 _forks("cart.py::apply_coupon"),
-                 {"op_count": 4, "symbols": ["cart.py::apply_coupon"]})
-    assert [c["glyph"] for c in chips] == ["◇2", "⑂1", "░4"]
-    assert [bool(c.get("symbol")) for c in chips] == [False, True, False]
-
-
-def test_the_fork_chip_names_the_fork_the_click_will_open():
-    chips = _run([], _forks("a.py::one", "b.py::two", "c.py::three"), {})
-    fork = next(c for c in chips if c["glyph"].startswith("⑂"))
-    assert fork["symbol"] == "a.py::one"
-    assert "a.py::one" in fork["title"] and "+2 more" in fork["title"]
-
-
-def test_the_gap_chip_counts_the_symbols_it_cannot_list():
-    syms = [f"cart.py::apply_coupon_{i}" for i in range(9)]
-    chips = _run([], [], {"op_count": 12, "symbols": syms})
-    title = chips[0]["title"]
-    assert "cart.py::apply_coupon_0" in title and "+5 more" in title
-    assert "cart.py::apply_coupon_8" not in title
-    assert "sgt undo" in title and "sgt restore" in title
-
-
-def test_no_signal_draws_no_chip():
-    assert _run([], [], {"op_count": 0, "symbols": []}) == []
 
 
 # ── The Save/Undo pair ───────────────────────────────────────────────────────────────────────────
@@ -479,18 +434,18 @@ def test_no_result_yet_reads_as_computing_never_as_safe():
     assert "computing" in _staged({"verb": "revert", "kind": "feature", "targetId": "f-a"})
 
 
-def test_back_to_here_counts_chapters_and_keeps_checking_honest():
+def test_back_to_here_counts_checkpoints_and_keeps_checking_honest():
     """The cross-feature blast accumulates one preview at a time; until the chain finishes the
     sentence must say the count is still firming up, not present a partial number as the total."""
     partial = _staged({"verb": "revert", "kind": "backto", "targetId": "f-a",
                        "refs": ["f-a@2", "f-a@1"], "opCount": 7, "blastCount": 1,
                        "blastDone": False, "res": {"ok": True}})
-    assert "removes 2 later chapters" in partial and "7 edits" in partial
+    assert "removes 2 later checkpoints" in partial and "7 edits" in partial
     assert "still checking" in partial and "≥1" in partial
     done = _staged({"verb": "revert", "kind": "backto", "targetId": "f-a",
                     "refs": ["f-a@2"], "opCount": 3, "blastCount": 0,
                     "blastDone": True, "res": {"ok": True}})
-    assert "no other feature touched" in done and "this chapter stays" in done
+    assert "no other feature touched" in done and "this checkpoint stays" in done
 
 
 # ── Chapter scope: what the action bar is FOR once a checkpoint is selected ──────────────────────
@@ -551,11 +506,11 @@ def _find(query, cap=None):
                  f"console.log(JSON.stringify(localFindHits({args})));\n")
 
 
-def test_typing_matches_features_chapters_and_symbols_without_a_round_trip():
+def test_typing_matches_features_checkpoints_and_symbols_without_a_round_trip():
     hits = _find("date")
     kinds = {(h["kind"], h["label"]) for h in hits}
     assert ("feature", "Date formatting") in kinds
-    assert ("chapter", "add date window filter") in kinds
+    assert ("checkpoint", "add date window filter") in kinds
     assert ("symbol", "format_date") in kinds
     # A subsystem is not a lane and not a target; it never appears as a hit.
     assert not any(h["label"] == "date suite" for h in hits)
@@ -568,12 +523,16 @@ def test_a_prefix_match_outranks_a_buried_substring():
 
 
 def test_every_hit_lands_somewhere():
-    """A hit is a starting point: each carries the feature to reveal, and a chapter carries the
-    exact checkpoint so the click lands on its car, not just the lane."""
+    """A hit is a starting point: each carries the feature to reveal, a checkpoint carries the
+    exact ref so the click lands on its car rather than the lane, and a symbol carries the file so
+    the click can open the code -- a result naming `metrics.py` that does not take you to
+    `metrics.py` is the search declining to finish its own sentence."""
     hits = _find("date")
     assert all(h["feature"] for h in hits)
-    chapter = next(h for h in hits if h["kind"] == "chapter")
-    assert chapter["checkpoint"] == "f-cart@0"
+    checkpoint = next(h for h in hits if h["kind"] == "checkpoint")
+    assert checkpoint["checkpoint"] == "f-cart@0"
+    symbol = next(h for h in hits if h["kind"] == "symbol")
+    assert symbol["file"] and symbol["symbol"].startswith(symbol["file"] + "::")
 
 
 def test_an_empty_query_answers_nothing_and_the_cap_holds():

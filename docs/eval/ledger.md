@@ -10923,3 +10923,236 @@ whole effect is that the work returns to the working copy, so the unguarded line
 announced "those edits are off the working copy too" over a tree that had just
 got them back. Replacing one false statement with another in the same session is
 a good argument for walking both branches of anything phrased as a consequence.
+
+## 2026-09-01 — a participant's own run of the shipped bundle: four defects and an interface pass
+
+Not a rehearsal. Somebody downloaded `study-*-b.tgz` (bundle `20260901-b`,
+`toolBuild: 79e6f795`) and tried to run the stages, and reported back that the
+stages could not be completed. Reproduced here by unpacking the same shipped
+tarballs -- every symptom below is off the artefact a participant gets, not off a
+working tree.
+
+## F134 -- `./stage N` deletes the participant's key before every stage
+
+`provision.py` writes `work/.env` (the `OPENAI_API_KEY` the history tool runs on)
+onto the participant's machine at setup. Every stage then begins with
+`reset_to`, whose second line is `git clean -qfd`. `.env` is untracked and is not
+in the project's `.gitignore` or in `.git/info/exclude`, so `git clean` removes
+it -- before the first command of every stage, in both projects.
+
+```
+$ ls -a work | tr '\n' ' '
+. .. .env .git .gitignore .sgt .study .venv README.md bikecount check check.py data stage
+$ ./stage 1 >/dev/null && ls -a work | tr '\n' ' '
+. .. .git .gitignore .sgt .study .venv README.md bikecount check check.py data stage
+```
+
+The participant's report was "when I try to revert it says no API key is set",
+which is the same event seen from the other end: with no key, sgt's target ladder
+cannot reach its natural-language rung, and its refusal for anything the
+deterministic rungs miss is `set OPENAI_API_KEY to enable natural-language
+targets`. They worked around it by writing the file out by hand between stages.
+
+`build_stages.sh` already keeps `/.study/`, `/stage` and `/check` out of clean's
+way through `.git/info/exclude`, and the reason `.env` was missed is that it is
+the one such file this repo never writes: it appears on the participant's machine
+long after a bundle is built. `.venv` is in the same position and survived only by
+accident -- `uv` writes a `.gitignore` holding `*` inside it.
+
+### Fix
+
+Both, in both places. `reset_to` cleans with `-e /.env -e /.venv/`, which holds
+for bundles already downloaded once the script is replaced; `build_stages.sh`
+adds the same two to the exclude list so newly built testbeds carry it too.
+
+## F135 -- restoring work nobody removed refuses, and names an anchor symbol while doing it
+
+Stage 3 asks the sgt arm to take one piece of work out. The participant reached
+for `sgt restore` first -- the wrong verb for that stage, and the answer to a
+wrong verb is where a tool says what it is for. It said:
+
+```
+✗ [restore] Event Day Handling — would leave two live versions of
+  footfall/metrics.py::__anchor__::_exclude_events: 5b6e3c62 and 5f8614b3 both
+  claim the same next version, refused (+6 more symbol(s))
+```
+
+`__anchor__` is a synthetic layout symbol. The reader typed the name of their own
+afternoon's work and was answered with two op-id prefixes and a chain-step
+collision on a symbol that does not exist in their code.
+
+### Why
+
+`plan_restore_op_set` re-admits every requested op that is not currently in the
+ideal. On a re-mined record -- which every shipped bundle is, since its per-commit
+ideals were written by whatever version recorded them and the live ideal is
+derived by the shipped one -- 7 of the theme's 31 ops are an older *spelling* of
+anchors and residues the live ops already hold. They are not missing work. Adding
+one puts two ops on the same `(symbol, before_version)` step, and the kernel
+correctly refuses the whole edit. The refusal was right and the plan was wrong:
+nothing had been removed, so the answer was that there is nothing to restore.
+
+The same shape reached the participant twice more. Their paraphrase was "it says
+not found, no matching" -- the second half of what a reader takes from a message
+about an anchor symbol.
+
+### Fix
+
+`_restorable` drops any requested op whose `(symbol, before_version)` step the
+current ideal already claims, before the closure is built and again over the
+layout siblings the closure pulls in from the provenance ideal (they enter by the
+same door). Nothing is lost by dropping one: the live op holds that step, restore
+never displaces live work, and re-admitting it would require removing what is
+there. A genuinely competing later edit claims a *different* step, so it never
+reaches this filter and still refuses downstream exactly as before.
+
+With the plan empty the verb now says so once and exits 0:
+
+```
+$ sgt restore "Event Day Handling"
+  nothing of Event Day Handling has been removed — there is nothing to restore.
+```
+
+A no-op preview used to reach the confirm path, draw an empty blast radius, print
+`restores 0 edits`, and ask `apply this restore? [y/N]` -- offering to do a thing
+it had just finished saying there was nothing to do. It short-circuits when the
+sentence is the whole answer, and only then: a no-op restore that still has a
+gap report (an earlier revert took work this restore does not bring back) keeps
+the full output, because that report is the reason anyone would run it.
+
+Stage 3 and stage 4 now complete end to end in both projects, verified off the
+shipped tarballs: revert → `./check 3` green, `./stage 4` → restore → `./check 4`
+green, bikecount and footfall.
+
+## F136 -- a revert that leaves the dashboard dead says so in a dim line in the middle
+
+`sgt revert "Event Day Marking"` (a feature, not the theme the stage names) exits
+0, prints `✓ revert applied`, and leaves `footfall/metrics.py` importing a module
+the revert deleted. The dashboard will not start. The participant's report was
+"a bunch of errors, can't even start the server".
+
+This is known and is a property of the testbed as much as the tool -- exactly two
+groups per project can be reverted with the app left running. What is fixable is
+that the tool knows: it prints `⚠ still references removed code (fix or revert
+separately)` before the `[y/N]`, as one dim line among a dozen, in the vocabulary
+of the record rather than of the consequence.
+
+### Fix
+
+Name the cost and the way back, on the line where the decision is still open:
+
+```
+⚠ code that stays still calls what this removes: footfall/metrics.py::_exclude_events, …
+  the project will not run until those are fixed — `sgt undo` puts it back
+```
+
+Not a refusal. Removing a feature whose dependents survive is a real thing to
+want; being told what it costs before the confirm is what was missing.
+
+## F137 -- the workbench answers "what did this change" with counts and no code
+
+The last of the participant's reports, and the one the other three were in the
+way of: "the search tells them it's at a place, and when looking at the
+checkpoints in that feature, the code changes did not show the lines that
+actually go wrong."
+
+Both halves were true.
+
+**The search.** A symbol result read `symbol  hourly_averages  footfall/metrics.py`
+and clicking it selected the lane -- it never opened `footfall/metrics.py`. A
+checkpoint result's detail column was the raw handle (`f-0252…@1`), which is the
+one string on the row a reader cannot use to decide whether it is their result.
+The two rungs also labelled the same symbol differently (`hourly_averages` from
+the local rung, `footfall/metrics.py::hourly_averages` from `sgt find`), so one
+thing appeared twice and the dedupe keyed on the label could not see it.
+
+**The panel.** `renderChangePanel` drew a file tree with per-entity `+N −M`
+counts, and the code was one click away in a diff editor that opens as a separate
+tab. The projection it was drawing from already carried both sides of every file
+in full.
+
+### Fix
+
+Search results carry the file and the full symbol, so a click opens the code at
+the definition (a text scan for `def`/`class <name>`, not a language server: the
+box has to land somewhere true in a project whose Python support may not have
+started). Both rungs spell a symbol the same way. Every row says what clicking it
+will do, and the kind is a glyph rather than a word in the same ink as the name.
+
+The change panel renders the changed lines under the entity that holds them --
+line number, sign, the line -- capped at ten per entity with the remainder named,
+`white-space: pre` so indentation survives, the editor's own diff colours so this
+and a real diff tab agree on which side is which. The fold threshold counts them,
+which it has to: 39 entities used to read as "short enough to leave open" and now
+draws four hundred rows.
+
+## The same pass, on the rest of what a participant sees
+
+Not defects. Every one of them is a surface that was in the way of the four
+above, found by opening the workbench and reading it as somebody with four
+minutes and a question about a wrong number.
+
+**The titlebar carried five controls for machinery nobody reading a history is
+engaged in**: a Timeline│Rail view toggle, a composition selector over
+HEAD-plus-sessions, an oracle chip, a `Plans M/N` chip with a popover, and a
+drift indicator drawn as a bare glyph. The oracle chip was a live control -- a
+plain click RAN the configured tiers. The participant's question was "what is
+oracle?", which is the correct question and not one this study is asking anyone
+to answer. All five are gone, with the code that existed only to serve them
+(`renderRail`, `episodeRailLayout`, `rollupEpisodes`, `signalChips`,
+`renderPlanRing`, `selectPlanSession`, the plans popover, and the JS-side rail
+parity tests, whose subject no longer exists -- `sgt log --rail` and the Python
+`episode_rail_layout` are untouched and still tested).
+
+**The feature action bar offered four ways to reorganise the record before
+either way to act on the code**: Rename, Merge into…, Split, Move ops…, and then
+Revert and Restore. A reader who reaches for the leftmost button to find out what
+it does has restructured their own graph. Two buttons now, and they are the two
+this surface is for.
+
+**The sidebar carried five views, two of them permanently empty here**: Forks (an
+inbox for chain forks) and Compositions (the sessions-and-proposals
+switch/land/publish surface, with a Publish-to-GitHub row one click deep in a
+panel somebody opened to look at their own history). Both removed; neither verb
+was, and both are asked for by name on the CLI.
+
+**The name of a piece of work was preceded by 64 hex characters of its id**,
+wrapped over three lines directly under the title. Nothing on this surface asks
+anyone to type an id.
+
+**The checkpoint list ended with `(run sgt intent build to name)`** whenever the
+names were fallbacks -- a maintenance instruction in the reader's way, for a job
+they did not ask to do.
+
+**One noun, two words.** A panel headed `Checkpoints · 10` sat directly above one
+reading `changed by this chapter`. "Chapter" is sgt's internal name for the same
+thing; it is gone from everything a reader sees.
+
+**Every workbench action reported itself twice** -- once through `onPhase` into
+the confirm bar where the decision was taken, and once as a VS Code notification.
+One click could stack three of them in the corner, over the part of the timeline
+the reader was watching to see what the action did. A caller with a surface of
+its own now owns its reporting and gets no notifications; the palette and the
+tree views, which have none, still get them. An applied action leaves its result
+on the bar for seven seconds instead.
+
+**The hovered checkpoint's name unfolded out of its bar** -- a container morph
+from the bar's own rectangle to the finished capsule, and back on leave. The
+intent was that the reveal should read as the thing under the cursor becoming its
+own name; at pointer speed it reads as the row rearranging itself, and a sweep
+along a lane is a queue of them. It fades now, 120ms, at its final size. The
+overlay, the lane's hue and the tick that keeps a clamped chip pointing at its
+bar are unchanged -- those carry the meaning, the morph never did.
+
+### Two things this pass found in the dev surfaces themselves
+
+`dev/smoke.js` had been dying on its first render for long enough that nothing
+below that line was being checked: the DOM shim's elements have no `.value`, and
+the find box reads its own value on every render. `dev/preview.html` carried its
+own three-node fixture with no `grid`, so the page it drew had an empty plot --
+the one thing a preview exists to rule out -- and supplied none of the
+`--vscode-*` tokens `workbench.css` actually reads, so every panel drew with no
+background and the find dropdown appeared transparent over the timeline. Both now
+build the same payload from `dev/fixture.js`, and the preview supplies a real
+Dark Modern token set. A preview that misrepresents the surface is worse than no
+preview: it is what a screenshot gets checked against.

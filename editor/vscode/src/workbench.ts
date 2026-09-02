@@ -174,25 +174,15 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
 </head>
 <body>
 <div id="app">
+  <!-- Five controls, and every one of them is something a reader of this history needs.
+       What used to be here as well: a Timeline│Rail view toggle, a composition selector over
+       HEAD-plus-sessions, an oracle chip, a Plans M/N chip with a popover, and a drift indicator
+       drawn as a bare glyph. Each was a live control -- the oracle chip RAN the tiers on click --
+       for machinery nobody reading a history is engaged in, and together they made the first
+       thing in the eyeline a row of terms that have to be dismissed before the work is visible. -->
   <div id="titlebar">
     <div class="tb-zone tb-nav">
-      <div id="viewSeg" class="view-seg" role="group" aria-label="view">
-        <button class="seg-btn" data-view="gantt" title="Feature timeline (Gantt)">▤ Timeline</button>
-        <button class="seg-btn" data-view="rail" title="Episode rail (what I did, in order)">◫ Rail</button>
-      </div>
       <button id="groupBtn" class="group-btn" title="Group rows by subsystem, or list features by what you touched last">Features</button>
-      <button id="compositionBtn" class="composition-btn">HEAD</button>
-    </div>
-    <div class="tb-divider"></div>
-    <div class="tb-zone tb-status">
-      <button id="oracleChip" class="oracle-chip" data-state="pending" title="oracle — click to run, alt-click to override">
-        <span class="oracle-dot"></span><span class="oracle-label">oracle</span>
-      </button>
-      <button id="plansChip" class="plans-chip" title="plan sessions — click for details">
-        <svg class="plans-ring" width="14" height="14" viewBox="-7 -7 14 14"></svg>
-        <span class="plans-label">Plans 0/0</span>
-      </button>
-      <span id="driftChip" class="drift-chip" hidden></span>
     </div>
     <div class="tb-zone tb-find">
       <input id="findBox" class="find-box" type="search" spellcheck="false"
@@ -205,7 +195,6 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
       <button id="saveBtn" class="btn-primary" title="sgt save — record and commit">Save</button>
       <button id="undoBtn" title="sgt undo">Undo</button>
     </div>
-    <div id="plansPopover" class="plans-popover" hidden></div>
   </div>
   <div id="main">
     <div id="rail"></div>
@@ -340,7 +329,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
         await this.openChangeDiff(msg.verb, msg.ref, msg.label, msg.path, msg.symbol);
         return;
       case "openFile":
-        await this.openFile(msg.path);
+        await this.openFile(msg.path, msg.symbol);
         return;
       case "find":
         await this.find(msg.query, msg.seq);
@@ -578,12 +567,12 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
         if (!r.ok) throw new Error(r.message || "split failed");
         this.postPhase(verb, ref, "refreshing");
         this.store.invalidate();
-        vscode.window.showInformationMessage(
+        this.postPhase(verb, ref, "done",
           `Split ${r.feature ?? ref} into a new feature ${r.new_feature ?? ""}.`.trim());
-        this.postPhase(verb, ref, "done");
       } catch (e: any) {
+        // No notification: the confirm bar draws the failure with its own Dismiss, and a toast
+        // beside it is the same sentence twice, in the corner, over the graph.
         this.postPhase(verb, ref, "failed", e.message);
-        vscode.window.showErrorMessage(e.message);
       }
       return;
     }
@@ -618,9 +607,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
         if (done < refs.length) post("applying", `${noun} ${done + 1} of ${refs.length}…`);
       } catch (e: any) {
         this.store.invalidate();
-        const msg = `Reverted ${done}/${refs.length} ${noun}(s); stopped at ${ref}: ${e.message}`;
-        post("failed", msg);
-        vscode.window.showWarningMessage(msg);
+        post("failed", `Reverted ${done}/${refs.length} ${noun}(s); stopped at ${ref}: ${e.message}`);
         return;
       }
     }
@@ -630,7 +617,6 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
       ? `reverted to "${label}" — ${done} later ${noun}(s) removed`
       : `reverted ${done} ${noun}(s)`;
     post("done", doneMsg);
-    vscode.window.showInformationMessage(`✓ ${doneMsg}`);
   }
 
   // The staged confirm bar's "Open diff": the PREVIEW tabs on demand rather than automatically on
@@ -951,10 +937,20 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
   // A `touches` chip is a hit target now. Opening the document is all this has to do: blame.ts
   // decorates whatever editor becomes active with the per-feature spans in identity color, so the
   // file arrives with this feature's own work already tinted.
-  private async openFile(relPath: string): Promise<void> {
+  private async openFile(relPath: string, symbol?: string): Promise<void> {
     const uri = vscode.Uri.joinPath(vscode.Uri.file(this.root), relPath);
     try {
-      await vscode.window.showTextDocument(uri, { preview: true });
+      const doc = await vscode.workspace.openTextDocument(uri);
+      const editor = await vscode.window.showTextDocument(doc, { preview: true });
+      // A search result that names a symbol opens ON that symbol. Opening the file at line 1 and
+      // leaving the reader to scroll is the search declining to finish its own sentence -- and on
+      // this project's files, the thing they searched for is usually below the fold.
+      const line = symbol === undefined ? -1 : findSymbolLine(doc, symbol);
+      if (line >= 0) {
+        const at = new vscode.Range(line, 0, line, 0);
+        editor.selection = new vscode.Selection(at.start, at.start);
+        editor.revealRange(at, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+      }
     } catch {
       // A path can be live in the ideal and absent from disk (a fold the working tree never got).
       vscode.window.showWarningMessage(`${relPath} is not in the working tree.`);
@@ -1011,4 +1007,36 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
   dispose(): void {
     this.disposables.forEach((d) => d.dispose());
   }
+}
+
+/**
+ * Where a symbol is defined in an open document, 0-based, or -1.
+ *
+ * Text, not a language server. The search box has to land on code in a project whose language
+ * support may not have started yet (or may not be installed at all), and a definition line is a
+ * shape this can read directly: `def name` / `class name` / `name =` at the start of a line. The
+ * first plain mention is the fallback, so a symbol this cannot parse still scrolls somewhere true
+ * rather than silently leaving the reader at line 1.
+ */
+function findSymbolLine(doc: vscode.TextDocument, symbol: string): number {
+  const name = String(symbol).split("::").pop() || "";
+  if (!name) {
+    return -1;
+  }
+  const defn = new RegExp(`^\\s*(?:async\\s+)?(?:def|class)\\s+${escapeRe(name)}\\b|^${escapeRe(name)}\\s*[:=]`);
+  let mention = -1;
+  for (let i = 0; i < doc.lineCount; i++) {
+    const text = doc.lineAt(i).text;
+    if (defn.test(text)) {
+      return i;
+    }
+    if (mention < 0 && text.includes(name)) {
+      mention = i;
+    }
+  }
+  return mention;
+}
+
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
