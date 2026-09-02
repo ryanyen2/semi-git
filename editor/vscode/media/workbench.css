@@ -30,8 +30,8 @@
 
      A lens NEVER dims on hover. Moving the cursor across a map is not a question, and a field that
      re-dims under every pointer move reads as flicker rather than as an answer. Dimming is the
-     response to a deliberate act -- a pinned lane, a search, a held preview -- and each of those
-     puts a banner on screen saying what receded and how to clear it. */
+     response to a deliberate act -- a search, a held preview -- and each of those puts a banner
+     on screen saying what receded and how to clear it. */
   --recede: 0.5;        /* a lens: context you can still read */
   --recede-deep: 0.38;  /* a held preview: the field goes further back, not out of reach */
 
@@ -390,44 +390,6 @@ svg.railsvg {
   pointer-events: none;
 }
 
-/* A feature label is a second, smaller click target inside a row that is itself clickable, and the
-   two do different things: the NAME pins a lens (dim the rest, keep this lane and what changes with
-   it), the ROW opens the lane in the inspector. That distinction was carried by nothing but an
-   underline on hover, so "what is the difference between clicking the name and clicking the row"
-   had no answer on screen. It now has three:
-     - hovering the name underlines it AND shows a ◉ in the gutter -- the same glyph the pinned
-       state and the banner use, so the affordance names its own outcome;
-     - the pinned name keeps the ◉ and goes semibold;
-     - pinning puts a banner over the plot saying what is dimmed and how to clear it.
-   The pinned name is NOT recolored. Hue is identity in this view (see the file header), and an
-   accent-blue label was the one place a lens borrowed the identity channel to say "state". */
-.glane-label-btn {
-  cursor: pointer;
-}
-
-.glane-label-btn:hover {
-  text-decoration: underline;
-}
-
-.glane-label-btn.spotlit {
-  font-weight: 600;
-}
-
-/* The lens glyph, drawn in the row gutter left of the name: present when the name is hovered or
-   pinned, so the control and its state read the same. */
-.glane-lens-mark {
-  fill: var(--fg);
-  font-size: 9px;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--dur-flick) var(--ease-both);
-}
-
-.glane-label-btn:hover + .glane-lens-mark,
-.glane-lens-mark.on {
-  opacity: 0.85;
-}
-
 /* The no-segments fallback track spanning a feature's lifetime [first,last]. */
 .gbar-track {
   fill-opacity: 0.14;
@@ -739,8 +701,7 @@ svg.railsvg {
   opacity: var(--recede);
 }
 
-.gantt.focus .glane.lit,
-.gantt.focus .glane.ctx {
+.gantt.focus .glane.lit {
   opacity: 1;
 }
 
@@ -841,10 +802,22 @@ svg.railsvg {
   stroke-dasharray: 3 3;
 }
 
+/* A hollow (already reverted) car inside a lane that is about to GAIN: a restore preview fills it
+   toward solid rather than draining it, which is the one picture that tells a restore from a revert
+   of the same chapter. Its own pulse, for the reason `gcar-arriving-pulse` exists further down --
+   `gcar-pending-pulse` breathes 0.14 to 0.30, and an animated property beats a declaration, so
+   borrowing it here overrode the `fill-opacity: 0.5` on the line above and drew the filling car
+   FAINTER than the 0.55 of a car nobody is touching. The fill is the whole statement; breathe
+   around it. */
 .gantt.preview .preview-target.preview-gaining .gcar-reverted {
   fill-opacity: 0.5;
   stroke-dasharray: 3 3;
-  animation: gcar-pending-pulse var(--beat-slow) ease-in-out infinite;
+  animation: gcar-filling-pulse var(--beat-slow) ease-in-out infinite;
+}
+
+@keyframes gcar-filling-pulse {
+  0%, 100% { fill-opacity: 0.42; }
+  50% { fill-opacity: 0.62; }
 }
 
 .gantt.preview .preview-target .glane-label {
@@ -882,8 +855,9 @@ svg.railsvg {
   animation: gcar-land var(--dur-slow) var(--ease-out);
 }
 
-/* The "N -> M" delta in the lane's op-count slot -- the plain replacement for "removes 64 ops from
-   X to Y." Amber when the lane loses ops, green when it gains. */
+/* The "N -> M ±D" delta in the lane's op-count slot -- the plain replacement for "removes 64 ops
+   from X to Y." Amber when the lane loses ops, green when it gains. The signed half is what makes
+   the pair readable at a glance: `26 → 23` and `22 → 26` are the same shape at the same width. */
 .gbar-count.preview-delta {
   font-weight: 700;
 }
@@ -896,10 +870,27 @@ svg.railsvg {
   fill: var(--land);
 }
 
-/* The same revert-closure ghosts + Focus & Morph overlay, on the episode rail's rows. A rail row has
-   no gbar-track/swatch, so the role reads on its dot (a colored ring in the role's channel -- --fg
-   target, --blast losing, --land gaining) and, for the held morph, the field recedes while the
-   affected rows keep full presence. Reuses the .ghost-*/.preview-* classes the Gantt paint sets. */
+/* ── Which WAY a preview goes, in motion ───────────────────────────────────────────────────────
+   Everything above marks WHICH lanes an edit touches, and that was very nearly the whole overlay:
+   a revert and a restore of the same work dimmed the same field, outlined the same lanes and
+   dashed the same chapters, leaving a two-digit count at the right edge of the pane as the only
+   thing that differed. The dashes DRIFT now, and they drift the way the work is moving --
+   backwards along the time axis while it is being taken out, forwards into the present while it
+   is coming back. That is the one job motion is genuinely good at here: carrying a direction a
+   still picture has to spell out in words. The words are still there (the caption and the signed
+   delta), so `prefers-reduced-motion` loses the drift and nothing else. Keyed on the car's own
+   direction class rather than on a mode, so it plays for a hover preview and a held stage alike.
+   Both directions declare the drift beside their own shape (see the out/in pair further down), so
+   this section holds only the keyframes -- a second rule for a selector that already has one is
+   how the duplicate `[hidden]` below came to silently win. */
+@keyframes dash-drift-out {
+  to { stroke-dashoffset: 12; }
+}
+
+@keyframes dash-drift-in {
+  to { stroke-dashoffset: -16; }
+}
+
 /* Pinned bottom-right like the off-screen pills. It began as a context tally ("N unchanged") and now
    also carries a preview's one-sentence consequence (split's cut, and the pre-target half of
    merge/move/rename), which is why it needs a width bound: those sentences run past 140 characters,
@@ -925,14 +916,33 @@ svg.railsvg {
               transform var(--dur-quick) var(--ease-out);
 }
 
+/* `display: block`, not `none`: a hidden element is out of the layout, and an element that leaves
+   the layout cannot transition, so the fade the rule above sets up needs the box kept. There was a
+   second, later copy of this selector setting `display: none`, which won on order and quietly
+   turned the fade back into a blink. The pill is absolutely positioned with `pointer-events: none`,
+   so a fully-transparent one is not in anybody's way. */
 .preview-context-pill[hidden] {
   display: block;
   opacity: 0;
   transform: translateY(4px);
 }
 
-.preview-context-pill[hidden] {
-  display: none;
+/* ── The held preview's direction, in the one sentence on the field ────────────────────────────
+   Same two channels the affected lanes wear, so the caption and the picture are one statement:
+   --blast while work is leaving, --land while it is coming back. The stripe is on the leading
+   edge because it has to be readable in peripheral vision -- the reader's eye is on the plot. */
+.preview-context-pill.dir-out,
+.preview-context-pill.dir-in {
+  color: var(--fg);
+  border-left-width: 3px;
+}
+
+.preview-context-pill.dir-out {
+  border-left-color: var(--blast);
+}
+
+.preview-context-pill.dir-in {
+  border-left-color: var(--land);
 }
 
 /* The armed merge/move mode, stated. Same top-centered card the refusal overlay uses -- both are
@@ -1316,6 +1326,10 @@ svg.railsvg {
   .preview-context-pill.pending,
   .confirm-step.live,
   .glane.settle-flash,
+  /* The settled lane's direction edge, with it: the receipt's own sentence names the verb in the
+     past tense, so nothing about what happened depends on having watched it happen. (`.gcar` above
+     already covers the dash drift -- it is on the cars, and `!important` outranks its specificity.) */
+  .glane.settle-flash .gbar-track,
   /* The name still appears on hover -- it is the content, not the flourish. Only the grow is cut,
      and the retreat with it (`hideCarChip` removes the node outright under reduced motion). */
   .gchip,
@@ -1657,8 +1671,17 @@ svg.railsvg {
    A consequence preview shells out and can be a second away; the row under the cursor breathes
    quietly and the pill states what is being computed. Status stays hue-free (opacity/motion), per
    the color=identity contract. Appears only after a grace period (see PENDING_GRACE_MS) so fast,
-   cached answers never flash a wait state. */
-.glane.preview-pending,
+   cached answers never flash a wait state.
+
+   The rule and its keyframes had been merged into one selector list -- the same accident that had
+   killed `settle-arrive` -- so the browser dropped the block whole and `pending-breathe` was never
+   defined. That took out all THREE of its consumers, not just this one: the pending row below, the
+   `.pending` pill's breathe, and `.confirm-step.live` in the confirm bar, which is the "busy with
+   what, and how far along" indicator of an apply in progress. None of them had ever animated. */
+.glane.preview-pending {
+  animation: pending-breathe var(--beat) ease-in-out infinite;
+}
+
 @keyframes pending-breathe {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.55; }
@@ -1757,9 +1780,23 @@ svg.railsvg {
 }
 
 /* The receipt an applied action leaves on the bar for a few seconds. It reports something that has
-   already happened, so it wears the settled hue, not a verb's warning colour. */
+   already happened, so it wears the settled hue, not a verb's warning colour -- and it now names
+   the verb in the past tense ("Reverted" / "Restored"), in the direction's own channel, because
+   "Done" was the one word that could not tell the reader which of the two they had just done. */
 .confirm-verb.done {
   color: var(--land);
+}
+
+.confirm-verb.done.out {
+  color: var(--blast);
+}
+
+.confirm-verb.done.in {
+  color: var(--land);
+}
+
+.confirm-verb.done::before {
+  content: "✓ ";
 }
 
 .confirm-progress.done .confirm-detail {
@@ -1782,11 +1819,39 @@ svg.railsvg {
   white-space: nowrap;
 }
 
+/* A refusal is not a summary of a proposal -- there is no proposal. It is the answer, so it reads
+   at full strength rather than in the dim register a consequence line uses, and the bar wears the
+   --blast edge so the shape of it is legible before the sentence is. It also WRAPS: a consequence
+   line can be clipped because the graph behind it says the same thing, and a refusal cannot,
+   because the sentence is all there is. */
+.confirm-bar.refused {
+  border-color: var(--blast);
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.confirm-summary.refused {
+  color: var(--fg);
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  flex: 1 1 24ch;
+}
+
+/* Where the Apply button used to be greyed out -- on its own row, because it is a sentence. A dead
+   control reads as "loading" or "not allowed here"; the next move reads as the next move. */
+.confirm-way-out {
+  flex: 1 0 100%;
+  color: var(--blast);
+  font-size: 11px;
+}
+
 .confirm-actions {
   display: flex;
   align-items: center;
   gap: 6px;
   flex: 0 0 auto;
+  min-width: 0;
 }
 
 .confirm-btn {
@@ -1899,15 +1964,25 @@ svg.railsvg {
               stroke-dasharray var(--dur-slow) var(--ease-both);
 }
 
+/* The out/in pair is the load-bearing distinction on this surface, and at strip scale -- a 6px bar
+   a few pixels wide -- 0.12 against 0.55 fill was not one. Both were "a thin dashed bar", which is
+   why a revert preview and a restore preview read as the same picture. Pushed apart to the ends of
+   the channel: a leaving chapter is an empty outline, an arriving one is nearly full. The dash
+   stays on both, because in this file's grammar dash means "not yet true" and that is true of
+   either direction; the LENGTH of the dash is what differs, so the two are told apart by shape as
+   well as by weight -- long strokes with small gaps for something present and arriving, short
+   ticks with wide gaps for something being taken away. */
 .gcar-wrap.gcar-preview-out .gcar {
-  stroke-dasharray: 3 3;
-  stroke-width: 1.2;
-  fill-opacity: 0.12;
+  stroke-dasharray: 2 4;
+  stroke-width: 1.4;
+  fill-opacity: 0.04;
+  /* No pulse: it says "will exist", which is the opposite of what is happening here. */
+  animation: dash-drift-out var(--beat) linear infinite;
 }
 
 /* Partially-emptied chapter: some of its edits survive this verb, so it half-drains. */
 .gcar-wrap.gcar-preview-out.gcar-preview-partial .gcar {
-  fill-opacity: 0.45;
+  fill-opacity: 0.4;
 }
 
 .gcar-wrap.gcar-preview-out .gcar-cell {
@@ -1920,15 +1995,37 @@ svg.railsvg {
   text-decoration: line-through;
 }
 
+/* The pulse says "will exist"; the drift says which way it is travelling. Both, composed, because
+   dropping either would make an arriving chapter read as one that is merely being touched.
+   The pulse is this direction's OWN, and it has to be: `gcar-pending-pulse` breathes fill-opacity
+   between 0.14 and 0.30, and an animated property beats the rule's own declaration -- so composing
+   it here quietly threw away the `fill-opacity: 0.82` above and drew the arriving chapter at 0.14
+   to 0.30, against the leaving one's 0.04. That is the distinction this whole pair exists to make,
+   lost to a keyframe borrowed from a different state. Breathe AROUND the weight instead of
+   replacing it: the car stays nearly full, and what moves is the last tenth of its fill. */
 .gcar-wrap.gcar-preview-in .gcar {
-  stroke-dasharray: 3 3;
-  stroke-width: 1.2;
-  fill-opacity: 0.55;
-  animation: gcar-pending-pulse var(--beat-slow) ease-in-out infinite;
+  stroke-dasharray: 6 2;
+  stroke-width: 1.4;
+  fill-opacity: 0.82;
+  animation: gcar-arriving-pulse var(--beat-slow) ease-in-out infinite,
+             dash-drift-in var(--beat) linear infinite;
+}
+
+@keyframes gcar-arriving-pulse {
+  0%, 100% { fill-opacity: 0.72; }
+  50% { fill-opacity: 0.9; }
 }
 
 .gcar-wrap.gcar-preview-in.gcar-preview-partial .gcar {
-  fill-opacity: 0.35;
+  fill-opacity: 0.45;
+}
+
+/* A chapter coming back keeps its label readable -- the mirror of the strike-through a leaving one
+   wears. Without this the two directions agreed on the one piece of text in the strip. */
+.gcar-wrap.gcar-preview-in .gcar-label,
+.gcar-wrap.gcar-preview-in .gcar-tag {
+  opacity: 1;
+  font-weight: 600;
 }
 
 .gcar-wrap.gcar-splitting {
@@ -1995,13 +2092,45 @@ svg.railsvg {
 
 /* ── The receipt: a lane settling after its staged action landed ───────────────────────────────
    One-shot, subtle: the rewritten lane re-arrives rather than the graph silently having changed
-   somewhere. */
-.glane.settle-flash,
+   somewhere.
+
+   This rule and the keyframes it names had been merged into one selector list -- `.glane
+   .settle-flash,` immediately followed by `@keyframes settle-arrive {` -- which is not a valid
+   selector, so the browser discarded the block whole: the animation was never defined and the
+   class `workbench.js` has always set did nothing. The last of the four moments a revert or a
+   restore passes through was therefore the one with no paint at all, which is most of the reason
+   "after applying" was indistinguishable from "before applying".
+
+   The flash is also DIRECTIONAL now, in the same two channels the preview used: a lane that lost
+   work settles out of the --blast side, a lane that got it back lands from the --land side. The
+   outline is the carrier, not the fill, so identity hue is untouched. */
+.glane.settle-flash {
+  animation: settle-arrive var(--dur-slow) var(--ease-out);
+}
+
+.glane.settle-flash.settle-out .gbar-track {
+  animation: settle-edge-out var(--beat) var(--ease-out);
+}
+
+.glane.settle-flash.settle-in .gbar-track {
+  animation: settle-edge-in var(--beat) var(--ease-out);
+}
+
 @keyframes settle-arrive {
   0% { opacity: 0.25; }
   35% { opacity: 1; }
   55% { opacity: 0.75; }
   100% { opacity: 1; }
+}
+
+@keyframes settle-edge-out {
+  0% { stroke: var(--blast); stroke-width: 2px; }
+  100% { stroke-width: 1px; }
+}
+
+@keyframes settle-edge-in {
+  0% { stroke: var(--land); stroke-width: 2px; }
+  100% { stroke-width: 1px; }
 }
 
 /* ── Chapter-scoped action bar ─────────────────────────────────────────────────────────────────

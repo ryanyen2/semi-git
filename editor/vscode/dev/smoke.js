@@ -50,6 +50,11 @@ class El {
   set className(v) { this._classes = new Set(String(v).split(/\s+/).filter(Boolean)); }
   setAttribute(k, v) { this.attrs[k] = String(v); if (k === "class") this.className = v; }
   getAttribute(k) { return this.attrs[k] != null ? this.attrs[k] : null; }
+  // The preview morph stashes each lane's resting op-count under `data-orig` so backing out can put
+  // it back, and asks first whether one is already there. Without these the harness died the moment
+  // a preview was staged -- on scaffolding, not on the render logic it is here to check.
+  hasAttribute(k) { return this.attrs[k] != null; }
+  removeAttribute(k) { delete this.attrs[k]; }
   set textContent(v) { this._text = String(v); this.children = []; }
   // Aggregates descendants, like the real thing. A `<text>` that carries its content in `<tspan>`
   // children (the checkpoint chip) read as empty under a getter that returned only its own `_text`,
@@ -202,6 +207,12 @@ function feed(msg) {
   ALL.length = 0; // reset registry so counts reflect this render only
   // re-collect existing fixed nodes
   Object.values(byId).forEach((e) => ALL.push(e));
+  dispatch(msg);
+}
+
+// A host message that does NOT re-render the graph (a preview answer, an apply phase): it paints
+// over the rail that is already there, so the registry has to survive it.
+function dispatch(msg) {
   global.window.dispatchEvent(new global.MessageEvent("message", { data: msg }));
 }
 
@@ -376,15 +387,12 @@ try {
       `${selectedCar.length} car(s), ${selectedRow.length} row(s)`);
   }
 
-  // Clicking a feature LABEL spotlights it (a viewing toggle, not a feature-select): the svg goes
-  // into focus mode, without throwing.
-  const labelBtn = byId.rail.querySelectorAll(".glane-label-btn").find((n) => n._listeners && n._listeners.click);
-  check("feature label is its own click target", !!labelBtn);
-  if (labelBtn) {
-    labelBtn._listeners.click.forEach((fn) => fn(noopEv));
-    check("label click spotlights (svg enters focus mode)",
-      byId.rail.querySelector("svg").classList.contains("focus"));
-  }
+  // A feature's NAME is not a second click target inside its row: it used to pin a lens (dim every
+  // other lane) on click, which is a large answer to a click that in this view means "show me this
+  // feature". The whole row is one target now, and nothing in the gutter claims otherwise.
+  check("feature label is not its own click target",
+    byId.rail.querySelectorAll(".glane-label-btn").length === 0
+    && byId.rail.querySelectorAll(".glane-lens-mark").length === 0);
   // ── The forecast band: anticipated work drawn as cars right of the `now` rule ────────────────
   // Both kinds of not-yet-real work (uncommitted edits, pending plan steps) must render in the CAR
   // grammar, in one band, NOT as the old dashed underline + bare `+N` badge. Feed a composition that
@@ -630,6 +638,322 @@ try {
     check("a new hover cancels the retreat in progress", trailing.length === 0,
       `${trailing.length} retreating chip(s) left behind`);
   }
+
+  // ── A held confirm does not make the timeline unreadable ──────────────────────────────────────
+  // Staging a revert/restore holds a consequence on the field and asks a question about it. Reading
+  // is not previewing, so pointing at a neighbouring chapter while deciding has to keep working:
+  // the hover used to return early on `stagedAction`, which left the OS `<title>` tooltip -- a
+  // second late, drawn over the timeline it describes -- as the only way to identify anything on
+  // screen at the exact moment the reader most needs to. Nothing here previews or cancels: the
+  // staged paint, and the bar carrying the question, both have to survive the hover.
+  console.log("\nreading under a held confirm:");
+  // Not the lane an earlier test already selected: a click on that one is a DESELECT (single-select
+  // toggles), which empties the detail panel and leaves nothing to stage from.
+  const laneWithCars = byId.rail.querySelectorAll(".glane")
+    .find((g) => /^f-/.test(g.getAttribute("data-id") || "") && g.querySelector(".gcar-wrap")
+      && !g.classList.contains("selected"));
+  if (!laneWithCars || !laneWithCars._listeners.click) {
+    check("a feature lane with chapters exists to stage from", false, "none found in the fixture");
+  } else {
+    laneWithCars._listeners.click.forEach((fn) => fn(noopEv)); // select it: the inspector lists its checkpoints
+    const rewind = byId.inspector.querySelectorAll(".checkpoint-rewind")
+      .find((b) => b._listeners && b._listeners.click);
+    check("the detail panel offers a checkpoint action", !!rewind);
+    if (rewind) {
+      rewind._listeners.click.forEach((fn) => fn(noopEv)); // stage the confirm
+      check("the checkpoint action stages a confirm", byId.confirmBar.hidden === false);
+      const car = byId.rail.querySelectorAll(".gcar-wrap")
+        .find((c) => c._listeners && c._listeners.mouseenter);
+      car._listeners.mouseenter.forEach((fn) => fn({}));
+      check("a chapter still highlights under a held confirm", car.classList.contains("gcar-hovered"));
+      const chip = byId.rail.querySelector(".gchip-layer").querySelector(".gchip-name");
+      check("a chapter still names itself under a held confirm",
+        !!chip && String(chip.textContent).trim().length > 0, chip ? chip.textContent : "no chip");
+      check("the question survives the hover", byId.confirmBar.hidden === false);
+      car._listeners.mouseleave.forEach((fn) => fn({}));
+      check("the question survives the leave", byId.confirmBar.hidden === false);
+    }
+  }
+
+  // A revert and a restore of the same work used to draw the same picture: the same dashed cars,
+  // the same dimmed field, the same banner, and an unsigned `N → M` at the right edge of the pane
+  // as the only difference. Every assertion here is one of the channels that now carries the
+  // direction -- the paint on the target lane, the sign on the delta, the state each chapter is
+  // drawn in, and the sentence on the field. If a future change collapses any of them back onto a
+  // shared appearance, this is where it shows up.
+  console.log("\nrevert vs restore read differently:");
+  // Staged through the theme banner's whole-group verbs, not a lane's action bar: the bar offers
+  // Restore only when something in that lane is actually retired (nothing is, in this fixture),
+  // and the banner is the surface the reported flow used anyway -- click the cross-feature work,
+  // then Revert this work / Restore.
+  for (const lane of byId.rail.querySelectorAll(".glane")) {
+    if (lane.classList.contains("selected") && lane._listeners.click) {
+      lane._listeners.click.forEach((fn) => fn(noopEv)); // deselect: the idle panel lists the groups
+    }
+  }
+  const dirThemeRow = byId.inspector.querySelectorAll(".theme-row")[0];
+  if (dirThemeRow && dirThemeRow._listeners.click) dirThemeRow._listeners.click.forEach((fn) => fn({}));
+  // A member lane, not a compressed context one: the focus draws the quiet rows as density strips
+  // with no chapter cars, and the chapter half of the preview is exactly what has to be checked.
+  const dirLane = byId.rail.querySelectorAll(".glane")
+    .find((g) => /^f-/.test(g.getAttribute("data-id") || "")
+      && !g.classList.contains("glane-quiet") && g.querySelector(".gcar-wrap"));
+  const dirBtn = (verb) => byId.themeBanner.querySelectorAll("button")
+    .find((b) => String(b.textContent) === (verb === "restore" ? "Restore" : "Revert this work"));
+  if (!dirLane || !dirBtn("revert") || !dirBtn("restore")) {
+    check("a focused cross-feature group offers both directions", false,
+          `lane=${!!dirLane} banner=[${byId.themeBanner.querySelectorAll("button").map((b) => b.textContent)}]`);
+  } else {
+    const fid = dirLane.getAttribute("data-id");
+    const segs = (compose.intent.segments || []).filter((s) => s.feature_id === fid);
+    const ops = segs.flatMap((s) => s.op_ids || []);
+    // One staged preview per direction, answered with the same op set moving the other way, so the
+    // only thing that differs between the two readings below is the verb.
+    const stage = (verb) => {
+      posted = [];
+      dirBtn(verb)._listeners.click.forEach((fn) => fn(noopEv));
+      const ask = posted.filter((m) => m.type === "previewVerb").pop();
+      if (!ask) return null;
+      const back = verb === "restore";
+      // Dispatched directly, NOT through `feed`: `feed` clears the element registry so a render's
+      // node counts are its own, and a `previewResult` does not re-render the graph -- routing it
+      // through `feed` would empty the very rail this then reads the preview paint off.
+      dispatch({
+        type: "previewResult", seq: ask.seq,
+        result: {
+          ok: true, verb, target: fid, forked: false, message: "", files: {}, affected: [],
+          affected_symbols: [], target_ops: ops,
+          removed: back ? [] : ops, added: back ? ops : [],
+          focus: {
+            so_what: "", edges: [], context_count: 7,
+            nodes: [{ feature_id: fid, label: "t", role: "target",
+                      ops_before: back ? 3 : 26, ops_after: back ? 26 : 3 }],
+          },
+        },
+      });
+      // `findRow` in the webview takes the LAST match for a data-id, so read the same way rather
+      // than the first: a stale row from a previous render must not be what this asserts against.
+      const rows = byId.rail.querySelectorAll(".glane").filter((g) => g.getAttribute("data-id") === fid);
+      const row = rows[rows.length - 1];
+      const count = row && row.querySelector(".gbar-count");
+      return {
+        cls: row ? String(row.className || "") : "",
+        count: count ? String(count.textContent) : "",
+        cars: byId.rail.querySelectorAll(".gcar-wrap")
+          .map((w) => String(w.className || "")).filter((c) => /gcar-preview-(in|out)/.test(c)),
+        say: String(byId.previewContext.textContent || ""),
+      };
+    };
+    const out = stage("revert");
+    // Cancel the held stage: a second stageAction would work, but leaving one held would make the
+    // restore reading depend on the revert reading's teardown.
+    const cancel = byId.confirmBar.querySelectorAll("button").find((b) => String(b.textContent) === "Cancel");
+    if (cancel && cancel._listeners.click) cancel._listeners.click.forEach((fn) => fn(noopEv));
+    const back = out ? stage("restore") : null;
+    if (!out || !back) {
+      check("both directions can be staged from the action bar", false,
+            `revert=${!!out} restore=${!!back} (the bar offers Restore only when something is retired)`);
+    } else {
+      check("the target lane is painted losing one way and gaining the other",
+            /preview-losing/.test(out.cls) && /preview-gaining/.test(back.cls),
+            `revert=${out.cls} | restore=${back.cls}`);
+      check("the op delta is signed, so the pair needs no arithmetic",
+            /−\d/.test(out.count) && /\+\d/.test(back.count), `revert="${out.count}" restore="${back.count}"`);
+      check("an affected chapter is drawn leaving one way and arriving the other",
+            out.cars.length > 0 && back.cars.length > 0
+              && out.cars.every((c) => /gcar-preview-out/.test(c))
+              && back.cars.every((c) => /gcar-preview-in/.test(c)),
+            `revert=[${out.cars}] restore=[${back.cars}]`);
+      check("the sentence on the field names the verb",
+            /^Revert · −/.test(out.say) && /^Restore · \+/.test(back.say),
+            `revert="${out.say}" restore="${back.say}"`);
+
+      // The seam between two changes that landed together: chapters are hoverable under a held
+      // confirm now, and the direction sentence lives in the pill that hover used to own. The
+      // hover's own retract is scoped to the sentence IT wrote (`identity`), so a swept chapter
+      // must not take the held preview's caption with it -- if that scoping is ever dropped, the
+      // reader loses the one statement of direction on the field by moving the mouse.
+      const hoverCar = byId.rail.querySelectorAll(".gcar-wrap")
+        .find((c) => c._listeners && c._listeners.mouseenter && c._listeners.mouseleave);
+      if (hoverCar) {
+        hoverCar._listeners.mouseenter.forEach((fn) => fn({}));
+        hoverCar._listeners.mouseleave.forEach((fn) => fn({}));
+        check("sweeping a chapter does not wipe the held preview's direction caption",
+              String(byId.previewContext.textContent || "") === back.say
+                && byId.previewContext.hidden === false,
+              `after the sweep: "${byId.previewContext.textContent}" (was "${back.say}")`);
+      }
+
+      // The third and fourth moments. Applying used to leave the bar saying "Done", which is the
+      // one word that cannot tell a reader which of the two directions they just took -- and the
+      // lane's settle flash, which is the only mark left in the graph itself, named no direction
+      // either (and, as it turned out, could not play at all: its CSS rule and the keyframes it
+      // names had been merged into one invalid selector and dropped by the parser).
+      const apply = byId.confirmBar.querySelectorAll("button").find((b) => String(b.textContent) === "Restore");
+      if (!apply || !apply._listeners.click) {
+        check("a staged restore offers Apply", false, "no enabled Restore in the bar");
+      } else {
+        apply._listeners.click.forEach((fn) => fn(noopEv));
+        for (const phase of ["checking", "applying", "refreshing"]) {
+          dispatch({ type: "applyProgress", verb: "restore", ref: fid, phase });
+        }
+        dispatch({ type: "applyProgress", verb: "restore", ref: fid, phase: "done",
+                   detail: "restored 23 edit(s)" });
+        check("the receipt names the direction, not just that something finished",
+              /Restored/.test(String(byId.confirmBar.textContent)),
+              String(byId.confirmBar.textContent));
+        // The settle flash lands on the next state push, which is where the rewritten lane exists.
+        feed({ type: "state", compose });
+        const settled = byId.rail.querySelectorAll(".glane").filter((g) => g.classList.contains("settle-flash"));
+        check("the lane that changed settles, in the direction it moved",
+              settled.length > 0 && settled.every((g) => g.classList.contains("settle-in")),
+              settled.map((g) => g.className).join(" ; ") || "nothing settled");
+      }
+    }
+  }
+
+  // A refusal is the other thing this bar has to be able to say. `renderConfirmBar` disabled Apply
+  // on `ok:false` and left it there greyed out, which reads as "loading" or "not allowed" rather
+  // than "sgt answered no" -- and the two ways out of the one-live-version rule were shown only on
+  // the hover path, i.e. never at the moment somebody is actually blocked.
+  console.log("\na refused stage says why, and what to do:");
+  // The focus from the section above survives the state push, and clicking the group again would
+  // TOGGLE it off -- so only enter one if the banner is not already offering its verbs.
+  const banded = () => byId.themeBanner.querySelectorAll("button").find((b) => String(b.textContent) === "Restore");
+  if (!banded()) {
+    const refuseRow = byId.inspector.querySelectorAll(".theme-row")[0];
+    if (refuseRow && refuseRow._listeners.click) refuseRow._listeners.click.forEach((fn) => fn({}));
+  }
+  const rBtn = banded();
+  if (!rBtn || !rBtn._listeners.click) {
+    check("a focused cross-feature group offers Restore to refuse", false, "no banner Restore");
+  } else {
+    posted = [];
+    rBtn._listeners.click.forEach((fn) => fn(noopEv));
+    const ask = posted.filter((m) => m.type === "previewVerb").pop();
+    dispatch({
+      type: "previewResult", seq: ask.seq,
+      result: {
+        ok: false, forked: true, verb: "restore", target: "pkg/metrics.py::__residue__",
+        message: "would leave two live versions of pkg/metrics.py::__residue__",
+        removed: [], added: [], affected_symbols: [], files: {},
+      },
+    });
+    const text = String(byId.confirmBar.textContent);
+    const btns = byId.confirmBar.querySelectorAll("button").map((b) => String(b.textContent));
+    check("the reason is on the bar, where the click was", /two live versions/.test(text), text);
+    check("no dead Apply is offered", !btns.includes("Restore"), btns.join(" | "));
+    check("the way out is named", /way out: revert the live version first/.test(text), text);
+    check("the bar reads as a refusal", byId.confirmBar.classList.contains("refused"));
+    // ...and NOT in the top-centered refusal card, which sits exactly where the theme banner does.
+    check("the refusal does not also draw over the banner", byId.previewRefusal.hidden === true);
+  }
+
+  // ── The stylesheet, audited as text ───────────────────────────────────────────────────────────
+  // Three ways this file has silently lost a rule, all of them shipped, none of them visible to
+  // `tsc`, to this harness's render path, or to a reader skimming the diff. A browser recovers from
+  // bad CSS by dropping things quietly, so the only way to catch these is to read the source.
+  console.log("\nstylesheet:");
+  const cssText = fs.readFileSync(path.join(__dirname, "..", "media", "workbench.css"), "utf8");
+
+  // 1. A comment that ends early. `.ghost-*/.preview-*` inside prose closes the comment at the
+  // `*/`, and the words after it become a selector that swallows the NEXT rule's whole block. That
+  // is what killed `.preview-context-pill { position: absolute }` for a month: the pill became a
+  // grid item, claimed the inspector's column, and the pane relaid out around it every time
+  // somebody hovered a checkpoint.
+  const stripped = [];
+  for (let i = 0, line = 1; i < cssText.length; ) {
+    if (cssText.startsWith("/*", i)) {
+      const j = cssText.indexOf("*/", i + 2);
+      if (j < 0) { stripped.push(["\u0000unterminated", line]); break; }
+      line += cssText.slice(i, j + 2).split("\n").length - 1;
+      i = j + 2;
+      continue;
+    }
+    if (cssText[i] === "\n") line++;
+    stripped.push([cssText[i], line]);
+    i++;
+  }
+  const strays = stripped
+    .map(([c, line], k) => (c === "*" && (stripped[k + 1] || [])[0] === "/" ? line : 0))
+    .filter(Boolean);
+  check("no comment ends early (a stray */ eats the next rule)", strays.length === 0,
+    `line(s) ${strays.join(", ")}`);
+
+  // 2. A rule that declares a property AND composes a keyframe that animates the same property.
+  // The animation wins, so the declaration is decoration -- which is how an ARRIVING chapter came
+  // to be drawn at the fill of a leaving one, borrowing a pulse written for a much fainter state.
+  const declText = stripped.map(([c]) => c).join("");
+  const frames = new Map();
+  for (const m of declText.matchAll(/@keyframes\s+([\w-]+)\s*\{([\s\S]*?)\n\}/g)) {
+    const vals = [...m[2].matchAll(/fill-opacity:\s*([\d.]+)/g)].map((v) => Number(v[1]));
+    if (vals.length) frames.set(m[1], [Math.min(...vals), Math.max(...vals)]);
+  }
+  const overridden = [];
+  for (const m of declText.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const sel = m[1].trim(), body = m[2];
+    if (sel.startsWith("@") || sel.includes("%")) continue;
+    const declared = /fill-opacity:\s*([\d.]+)/.exec(body);
+    if (!declared) continue;
+    for (const name of (body.match(/animation:\s*([\s\S]*?);/) || ["", ""])[1]
+      .split(",").map((a) => a.trim().split(/\s+/)[0]).filter(Boolean)) {
+      const band = frames.get(name);
+      const v = Number(declared[1]);
+      if (band && (v < band[0] || v > band[1])) {
+        overridden.push(`${sel} declares ${v} but ${name} animates ${band[0]}-${band[1]}`);
+      }
+    }
+  }
+  check("no rule's fill-opacity is thrown away by the keyframe it composes",
+    overridden.length === 0, overridden.join("; "));
+
+  // 3. The same selector written twice at the TOP level, both times setting the same property.
+  // The later copy wins on order regardless of which one the author was looking at -- a duplicate
+  // `.preview-context-pill[hidden]` set `display: none` under one that set `display: block` for a
+  // fade, so the fade had never once played. Top level only, and by design: redefining a property
+  // for the same selector inside a `@media`/`@container` block is how this file does responsive
+  // layout and reduced motion, and that is the opposite of a mistake.
+  const props = new Map();
+  {
+    let depth = 0, prelude = "", atDepth = 0, sel = null;
+    for (let i = 0; i < declText.length; i++) {
+      const ch = declText[i];
+      if (ch === "{") {
+        depth++;
+        const head = prelude.trim().replace(/\s+/g, " ");
+        prelude = "";
+        if (depth === 1 && head.startsWith("@")) { atDepth = 1; sel = null; continue; }
+        // A rule is top-level when nothing encloses it, or when only an at-rule does.
+        sel = depth === 1 || (depth === 2 && atDepth === 1) ? head : null;
+        if (depth === 2 && atDepth === 1) sel = null; // inside a media/container query: skip
+        continue;
+      }
+      if (ch === "}") {
+        if (depth === 1) atDepth = 0;
+        depth--;
+        prelude = "";
+        sel = null;
+        continue;
+      }
+      if (depth === 1 && sel) {
+        // Collect the declaration block one char at a time, splitting on ";".
+        const semi = declText.indexOf(";", i);
+        const close = declText.indexOf("}", i);
+        if (semi === -1 || (close !== -1 && close < semi)) { i = close - 1; continue; }
+        const prop = declText.slice(i, semi).split(":")[0].trim();
+        if (prop && !prop.startsWith("/")) {
+          const key = `${sel} :: ${prop}`;
+          props.set(key, (props.get(key) || 0) + 1);
+        }
+        i = semi;
+        continue;
+      }
+      if (depth === 0) prelude += ch;
+    }
+  }
+  const clashes = [...props].filter(([, n]) => n > 1).map(([k]) => k);
+  check("no top-level selector sets the same property in two rules", clashes.length === 0,
+    clashes.join("; "));
 
   console.log(failures === 0 ? "\nSMOKE OK" : `\nSMOKE FAILED (${failures})`);
   process.exit(failures === 0 ? 0 : 1);
