@@ -385,6 +385,9 @@ PY
     # just-rebuilt state: the staging copy sits at study/full and a rebuild
     # records no removals, so stage 4's restore inverse is untouched.
     echo "  Refreshing the pristine .sgt snapshot to the rebuilt tree."
+    # Without its undo stack: the source repo's journal carries the testbed's own
+    # build-time edits, and a participant's second `sgt undo` would replay one.
+    rm -f "$staging/work/.sgt/local/ideal_journal.json"
     rm -f "$staging/work/.study/sgt-pristine.tar"
     tar -cf "$staging/work/.study/sgt-pristine.tar" -C "$staging/work" .sgt
 
