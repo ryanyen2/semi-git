@@ -658,7 +658,14 @@ ${storyTable(w)}
       sgt: [
         '`sgt log` is the feature map: one row per feature, its checkpoints as blocks along it. `sgt log --rail` lists what happened, newest first.',
         '`sgt show "<name>"` says what one part covers — the files and the code inside it. `sgt show <file>::<name>` answers the other direction, for one function.',
-        '`sgt find "the bit that works out the averages"` searches by description. Any wording will do.',
+        // The example is deliberately NOT the thing this stage asks for. It used to be
+        // `sgt find "the bit that works out the averages"`, which on bikecount returns five ways
+        // of saying "the code that computes an average" and not the work that changed how one is
+        // computed -- so the one worked example a participant is given demonstrated the feature
+        // pointing away from the answer. An off-target phrase teaches the same thing (prose works)
+        // without handing the sgt arm a query that lands the stage's answer at rank one, which the
+        // git arm's `-S "<text>"` template does not do either.
+        '`sgt find "the page that lets you download a csv"` searches by description. Any wording will do, and each hit says what kind of thing it is.',
         '`sgt log --focus "<name>"` opens one row, or one ◆ piece of work that spans several rows.',
       ],
     },
@@ -739,7 +746,9 @@ The pages open on the most recent year. Set the date window at the top to cover 
       ],
       sgt: [
         '`sgt log` shows the history grouped by feature; `sgt log --rail` lists what happened, newest first.',
-        '`sgt find "the bit that works out the averages"` searches by description. Any wording will do.',
+        // Off-target on purpose; see the same tip on stage 1 for why. On this stage it matters
+        // more, because here there IS an answer to point away from.
+        '`sgt find "the page that lets you download a csv"` searches by description — any wording will do, and each hit says what kind of thing it is.',
         '`sgt log --focus "<name>"` opens one feature — or one ◆ piece of cross-feature work: the map stays, its checkpoints are listed underneath.',
         'To answer "which parts of the dashboard": `sgt show "<name>"` lists the files a feature — or a ◆ piece of cross-feature work — touches, and what taking it out would remove. `pages/<name>.py` is the page of the same name, and the workbench shows the same card.',
       ],
