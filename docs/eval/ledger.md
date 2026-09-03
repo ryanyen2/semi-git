@@ -11232,11 +11232,34 @@ confirmed to fail with their bug put back. `verify-bundles.sh` now walks the
 workbench's own reads -- compose, the tree read, `now` -- between the revert and
 the restore in each packed bundle, and gates on 42,545 still landing.
 
-The kernel half is open: a mine should not swallow a recorded removal. Nothing
-reaches it automatically any more, but `sgt log`'s own help offers `--refresh` as
-the way to reflect new edits, so a participant can still type their way in. It is
-reported at every publish as a warning rather than gating one -- a bundle that
-fixes the reachable half must not be held back by the half that is left.
+### The kernel half (closed the same day, after a participant hit it again)
+
+A second participant reached stage 4, ran `sgt restore`, and the code did not come
+back -- so the extension fix had removed the automatic path to this and not the
+defect behind it.
+
+`sgt undo` reversed the identical edit without trouble, in the identical state, and
+that is the whole answer: `undo` replays the recorded journal event, while `restore`
+re-resolved the *name* against a record that a re-mine had moved underneath it. Both
+comparisons in `_matching_revert_event` were over op ids -- exact equality, then
+entity cores -- and a re-derivation renames ids. On the footfall bundle the handle
+resolved to 39 ops where the revert had recorded 20, nothing matched, and the
+restore fell back to the algebraic union: the fork refusal on one path, the ✓ over
+an empty commit on the other.
+
+So the resolver takes the handle the person typed as its last comparison. The newest
+applied revert recorded under that name IS the removal they mean by it; no overlap
+with the re-resolved ids is required, because renaming every id involved is the case
+it exists for. Measured on the shipped bundle, both paths that used to fail:
+
+```
+  stage 4 -> sgt log --tree --refresh -> restore   ✓ 11 removed, 20 added   42,545 ✓
+  stage 4 -> sgt advanced resync       -> restore   ✓ 11 removed, 20 added   42,545 ✓
+```
+
+`verify-bundles.sh` gates on it now instead of reporting it, and names which of the
+two shapes it saw if it ever returns. `sgt undo` remains the recovery for anyone
+already stuck in it.
 
 ## F139 -- the record's completeness depended on how busy the machine was
 
