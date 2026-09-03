@@ -242,8 +242,27 @@ def _entity_core(op_ids: frozenset[str], ops: list[Op]) -> frozenset[str]:
     return frozenset(oid for oid in op_ids if not layout_only(oid))
 
 
+def _still_in_effect(event: dict, live: frozenset[str] | None) -> bool:
+    """Whether the removal this event recorded is still standing -- something it took out is still
+    out. `live=None` means the caller did not say, so do not filter on it.
+
+    Only the name match needs this. A handle matches every revert ever recorded under it, including
+    ones whose effect is long gone: a study bundle ships a journal in which its own build reverted
+    the theme, and `./stage 3` puts the code back by moving git rather than by restoring, so that
+    event is still in the journal with nothing left to reverse. Without this, `restore <name>` on an
+    untouched project answered "that revert has already been reversed" -- a true sentence about a
+    revert the person never ran, where "there is nothing to restore" is the honest one (F135)."""
+    if live is None:
+        return True
+    prior, result = _event_op_ids(event, "ideal"), _event_op_ids(event, "result")
+    if prior is None or result is None:
+        return False
+    return bool((prior - result) - live)
+
+
 def _matching_revert_event(
     repo: Path, target_ids: frozenset[str], ops: list[Op] | None = None, tag: str | None = None,
+    live: frozenset[str] | None = None,
 ) -> tuple[dict, frozenset[str]] | None:
     """The newest applied `revert` event whose target op-set names the same removal as
     `target_ids`, paired with everything the edits *after* it took back out.
@@ -304,6 +323,7 @@ def _matching_revert_event(
                     tag is not None
                     and event_ids  # never the `revert --to <commit>` boundary form
                     and event.get("target") == tag
+                    and _still_in_effect(event, live)
                 ):
                     return event, frozenset(later_removed)
             # Newer than the event we are looking for, so what it took out is a later decision.
@@ -370,7 +390,7 @@ def _plan_restore_via_journal(
         # `revert <lane> --to <commit>` records `target_ops: []` (it names a commit boundary, not
         # an op-set), so an empty lookup would match it and reverse an edit nobody asked about.
         return None
-    found = _matching_revert_event(Path(repo), target_ids, ops, tag)
+    found = _matching_revert_event(Path(repo), target_ids, ops, tag, ideal.op_ids)
     if found is None:
         return None
     event, later_removed = found
