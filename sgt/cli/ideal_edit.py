@@ -334,6 +334,8 @@ def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict
         from sgt.tui.graph import render_verb_preview_lines
 
         pview = _project_verb_preview(repo, preview)
+        if _brings_nothing_back(pview, preview):
+            return _refuse_empty_restore(preview, as_json)
         mv, gv, sv = map_view(repo), grid_view(repo), segments_view(repo)
 
         color = sys.stdout.isatty()
@@ -384,6 +386,15 @@ def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict
             for line in gap_lines:
                 print(line)
         return 0
+
+    # The machine path takes the same refusal. This is the path the editor's Restore button and an
+    # agent's MCP call come through, and a ✓ over an unchanged file is worse there than in a
+    # terminal: nobody is reading the diff.
+    if preview.ok and preview.verb == "restore":
+        from sgt.api import _project_verb_preview
+
+        if _brings_nothing_back(_project_verb_preview(repo, preview), preview):
+            return _refuse_empty_restore(preview, as_json)
 
     gap = _restore_gap(repo, preview) if preview.ok and preview.verb == "restore" else None
     applied = False
@@ -520,6 +531,43 @@ def _restore_gap_report(repo: str, preview) -> list[str]:
         f" does not bring back{': ' + shown if shown else ''}",
         "    `sgt undo` reverses that revert whole, if that is what you meant.",
     ]
+
+def _brings_nothing_back(pview: dict, preview) -> bool:
+    """A restore that would move ops in the record and not a single byte of code.
+
+    The one shape a restore must never report as success. Measured on a live study session
+    (2026-09-03): `sgt restore "Event Day Handling"` previewed `restores 32 edits across 6 symbols ·
+    no file changes`, asked `apply this restore? [y/N]`, and printed `✓ restore applied — 5 edits
+    removed, 32 added` -- after which the page still read the removed number. `_changed_nothing`
+    did not catch it, because that asks whether the RECORD moved and the record moved plenty; what
+    did not move is the thing the person asked for.
+
+    The shape is the algebraic union answering a request the journal should have: re-adding the
+    closure of the removed ops while the stand-ins a revert minted still hold the current bytes,
+    so before and after fold to identical text. `files` is empty exactly then -- it is built by
+    diffing the two folds (`sgt.api._project_verb_preview`) -- which makes this cheap to ask and
+    impossible to disagree with the preview the reader was just shown.
+
+    Revert is not covered: a revert whose edit is entirely held by later work legitimately changes
+    no file, says so, and `_changed_nothing` already handles the honest no-op.
+    """
+    return (preview.verb == "restore" and preview.ok
+            and bool(preview.added) and not pview.get("files"))
+
+
+def _refuse_empty_restore(preview, as_json: bool) -> int:
+    """Say what it would have done, and name the verb that does work here."""
+    if as_json:
+        return _fail_json(
+            f"restore of {preview.target!r} would add {len(preview.added)} edit(s) to the record "
+            f"and change no file, so nothing would come back. `sgt undo` reverses a recorded edit "
+            f"exactly.", as_json)
+    print(f"\n  ✗ restore refused — it would put {len(preview.added)} edit(s) back into the record "
+          f"and change no file,")
+    print("    so nothing would come back: what removed them is still holding the current bytes.")
+    print("    `sgt undo` reverses a recorded edit exactly, and is the way back from here.")
+    return 1
+
 
 def _changed_nothing(preview) -> bool:
     """F33. A revert whose removal is entirely held by later work removes no op, adds none, and

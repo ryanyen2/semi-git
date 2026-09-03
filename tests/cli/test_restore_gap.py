@@ -135,3 +135,49 @@ def test_a_layout_sentinel_is_not_reported_as_a_symbol(fake_graph):
     gap = ideal_edit._restore_gap(".", FakePreview(after_ids=frozenset({"a"})))
 
     assert gap["still_removed_symbols"] == ["f.py::g"]
+
+
+# ---------------------------------------------------------------------------
+# The refusal a restore owes when nothing would come back
+# ---------------------------------------------------------------------------
+
+@dataclass
+class FakeRestore:
+    verb: str = "restore"
+    ok: bool = True
+    target: str = "Event Day Handling"
+    added: frozenset = frozenset({"a", "b"})
+    removed: frozenset = frozenset()
+
+
+def test_a_restore_that_moves_ops_and_no_bytes_is_refused():
+    """Measured in a live session (2026-09-03): `restores 32 edits across 6 symbols · no file
+    changes`, then `apply this restore? [y/N]`, then `✓ restore applied — 5 edits removed, 32
+    added` -- and the page still read the removed number. The record moved; the code did not, and
+    the code is what was asked for."""
+    assert ideal_edit._brings_nothing_back({"files": {}}, FakeRestore()) is True
+
+
+def test_a_restore_that_rewrites_a_file_is_not_refused():
+    assert ideal_edit._brings_nothing_back(
+        {"files": {"bikecount/metrics.py": {}}}, FakeRestore()) is False
+
+
+def test_a_restore_with_nothing_to_add_is_left_to_the_no_op_path():
+    # `after_ids == before_ids` already has its own sentence ("nothing of X has been removed").
+    assert ideal_edit._brings_nothing_back({"files": {}}, FakeRestore(added=frozenset())) is False
+
+
+def test_a_revert_may_legitimately_change_no_file():
+    # A revert whose edit is entirely held by later work removes no op and moves no byte, says so,
+    # and `_changed_nothing` covers it. This guard is restore's alone.
+    assert ideal_edit._brings_nothing_back({"files": {}}, FakeRestore(verb="revert")) is False
+
+
+def test_the_refusal_names_the_verb_that_does_work_here(capsys):
+    rc = ideal_edit._refuse_empty_restore(FakeRestore(), as_json=False)
+    out = capsys.readouterr().out
+    assert rc == 1, "a refusal must not exit 0"
+    assert "restore refused" in out
+    assert "2 edit(s)" in out and "change no file" in out
+    assert "sgt undo" in out, "a refusal that names no way out is a dead end"
