@@ -622,8 +622,9 @@ def so_what_for(projected: dict, kept: frozenset = frozenset()) -> str:
     be undone -- recomputed live as the pane's kept-set changes. Pure over the projection dict plus
     the caller's kept op-ids (no store reads), so the TUI can call it on every toggle. `primary`
     leads with the `file::symbol` the user named when the target is one (not an alphabetically-first
-    dependent from the up-set closure); when the target is an op-id/feature ref it falls back to a
-    touched symbol, then to the raw target. Carried symbols are never named, though a clean revert reports how many
+    dependent from the up-set closure); when the target names a *set* -- a feature, a ◆ theme, a
+    checkpoint -- the sentence leads with the size of that set instead of one of its symbols (see
+    `scale` below). Carried symbols are never named, though a clean revert reports how many
     of them repoint (F128)."""
     verb = projected.get("verb", "")
     target = projected.get("target")
@@ -685,6 +686,21 @@ def so_what_for(projected: dict, kept: frozenset = frozenset()) -> str:
     n_kept = len(set(kept) & blast_ids)
     n_break = n - n_kept
 
+    # What the target IS, when it is not one symbol. A feature, a ◆ theme or a checkpoint is a set
+    # of edits, and naming the first symbol in that set as though it were the whole removal is what
+    # the workbench's confirm bar told a study participant: "Removes bikecount/charts.py::bar_chart.
+    # Nothing depends on it" over a revert that took 17 edits out of 7 symbols in 5 files (F140).
+    # The terminal never claimed that -- it prints the scale and then the subtracted/pruned lists --
+    # so the two surfaces disagreed about the same edit, and only the one with a button was wrong.
+    # Counted exactly as `sgt.tui.graph._render_verb_preview_lines` counts, so they cannot drift.
+    scale = ""
+    if not (target and "::" in target) and len(real) > 1:
+        from sgt.tui.graph import plural
+
+        edits = len(projected.get("removed" if verb == "revert" else "added") or ())
+        scale = (f"{plural(edits, 'edit')} across {plural(len(real), 'symbol')} "
+                 f"in {plural(len(projected.get('files') or ()), 'file')}")
+
     if verb == "revert":
         if n == 0:
             # F128. `n` is blast-only by design (`_fallout_rows` excludes carry and foundation --
@@ -699,12 +715,16 @@ def so_what_for(projected: dict, kept: frozenset = frozenset()) -> str:
             if carry or found:
                 parts = ([f"{carry} repoint automatically"] if carry else []) + \
                         ([f"{found} prerequisite{'s' if found != 1 else ''} locked"] if found else [])
-                return (f"Removes {primary}. No dependent needs a decision — "
+                return (f"Removes {scale or primary}. No dependent needs a decision — "
                         f"{', '.join(parts)}. {undo}")
-            return f"Removes {primary}. Nothing depends on it — clean revert. {undo}"
+            return f"Removes {scale or primary}. Nothing depends on it — clean revert. {undo}"
         kept_clause = f", keeping {n_kept}" if n_kept else ""
+        if scale:
+            return f"Removes {scale} — {n_break} dependent(s) to re-draft{kept_clause}. {undo}"
         return f"{primary} will break — {n_break} dependent(s) to re-draft{kept_clause}. {undo}"
     if verb == "restore":
+        if scale:
+            return f"Re-adds {scale}. Nothing to reconcile. {undo}"
         return f"Re-adds {primary} and its prerequisites. Nothing to reconcile. {undo}"
     meta_phrase = {
         "merge": "Merges into", "split": "Splits", "rename": "Relabels to",

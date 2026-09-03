@@ -529,3 +529,47 @@ def test_a_failing_verb_is_a_tool_error_not_a_dead_server(tmp_path):
 
     assert "error" in payload
     assert resp["result"]["isError"] is True
+
+
+def test_a_cross_feature_label_resolves_the_way_it_does_in_the_terminal(tmp_path):
+    """The ◆ row. A feature is not the only unit the map draws, and the one the study hands a
+    participant spans five of them: "Event Day Handling", with the whole task being to take that
+    work out. Typed into the terminal it resolved; asked of an assistant through this tool it came
+    back `neither an op-id in the ideal nor a live symbol`, and an assistant that cannot name the
+    unit goes back to editing files by hand -- the same reason the feature rung was added."""
+    import subprocess
+
+    from sgt import state
+
+    repo = _seed(tmp_path, 2)
+    shas = subprocess.run(["git", "log", "--format=%H"], cwd=repo, capture_output=True,
+                          text=True, check=True).stdout.split()
+    # What `sgt intent build` persists, and what `sgt log`'s footer draws as a ◆ row.
+    state.save_json_if_changed(repo, "intent_themes", {"theme-abc123456789": {
+        "label": "Event Day Handling",
+        "rationale": "Tracks exceptional days and keeps them out of the averages.",
+        "atom_shas": shas,
+        "source": "llm",
+    }})
+
+    _, payload = _call(repo, "sgt_revert", {"ref": "Event Day Handling", "emit": True})
+    assert payload["ok"], payload["message"]
+    assert payload["target"] == "Event Day Handling"
+    assert payload["removed"], "resolved the name but planned no removal"
+    assert (tmp_path / "a.py").read_text() == "def foo():\n    return 2\n"  # emit writes nothing
+
+
+def test_restore_answers_to_the_name_a_revert_was_recorded_under(tmp_path):
+    """F141 through MCP: the handle outlives the op ids it resolved to. A re-mine renames the ◆,
+    so the name the person holds stops resolving -- and `sgt undo` could still reverse the edit,
+    because it replays the journal instead of re-resolving a name. So does this."""
+    repo = _seed(tmp_path, 2)
+    _, rev = _call(repo, "sgt_revert", {"ref": "a.py::foo"})
+    assert rev["ok"]
+    assert (tmp_path / "a.py").read_text() == "def foo():\n    return 1\n"
+
+    # The name it was recorded under is the op id here; what matters is that resolution goes
+    # through the journal rung rather than through anything that has to still resolve.
+    _, back = _call(repo, "sgt_restore", {"ref": rev["target"]})
+    assert back["ok"], back["message"]
+    assert (tmp_path / "a.py").read_text() == "def foo():\n    return 2\n"

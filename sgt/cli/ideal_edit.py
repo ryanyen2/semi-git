@@ -799,6 +799,19 @@ def _kernel_edit_verb(
                         + f". Say which -- e.g. `sgt {cmd} {ambiguous[0]}`.",
                         as_json,
                     )
+                if cmd == "restore":
+                    # Before any prose rung: the name of a revert this repo actually recorded.
+                    # A re-mine renames the ◆ cross-feature work, so the handle the person was
+                    # given ("Event Day Handling") stops resolving and this fell through to
+                    # `set OPENAI_API_KEY` -- for an edit `sgt undo` could still reverse, because
+                    # undo replays the journal instead of re-resolving a name. So does this now
+                    # (F141). Nothing recorded under the name, or a removal no longer standing,
+                    # falls on through: `restore` on an untouched project keeps saying so.
+                    recorded = verbs.ops_removed_by_named_revert(repo, target)
+                    if recorded:
+                        return _emit_verb_result(
+                            repo, verbs.plan_restore_op_set(repo, target, recorded),
+                            emit, as_json, yes=yes, out=out)
                 ledgered = _resolve_via_ledger(repo, cmd, target, emit, as_json, yes)
                 if ledgered is not None:
                     return ledgered

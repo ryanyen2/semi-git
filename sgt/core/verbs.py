@@ -363,6 +363,48 @@ def _event_op_ids(event: dict, field: str) -> frozenset[str] | None:
     return frozenset(value)
 
 
+def ops_removed_by_named_revert(repo: str | Path, name: str) -> frozenset[str] | None:
+    """What a still-standing recorded revert of `name` took out, or None.
+
+    The rung `restore <name>` needs when the *name* has stopped resolving to anything. A re-mine
+    re-labels the ◆ cross-feature work -- those labels are drawn from commit subjects -- so the
+    handle `./stage 3` prints to a study participant, "Event Day Handling", resolves to nothing
+    afterwards: `restore` fell past every deterministic rung to the natural-language one and exited
+    `could not resolve ... set OPENAI_API_KEY`, over an edit `sgt undo` could still reverse. What
+    the journal wrote down when the revert applied is the handle the person typed, and that is
+    exactly the part a re-derivation cannot rename (F141).
+
+    Only a revert whose removal is still standing answers, by the same predicate the name rung in
+    `_matching_revert_event` uses: a bundle ships a journal holding its own build-time revert, and
+    an untouched project must still be told there is nothing to restore (F135). Newest first, so a
+    revert -> restore -> revert cycle answers with the second revert.
+    """
+    from sgt.core import oplog
+
+    _ops, ideal, _declared = _load(repo)
+    try:
+        key = oplog._ref_key(Path(repo))
+        events = oplog.load(Path(repo)).get(key, []) if key else []
+    except Exception:  # noqa: BLE001 -- a hand-edited or half-written journal is not a crash here
+        return None
+    for event in reversed(events):
+        if not isinstance(event, dict):
+            continue
+        if event.get("kind") != "ideal_edit" or event.get("applied") is False:
+            continue
+        if event.get("verb") != "revert" or event.get("target") != name:
+            continue
+        if not _event_op_ids(event, "target_ops"):
+            continue  # `revert <lane> --to <commit>` names a boundary, not an op-set
+        if not _still_in_effect(event, ideal.op_ids):
+            continue
+        prior, result = _event_op_ids(event, "ideal"), _event_op_ids(event, "result")
+        if prior is None or result is None:
+            continue
+        return (prior - result) or None
+    return None
+
+
 def _plan_restore_via_journal(
     repo: str | Path, tag: str, target_ids, ops: list[Op], ideal: Ideal,
     declared: frozenset[tuple[str, str]],
