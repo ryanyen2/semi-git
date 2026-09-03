@@ -974,3 +974,32 @@ def test_a_pre_upgrade_journal_entry_is_never_mistaken_for_a_revert(tmp_path):
     preview = verbs.plan_restore(repo, tip.id)
 
     assert preview.ok and tip.id in set(preview.after_ids)  # the algebraic union still answers
+
+
+def test_the_inverse_is_the_whole_peel_not_only_the_stand_ins_still_at_a_tip(tmp_path):
+    """F145. The journal path used to decline whenever a minted stand-in was no longer at a
+    frontier tip, on the grounds that the caller's union fallback would refuse. It does not
+    refuse: it re-admits the closure of the removed set while the mints keep holding the current
+    bytes, so both sides fold to identical text. On the study's footfall bundle that answered
+    `restores 39 edits` and changed no file, under a ✓ -- while `sgt undo` reversed the same edit
+    without trouble, because it replays the recorded snapshot instead of asking where tips are.
+
+    So the plan is the complete reversal and `_validated` is the judge. What this pins is that a
+    reversal of a recorded revert restores the exact prior op-set, mints and all.
+    """
+    repo = _foo_chain(tmp_path / "repo", 3)
+    before = get(repo).op_ids
+    ops = Store(repo).all_ops()
+    tip = _op_with(ops, "a.py::foo", b"return 3")
+
+    verbs.revert(repo, tip.id)
+    reverted = get(repo).op_ids
+    assert reverted != before
+
+    # Whatever the revert minted to hold the layout is peeled whole, so the ideal comes back
+    # exactly -- not "the tips of it".
+    removed = verbs.ops_removed_by_named_revert(repo, tip.id)
+    plan = verbs.plan_restore_op_set(repo, tip.id, removed)
+    assert plan.ok, plan.message
+    assert plan.after_ids == before, "a reversal that lands anywhere else is not the inverse"
+    assert not (plan.after_ids - before), "no stand-in may survive the reversal"

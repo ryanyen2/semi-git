@@ -448,16 +448,22 @@ def _plan_restore_via_journal(
 
     try:
         current = ideal.op_ids
-        tips = set(order.frontier(current, ops).values())
-        live_mints = introduced & current
-        peel = frozenset(oid for oid in live_mints if oid in tips)
-        if live_mints - peel:
-            # All of them or none. A revert can mint several stand-ins, and peeling only the ones
-            # still at a tip puts `def wl` back while leaving its call site spliced out -- then
-            # reports that as a completed reversal, because groundedness and fork-freedom have
-            # nothing to say about whether a reversal is *complete*. A partial inverse is not one,
-            # and a silent half-edit is worse than the refusal the union path gives here.
-            return None
+        # The whole peel, never a subset. A revert can mint several stand-ins, and peeling only
+        # some of them puts `def wl` back while leaving its call site spliced out -- a partial
+        # inverse reported as a complete one.
+        #
+        # This used to *decline* whenever a mint was no longer at a frontier tip, on the grounds
+        # that the union path below would refuse. It does not refuse: it re-admits the closure of
+        # the removed set while the mints keep holding the current bytes, so both sides fold to
+        # identical text. On the study's footfall bundle that answered `restores 39 edits` and
+        # changed no file, under a ✓ (F145) -- and `sgt undo` reversed the same edit without
+        # trouble, because it replays the recorded snapshot instead of asking where the tips are.
+        #
+        # So propose the complete reversal and let `_validated` judge it. Groundedness and
+        # fork-freedom over the *proposed* op-set are exactly the questions the tip test was
+        # standing in for, and they are asked about the edit actually being made rather than about
+        # the shape of the record before it.
+        peel = introduced & current
         after = (current - peel) | removed
         already = after == current
         preview = None if already else _validated("restore", tag, current, after, ops, declared)

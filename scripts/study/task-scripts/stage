@@ -96,6 +96,27 @@ PY
 # What this project calls the work stages 3 and 4 are about. bikecount named its
 # own "Event-Day Handling" and footfall named its own "Event Day Handling", so
 # the name is read out of the project's record rather than written here.
+# Would the restore this stage asks for actually put the code back? A dry run
+# (`--emit`) answers it and touches nothing: the projection lists the files the
+# edit would rewrite, and a restore that rewrites none of them is one that leaves
+# the page reading the removed number however cheerfully it reports.
+#
+# Asked because it has been wrong twice in front of a participant, both times as
+# a ✓: once resolving the handle against a record a re-mine had moved (F138/F141)
+# and once re-admitting 39 ops that changed no file (F145). The stage that hands
+# over the removed state is the right place to find out, because it is the only
+# place that can still fix it.
+restore_reverses() {
+    have_sgt || return 0
+    sgt restore "$1" --emit --json 2>/dev/null | "$py" -c '
+import json, sys
+try:
+    print("yes" if (json.load(sys.stdin).get("files") or {}) else "no")
+except Exception:
+    print("no")
+' | grep -qx yes
+}
+
 theme_label() {
     "$py" - <<'PY' 2>/dev/null || true
 import json, pathlib
@@ -244,6 +265,24 @@ case "$stage" in
         label="$(theme_label)"
         sgt revert "${label:-Event-Day Handling}" --yes >/dev/null 2>&1 || {
             echo "could not set this stage up; tell your facilitator" >&2; exit 1; }
+        # Once, from a pristine record, if the removal it just made cannot be
+        # reversed by the verb the card names. `reset_to` restores the shipped
+        # record before reverting, so a second pass is a genuinely fresh start
+        # rather than the same state again.
+        if ! restore_reverses "${label:-Event-Day Handling}"; then
+            reset_to study/full
+            sgt revert "${label:-Event-Day Handling}" --yes >/dev/null 2>&1 || {
+                echo "could not set this stage up; tell your facilitator" >&2; exit 1; }
+        fi
+        if ! restore_reverses "${label:-Event-Day Handling}"; then
+            # Say it here rather than let it be found by `./check 4`. `sgt undo`
+            # reverses the removal this script just recorded making, exactly, so
+            # the stage is still completable while the facilitator is told.
+            echo
+            echo "${bold}This stage is set up, but the tool cannot reverse the removal by name here.${off}"
+            echo "${dim}Use \`sgt undo\` to put the work back, and tell your facilitator that"
+            echo "\`sgt restore\` refused on this machine.${off}"
+        fi
     else
         reset_to study/removed
     fi
