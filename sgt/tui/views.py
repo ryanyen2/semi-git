@@ -191,7 +191,14 @@ def map_lines(
     # and the one thing the reader came here to read was the one thing that had no room.
     spine = gutter + sel_w + pad + (id_w + pad if id_w else 0) + pad + edits_w + anno_w
     want_bar = min(max(BAR_MIN, int(width * 0.36)), BAR_CELL_MAX * axis_len)
-    latest_w = min(latest_want, 24, max(0, width - spine - NAME_MIN - want_bar - pad))
+    # LATEST is the first column to go when the screen is narrow, and it is paid for out of what
+    # the NAMES do not need -- never out of the names themselves. It repeats the newest checkpoint,
+    # which the chips under the row already carry, and charging it to the name column is what left
+    # every lane on an 80-column terminal reading `Weekday Week…`: eleven columns of text, once the
+    # tree guide is subtracted, for the one string a reader types back into `sgt revert "<name>"`.
+    # Sizing it against `NAME_MIN` instead was worse than either: it made the layout non-monotone,
+    # so 100 columns truncated names that 80 showed whole.
+    latest_w = min(latest_want, 24, max(0, width - spine - natural - want_bar - pad))
     if latest_w < 6:
         latest_w = 0
     fixed = spine + ((latest_w + pad) if latest_w else 0)

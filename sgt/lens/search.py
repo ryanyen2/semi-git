@@ -7,8 +7,9 @@ feature labels, which cannot answer its own documented example -- "the thing
 that formats dates" scores 0.28 against `Time Slots` and returns nothing.
 
 So this indexes what the graph already knows in words: a feature's label and the
-sentence the labeller wrote about it, the message on every save, and the symbol
-names themselves. A query is embedded and compared against that.
+sentence the labeller wrote about it, the label and rationale of each ◆ piece of
+cross-feature work, the message on every save, and the symbol names themselves.
+A query is embedded and compared against that.
 
 Two properties it has to keep. It is **report-only** -- a search that could
 change anything would be a search nobody dares run. And it degrades rather than
@@ -36,10 +37,13 @@ EMBED_MODEL = "text-embedding-3-small"
 EMBED_DIMS = 256
 BATCH = 96
 
+# How many symbols from any one feature may hold slots in a result list. See `_diverse`.
+SYMBOLS_PER_FEATURE = 2
+
 
 @dataclass(frozen=True)
 class Hit:
-    kind: str  # "feature" | "save" | "symbol"
+    kind: str  # "feature" | "work" | "save" | "symbol"
     id: str
     label: str
     detail: str
@@ -72,7 +76,7 @@ def _symbol_words(symbol: str) -> str:
 
 def corpus(repo: str | Path) -> list[dict]:
     """Everything worth finding, as {kind, id, label, detail, text}."""
-    from sgt.api import history_view, map_view
+    from sgt.api import history_view, intent_view, map_view
 
     entries: list[dict] = []
     seen_symbols: set[str] = set()
@@ -122,6 +126,35 @@ def corpus(repo: str | Path) -> list[dict]:
                 "detail": f"in {label}", "text": _symbol_words(m),
             })
 
+    # The ◆ cross-feature work. `sgt log` gives it a row of its own, `sgt revert`/`sgt restore`
+    # take its label, `sgt show` explains it -- and find was the one surface that could not return
+    # it. So a search for the words a person actually has ("the days left out of the averages")
+    # ranked four symbols in one file above the only unit either verb accepts. Indexed under the
+    # label rather than the theme id, because the label is the handle: the hit's own next-step
+    # (`sgt show "Event Day Handling"`) has to be a command that runs.
+    #
+    # From `intent_view`, which is where the ◆ rows in the log footer and the workbench's list come
+    # from, so what find returns and what the map draws cannot drift apart.
+    #
+    # Two kinds are skipped. A single-feature theme: that lane is indexed above and answers as
+    # itself. And a single-commit one: it is that save, indexed below with the same words -- its
+    # label IS the commit subject and its rationale is the placeholder "Ungrouped commit.", so
+    # indexing it put the same sentence in the list twice, the second time with bookkeeping prose
+    # under it. A ◆ earns a row here by being work that took more than one save.
+    themes = [t for t in (intent_view(repo).get("themes") or [])
+              if t.get("label") and len(t.get("feature_span") or ()) >= 2
+              and len(t.get("atom_shas") or ()) >= 2]
+    for theme in themes:
+        label = str(theme["label"])
+        why = str(theme.get("rationale") or "")
+        entries.append({
+            "kind": "work", "id": label, "feature": "", "label": label,
+            "detail": (f"one piece of work across {len(theme['feature_span'])} features"
+                       + (f" — {why[:110]}" if why else "")),
+            "text": " ".join([label, why]),
+        })
+    in_work = {sha: str(t["label"]) for t in themes for sha in (t.get("atom_shas") or ())}
+
     for commit in history_view(repo, full=True).get("commits") or []:
         # sgt's own commits are bookkeeping, and their subjects are 64-hex.
         if commit.get("bookkeeping"):
@@ -129,12 +162,22 @@ def corpus(repo: str | Path) -> list[dict]:
         subject = str(commit.get("subject") or "")
         if not subject:
             continue
+        sha = str(commit.get("sha") or "")
+        # Seven, like every other surface prints a sha (`sgt show`, `sgt log --rail`, git). Eight
+        # here meant the id a search printed was not the id the tool echoed back at you.
+        #
+        # And the detail says where the save sits. It used to say `save <sha>` under a line whose
+        # handle was already `<sha>`: the id twice, and the one kind of hit that carried no context
+        # at all, where a feature gives its description and a symbol names its lane. What a reader
+        # needs of a save is which piece of work it belongs to -- which is the question stage 2 of
+        # the study asks, and the answer stage 3 needs typed back.
+        of_work = in_work.get(sha, "")
         entries.append({
             "kind": "save",
-            "id": str(commit.get("sha") or "")[:8],
+            "id": sha[:7],
             "feature": "",
             "label": subject,
-            "detail": f"save {str(commit.get('sha') or '')[:8]}",
+            "detail": f"part of ◆ {of_work}" if of_work else "",
             "text": subject,
         })
 
@@ -225,7 +268,35 @@ def _lexical(entries: list[dict], query: str, k: int) -> list[Hit]:
         scored.append(Hit(e["kind"], e["id"], e["label"], e["detail"], overlap / len(q),
                           e.get("feature", "")))
     scored.sort(key=lambda h: -h.score)
-    return scored[:k]
+    return _diverse(scored, k)
+
+
+def _diverse(hits: list[Hit], k: int) -> list[Hit]:
+    """The top `k`, with at most `SYMBOLS_PER_FEATURE` symbols from any one feature.
+
+    Symbols outnumber everything else in this index -- one entry per member of every lane -- and
+    they arrive in clusters, because a feature's members are named alike and read alike. Measured
+    on the study's bikecount bundle: "the bit that works out the averages" (the phrase the study's
+    own materials suggest) filled four of five slots with `metrics.py::hourly_averages`,
+    `::hourly_averages_weekday`, `::hourly_averages_weekend` and `::monthly_totals` -- four ways of
+    saying the same lane -- and pushed the work that changed how an average is computed off the
+    list entirely. A reader then has to open each hit to find out they are the same answer, which
+    is the cost this spends a slot to avoid.
+
+    Only symbols are capped. There is one feature row per feature, one ◆ row per piece of
+    cross-feature work and one save per commit, so none of those can crowd a list by itself.
+    """
+    out: list[Hit] = []
+    per_feature: dict[str, int] = {}
+    for hit in hits:
+        if hit.kind == "symbol" and hit.feature:
+            if per_feature.get(hit.feature, 0) >= SYMBOLS_PER_FEATURE:
+                continue
+            per_feature[hit.feature] = per_feature.get(hit.feature, 0) + 1
+        out.append(hit)
+        if len(out) >= k:
+            break
+    return out
 
 
 def search(repo: str | Path, query: str, k: int = 8, *, refresh: bool = False) -> dict:
@@ -253,12 +324,12 @@ def search(repo: str | Path, query: str, k: int = 8, *, refresh: bool = False) -
     if vectors:
         qv = _embed(repo, [query])
         if qv:
-            hits = sorted(
+            hits = _diverse(sorted(
                 (Hit(e["kind"], e["id"], e["label"], e["detail"], _cosine(qv[0], e["vec"]),
                      e.get("feature", ""))
                  for e in vectors),
                 key=lambda h: -h.score,
-            )[:k]
+            ), k)
             return {"ok": True, "mode": "semantic", "query": query,
                     "hits": [h.as_dict() for h in hits]}
 

@@ -117,6 +117,49 @@ def _verb_result(preview) -> dict:
     }
 
 
+def _by_the_name_it_is_printed_under(repo_path: str, verb: str, ref: str):
+    """The handles the CLI resolves and this tool did not: a ◆ label, a `<feature>@<n>` checkpoint,
+    and -- for restore -- the name of a revert this repo actually recorded.
+
+    A feature is not the only unit the map draws. The one the study hands a participant is a ◆:
+    "Event Day Handling", five features wide, and the whole task is to take that work out. Typed
+    into the terminal it resolves; asked of an assistant it came back `'Event Day Handling' is
+    neither an op-id in the ideal nor a live symbol`, and an assistant that cannot name the unit
+    goes back to editing files by hand -- which is what the tool exists to replace, and the same
+    reason the feature rung above it was added.
+
+    Same rungs, same order and the same op-set planners as `sgt.cli.ideal_edit`, so a name cannot
+    resolve to one thing in the terminal and another through MCP. `None` when nothing claims it,
+    leaving the caller's own refusal to speak.
+    """
+    from sgt.cli.ideal_edit import _resolve_theme, _theme_id_for_label
+    from sgt.core import verbs as core_verbs
+    from sgt.select import resolve as select_resolve
+
+    plan_op_set = (core_verbs.plan_revert_op_set if verb == "revert"
+                   else core_verbs.plan_restore_op_set)
+
+    theme = ref if ref.startswith("theme-") else _theme_id_for_label(repo_path, ref)
+    if theme is not None:
+        resolved = _resolve_theme(repo_path, theme)
+        if resolved is not None:
+            op_ids, label = resolved
+            return plan_op_set(repo_path, label, op_ids)
+
+    if select_resolve.is_checkpoint_shaped(ref):
+        from sgt.intent.segment import resolve_checkpoint
+
+        resolved = resolve_checkpoint(repo_path, ref)
+        if resolved is not None:
+            return plan_op_set(repo_path, ref, resolved[0])
+
+    if verb == "restore":
+        recorded = core_verbs.ops_removed_by_named_revert(repo_path, ref)
+        if recorded:
+            return plan_op_set(repo_path, ref, recorded)
+    return None
+
+
 def _verb_with_feature_fallback(repo_path: str, verb: str, ref: str, emit: bool) -> dict:
     """An op or symbol first, then the feature of that name.
 
@@ -137,6 +180,10 @@ def _verb_with_feature_fallback(repo_path: str, verb: str, ref: str, emit: bool)
             lens_verbs.plan_revert_feature if verb == "revert" else lens_verbs.plan_restore_feature
         )
         preview = plan(repo_path, ref)
+    if not preview.ok:
+        named = _by_the_name_it_is_printed_under(repo_path, verb, ref)
+        if named is not None:
+            preview = named
     gap = None
     if verb == "restore" and preview.ok:
         # Computed before apply: apply journals this restore's own entry, and
@@ -608,17 +655,20 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         tool_find,
     ),
     "sgt_revert": (
-        "Remove a symbol-level edit and everything built on top of it from the current state. "
-        "`ref` is an op-id, an op-id prefix, or a `file::name` symbol (resolves to its latest edit). "
+        "Remove a piece of work and everything built on top of it from the current state. "
+        "`ref` is anything the map prints: a feature id or label, the label of a ◆ piece of work "
+        "spanning several features, a `<feature>@<n>` checkpoint, an op-id or its prefix, or a "
+        "`file::name` symbol (resolves to its latest edit). "
         "Pass emit=true for a dry-run preview -- writes nothing.",
         _schema({"ref": {"type": "string"}, "emit": {"type": "boolean", "description": "dry-run preview only"},
                  "prompt": _DRIVING_PROMPT_PROP, "claude_session_id": _CHAT_KEY_PROP}, ["ref"]),
         tool_revert,
     ),
     "sgt_restore": (
-        "Bring a symbol-level edit back, along with everything it needs -- revert's inverse. "
-        "`ref` is an op-id, an op-id prefix, or a `file::name` symbol. Pass emit=true for a "
-        "dry-run preview -- writes nothing.",
+        "Bring a piece of work back, along with everything it needs -- revert's inverse. "
+        "`ref` is anything the map prints (feature, ◆ label, `<feature>@<n>` checkpoint, op-id, "
+        "`file::name` symbol), or the name of a revert already recorded here. Pass emit=true for "
+        "a dry-run preview -- writes nothing.",
         _schema({"ref": {"type": "string"}, "emit": {"type": "boolean", "description": "dry-run preview only"},
                  "prompt": _DRIVING_PROMPT_PROP, "claude_session_id": _CHAT_KEY_PROP}, ["ref"]),
         tool_restore,

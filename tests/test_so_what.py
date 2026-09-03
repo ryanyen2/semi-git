@@ -223,3 +223,58 @@ def test_a_revert_with_no_frontier_at_all_still_says_nothing_depends_on_it():
     assert so_what_for(_revert(frontier=[], carry_count=0)) == (
         "Removes a.py::foo. Nothing depends on it — clean revert. Undo-able."
     )
+
+
+# F140. What the confirm bar in the workbench says when the target is a set of edits rather than
+# one symbol -- the study's whole stage-3 gesture ("revert this ◆ work"). The old sentence named
+# the alphabetically-first symbol of the set and called the removal clean, over a revert that took
+# 17 edits out of 7 symbols in 5 files.
+def _theme_revert(**extra):
+    return {
+        "verb": "revert", "ok": True, "forked": False, "message": "",
+        "target": "Event Day Handling",
+        "affected_symbols": [
+            "bikecount/charts.py::bar_chart",
+            "bikecount/events.py::__anchor__::label",  # bookkeeping: never counted, never named
+            "bikecount/events.py::label",
+            "bikecount/metrics.py::hourly_averages",
+            "bikecount/metrics.py::yearly_summary",
+            "bikecount/pages/monthly.py::render",
+            "bikecount/pages/overview.py::render",
+        ],
+        "removed": [f"op{i}" for i in range(17)],
+        "added": [f"new{i}" for i in range(6)],
+        "files": dict.fromkeys(["bikecount/charts.py", "bikecount/events.py", "bikecount/metrics.py",
+                                "bikecount/pages/monthly.py", "bikecount/pages/overview.py"], {}),
+        "fallout": [],
+        **extra,
+    }
+
+
+def test_reverting_a_named_piece_of_work_says_its_size_not_one_of_its_symbols():
+    said = so_what_for(_theme_revert())
+    assert said == (
+        "Removes 17 edits across 6 symbols in 5 files. "
+        "Nothing depends on it — clean revert. Undo-able."
+    )
+    # The falsehood this replaced: one symbol of six, as though it were the whole removal.
+    assert "charts.py::bar_chart" not in said
+
+
+def test_the_size_sentence_carries_the_dependent_count_too():
+    assert so_what_for(_theme_revert(fallout=[{"kind": "blast", "op_id": "d1"}])) == (
+        "Removes 17 edits across 6 symbols in 5 files — 1 dependent(s) to re-draft. Undo-able."
+    )
+
+
+def test_restoring_a_named_piece_of_work_says_how_much_comes_back():
+    pview = _theme_revert(verb="restore")
+    assert so_what_for(pview) == (
+        "Re-adds 6 edits across 6 symbols in 5 files. Nothing to reconcile. Undo-able."
+    )
+
+
+def test_a_single_symbol_target_still_names_the_symbol():
+    # The scale sentence is for sets. A one-symbol revert is still about that symbol.
+    pview = _theme_revert(target="bikecount/charts.py::bar_chart")
+    assert so_what_for(pview).startswith("Removes bikecount/charts.py::bar_chart.")

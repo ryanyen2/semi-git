@@ -11337,3 +11337,218 @@ stage 3 again, a probe, a revert, stage 4, a restore, and two more stage-4 trial
 -- in one directory, about eight `reset_to`s where a participant does five, so it
 walked itself somewhere no participant goes. With isolation it reads green on the
 same bundles it had just failed.
+
+## F140 -- the confirm bar named one symbol of seven and called the removal clean
+
+Walked as a participant, in the workbench, on the packed bikecount bundle: click the
+◆ `Event Day Handling`, click **Revert this work**, and read the bar that appears
+over the graph before anything is applied.
+
+```
+  Revert  Event Day Handling
+  Removes bikecount/charts.py::bar_chart. Nothing depends on it — clean revert. Undo-able.
+  [ Open diff ]  [ Cancel ]  [ Revert ]
+```
+
+The same revert, in the terminal, one command earlier:
+
+```
+ removes 17 edits across 7 symbols · 5 files: bikecount/charts.py, bikecount/events.py, …
+  subtracted from shared code (later work kept): bikecount/charts.py::bar_chart,
+    bikecount/metrics.py::hourly_averages, bikecount/metrics.py::yearly_summary,
+    bikecount/pages/monthly.py::render, bikecount/pages/overview.py::render
+  removed going forward: bikecount/events.py::label
+```
+
+Both sentences come out of the same projection. `so_what_for`'s `primary` falls back
+to the alphabetically-first entry of `affected_symbols` when the target is not itself
+a `file::symbol` -- and a feature, a ◆ or a checkpoint never is. So the GUI arm was
+told a seven-symbol removal was one symbol, and told it was clean, next to the button
+that applies it. Stage 3's own rating item is *"Before I ran it, I knew what the
+removal was going to change."*
+
+The terminal arm never made that claim, which makes this an asymmetry between the two
+surfaces of one tool rather than a wording quibble: the surface with a button was the
+one that was wrong.
+
+### Fix
+
+When the target names a *set*, the sentence leads with the size of that set instead of
+one of its members, counted exactly as `_render_verb_preview_lines` counts (`len(real)`
+after the `::__` filter, `removed`/`added`, `files`), so the two surfaces cannot drift:
+
+```
+  Removes 17 edits across 7 symbols in 5 files. Nothing depends on it — clean revert. Undo-able.
+  Re-adds 17 edits across 7 symbols in 5 files. Nothing to reconcile. Undo-able.
+```
+
+A single-symbol target still names its symbol -- that sentence was never wrong. Pinned
+in `tests/test_so_what.py` by four cases, including one asserting the old falsehood
+(`charts.py::bar_chart`) is absent.
+
+## F141 -- a re-mine renamed the ◆, and stage 4's own handle stopped resolving
+
+F138's fix taught `restore` to find the recorded revert by the name the person typed,
+once that name had resolved to an op-set. This is the rung above it: resolving the name
+at all.
+
+The ◆ rows take their labels from commit subjects when the clusterer re-derives them, so
+after `sgt log --tree --refresh` the bikecount map holds
+
+```
+  ◆ scope every page to a picked date window, defaul…
+  ◆ exclude event days from averages, keep them in t…
+  ◆ sgt revert Event Day Handling          <- the participant's own revert, as a named piece of work
+```
+
+and no `Event Day Handling` at all. `sgt restore "Event Day Handling"` then fell past
+every deterministic rung to the natural-language one:
+
+```
+  ✗ could not resolve 'Event Day Handling' to a ref; set OPENAI_API_KEY to enable
+    natural-language targets
+```
+
+With a key it did not silently do the wrong thing, which is the one mercy here -- it
+asked *did you mean `bikecount/events.py::__import__::datetime`*, offering to add one
+edit. Either way the command stage 4 prints is unrunnable, over an edit `sgt undo`
+could still reverse.
+
+### Fix
+
+`verbs.ops_removed_by_named_revert` reads the journal for the newest still-standing
+revert recorded under that exact handle and answers with what it removed; the CLI's
+prose rung tries it before any NL rung, and `_verb_with_feature_fallback` (MCP) tries it
+too. The handle is the part a re-derivation cannot rename -- it is what the journal
+wrote down when the revert applied -- which is why `sgt undo` worked the whole time.
+
+Guarded by the same `_still_in_effect` predicate F135 needed: a bundle ships a journal
+holding its own build-time revert, so a name must only answer while something it removed
+is still missing. Measured on the packed bundle, after a re-mine that erases the name
+from the map entirely: restore applies 17 edits, `./check 4` reads 42,545 / 2,900, and an
+untouched project still says `nothing of Event Day Handling has been removed`.
+
+## F142 -- find could not return the unit revert takes, and its saves said their id twice
+
+Stage 2 asks a participant to find the work behind a wrong number; stage 3 asks them to
+type its name. `sgt find` -- the verb for arriving somewhere new and not knowing what
+anything is called -- indexed features, symbols and saves, and not the ◆ that spans them.
+So the one unit both verbs accept by name was the one thing the search could not return.
+
+What it returned instead, for the phrasing the study's own stage-2 tip suggests
+(`sgt find "the bit that works out the averages"`, bikecount, semantic rung):
+
+```
+  0.56  symbol  bikecount/metrics.py::hourly_averages        in Weekday Weekend Averages
+  0.52  symbol  bikecount/metrics.py::yearly_summary         in Yearly Summary
+  0.52  symbol  bikecount/metrics.py::hourly_averages_weekday
+  0.50  symbol  bikecount/metrics.py::monthly_totals         in Monthly Totals
+  0.50  feature Yearly Summary
+```
+
+Four ways of saying "the code that computes an average", none of them the work that
+changed how one is computed. Symbols outnumber everything else in the index -- one entry
+per member of every lane -- and they arrive in clusters, because a lane's members are
+named alike.
+
+And a save hit carried no context at all:
+
+```
+  0.57  save     track known non-normal days like storms and holidays
+        66ca5b90  save 66ca5b90
+```
+
+The id twice, where a feature gives its description and a symbol names its lane. A
+participant reading five results had to open each one to find out what it was.
+
+### Fix
+
+Three changes, all in `sgt.lens.search`:
+
+* the ◆ work is indexed, under its label (the handle `sgt show`/`revert`/`restore`
+  take), from `intent_view` -- the same projection the log footer and the workbench
+  list draw, so find and the map cannot disagree. Single-lane and single-save themes
+  are skipped: the first is that feature, the second is that save.
+* a save says which ◆ it belongs to, and prints its sha at seven characters like every
+  other surface.
+* `_diverse`: at most two symbols per feature hold slots in a result list. Features,
+  saves and ◆ rows are never capped -- there is one of each per thing.
+
+What a participant now sees for a query drawn from the stage's own words:
+
+```
+  0.61  work     Event Day Handling
+        one piece of work across 5 features — These commits track…
+  0.58  feature  Event Day Markers
+  0.57  save     track known non-normal days like storms and holidays
+        66ca5b9  part of ◆ Event Day Handling
+  0.55  save     mark tracked event days on the daily and monthly charts
+        0c56354  part of ◆ Event Day Handling
+  0.48  save     exclude event days from averages, keep them in totals
+        c360a3d  part of ◆ Event Day Handling
+
+  next:
+    sgt show "Event Day Handling"   what it is, and what would come with it
+```
+
+Over twelve queries a participant might plausibly type, the answer in the top five went
+from 9/12 to 10/12 on bikecount and stayed 11/12 on footfall. The ranking was never the
+main cost; telling the results apart was.
+
+The stage-2 tip's worked example moved to `sgt find "the page that lets you download a
+csv"` -- prose, so it still demonstrates that any wording will do, and deliberately not
+this stage's answer, which the old example pointed away from anyway.
+
+## F143 -- an 80-column terminal cut every feature name to eleven characters
+
+```
+   ├─ ● Weekday Week…  02890651    @1    @2                        21  @3 Exclu…
+   ├─ ● Event Day Ma…  01f4dcde                                   13  @1 Mark T…
+```
+
+`sgt log`'s budget serves the density strip first (36% of the terminal) and the name
+column takes what is left, which is right on a wide screen -- it was written because a
+444-commit history had collapsed to a single `▏` per chapter on a 124-column terminal.
+On the 80×24 a stock macOS Terminal opens, the same rule left the name column at its
+`NAME_MIN` floor of 18, and a nested lane's tree guide eats 7 of those: eleven columns
+for the one string a reader types back into `sgt revert "<name>"`.
+
+### Fix
+
+`LATEST` -- which repeats the newest checkpoint the chips under the row already carry --
+is paid for out of what the names do not need, rather than out of the names. Sizing it
+against `NAME_MIN` instead was worse than either: it made the layout non-monotone, so
+100 columns truncated names that 80 showed whole. Now:
+
+```
+   80  ├─ ● Weekday Weekend Averages   02890651    @1    @2                        …
+  100  ├─ ● Weekday Weekend Averages              02890651    @1       @2          …
+  120  ├─ ● Weekday Weekend Averages              02890651    @1         @2        …
+```
+
+Whole from 80 columns up, and unchanged at 120 and above.
+
+## F144 -- the assistant could not name the work the study asks it to remove
+
+Through MCP, with the bundle's own server:
+
+```
+  sgt_revert {"ref": "Event Day Handling", "emit": true}
+  -> {"ok": false, "message": "'Event Day Handling' is neither an op-id in the ideal
+                               nor a live symbol"}
+```
+
+The same string, typed in the terminal, resolves. `_verb_with_feature_fallback` had
+already been given a feature rung for exactly this reason -- "an agent that cannot name
+one falls back to editing files by hand" -- and a feature is not the only unit the map
+draws. The one the study hands a participant is a ◆.
+
+The tool descriptions said so too: `ref` was documented as "an op-id, an op-id prefix,
+or a `file::name` symbol", while `sgt_show` next to it listed every form.
+
+### Fix
+
+`_by_the_name_it_is_printed_under`: the ◆ label, the `<feature>@<n>` checkpoint, and (for
+restore) F141's journal rung, in the CLI's order and through the CLI's own op-set
+planners, so a name cannot resolve to one thing in the terminal and another through MCP.
+The two schemas now say what they accept. Pinned in `tests/mcp/test_server.py`.

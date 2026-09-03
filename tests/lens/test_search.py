@@ -139,3 +139,80 @@ def test_search_changes_nothing(repo, monkeypatch):
     strip = lambda s: "\n".join(x for x in s.splitlines() if ".sgt/" not in x)
     assert strip(before) == strip(after)
     assert head == head_after
+
+
+def test_cross_feature_work_is_indexed_under_the_label_a_verb_accepts(repo, monkeypatch):
+    """The ◆ row: the one unit `sgt revert`/`sgt restore` take by name, and the one thing find
+    could not return. Indexed under the label, not the theme id, because the hit's own next-step
+    is `sgt show "<label>"` and that has to be a command that runs."""
+    monkeypatch.setattr(
+        "sgt.api.intent_view",
+        lambda *_a, **_k: {"themes": [
+            {
+                "label": "Event Day Handling", "rationale": "Tracks exceptional days and keeps "
+                                                            "them out of the averages.",
+                "feature_span": ["f-a", "f-b", "f-c"], "atom_shas": ["sha1", "sha2"],
+            },
+            # One lane: that feature is already indexed and answers as itself.
+            {"label": "One Lane", "rationale": "x", "feature_span": ["f-a"],
+             "atom_shas": ["sha1", "sha2"]},
+            # One save: it IS that save. Its label is the commit subject and its rationale is the
+            # "Ungrouped commit." placeholder, so indexing it listed the same words twice with
+            # bookkeeping prose under the second copy.
+            {"label": "add a csv download link", "rationale": "Ungrouped commit.",
+             "feature_span": ["f-a", "f-b"], "atom_shas": ["sha9"]},
+        ]},
+    )
+    work = [e for e in search.corpus(repo) if e["kind"] == "work"]
+    assert [w["label"] for w in work] == ["Event Day Handling"]
+    assert work[0]["id"] == "Event Day Handling", "the label is the handle"
+    assert "across 3 features" in work[0]["detail"]
+    assert "exceptional" in work[0]["text"], "the rationale is the searchable part"
+
+
+def test_a_save_says_which_piece_of_work_it_belongs_to(repo, monkeypatch):
+    """A save hit used to print its own sha twice (`<sha>  save <sha>`) -- the one kind of hit
+    with no context, where a feature gives its description and a symbol names its lane."""
+    monkeypatch.setattr(
+        "sgt.api.intent_view",
+        lambda *_a, **_k: {"themes": [{
+            "label": "Event Day Handling", "rationale": "why",
+            "feature_span": ["f-a", "f-b"], "atom_shas": ["sha1", "sha2"],
+        }]},
+    )
+    monkeypatch.setattr(
+        "sgt.api.history_view",
+        lambda *_a, **_k: {"commits": [
+            {"sha": "sha1" + "0" * 36, "subject": "keep event days out of the averages"},
+            {"sha": "sha1", "subject": "mark event days on the charts"},
+            {"sha": "beef" + "0" * 36, "subject": "an unrelated save"},
+        ]},
+    )
+    saves = {e["label"]: e for e in search.corpus(repo) if e["kind"] == "save"}
+    assert saves["mark event days on the charts"]["detail"] == "part of ◆ Event Day Handling"
+    assert saves["an unrelated save"]["detail"] == "", "no ◆ claims it; say nothing rather than 'save <sha>'"
+    assert saves["an unrelated save"]["id"] == "beef000", "seven, like every other surface prints a sha"
+
+
+def test_one_feature_cannot_fill_the_result_list_with_its_own_symbols(repo, monkeypatch):
+    """Measured on the study's bikecount bundle: "the bit that works out the averages" filled four
+    of five slots with `hourly_averages`, `::_weekday`, `::_weekend` and `::monthly_totals` -- four
+    ways of saying one lane -- and pushed the work that changed how an average is computed off the
+    list. Whoever is reading has to open each hit to learn they are the same answer."""
+    entries = [
+        {"kind": "symbol", "id": f"a.py::f{i}", "label": f"a.py::f{i}", "detail": "", "text": "x",
+         "feature": "f-one", "vec": [1.0, 0.0]}
+        for i in range(4)
+    ] + [
+        {"kind": "save", "id": "s1", "label": "the save that answers", "detail": "", "text": "x",
+         "feature": "", "vec": [0.9, 0.0]},
+    ]
+    path = repo / search.INDEX_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"model": "test", "dims": 2, "entries": entries}))
+    monkeypatch.setattr(search, "_embed", lambda *a, **k: [[1.0, 0.0]])
+
+    hits = search.search(repo, "anything", k=3)["hits"]
+    assert [h["kind"] for h in hits] == ["symbol", "symbol", "save"], \
+        "two symbols per feature, then the next different thing"
+    assert hits[2]["label"] == "the save that answers"

@@ -627,6 +627,44 @@ def test_the_revert_a_restore_reverses_is_found_by_the_name_the_person_typed(tmp
         "a revert whose removal no longer stands must not be found by its name")
 
 
+def test_a_name_that_stopped_resolving_is_still_answered_by_the_journal(tmp_path):
+    """F141. The rung above `_matching_revert_event`: resolving the name at all.
+
+    The earlier fix made restore find the recorded revert once the target had resolved to an
+    op-set. A re-mine re-labels the ◆ cross-feature work from commit subjects, so on the study
+    bundle the handle `./stage 3` prints -- "Event Day Handling" -- stops naming anything in the
+    map, and restore never reached that fix: it fell past every deterministic rung to the
+    natural-language one and exited `could not resolve ... set OPENAI_API_KEY`. The journal wrote
+    the handle down when the revert applied, and a handle is the one part a re-derivation cannot
+    rename.
+    """
+    repo = _foo_chain(tmp_path / "repo", 3)
+    get(repo)
+    ops = Store(repo).all_ops()
+    tip = _op_with(ops, "a.py::foo", b"return 3")
+
+    assert verbs.ops_removed_by_named_revert(repo, tip.id) is None, (
+        "nothing has been reverted under this name yet")
+
+    before = get(repo).op_ids
+    verbs.revert(repo, tip.id)
+    removed = verbs.ops_removed_by_named_revert(repo, tip.id)
+    assert removed, "the revert just recorded under this name was not found by it"
+    assert removed == before - get(repo).op_ids, "found an event, but not the removal that happened"
+
+    # Restoring through that set is the edit the person meant, and it is exact.
+    preview = verbs.plan_restore_op_set(repo, tip.id, removed)
+    assert preview.ok, preview.message
+    assert preview.after_ids == before
+
+    # And once it is back, the name answers nothing again -- the guard that keeps a bundle's own
+    # shipped build-time revert from being reversed on an untouched project (F135).
+    verbs.apply(repo, preview)
+    assert get(repo).op_ids == before
+    assert verbs.ops_removed_by_named_revert(repo, tip.id) is None, (
+        "a revert whose removal no longer stands must not answer to its name")
+
+
 def test_restore_brings_back_a_dependent_the_revert_swept(tmp_path):
     """The direction gap, in miniature. `revert --keep-dependents=False`... i.e. the explicit
     `take_dependents` demolition removes `↑mid` = {mid, tip}; `↓mid` = {add, mid} can never
