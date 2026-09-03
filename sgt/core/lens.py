@@ -734,7 +734,10 @@ def provenance_ideal_for_ref(repo: str | Path, ref: str = "HEAD", store: Store |
     return _validated_from_ops(repo, _reduced_ideal_ids(repo, included, all_ops), all_ops)
 
 
-def _sync(repo: Path, treat_as_root: str | None = None) -> Ideal:
+def _sync(repo: Path, treat_as_root: str | None = None, *, unbounded: bool = False) -> Ideal:
+    """`unbounded=True` drops the per-chunk wall-clock ceiling, so this call mines whatever is
+    left rather than whatever fits in `_CHUNK_BUDGET_SECONDS`. For callers whose contract is
+    completeness (`resync`) rather than interactivity -- see the note on the deadline sites."""
     gb = GitBinding(repo)
     store = Store(repo)
     store.init()
@@ -855,7 +858,7 @@ def _sync(repo: Path, treat_as_root: str | None = None) -> Ideal:
         # backward from `head` instead (U2). Bootstraps `witness=head` at this same checkpoint --
         # never via a separate forward mine -- so the ref is immediately "forward current" and
         # every later call on it is pure backward backfill until `reached_genesis`.
-        deadline = time.monotonic() + _CHUNK_BUDGET_SECONDS
+        deadline = None if unbounded else time.monotonic() + _CHUNK_BUDGET_SECONDS
         window = gb.history_backward(head)
         mined_ops, last_sha = mine(repo, history_override=window, deadline=deadline, include_dirty=include_dirty)
         new_witness = head
@@ -872,7 +875,7 @@ def _sync(repo: Path, treat_as_root: str | None = None) -> Ideal:
         # backfill entry for its key -- falls through to the ordinary catch-up branch below instead
         # of mistaking "no entry" for "needs a fresh genesis walk" and re-mining history that was
         # already fully accounted for under the ref's previous key.
-        deadline = time.monotonic() + _CHUNK_BUDGET_SECONDS
+        deadline = None if unbounded else time.monotonic() + _CHUNK_BUDGET_SECONDS
         frontier = backfill_state.get("genesis_frontier")
         start = head if frontier is None else gb.parent_of(frontier)
         window = gb.history_backward(start) if start is not None else []
@@ -886,7 +889,7 @@ def _sync(repo: Path, treat_as_root: str | None = None) -> Ideal:
         # (`prev_head == head`, `reached_genesis` already `True`) -- an empty range that still
         # carries the dirty pass, so `get()` keeps absorbing working-tree edits (R9) forever, not
         # just until backfill finishes.
-        deadline = time.monotonic() + _CHUNK_BUDGET_SECONDS
+        deadline = None if unbounded else time.monotonic() + _CHUNK_BUDGET_SECONDS
         mined_ops, _last_sha = mine(repo, since=prev_head, target=head, deadline=deadline, include_dirty=include_dirty)
         new_witness = head
 
@@ -1110,9 +1113,12 @@ def _sync(repo: Path, treat_as_root: str | None = None) -> Ideal:
     return result
 
 
-def get(repo: str | Path) -> Ideal:
-    """Mine what's new to the current ref, persist it, and return the ref's current ideal."""
-    return _sync(Path(repo))
+def get(repo: str | Path, *, unbounded: bool = False) -> Ideal:
+    """Mine what's new to the current ref, persist it, and return the ref's current ideal.
+
+    Deadline-chunked by default so an interactive read cannot hang; `unbounded=True` mines to
+    the end instead, for a caller that needs the record complete rather than prompt."""
+    return _sync(Path(repo), unbounded=unbounded)
 
 
 def sync_status(repo: str | Path, ref: str | None = None) -> dict:
@@ -1253,17 +1259,26 @@ def resync(repo: str | Path, *, reseed: bool = False) -> dict:
                 del excl[key]
                 save_exclusions(repo, excl)
 
-    ideal = get(repo)  # re-derive from current git reality (first-contact seed via provenance scan)
-    # A first contact is CHUNKED against a deadline, so one call can leave the backward walk
-    # mid-history -- and every consumer of resync (the study's stage resets above all) treats the
-    # return as "the record now matches HEAD". On that short record a save can answer "nothing to
-    # save" over a working copy full of changes, and whether it did depended on machine load at
-    # the moment of the reset. Contact until the sync reports itself complete: each call advances
-    # at least one chunk, so this terminates on history length; the bound is a stuck-walk guard.
+    # Unbounded, not chunked. A first contact is normally CHUNKED against a wall clock, and every
+    # consumer of resync (the study's stage resets above all) treats the return as "the record now
+    # matches HEAD" -- so the one thing this must not do is let machine load decide how much of
+    # that is true. It did: the same `./stage 3` on the same bundle derived 206 live ops idle and
+    # 189 under eight busy cores, and a record that short can no longer reproduce the committed
+    # tree, so the next `sgt revert` refused with `put() would roll back files outside this edit's
+    # scope` naming eight files nobody had touched.
+    #
+    # Looping on `get()` did not save it. `mine` resolves a frontier sha only when a chunk runs to
+    # completion, so a chunk that hits its deadline records NO progress: `genesis_frontier` stays
+    # None and the next call restarts the backward walk from head. Under sustained load that is a
+    # treadmill -- 64 iterations, no advance, and a short ideal returned as success.
+    ideal = get(repo, unbounded=True)
+    # The loop stays as the stuck-walk guard for the rest (a forward catch-up that keeps finding
+    # new commits), but each pass is now unbounded, so each one either finishes the walk or there
+    # is genuinely more history than the last pass could see.
     for _ in range(64):
         if sync_status(repo)["complete"]:
             break
-        ideal = get(repo)
+        ideal = get(repo, unbounded=True)
     # Remember that this HEAD has been re-derived, so `_history_rewritten` stops
     # advising a resync that has already run. Without it, a repo whose working
     # tree still holds content from commits the history no longer reaches -- the
@@ -1275,7 +1290,12 @@ def resync(repo: str | Path, *, reseed: bool = False) -> dict:
     head = GitBinding(repo).head()
     if head is not None:
         state.save_json(repo, "resynced_at", {"key": key, "head": head})
-    return {"key": key, "before": before, "after": len(ideal.op_ids), "reseed": reseed}
+    # Whether the walk actually finished, so the caller is not left reading a partial re-derivation
+    # as a whole one. A remedy that reports success without having worked is worse than none: it
+    # also removes the reason to keep looking (the same argument the note above makes about
+    # `resynced_at`).
+    return {"key": key, "before": before, "after": len(ideal.op_ids), "reseed": reseed,
+            "complete": sync_status(repo)["complete"]}
 
 
 def init(repo: str | Path, horizon: str | None = None) -> Ideal:

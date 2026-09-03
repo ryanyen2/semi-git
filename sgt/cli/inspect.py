@@ -293,6 +293,13 @@ def _resync(repo: str, reseed: bool, as_json: bool = False) -> int:
         return 0
     delta = res["after"] - res["before"]
     change = "unchanged" if delta == 0 else (f"+{delta}" if delta > 0 else str(delta))
+    # A partial re-derivation is not a successful one. `resync` mines unbounded now, so this
+    # should not fire -- and if it ever does, the record is short and the next verb may refuse
+    # over files nobody touched, which is unreadable unless this line said so first.
+    if not res.get("complete", True):
+        print(f"⚠ resync {res['key']} — the walk did not reach the end of history; the record is "
+              f"incomplete ({res['after']} op(s)). Re-run it.")
+        return 1
     print(f"✓ resync {res['key']} — re-derived from current history: "
           f"{res['before']} → {res['after']} op(s) ({change})")
     return 0

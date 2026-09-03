@@ -11237,3 +11237,80 @@ reaches it automatically any more, but `sgt log`'s own help offers `--refresh` a
 the way to reflect new edits, so a participant can still type their way in. It is
 reported at every publish as a warning rather than gating one -- a bundle that
 fixes the reachable half must not be held back by the half that is left.
+
+## F139 -- the record's completeness depended on how busy the machine was
+
+Chasing F138's kernel half turned up the thing underneath it. `sgt revert "Event Day
+Handling"` refused on the shipped footfall bundle with
+
+```
+✗ put() would roll back files outside this edit's scope, whose committed content
+  differs from sgt's recorded ideal: ['check.py', 'footfall/charts.py',
+  'footfall/data.py', 'footfall/pages/__init__.py', 'hourly.py', 'sides.py',
+  'yearly.py', 'footfall/server.py']
+```
+
+...on a bundle that five fresh downloads walked through stages 3 and 4 without
+trouble, with and without the stage-3 task done. The same tarball, byte for byte.
+
+### Where it comes from
+
+The record was short. Same 241 op files, same commits, different live set:
+
+```
+  206 live ops   the derivation that works
+  191 live ops   the derivation that refuses  -- a strict subset, 15 dropped, 0 gained
+```
+
+The 15 dropped ops touch exactly the eight files `put()` names, plus thirteen in
+`metrics.py` -- including `_exclude_events`, `hourly_averages` and
+`yearly_summary`, which is to say the work the whole task is about. A record that
+short can no longer reproduce the committed tree, so the verb refuses.
+
+What decides which of the two you get is the clock. `_sync` mines one
+`_CHUNK_BUDGET_SECONDS = 10.0` chunk per call, and `./stage`'s `reset_to` runs
+`sgt advanced resync`, which drops the ref's derived state and re-mines it from
+scratch -- a true first contact, the deadline-bounded backward walk. Measured, same
+directory, same command:
+
+```
+  idle:           206 live ops
+  under 8 hogs:   189 live ops     <- the same ./stage 3
+  idle again:     206 live ops
+```
+
+`resync` already looped until `sync_status` reported complete, and that did not
+save it: `mine` resolves a frontier sha only when a chunk runs to completion, so a
+chunk that hits its deadline records *no* progress -- `genesis_frontier` stays
+None and the next call restarts the walk from head. Under sustained load that is a
+treadmill: 64 iterations, no advance, and the short ideal returned as `✓ resync
+— re-derived from current history`.
+
+This is also why the pre-ship gate lied in both directions on identical bundles:
+green over F138 in the morning, red over a working bundle in the afternoon while
+three other jobs had this machine's cores.
+
+### Fix
+
+`resync` mines unbounded (`get(repo, unbounded=True)`). Its contract is "the record
+now matches HEAD", so it is the one caller that must not race a clock; `get()` stays
+deadline-chunked, because an interactive read must not hang. The R10 genesis-horizon
+branch already mined unbounded, so this is the existing shape, not a new one.
+
+And it stops claiming what it did not do: `resync` returns `complete`, and the CLI
+prints `⚠ ... the walk did not reach the end of history` with a non-zero exit
+instead of a tick. A remedy that reports success without working is worse than
+none -- it removes the reason to keep looking, which is the argument this module
+already makes about `resynced_at` a few lines up.
+
+Pinned by `test_resync_completes_whatever_the_machine_is_doing`, with the chunk
+budget monkeypatched to zero: the same failure at its limit, and the same answer
+every run, rather than a test that needs a loaded machine. Confirmed to fail with
+the chunked call put back.
+
+`verify-bundles.sh` now gives every trial its own copy of the work dir a
+participant downloads. It had been running the whole sequence -- the 0-4 walk,
+stage 3 again, a probe, a revert, stage 4, a restore, and two more stage-4 trials
+-- in one directory, about eight `reset_to`s where a participant does five, so it
+walked itself somewhere no participant goes. With isolation it reads green on the
+same bundles it had just failed.

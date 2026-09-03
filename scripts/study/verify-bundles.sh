@@ -90,6 +90,30 @@ for tgz in "$BUNDLES"/study-*.tgz; do
     # through, must both survive a reset -- and every stage begins with one.
     printf 'OPENAI_API_KEY=verify-bundles-placeholder\nSGT_MODEL=gpt-5.6-luna\n' > "$w/.env"
     export PATH="$dest/toolenv/bin:$PATH"
+
+    # Every trial below starts from the work dir a participant downloads, never the one the
+    # previous trial left behind.
+    #
+    # This walk used to run all of them in one directory: the 0-4 stage walk, then stage 3 again,
+    # a probe, a revert, stage 4, a restore, and two more stage-4 trials -- around eight
+    # `reset_to`s where a participant does five, once each. Each one re-derives the record
+    # (`reset_to` -> `sgt advanced resync`), and re-derivation is lossy: measured on this bundle,
+    # 206 live ops became 191, a strict subset, and the ops it drops are the ones that let the
+    # record reproduce the committed tree. Far enough down that road and `sgt revert` refuses with
+    # `put() would roll back files outside this edit's scope`, on a bundle a participant completes
+    # without trouble.
+    #
+    # So the gate lied in both directions on the same byte-identical tarballs: green over the
+    # empty-restore defect in the morning, red over a working bundle in the afternoon (five fresh
+    # downloads walked stages 3 and 4 green, with and without the stage-3 task done). A gate whose
+    # verdict depends on how many trials ran before it is not measuring the artefact.
+    #
+    # Snapshot-and-restore rather than re-unpacking: the environment (`.venv`, `.env`) is what
+    # `setup.sh` builds once and a participant keeps, so it belongs in the snapshot. Restoring to
+    # the same path keeps the venv's absolute paths valid.
+    snapshot="$dest/work-as-downloaded"
+    cp -Rp "$w" "$snapshot"
+    fresh() { rm -rf "$w"; cp -Rp "$snapshot" "$w"; }
     for n in 0 1 2 3 4; do
         ( cd "$w" && ./stage "$n" ) >/dev/null 2>&1
         check $? "stage $n runs"
@@ -136,6 +160,7 @@ for tgz in "$BUNDLES"/study-*.tgz; do
     esac
 
     # F135: the wrong verb for this stage is where a tool says what it is for.
+    fresh
     ( cd "$w" && ./stage 3 ) >/dev/null 2>&1
     out="$( cd "$w" && "$sgt_bin" restore "$label" 2>&1 )"
     rc=$?
@@ -153,6 +178,7 @@ for tgz in "$BUNDLES"/study-*.tgz; do
                         || bad "check 3 does not match after the revert"
 
     # Stage 4 sets its own removed state up; the task is to reverse it.
+    fresh
     ( cd "$w" && ./stage 4 ) >/dev/null 2>&1
     check $? "stage 4 sets up the removed state"
     ( cd "$w" && "$sgt_bin" restore "$label" --yes ) >/dev/null 2>&1
@@ -175,6 +201,7 @@ for tgz in "$BUNDLES"/study-*.tgz; do
     # restore still landing. Held apart from the trial above because it needs its own fresh
     # stage 4, and named for the surface rather than the flag: the next reader added to the
     # extension belongs on this list.
+    fresh
     ( cd "$w" && ./stage 4 ) >/dev/null 2>&1
     ( cd "$w" && "$sgt_bin" advanced compose --json --full ) >/dev/null 2>&1   # the primary poll
     ( cd "$w" && "$sgt_bin" log --tree --json ) >/dev/null 2>&1                # tree/hover/inlay/fold
@@ -188,6 +215,7 @@ for tgz in "$BUNDLES"/study-*.tgz; do
     # the way to reflect new edits, so a participant can still type their way into it. Reported,
     # not gated -- it must not block shipping the bundle that fixes the reachable half. Promote it
     # to `bad` when a re-mine stops swallowing a recorded removal.
+    fresh
     ( cd "$w" && ./stage 4 ) >/dev/null 2>&1
     ( cd "$w" && "$sgt_bin" log --tree --refresh --json ) >/dev/null 2>&1
     out="$( cd "$w" && "$sgt_bin" restore "$label" --yes 2>&1 )"
@@ -204,6 +232,7 @@ for tgz in "$BUNDLES"/study-*.tgz; do
     # The half of this arm that is not the CLI. `render-bundle.js` drives the shipped
     # `workbench.js` off THIS bundle's own views -- the panel that failed a participant was one
     # the extension's own fixture never exercised, so the fixture could not have caught it.
+    fresh
     ( cd "$w" && ./stage 1 ) >/dev/null 2>&1
     # The webview THIS bundle ships, out of its own .vsix -- not the repo's copy, which is the same
     # file right up until somebody edits it after a build, and that is exactly the state where a
