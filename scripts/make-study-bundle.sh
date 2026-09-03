@@ -611,7 +611,11 @@ NEWEST
         # happens to contain neither of the words grepped for below -- so the
         # gate fails on a bundle that is fine. The greps match plain words that
         # no colour code sits inside.
-        find_out="$(sgt find "the bit that works out the averages" 2>&1)"
+        # The phrase the stage cards actually suggest (tasks.ts, stages 1 and 2). It moved when
+        # the old one turned out to rank four ways of saying "the code that computes an average"
+        # above the work that changed how one is computed (F142); a rehearsal that exercises a
+        # query nobody is told to run is checking the wrong thing.
+        find_out="$(sgt find "the page that lets you download a csv" 2>&1)"
         if printf '%s\n' "$find_out" | grep -q "matched on words"; then
             echo "  REHEARSAL: sgt find fell back to word matching -- the search index has no" >&2
             echo "  embeddings, so stages 1 and 2 both lose a command they are told to use." >&2
