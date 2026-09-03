@@ -57,6 +57,16 @@ for tgz in "$BUNDLES"/study-*.tgz; do
     tar xzf "$tgz" -C "$dest" --strip-components=1 || { bad "could not unpack"; continue; }
     w="$dest/work"
 
+    # The record every stage resets to must have nothing to undo: a journal entry
+    # in here is a build-time edit `sgt undo` would replay onto a participant.
+    if [ -f "$w/.study/sgt-pristine.tar" ]; then
+        if tar tf "$w/.study/sgt-pristine.tar" | grep -q 'local/ideal_journal.json$'; then
+            bad "pristine .sgt ships an undo journal"
+        else
+            ok "pristine .sgt has nothing to undo"
+        fi
+    fi
+
     # The wheel and the extension inside a bundle are built from the working tree, so a bundle is
     # only current if it was built from the commit that is checked out now. A build can stop
     # part-way and leave some of the four behind without saying so -- `publish-study.sh | tail`

@@ -309,7 +309,9 @@ fi
 # six untracked files they did not create, in one condition and not the other.
 # `.git/info/exclude` is the local, untracked way to say so.
 if [ -d "$here/work/.git" ]; then
-    printf '%s\n' "" "# added by the study setup" ".claude/" ".mcp.json" ".vscode/" \
+    # `.DS_Store` too: Finder drops one in every folder it opens, and the tool's
+    # own revert commit swept three of them in as "added" files on a pilot's Mac.
+    printf '%s\n' "" "# added by the study setup" ".claude/" ".mcp.json" ".vscode/" ".DS_Store" \
         >> "$here/work/.git/info/exclude"
 
     # git's pager and terminal editor trapped pilots under a running clock:

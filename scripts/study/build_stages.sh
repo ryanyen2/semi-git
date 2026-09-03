@@ -147,6 +147,11 @@ if [ "$arm" = sgt ]; then
     git checkout -q -f -B main study/full
     git clean -qfd
     sgt advanced resync >/dev/null 2>&1 || true
+    # The journal is the undo stack. Resync does not clear it, so the testbed's
+    # own build-time edits shipped as two entries a participant's second `sgt
+    # undo` would have replayed -- onto a record 95 ops smaller than the one
+    # they were looking at. A pristine record has nothing to undo.
+    rm -f "$repo/.sgt/local/ideal_journal.json"
     rm -f "$repo/.study/sgt-pristine.tar"
     tar -cf "$repo/.study/sgt-pristine.tar" -C "$repo" .sgt
     say "saved a pristine .sgt ($(du -h "$repo/.study/sgt-pristine.tar" | cut -f1 | tr -d ' '))"

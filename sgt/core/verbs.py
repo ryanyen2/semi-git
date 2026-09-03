@@ -834,7 +834,7 @@ def apply(repo: str | Path, preview: VerbPreview, message: str | None = None) ->
     # Stamp the journal entry with what this edit *was*, not just what it changed. `restore`
     # resolves itself against the revert it reverses (`_matching_revert_event`), and a before/after
     # op-set pair alone cannot say which verb produced it or what the user named.
-    lens.record_ideal(repo, edited, sha, meta={
+    lens.record_ideal(repo, edited, sha, before=preview.before_ids, meta={
         "verb": preview.verb,
         "target": preview.target,
         "target_ops": sorted(preview.target_ops),

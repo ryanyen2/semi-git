@@ -1401,7 +1401,7 @@ def commit_materialized(repo: str | Path, ideal: Ideal, message: str) -> str:
 def record_ideal(
     repo: str | Path, ideal: Ideal, witness_sha: str, *, journal: bool = True,
     ref_key: str | None = None, record_exclusions: bool = True,
-    meta: dict | None = None,
+    meta: dict | None = None, before: frozenset[str] | None = None,
 ) -> None:
     """Persist an explicitly-edited `ideal` as the current ref's authoritative committed set and
     advance the ref's witness to `witness_sha` -- the durability an ideal-edit verb (U8's
@@ -1420,7 +1420,14 @@ def record_ideal(
     the op-set the user actually named. The entry used to carry only the before/after op-sets, so
     nothing durable said *which* revert had produced it and `restore` could not resolve itself
     against the one edit it is supposed to reverse. Reserved keys (`kind`, `ideal`, `witness`,
-    `result`, `applied`) are not overridable: they are the undo contract."""
+    `result`, `applied`) are not overridable: they are the undo contract.
+
+    `before` is the op-set the edit was planned against. Without it the prior ideal is whatever the
+    table holds *now* -- and between `put()`'s commit and this call a concurrent reader (the editor
+    polls every few seconds) can sync HEAD, mine the materializing commit as ordinary edits, and
+    advance the table. The journal then said the edit removed those mined ops too, `restore`
+    reversed that entry exactly, and re-admitted ops holding the removed bytes: 39 ops, no file
+    changed (F146). The journal describes the edit that was planned, not the table it landed on."""
     repo = Path(repo)
     # `ref_key` lets `land` (U5) record under the *target* branch's key rather than the checked-out
     # ref -- landing a non-checked-out branch must advance that branch's table/witness, not HEAD's.
@@ -1446,7 +1453,7 @@ def record_ideal(
             prev_witness = _load_witnesses(repo).get(key)
             entry = {
                 "kind": "ideal_edit",
-                "ideal": sorted(itable[key]),
+                "ideal": sorted(before if before is not None else itable[key]),
                 "witness": prev_witness,
                 "result": sorted(ideal.op_ids),
                 "applied": False,
@@ -1461,9 +1468,9 @@ def record_ideal(
         # undo of a revert) has its observed exclusion tags tombstoned so it re-enters. Reads the
         # pre-overwrite `itable[key]` as the prior ideal, so the first edit on an un-seeded ref (no
         # prior entry) records nothing -- it *is* the seed, and has removed nothing.
-        before = set(itable.get(key, []))
+        prior = set(before) if before is not None else set(itable.get(key, []))
         after = set(ideal.op_ids)
-        removed, added = before - after, after - before
+        removed, added = prior - after, after - prior
         # `record_exclusions=False` suppresses this translation for sync/land (Phase 1.2 §E): there,
         # the authoritative exclusion OR-Set is the per-key union `resolve` already computed from both
         # clones and `flush_reconciled_metadata` persisted. Re-deriving adds/tombstones from the merged

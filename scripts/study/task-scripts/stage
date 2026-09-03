@@ -152,6 +152,10 @@ reset_to() {
     # command after a detached reset read and wrote a different record than the
     # one the project shipped with. It still reverted, but the restore in stage 4
     # then resolved against the wrong removal and put back two files out of five.
+    # A `git revert A B C` that stopped on a conflict leaves its sequencer behind,
+    # and `checkout -f` does not clear it -- so the next stage's revert answered
+    # "revert is already in progress" for a revert nobody could see.
+    git revert --quit 2>/dev/null || true
     git checkout -q -f -B main "$1" 2>/dev/null || { echo "this project is missing $1" >&2; exit 1; }
     # `-e`, not a plain clean. Two things live in this folder that the project's
     # history has never heard of and that setup put here once: `.env`, holding

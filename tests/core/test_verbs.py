@@ -1003,3 +1003,36 @@ def test_the_inverse_is_the_whole_peel_not_only_the_stand_ins_still_at_a_tip(tmp
     assert plan.ok, plan.message
     assert plan.after_ids == before, "a reversal that lands anywhere else is not the inverse"
     assert not (plan.after_ids - before), "no stand-in may survive the reversal"
+
+
+def test_apply_journals_the_planned_edit_even_when_a_reader_syncs_mid_apply(tmp_path, monkeypatch):
+    """F146. The editor polls sgt every few seconds. A poll that lands between `put()`'s commit and
+    `record_ideal` sees HEAD moved past the witness and mines the revert's own commit as ordinary
+    edits. `record_ideal` then read the journal's "before" set off disk, so the entry claimed the
+    revert removed those mined ops too -- and `restore`, reversing the entry exactly, re-admitted
+    ops that hold the removed bytes and changed no file. Measured live on footfall: 39 re-admitted,
+    0 files, `./check 4` still red. The journal must describe the edit that was planned."""
+    from sgt.core import lens
+
+    repo = _foo_chain(tmp_path / "repo", 3)
+    original = get(repo).op_ids
+    tip = _op_with(Store(repo).all_ops(), "a.py::foo", b"return 3")
+    plan = verbs.plan_revert(repo, tip.id)
+
+    real_put = lens.put
+
+    def put_then_someone_reads(*a, **kw):
+        sha = real_put(*a, **kw)
+        get(repo)  # the poller: mines the commit `put` just made
+        return sha
+
+    monkeypatch.setattr(lens, "put", put_then_someone_reads)
+    verbs.apply(repo, plan)
+
+    entry = lens._load_ideal_journal(repo)["refs/heads/main"][-1]
+    assert frozenset(entry["ideal"]) == plan.before_ids
+    assert frozenset(entry["result"]) == plan.after_ids
+
+    monkeypatch.setattr(lens, "put", real_put)
+    verbs.restore(repo, tip.id)
+    assert get(repo).op_ids == original

@@ -11552,3 +11552,46 @@ or a `file::name` symbol", while `sgt_show` next to it listed every form.
 restore) F141's journal rung, in the CLI's order and through the CLI's own op-set
 planners, so a name cannot resolve to one thing in the terminal and another through MCP.
 The two schemas now say what they accept. Pinned in `tests/mcp/test_server.py`.
+
+## F146 -- a poll between the revert's commit and its record poisoned the journal
+
+Live on footfall (bundle 20260903-b, sgt 0.6.8), in the editor with the workbench open:
+
+```
+(work) study work $ sgt revert "Event Day Handling"
+  ✓ revert applied — 20 edits removed, 11 added. (`sgt undo` reverses this.)
+(work) study work $ sgt restore "Event Day Handling"
+  ✗ restore refused — it would put 39 edit(s) back into the record and change no file
+(work) study work $ sgt undo
+  brings back 39 edit(s), drops 9 edit(s)          # and ./check 4 still read 42,436
+```
+
+The ✓ counted the plan; the journal recorded something else. Its entry for that revert
+read `before=227 after=197`: removed 39, added 9. The 21 extra ops all carry the
+provenance sha of the revert's own commit. The telemetry says how they got there:
+`verbs.apply` calls `lens.put` (fold, write, `git commit`) and then `lens.record_ideal`,
+and in between, the editor's poll cycle (`sgt log --json`, `sgt log --tree --json`,
+`sgt advanced fold --at now --json`, `sgt revert <feature> --emit --json` -- every few
+seconds, 361 editor commands in a 12-minute session) ran `get()`, saw HEAD past the
+witness, mined the revert commit as ordinary edits, and advanced the table to 227.
+`record_ideal` then took its "before" from that table. Two of the eleven mints were
+content-identical to mined ops, which is where 9 comes from.
+
+`restore` reverses the entry exactly (0.6.8), so it re-admitted the 21 ops that hold the
+removed bytes, and both folds were the same text. `undo` replays the same snapshot, so it
+put the record back to 227 and moved no file either. Three of three reverts in the session
+went this way, in stage 3 and in `./stage 4`'s own setup; headless the window is a few
+milliseconds and it never happens, which is why every rehearsal passed.
+
+### Fix
+
+`record_ideal` takes `before`, the op-set the edit was planned against, and `verbs.apply`
+passes `preview.before_ids`. The journal and the exclusion delta now describe the edit that
+was planned, not the table it happened to land on. Pinned in `tests/core/test_verbs.py`
+with a `put` that runs `get()` after committing.
+
+Three bundle-prep faults surfaced alongside it, all fixed in the scripts: the "pristine"
+`.sgt` tar shipped the testbed's own two undo entries (a second `sgt undo` would have
+replayed one onto a 111-op record); `./stage` did not clear a git sequencer, so a
+conflicted `git revert A B C` left the next stage saying "revert is already in progress";
+and `.DS_Store` was not excluded, so Finder's files rode into every revert commit.
