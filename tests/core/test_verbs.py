@@ -614,6 +614,18 @@ def test_the_revert_a_restore_reverses_is_found_by_the_name_the_person_typed(tmp
     assert event["target"] == tip.id
     assert event["target_ops"] == [tip.id], "matched an event, but not the removal that happened"
 
+    # ...but only while that removal is still standing. A handle matches every revert ever
+    # recorded under it, and a study bundle ships a journal in which its own build reverted the
+    # theme -- an event `./stage 3` undoes by moving git rather than by restoring, so it stays in
+    # the journal with nothing left to reverse. Matching it made `restore` answer "that revert has
+    # already been reversed" on an untouched project, about a revert the person never ran, where
+    # F135 asks for "there is nothing to restore". Caught by verify-bundles on the packed bundle,
+    # which is the only place the shipped journal exists.
+    everything_back = frozenset(o.id for o in ops)
+    assert verbs._matching_revert_event(
+        Path(repo), rederived, ops, tip.id, everything_back) is None, (
+        "a revert whose removal no longer stands must not be found by its name")
+
 
 def test_restore_brings_back_a_dependent_the_revert_swept(tmp_path):
     """The direction gap, in miniature. `revert --keep-dependents=False`... i.e. the explicit
