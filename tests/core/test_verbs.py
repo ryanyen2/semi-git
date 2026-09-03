@@ -582,6 +582,39 @@ def test_apply_records_the_verb_and_its_target_ops_on_the_journal_event(tmp_path
     assert event["applied"] is True
 
 
+def test_the_revert_a_restore_reverses_is_found_by_the_name_the_person_typed(tmp_path):
+    """Op ids do not survive a re-derivation. A name does.
+
+    `sgt log --refresh` and `advanced resync` re-mine and re-cluster, and afterwards the same
+    handle resolves to a different op-set -- 39 ops where the revert had recorded 20, measured on
+    the study's footfall bundle. Both comparisons this resolver made were over op ids, so neither
+    matched, and `restore` fell back to the algebraic union: `would leave two live versions of
+    footfall/metrics.py::_exclude_events` on one path, and on the other a ✓ over a commit that
+    changed no files -- which is what a participant hit in stage 4, twice, on two different days.
+
+    `sgt undo` reversed the very same edit without trouble the whole time, because it replays the
+    journal instead of re-resolving a name. This is the rule that lets restore do the same.
+    """
+    repo = _foo_chain(tmp_path / "repo", 3)
+    get(repo)
+    tip = _op_with(Store(repo).all_ops(), "a.py::foo", b"return 3")
+    verbs.revert(repo, tip.id)
+
+    ops = Store(repo).all_ops()
+    # What a re-derivation leaves behind: the handle still resolves, to ops the event never named.
+    rederived = frozenset({"0" * 64})
+
+    assert verbs._matching_revert_event(Path(repo), rederived, ops) is None, (
+        "ids that share nothing with the event must not match on ids alone")
+
+    found = verbs._matching_revert_event(Path(repo), rederived, ops, tip.id)
+    assert found is not None, "the revert recorded under this handle was not found by it"
+    event, _later = found
+    assert event["verb"] == "revert"
+    assert event["target"] == tip.id
+    assert event["target_ops"] == [tip.id], "matched an event, but not the removal that happened"
+
+
 def test_restore_brings_back_a_dependent_the_revert_swept(tmp_path):
     """The direction gap, in miniature. `revert --keep-dependents=False`... i.e. the explicit
     `take_dependents` demolition removes `↑mid` = {mid, tip}; `↓mid` = {add, mid} can never

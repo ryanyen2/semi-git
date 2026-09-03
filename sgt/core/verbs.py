@@ -243,7 +243,7 @@ def _entity_core(op_ids: frozenset[str], ops: list[Op]) -> frozenset[str]:
 
 
 def _matching_revert_event(
-    repo: Path, target_ids: frozenset[str], ops: list[Op] | None = None,
+    repo: Path, target_ids: frozenset[str], ops: list[Op] | None = None, tag: str | None = None,
 ) -> tuple[dict, frozenset[str]] | None:
     """The newest applied `revert` event whose target op-set names the same removal as
     `target_ids`, paired with everything the edits *after* it took back out.
@@ -262,6 +262,17 @@ def _matching_revert_event(
     (anchors, residue) left out, because layout attribution shifts when the record is re-derived
     across the revert's own land commit while the entity ops stay put -- see `_entity_core` for
     the failure this absorbs. Two removals that agree on every entity op are the same removal.
+
+    With `tag`, the handle the person typed is the last thing tried, because op ids do not survive
+    a re-derivation and a name does. `sgt log --refresh` or `advanced resync` re-mines and
+    re-clusters, and afterwards the same theme resolves to a different op-set -- 39 ops where the
+    revert had recorded 20, on the study's footfall bundle -- so neither comparison above matches
+    and the restore falls back to the algebraic union: `would leave two live versions of
+    footfall/metrics.py::_exclude_events`, or a ✓ over an empty commit. `sgt undo` reverses the
+    very same edit without trouble, because it replays the journal instead of re-resolving a name.
+    This is restore borrowing that: the newest applied revert recorded under the handle the caller
+    named IS the removal they mean by it. No overlap with `target_ids` is required -- a
+    re-derivation can rename every id involved, which is the case this exists for.
 
     Reverse-chronological, so a revert -> restore -> revert cycle resolves against the *second*
     revert. An `undo` drops the event it inverted, so a reverted-then-undone edit leaves nothing
@@ -289,6 +300,10 @@ def _matching_revert_event(
                     and core
                     and event_ids is not None
                     and _entity_core(event_ids, ops) == core
+                ) or (
+                    tag is not None
+                    and event_ids  # never the `revert --to <commit>` boundary form
+                    and event.get("target") == tag
                 ):
                     return event, frozenset(later_removed)
             # Newer than the event we are looking for, so what it took out is a later decision.
@@ -355,7 +370,7 @@ def _plan_restore_via_journal(
         # `revert <lane> --to <commit>` records `target_ops: []` (it names a commit boundary, not
         # an op-set), so an empty lookup would match it and reverse an edit nobody asked about.
         return None
-    found = _matching_revert_event(Path(repo), target_ids, ops)
+    found = _matching_revert_event(Path(repo), target_ids, ops, tag)
     if found is None:
         return None
     event, later_removed = found
