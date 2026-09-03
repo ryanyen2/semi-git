@@ -65,12 +65,32 @@ for tgz in "$BUNDLES"/study-*.tgz; do
     built="$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['toolBuild'])" \
         "$dest/study.json" 2>/dev/null)"
     head="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null)"
+    # Equality with HEAD was the first version of this check, and it cried wolf on its own
+    # pipeline: a bundle is stamped with HEAD as it is built, and the build's OWN output is then
+    # committed -- the answer key and the practice picture are regenerated from the built bundles,
+    # because that is the only place the graph a participant navigates exists. HEAD therefore moves
+    # past the stamp on every honest publish, and a gate that fails on the correct sequence is a
+    # gate people learn to pass with `--force`.
+    #
+    # What must be true is narrower and is the thing the stamp exists for: nothing INSIDE the
+    # bundle has changed since it was built. So compare the paths a bundle carries -- the tool, the
+    # extension, the participant's own scripts -- between the stamped commit and HEAD.
+    inside=(sgt/ pyproject.toml editor/vscode/ scripts/study-bundle/ scripts/study/task-scripts/
+            scripts/make-study-bundle.sh)
     if [ "${built%-dirty}" != "$built" ]; then
         bad "built from a dirty tree ($built) — commit, rebuild, then publish"
-    elif [ "$built" = "$head" ]; then
-        ok "built from the checked-out commit ($built)"
+    elif ! git -C "$ROOT" cat-file -e "${built}^{commit}" 2>/dev/null; then
+        bad "built from $built, which is not a commit in this repo"
+    elif ! git -C "$ROOT" merge-base --is-ancestor "$built" HEAD 2>/dev/null; then
+        bad "built from $built, which is not an ancestor of HEAD ($head) — rebuild before publishing"
+    elif git -C "$ROOT" diff --quiet "$built" HEAD -- "${inside[@]}" 2>/dev/null; then
+        if [ "$built" = "$head" ]; then
+            ok "built from the checked-out commit ($built)"
+        else
+            ok "built from $built; nothing in the bundle has changed since (HEAD $head)"
+        fi
     else
-        bad "built from $built, but HEAD is $head — rebuild before publishing"
+        bad "built from $built, and the bundle's own code has changed since (HEAD $head) — rebuild before publishing"
     fi
 
     # What setup.sh builds, minus the parts that need the study server.
