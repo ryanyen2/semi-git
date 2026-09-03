@@ -321,6 +321,35 @@ def test_revert_survives_a_history_rewrite(tmp_path):
     assert any("a.py::foo" in o.footprint and o.id in after.op_ids for o in Store(repo).all_ops())
 
 
+def test_resync_completes_whatever_the_machine_is_doing(tmp_path, monkeypatch):
+    """`resync` promises "the record now matches HEAD", so a wall clock must not decide how much of
+    that is true.
+
+    A first contact mines one `_CHUNK_BUDGET_SECONDS` chunk per call, and `mine` resolves a frontier
+    sha only when a chunk runs to completion -- so a chunk that hits its deadline records no
+    progress at all, and the next call restarts the backward walk from head. Under load that is a
+    treadmill: measured on the study's footfall bundle, the same `./stage 3` derived 206 live ops on
+    an idle machine and 189 under eight busy cores, and `resync` reported the short one as success.
+    A record that short can no longer reproduce the committed tree, so the next `sgt revert` refused
+    with `put() would roll back files outside this edit's scope`, naming eight files nobody had
+    touched -- on a bundle a participant completes without trouble.
+
+    Pinned with the budget at zero rather than by loading the machine: it is the same failure at its
+    limit (every chunk times out), and it is the same answer every time this runs."""
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    unhurried = get(repo).op_ids
+    assert unhurried, "the corpus mined nothing, so this test would pass vacuously"
+
+    monkeypatch.setattr(lens_mod, "_CHUNK_BUDGET_SECONDS", 0.0)
+    res = lens_mod.resync(repo)
+
+    assert res["complete"], "resync returned with the ref still behind and did not say so"
+    assert sync_status(repo)["complete"]
+    key = _ref_key(GitBinding(repo))
+    assert frozenset(_load_ideal_table(repo)[key]) == unhurried, (
+        "the re-derived record depends on how fast the machine was")
+
+
 def test_resync_re_derives_the_ideal_after_a_backward_history_rewrite(tmp_path):
     """P0-B (launch): a *backward* rewrite (`git reset --hard` to an earlier commit, `branch -f`)
     drops commits from HEAD's ancestry, but the persisted `.sgt/local/ideal.json` still names the
