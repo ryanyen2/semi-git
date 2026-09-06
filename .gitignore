@@ -83,6 +83,12 @@ texput.log
 # is a partial write from a build that was still running
 paper/main.synctex.gz
 paper/main.synctex(busy)
+paper/
+paper
+
+# Study analysis and results. The transcripts and per-participant tables are not
+# for a public repo, and the figures they draw are rebuilt from them.
+scripts/study/analysis/
 
 # The raw open-data downloads the study testbeds are built from. Hundreds of
 # megabytes, republished by Seattle and Melbourne, and reduced to the small csv
