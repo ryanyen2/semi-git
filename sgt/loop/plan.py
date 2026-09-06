@@ -30,7 +30,7 @@ from pydantic import BaseModel
 
 from sgt import state
 from sgt.config import get_client, get_model
-from sgt.core.op import make_op
+from sgt.core.op import _symbol_kind, make_op
 from sgt.core.store import Store
 
 _PENDING = "…pending…"  # hollow after_version placeholder -- never a real content hash (mirrors rewrite.py)
@@ -247,6 +247,48 @@ def _fallback_decompose(plan_text: str) -> PlanDecomposition:
     return PlanDecomposition(steps=[PlanStep(title=t) for t in titles])
 
 
+def _ground_footprints(repo: Path, steps: list[PlanStep]) -> None:
+    """Deterministic correction the repo itself supplies: a `file::qualname` prediction for a file
+    the repo already knows to hold no named entity is the bare file.
+
+    The decomposer guessed `src/kinds/T.ts::T` for a file that is one `register(...)` call plus
+    import lines (the sketchpad-v3 take, 2026-09-04). No entity has ever lived in that file, so the
+    matcher's qualname key (`_step_keys`, which drops the file on purpose so file drift stays free)
+    could join nothing, and a step built exactly as stated read as drift -- while the previous run
+    of the same plan text had matched, because the model happened to predict the bare file. Which
+    of the two the model picks is not the planner's intent; the file is. A file that does hold named
+    entities keeps the qualname (the name is the identity there), and a file the repo has never
+    seen is new work and keeps it too. A relative path the plan wrote (`kinds/T.ts`) is re-pointed
+    at the one known file it names, the way `match._resolve_file_paths` does at match time."""
+    from sgt.core import opindex
+
+    known_files: set[str] = set()
+    with_entities: set[str] = set()
+    for op in opindex.index_ops(repo):
+        for sym in op.footprint:
+            if sym.startswith(_PLAN_SENTINEL_PREFIX):
+                continue
+            path = sym.split("::", 1)[0]
+            known_files.add(path)
+            if _symbol_kind(sym) in ("entity", "nested"):
+                with_entities.add(path)
+    entityless = known_files - with_entities
+
+    def resolve(path: str) -> str:
+        if path in known_files:
+            return path
+        hits = [f for f in known_files if f.endswith("/" + path)]
+        return hits[0] if len(hits) == 1 else path
+
+    for step in steps:
+        grounded: list[str] = []
+        for sym in step.predicted_footprint:
+            path, sep, _name = sym.partition("::")
+            path = resolve(path)
+            grounded.append(path if (sep and path in entityless) else (path + sep + _name if sep else path))
+        step.predicted_footprint = sorted(set(grounded))
+
+
 def _backfill_predicted_feature(repo: Path, steps: list[PlanStep]) -> None:
     """Deterministic safety net for steps the LLM left unplaced: plurality-vote each step's
     `predicted_footprint` symbols against the real tree's leaf membership (identical tie-break --
@@ -289,6 +331,7 @@ def intake(repo: str | Path, plan_text: str, session_id: str | None = None,
     sweep_stale_sessions(repo, STALE_SECONDS, now=now)  # housekeeping beat: reap walked-away plans
 
     decomposition = _llm_decompose(repo, plan_text) or _fallback_decompose(plan_text)
+    _ground_footprints(repo, decomposition.steps)
     _backfill_predicted_feature(repo, decomposition.steps)
 
     # Re-taking a session id that already exists is a RESUME, not a fresh plan. An agent that was

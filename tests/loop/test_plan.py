@@ -297,3 +297,33 @@ def test_sweep_never_closes_a_session_the_save_just_asked_to_resolve(tmp_path, m
     assert plan_mod.active_sessions(tmp_path).get("ambiguous") is not None
     # The hollow the resolve command needs is still there.
     assert (store.hollow_dir / session.steps[0]["hollow_id"]).is_file()
+
+
+def test_ground_footprints_coerces_a_qualname_to_the_file_when_that_file_has_no_named_entities(tmp_path):
+    """The decomposer guessed `src/kinds/T.ts::T` for a file that is one `register(...)` call plus
+    import lines (sketchpad-v3 take, 2026-09-04). No entity has ever lived in that file, so the
+    qualname can join nothing and a step built exactly as stated read as drift, while the previous
+    run of the same plan text matched because the model happened to predict the bare file. A
+    qualname in a file the repo knows to hold no named entities is the file, predicted at file scope.
+    A file that does hold named entities keeps the qualname, and a file the repo has never seen is
+    new work and keeps it too."""
+    from sgt.core.op import make_op
+    from sgt.core.store import Store
+
+    store = Store(tmp_path)
+    store.add(make_op({"src/kinds/T.ts::__import__::./registry": (None, "v1"),
+                       "src/kinds/T.ts::__residue__::__import__::./registry": (None, "v1")},
+                      {"src/kinds/T.ts::__import__::./registry": b"i",
+                       "src/kinds/T.ts::__residue__::__import__::./registry": b"r"}))
+    store.add(make_op({"src/App.tsx::App": (None, "v1")}, {"src/App.tsx::App": b"a"}))
+    steps = [
+        plan_mod.PlanStep(title="seam", predicted_footprint=["src/kinds/T.ts::T", "kinds/T.ts::register"]),
+        plan_mod.PlanStep(title="press", predicted_footprint=["src/App.tsx::App.press"]),
+        plan_mod.PlanStep(title="new", predicted_footprint=["src/kinds/G.ts::G"]),
+    ]
+
+    plan_mod._ground_footprints(tmp_path, steps)
+
+    assert steps[0].predicted_footprint == ["src/kinds/T.ts"]
+    assert steps[1].predicted_footprint == ["src/App.tsx::App.press"]
+    assert steps[2].predicted_footprint == ["src/kinds/G.ts::G"]
