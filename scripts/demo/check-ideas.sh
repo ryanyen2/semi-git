@@ -6,10 +6,12 @@
 #
 # For each idea it reverts BY NAME, typechecks, photographs both sheets, compares
 # them against the repo as it stands, undoes, and byte-compares the restored tree.
-# Five ideas, six checks each. This is the check that silently stops being true:
-# any mining pass (`sgt save`, `sgt log --refresh`, `sgt log --rebuild`) rewrites
-# authored features with no warning, the names keep resolving, and the reverts
-# quietly grow. Findings 79 and 80.
+# Five ideas, six checks each. A mining pass (`sgt save`, `sgt log --refresh`,
+# `sgt log --rebuild`) used to rewrite authored features with no warning, so the
+# names kept resolving while the reverts quietly grew; sgt 0.6.10 fixed that
+# (findings 79 and 80) by giving each authored feature a lane of exactly its own
+# symbols. A re-mine still re-clusters and re-labels the machine-named rows around
+# them, so this preflight remains the check to run before recording.
 #
 # Expected picture movement per idea: "a corner stays on its circle" and "lines of
 # equal length" move sheet 1 only (the lattice's hexagons are rigid master

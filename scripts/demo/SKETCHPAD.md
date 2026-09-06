@@ -1,119 +1,56 @@
-# The sketchpad take
+# Recording the sketchpad take
 
-This file contains everything you need to record the sketchpad demo, from the environment setup
-through each shot, including what to say and what to do when something goes wrong. Read it once
-before your first attempt so the structure makes sense, and refer back to individual sections
-during setup and recording.
+A three minute screen recording. You inherit a working program, and you remove one recorded idea
+at a time to show what each one was holding in place. The subject is sgt. The sketchpad app is
+just the picture that makes sgt's behaviour visible.
 
-The demo repo lives at `~/repos/sgt-demo/sketchpad-v2`, which replaced the original sketchpad
-repo because the original repo's history could not support the revert structure the take needs
-(section 8 explains why and how to rebuild it from scratch). The seedbank demo is a separate
-repo with its own recording file at `RUNBOOK-seedbank.md`, and the two recordings are
-independent of each other.
+The app is a reimplementation of Sutherland's 1963 Sketchpad. Its drawing file stores geometry the
+way a light pen left it, so corners are bunched, sides are unequal and groups sit crooked. What
+you see on screen is the running program holding that imprecise geometry in place, and six
+recorded ideas do the holding.
 
----
-
-## 1. What the take shows
-
-The subject of the recording is sgt. The sketchpad app is the visual output that makes sgt's
-behavior visible to the viewer.
-
-The app itself is a reimplementation of Ivan Sutherland's 1963 Sketchpad. Its underlying
-drawing file stores geometry the way a light pen originally left it, meaning corners are bunched
-and off the circle, groups are dropped crooked and at the wrong sizes. What you see on screen
-is the running program holding all of that imprecise geometry to the correct positions. Six
-recorded ideas do the holding, and each one acts as a geometric condition. The table below
-lists all six, what each one enforces, how many edits reverting it removes, and which sheet
-shows the visual effect.
-
-| Idea, as sgt knows it | What it holds | Reverting it removes | Where it shows |
+| Idea, as sgt knows it | What it holds | Reverting removes | Visible on |
 |---|---|---|---|
 | a corner stays on its circle | corners on the rim | 8 edits | sheet 1 |
-| lines of equal length | the hexagon regular | 8 edits | sheet 1 |
+| lines of equal length | the hexagon regular | 5 edits | sheet 1 |
 | fastened at the corners | the lattice together | 11 edits | sheet 2 |
 | full size | every group the same size | 11 edits | sheet 2 |
 | stand upright | every group level | 7 edits | sheet 2 |
-| horizontal or vertical | nothing in these drawings | 8 edits | nowhere |
+| Line Orientation | nothing in these drawings | 8 edits | nowhere |
 
-Five of the six ideas have a visible effect when removed. Each one reverts cleanly by name,
-compiles without errors, changes the drawing in its own recognizable way, and restores exactly
-with `sgt undo`. The preflight script `scripts/demo/check-ideas.sh` runs 17 checks that verify
-all of the above, and all 17 should pass before you record.
+Five of the six change the picture when you remove them. Each reverts by name, compiles, and
+restores exactly with `sgt undo`. A seventh feature, `the relaxation solver`, refuses to come out
+cheaply, and shot 6 uses it for that reason.
 
-The take is a live ablation study. You inherit a working program, ask what each recorded idea
-contributes to it, and answer the question by removing one idea at a time and watching what
-happens to the drawing. The terminal console never changes across any of these variants, which
-is what makes the visual differences unmistakably the program's behavior and never a manually
-toggled flag.
+The demo repo is `~/repos/sgt-demo/sketchpad-v2` and it is not in this repository, so ask Ryan for
+it and for the golden record at `~/repos/sgt-demo/.sgt-golden-v2` before you start.
 
-One idea deliberately refuses to come out. Running `sgt show "the relaxation solver"` reports
-that removing the solver would touch 78 edits with 29 later edits built on top of them, which
-makes it too expensive to subtract. The point is that sgt knows which ideas are removable and
-which ones are structurally load-bearing, and it knows before you change anything.
+The seedbank demo is a different repo with its own file at `RUNBOOK-seedbank.md`. The four shot
+sketchpad-v3 take is at `sketchpad-v3/RUNBOOK.md`.
 
----
+## Setup
 
-## 2. How to work the app with a mouse
-
-You don't draw anything during the recording. Read this section anyway so nothing surprises you
-on camera.
-
-The black square in the center of the screen is the scope, which is the main drawing area.
-Below it sits a row of push buttons (DRAW, CIRCLE CENTER, MOVE, DELETE, COPY, HORV, STOP) and
-a bank of toggle switches. The only controls you interact with during the take are the toggle
-switches.
-
-| Switch | What it does |
-|---|---|
-| SHEET 2 | Turned on at startup, it shows the 49-hexagon lattice. Turning it off shows sheet 1, which is the single hexagon inscribed in its circle. |
-| ZIGZAG | Shows a row of nine zigs, and overrides the SHEET 2 switch when turned on. |
-| SEMICIRCLE | Swaps the master hexagon shape for a semicircle, and every copy in the lattice changes at once because they all reference the same master. |
-| CONSTRAINTS | Draws the lettered constraint circles as overlays on the geometry. |
-| FREEDOMS | Numbers the constraint-solving order, and only draws when ZIGZAG is active. |
-
-The push buttons replicate the original light-pen console and work with a mouse, but each one
-operates as a multi-step sequence rather than a single click. DRAW places a starting point and
-the next DRAW places the endpoint to complete a line segment. MOVE grabs the nearest point and
-drags it until you press STOP. COPY takes two clicks and constrains two lines to equal length.
-DELETE removes whatever you point at. None of the push buttons appear in the take.
-
----
-
-## 3. Setup
-
-Set three environment variables once in each terminal you use. Every command in the rest of
-this file assumes they exist.
+Set these in every terminal you use.
 
 ```bash
 export SGT_SRC=~/repos/semi-git
 export DEMO=~/repos/sgt-demo/sketchpad-v2
-export SGT=$SGT_SRC/.venv/bin/sgt        # never the sgt on your PATH
+export SGT=~/.local/share/uv/tools/semi-git/bin/sgt   # 0.6.10 or later
 ```
 
-You must use the sgt binary from the development virtualenv, not the one installed on your
-PATH. The PATH version is a different build that doesn't own import lines, and its failure mode
-is confusing rather than obvious. The revert will preview correctly, and then it will refuse to
-apply while naming files it never actually touches. Run the following check to make sure you
-have the right build.
+The build has to own import lines. Since 0.6.5 the released build does, so
+`uv tool install --force $SGT_SRC` is enough. Check it either way.
 
 ```bash
-$SGT_SRC/.venv/bin/python -c "import sgt.core.op as o; print(o._symbol_kind('a.ts::__import__::./b'))"
+"$(dirname "$SGT")/python" -c "import sgt.core.op as o; print(o._symbol_kind('a.ts::__import__::./b'))"
 # must print: import
 ```
 
-If it prints `nested` instead of `import`, check out the `feat/live-render-timeline` branch in
-the sgt source tree and rebuild.
+If it prints `nested`, reinstall from a source tree at 0.6.5 or later. Point `SGT` at the uv tool
+directory and not at `~/.local/bin/sgt`, because `check-ideas.sh` looks for python next to `$SGT`
+and rejects the shim in `~/.local/bin`.
 
-You need three windows arranged on screen during the recording.
-
-| Where | What |
-|---|---|
-| Browser | The sketchpad app, and later the four side-by-side grid tabs from shot 7 |
-| Terminal A | Runs `npm run dev` in the clone, stays off camera for the whole recording |
-| Terminal B | The terminal where you type sgt commands on camera |
-
-The entire take runs against a disposable clone, never against the `$DEMO` repo directly. Build
-the clone with the following commands.
+Record against a disposable clone, never against `$DEMO`.
 
 ```bash
 rm -rf /tmp/sketchpad-live && git clone -q $DEMO /tmp/sketchpad-live
@@ -121,268 +58,240 @@ cp -r $DEMO/.sgt /tmp/sketchpad-live/.sgt
 cd /tmp/sketchpad-live && npm ci --cache /tmp/npm-cache-sketchpad-v2 && npx vite --port 5175
 ```
 
-Terminal B stays in `/tmp/sketchpad-live` for the rest of the session. The `npm ci` install must
-be a real install, not a symlinked `node_modules`. A symlinked `node_modules` escapes the
-`.gitignore` (because the `node_modules/` pattern matches a directory but not a symlink), which
-means it gets committed by accident, and a shared vite cache between two checkouts crashes the
-page with a doubled-React error.
+Run a real `npm ci` in the clone. A symlinked `node_modules` escapes `.gitignore` and gets
+committed by accident, and a vite cache shared with another checkout crashes the page with a
+doubled React error.
 
----
+You need three windows. The browser holds the app and, for shot 7, the four grid tabs. One
+terminal runs vite in the clone and stays off camera. The other terminal is where you type sgt
+commands on camera, and it stays in `/tmp/sketchpad-live`.
 
-## 4. Preflight
+## Preflight
 
-Run one script immediately before you start recording. The script rehearses every operation the
-take performs, using throwaway clones, and reports 17 individual checks.
+Run this immediately before recording. It rehearses every operation on throwaway clones.
 
 ```bash
 bash $SGT_SRC/scripts/demo/check-ideas.sh
 # want: 17 passed, 0 failed
 ```
 
-### The one rule you must not break
+## Rules
 
-**Never run `sgt save`, `sgt log --refresh`, or `sgt log --rebuild` inside the `$DEMO` repo.**
+1. Don't run `sgt save`, `sgt log --refresh` or `sgt log --rebuild` inside `$DEMO`. A re-mine
+   keeps the six hand named ideas at the sizes in the table, which was fixed in 0.6.10, and it
+   still re-clusters and renames the machine named rows around them, so the map you rehearsed
+   stops matching the map you record.
+2. Don't leave `$DEMO` open in an editor. The VS Code extension re-mines in the background with
+   nobody typing. Measured on 2026-09-03, 45 seconds of an open window grew `.sgt/tree/tree.json`
+   from 93k to 112k and added a garbage label. Find the process with
+   `lsof -a -d cwd 2>/dev/null | grep sketchpad-v2`.
+3. Treat the preflight as the drift detector, not any single edit count.
 
-The five idea features in the demo repo are hand-authored. If anything triggers a mining pass,
-sgt silently rewrites the authored features. The names will keep resolving so nothing looks
-wrong at first, but the reverts will quietly grow larger until they eventually break the build.
-Nothing warns you when the overwrite happens. If the preflight fails, the store has almost
-certainly drifted. Restore the known-good backup and rerun the checks.
+## The take
 
-```bash
-cd $DEMO && mv .sgt /tmp/sgt-drifted-$(date +%s) && cp -r /tmp/sgt-golden-v2 .sgt
-```
+Roughly three minutes. The quoted lines are what to say, or something close.
 
----
+### Shot 1, the drawing (20 s)
 
-## 5. The take
+Show the app on sheet 2, which is the 49 hexagon lattice. Flip the SHEET 2 switch off, hold two
+seconds on the single hexagon in its circle, and flip it back on.
 
-The recording runs about three minutes. The quoted lines under each shot are what to say on
-camera, or something close to them. The "why" notes explain the reasoning behind each beat, so
-you can improvise the wording without accidentally breaking the argument.
+> "You're looking at a reimplementation of Sketchpad, Sutherland's 1963 thesis program. The
+> drawing file it loads is full of imprecise geometry, with corners off the circle, unequal
+> sides, and groups dropped crooked, the way a hand would leave them. Everything you see being
+> straight on screen is the running program holding it straight, and each of the conditions doing
+> the holding is a separate recorded idea in the history."
 
-### Shot 1, the drawing (20 seconds)
+The whole take depends on the viewer getting that the drawing is held by the program rather than
+drawn accurately. Say it here and don't repeat it. Say "conditions" and not "features" until the
+map is on screen in shot 2.
 
-**Do.** Show the app on sheet 2, which is the 49-hexagon lattice. Hold the shot for a moment.
-Then flip the SHEET 2 switch off, hold for two seconds on the single hexagon inscribed in its
-circle, and flip it back on.
-
-**Say.** "You're looking at a reimplementation of Sketchpad, Sutherland's 1963 thesis program.
-The drawing file it loads is full of imprecise geometry, because it stores corners that are off
-the circle, sides that are unequal, and groups dropped crooked and at the wrong sizes, exactly
-the way a hand would leave them. Everything you see being straight and regular on screen is the
-running program holding it straight. Each of the conditions doing the holding is a separate
-recorded idea in the repo's history."
-
-**Why.** The entire take depends on the viewer understanding that the drawing is held by the
-program rather than drawn accurately in the first place. State the point clearly in shot 1 and
-don't repeat it after that.
-
-### Shot 2, the history has names (30 seconds)
-
-**Do.** Switch to Terminal B and run the following command.
+### Shot 2, the history has names (30 s)
 
 ```bash
 sgt log --map
 ```
 
-Point at the named rows in the output, specifically `lines of equal length`, `fastened at the
-corners`, `full size`, and `stand upright`.
+The map reads 17 features over 20 saves. Point at the `Geometric Constraints` group, which holds
+`lines of equal length`, `fastened at the corners`, `full size`, `Line Orientation` and
+`stand upright`.
 
-**Say.** "sgt recorded the program being built across twenty saves, and it reads the history as
-named features. The four rows I'm pointing at are four of the conditions holding the drawing
-you just saw, and each one is a name I can act on directly."
-
-Then run the next command and point at the last line of its output.
+> "sgt recorded the program being built across twenty saves and reads that history as named
+> features. The rows I'm pointing at are the conditions holding the drawing you just saw, and
+> each one is a name I can act on."
 
 ```bash
 sgt show "fastened at the corners"
 ```
 
-**Say.** "Eleven edits. sgt knows the cost of removing an idea before anything actually
-happens."
+> "Eleven edits. sgt knows what removing an idea costs before anything happens."
 
-### Shot 3, subtract and restore (50 seconds)
-
-**Do.** Run the revert, confirm the preview when prompted, and then reload the browser tab.
+### Shot 3, subtract and restore (50 s)
 
 ```bash
-sgt revert "fastened at the corners"
+sgt revert "fastened at the corners"    # confirm the preview, then reload the browser
 ```
 
-**On screen.** The lattice has come apart. Groups overlap and gaps open between them, but the
-terminal console output is identical to before.
+The lattice comes apart. Groups overlap and gaps open, and the console output is unchanged.
 
-**Say.** "You're now looking at today's program minus the one idea that fastens the hexagon
-groups together at their corners. Nobody edited a file by hand, and the version you see never
-existed anywhere in the git history. The drawing file is unchanged, the console output is
-unchanged, and the program still compiles and runs. It simply no longer knows that corners are
-meant to be shared between groups."
-
-Then run the undo and reload the browser. The lattice snaps back together.
+> "You're looking at today's program minus the one idea that fastens the hexagon groups at their
+> corners. Nobody edited a file, and the version you see never existed in the git history. The
+> drawing file is unchanged, the console output is unchanged, and the program still compiles. It
+> just no longer knows that corners are shared between groups."
 
 ```bash
-sgt undo
+sgt undo    # reload; the lattice snaps back together
 ```
 
-**Say.** "And restored, byte for byte."
+> "And restored, byte for byte."
 
-**Why.** The revert and restore together are the claim in its most compact form. The moment the
-lattice snaps back together is the strongest visual beat in the take, so leave a moment of
-silence on it.
+Leave a moment of silence on the snap back. It's the strongest beat in the take.
 
-### Shot 4, a different idea fails differently (30 seconds)
-
-**Do.** Run the revert with `--yes` to skip the preview confirmation, then reload the browser.
+### Shot 4, a different idea fails differently (30 s)
 
 ```bash
-sgt revert "stand upright" --yes
+sgt revert "stand upright" --yes    # reload
 ```
 
-**On screen.** The lattice still holds together, but every outer group now leans at its own
-angle instead of sitting level.
+The lattice holds together and every outer group leans at its own angle.
 
-**Say.** "A different idea produces a different failure. Fastening still works, sizes still
-work, but nothing says the groups have to be level any more. Each idea, taken out, shows you
-exactly what it was responsible for holding in place."
+> "A different idea produces a different failure. Fastening still works and sizes still work, and
+> nothing says the groups have to be level any more. Each idea, taken out, shows you what it was
+> responsible for."
 
 ```bash
 sgt undo
 ```
 
-### Shot 5, the founding idea on sheet 1 (30 seconds)
-
-**Do.** Run the revert with `--yes`, reload the browser, and then flip the SHEET 2 switch off
-to show sheet 1.
+### Shot 5, the founding idea on sheet 1 (30 s)
 
 ```bash
-sgt revert "lines of equal length" --yes
+sgt revert "lines of equal length" --yes    # reload, then flip SHEET 2 off
 ```
 
-**On screen.** The hexagon is visibly lopsided, with two corners bunched together and one side
-noticeably shorter than the others. The corners still sit on the circle.
+The hexagon is lopsided, with two corners bunched and one short side. The corners still sit on
+the circle.
 
-**Say.** "Sheet one is the original 1963 demonstration itself, a sloppy hexagon told to be
-regular. Without the equal-length constraint, the program still puts every corner on the
-circle, but nothing makes the sides agree with each other. You're watching the famous snap
-from Sutherland's thesis run in reverse."
+> "Sheet one is the original 1963 demonstration, a sloppy hexagon told to be regular. Without the
+> equal length constraint the program still puts every corner on the circle, and nothing makes
+> the sides agree. You're watching the famous snap from Sutherland's thesis run in reverse."
 
 ```bash
 sgt undo
 ```
 
-### Shot 6, the idea that refuses (20 seconds)
-
-**Do.** Run the show command and point at the consequences line. Don't attempt a revert.
+### Shot 6, the idea that refuses (20 s)
 
 ```bash
-sgt show "the relaxation solver"
+sgt show "the relaxation solver"    # point at the consequences line, don't revert
 ```
 
-**Say.** "Not everything can come out. Removing the solver would require 78 edits, and 29 of
-those are later work that was built on top of it. sgt tells you which ideas are removable and
-which ones the rest of the program depends on, before you touch anything."
+> "Not everything can come out. Removing the solver would touch 76 edits, and 29 of those are
+> later work built on top of it. sgt tells you which ideas are removable and which ones the rest
+> of the program depends on, before you touch anything."
 
-### Shot 7, four simultaneous variants (30 seconds)
+### Shot 7, four variants at once (30 s)
 
-**Do.** Before the recording starts, off camera, launch the grid script and arrange the four
-browser tabs side by side.
+Launch the grid off camera before you start, and arrange the four tabs side by side.
 
 ```bash
 bash $SGT_SRC/scripts/demo/idea-grid.sh
-# today on port 5501, no fastening on 5502, no full size on 5503, no stand upright on 5504
+# 5501 today, 5502 no fastening, 5503 no full size, 5504 no stand upright
 ```
 
-On camera, pan across the four browser windows.
+Pan across the four windows.
 
-**Say.** "One repository, no branches, no feature flags, nothing manually edited. You're
-looking at today's program alongside today's program minus each of three different ideas, all
-four running at once. Every window loads the same drawing file and produces the same console
-output. The only difference is which ideas the program still has."
+> "One repository, no branches, no feature flags, nothing edited by hand. Today's program next to
+> today's program minus each of three ideas, all four running at once. Every window loads the
+> same drawing file and prints the same console output. The only difference is which ideas the
+> program still has."
 
-Stop recording.
-
----
-
-## 6. After the take
-
-Verify that the demo repo is untouched and clean up the temporary directories.
+## After the take
 
 ```bash
-cd $DEMO && git status --short     # should print nothing, because the take never wrote to it
+cd $DEMO && git status --short     # prints nothing; the take never writes here
 rm -rf /tmp/sketchpad-live /tmp/sketchpad-grid
 ```
 
-The demo repo is unchanged after a recording, so the next take needs no reset.
+The demo repo is unchanged, so the next take needs no reset.
 
----
+## Don't improvise into these
 
-## 7. Limits to know before you improvise
+- `lines of equal length` and `a corner stays on its circle` only move sheet 1, because a master
+  shape's internal geometry never relaxes. The shot 7 grid stays on sheet 2 and uses the other
+  three ideas.
+- `Line Orientation` reverts cleanly and shows nothing, because no drawing in the repo uses the
+  horizontal or vertical constraint. Keep it off camera.
+- Only point at the six idea names and `the relaxation solver`. They're hand authored and stable.
+  The machine mined labels around them change on every rebuild.
+- Don't leave sheet 1 up with CONSTRAINTS off. Without the glyphs it's a plain hexagon in a
+  circle and there's nothing to look at.
 
-Keep these constraints in mind so you don't accidentally demonstrate something that doesn't
-work or creates a misleading impression.
+The switches you touch on camera are SHEET 2, which shows the lattice when on and the single
+hexagon when off, and CONSTRAINTS, which draws the lettered constraint circles over the geometry.
+ZIGZAG, SEMICIRCLE and FREEDOMS stay off. The push buttons along the bottom are the light pen
+console and none of them appear in the take.
 
-- **The two sheet-1 ideas don't affect the lattice.** Sutherland's own rule is that a master
-  shape's internal geometry never relaxes, so `lines of equal length` and
-  `a corner stays on its circle` only produce visible changes on sheet 1. The four-window grid
-  in shot 7 stays on sheet 2 and uses the other three ideas.
-- **`horizontal or vertical` reverts cleanly but shows nothing.** No drawing stored in the repo
-  actually uses the horizontal-or-vertical constraint, so reverting it produces no visible
-  change. It exists in the feature map but stays off camera.
-- **Mined feature labels change on every rebuild.** The five idea names and `the relaxation
-  solver` are hand-authored and stable across rebuilds. Only point at those names, because the
-  automatically mined labels will be different next time.
-- **Don't say "feature" during shot 1.** Until the feature map is visible on screen in shot 2,
-  refer to the ideas as conditions and the output as drawings.
-- **Don't leave sheet 1 visible with CONSTRAINTS turned off.** Without the constraint glyphs
-  overlaid, sheet 1 looks like a plain hexagon inscribed in a circle, which isn't visually
-  interesting enough to hold the viewer's attention.
+## When something breaks
 
-## 8. When something breaks
-
-**The preflight fails, or a name resolves to the wrong number of edits.** The sgt store has
-drifted, almost always because something accidentally ran a mining pass in the demo repo.
-Restore the golden backup copy and rerun the checks.
+**The preflight fails, or a name resolves to the wrong number of edits.** The store drifted,
+almost always because something ran a mining pass in `$DEMO`. Restore the golden copy and rerun.
 
 ```bash
-cd $DEMO && mv .sgt /tmp/sgt-drifted-$(date +%s) && cp -r /tmp/sgt-golden-v2 .sgt
+cd $DEMO && mv .sgt /tmp/sgt-drifted-$(date +%s) && cp -r ~/repos/sgt-demo/.sgt-golden-v2 .sgt
 bash $SGT_SRC/scripts/demo/check-ideas.sh
 ```
 
-**The golden backup copy is missing.** The entire demo repo is reproducible from three scripts.
-The rebuild takes about ten minutes end to end.
+Keep the golden copy out of `/tmp`. macOS empties `/tmp` file contents and leaves the directories,
+so a stale copy looks present and restores nothing.
+
+**The golden copy is missing.** Rebuild the authored ideas from the git history, which is the only
+part that has to survive. Move the pins aside first, or `--rebuild` reproduces the mangled
+partition from them.
+
+```bash
+cd $DEMO
+mkdir -p /tmp/sgt-aside && mv .sgt/pins/pins.json .sgt/authored/features.json /tmp/sgt-aside/
+"$SGT" log --rebuild                                              # ~25s for the 20 commits
+SGT="$SGT" $SGT_SRC/scripts/demo/sketchpad-rebuild/author-ideas.sh "$DEMO"   # want: 5 passed
+"$SGT" feature rename "Constraint Solver" "the relaxation solver"
+cp -r .sgt ~/repos/sgt-demo/.sgt-golden-v2
+```
+
+`author-ideas.sh` re-derives each idea's ops from the `Sgt-Op:` commit trailers, so it runs from
+nothing. Then run the preflight again.
+
+**The whole repo is missing.** `build-sketchpad-v2.sh` replays the 20 saves, and the rebuild takes
+about ten minutes end to end. It needs the original `~/repos/sgt-demo/sketchpad` as its source,
+which now sits in `~/.Trash/sketchpad`.
 
 ```bash
 cd $SGT_SRC
-FORCE=1 bash scripts/demo/sketchpad-rebuild/build-sketchpad-v2.sh   # replays 20 saves
-cd ~/repos/sgt-demo/sketchpad-v2 && $SGT log --refresh              # mines the feature map
-cd $SGT_SRC && bash scripts/demo/sketchpad-rebuild/author-ideas.sh  # authors the five idea names
-cd ~/repos/sgt-demo/sketchpad-v2
+FORCE=1 bash scripts/demo/sketchpad-rebuild/build-sketchpad-v2.sh
+cd $DEMO && $SGT log --refresh
+bash $SGT_SRC/scripts/demo/sketchpad-rebuild/author-ideas.sh
 $SGT feature rename 02004cfc "the relaxation solver"
-cp -r .sgt /tmp/sgt-golden-v2
+cp -r .sgt ~/repos/sgt-demo/.sgt-golden-v2
 ```
 
-A full rebuild is the only supported repair path. The original sketchpad repo is the reason why.
-In that repo, constraint types lived as entries in two const tables, but sgt's TypeScript grammar
-doesn't have a symbol for entries inside a top-level const. The entries ended up in residue,
-where only the newest edit ever reverts cleanly. In v2, each constraint type is its own file
-under `src/kinds/` with its own import line, and sgt attributes both units exactly. The
-masters-and-instances save is also split in v2 so that fastening and sizing are recorded as
-separate saves.
+The original sketchpad repo is why v2 exists. There, constraint types lived as entries in two
+const tables, and sgt's TypeScript grammar has no symbol for an entry inside a top level const,
+so the entries landed in residue where only the newest edit reverts cleanly. In v2 each
+constraint type is its own file under `src/kinds/` with its own import line, and sgt attributes
+both units exactly.
 
-**The app shows a stale picture after a revert.** Vite cached the old module. Hard-reload the
-browser tab, and if that doesn't fix it, restart vite in the clone.
+**The app shows a stale picture after a revert.** Vite cached the old module. Hard reload, and
+restart vite in the clone if that doesn't fix it.
 
-**The page comes up blank with a React hook error.** The clone is sharing a vite dependency
-cache with another checkout. Run a real `npm ci` in the clone instead of using a symlinked
-`node_modules`.
+**The page is blank with a React hook error.** The clone shares a vite dependency cache with
+another checkout. Run a real `npm ci` in the clone.
 
-## 9. The numbers, if someone asks
+## The numbers, if someone asks
 
 | Claim | What proves it |
 |---|---|
 | 20 saves, five subtractable ideas | `sgt log --map` in `$DEMO` |
-| every idea reverts by name, compiles, moves its sheet, and undoes exactly | `scripts/demo/check-ideas.sh`, 17 checks |
-| the base drawing is held by the program, starting from genuinely imprecise geometry | the seed coordinates stored in `src/drawing.ts`, and the lattice solving in a single pass with 12 variables ordered on the plate |
-| fastening costs 11 edits to remove, the solver costs 78 | `sgt show "fastened at the corners"` and `sgt show "the relaxation solver"` |
-| the four grid variants run simultaneously from one repo | `scripts/demo/idea-grid.sh`, four ports responding |
+| every idea reverts by name, compiles, moves its sheet, and undoes exactly | `check-ideas.sh`, 17 checks |
+| the base drawing is genuinely imprecise and the program holds it | the seed coordinates in `src/drawing.ts`, and the lattice solving in one pass with 12 variables ordered |
+| fastening costs 11 edits to remove, the solver costs 76 | `sgt show "fastened at the corners"` and `sgt show "the relaxation solver"` |
+| the four grid variants run at once from one repo | `idea-grid.sh`, four ports responding |

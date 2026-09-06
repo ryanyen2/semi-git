@@ -10,8 +10,9 @@
 # redraw the entire scope (it took a constraint out of the solver). The only way to
 # know is to run it and photograph it, which is what this does.
 #
-# Reverts run on clones. Nothing here touches the demo repo, and nothing here mines,
-# so the authored features survive (findings 79, 80).
+# Reverts run on clones, so nothing here touches the demo repo and nothing here mines.
+# An authored feature also survives a mine since 0.6.10 (findings 79, 80). A mine
+# still re-clusters the machine-named rows, so the clones keep the survey comparable.
 set -uo pipefail
 
 repo="$(cd "${1:-$HOME/repos/sgt-demo/sketchpad}" && pwd)"

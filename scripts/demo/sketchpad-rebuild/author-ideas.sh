@@ -9,9 +9,11 @@
 # purpose: reverting the idea removes the program's ability to satisfy the condition
 # and leaves the drawing still asking, which is the beat the take films.
 #
-# Run this AFTER a rebuild and its `sgt log --refresh`, and never run another mining
-# pass afterwards -- a refresh or a save rewrites authored features without warning
-# (findings 79 and 80). Cut a golden copy of .sgt when this script says five passed.
+# Run this AFTER a rebuild and its `sgt log --refresh`. A later mining pass used to
+# rewrite the authored features without warning (findings 79 and 80); sgt 0.6.10 keeps
+# each one as a lane of exactly its own symbols, and a re-mine now only re-clusters
+# and re-labels the machine-named rows. Cut a golden copy of .sgt when this script
+# says five passed, so the map you rehearse is the map you record.
 #
 # Every op reference here is a FULL 64-character id. An 8-character prefix can
 # collide with a feature handle (feature ids are minted from a member op's id), and

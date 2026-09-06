@@ -1,0 +1,1 @@
+Set the six outer hexagon groups apart from the centre group so the seams between groups show. Steps: 1. src/kinds/T.ts: hold a fastened corner a seam's width beyond the master point when the instance it is fastened to is pinned to the sheet, so groups fastened to the pinned group sit clear of it.

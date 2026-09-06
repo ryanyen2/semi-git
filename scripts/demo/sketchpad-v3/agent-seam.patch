@@ -1,0 +1,43 @@
+diff --git a/src/kinds/T.ts b/src/kinds/T.ts
+index 4c030e5..2d34532 100644
+--- a/src/kinds/T.ts
++++ b/src/kinds/T.ts
+@@ -1,4 +1,4 @@
+-import { placed } from '../drawing'
++import { placed, pointOf } from '../drawing'
+ import { register } from './registry'
+ 
+ // Appendix A, code 43, letter T: "Point bears same relation to instance that
+@@ -11,6 +11,8 @@ import { register } from './registry'
+ // fastening a picture somewhere can move it and can never turn or resize it. Size
+ // and angle belong to their own constraints, F and E, which is how Appendix A
+ // divides the work.
++const SEAM = 40
++
+ register(
+   'T',
+   ([subject], constraint, drawing) => {
+@@ -23,7 +25,22 @@ register(
+     const source = master?.points.find((p) => p.id === via.point)
+     if (!instance || !source) return [0, 0]
+     const there = placed(drawing, instance, source)
+-    return there ? [subject.x - there.x, subject.y - there.y] : [0, 0]
++    if (!there) return [0, 0]
++    // Set the fastened groups apart. Against the group that is pinned to the
++    // sheet, the corner is held a seam's width beyond where the master point
++    // lands, pushed outward from that group's origin, so every group fastened to
++    // it sits clear of it instead of touching.
++    const origin = pointOf(drawing, constraint.vars[1])
++    let tx = there.x
++    let ty = there.y
++    if (origin?.fixed) {
++      const dx = there.x - origin.x
++      const dy = there.y - origin.y
++      const len = Math.hypot(dx, dy) || 1
++      tx += (dx / len) * SEAM
++      ty += (dy / len) * SEAM
++    }
++    return [subject.x - tx, subject.y - ty]
+   },
+   [0, 1],
+ )
