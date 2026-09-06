@@ -434,6 +434,48 @@ def _regroup_flat_root(root: dict, max_arity: int = TARGET_ARITY[1]) -> None:
     _restamp_depth(root, root["depth"])
 
 
+def _regroup_wide_internals(nodes: dict, roots: list[str], max_arity: int = TARGET_ARITY[1]) -> None:
+    """`_regroup_flat_root` for the registered graph, applied to every internal node: a node with
+    more than `max_arity` children has them bucketed by dominant package directory, each bucket of
+    two or more becoming a synthetic subsystem (a fresh build-local `N*` id). The root is regrouped
+    before registration, so this mostly fires on a subsystem that `_carve_authored` widened -- the
+    Sketchpad demo's six hand-drawn constraint features are all `src/kinds` and were listed flat
+    beside eight drawing features under one header. Leaves keep their ids, members, and ops;
+    subsystems are grouping, re-derived every build. Buckets that would change nothing (all one
+    package, or every child already distinct) are left alone, as at the root."""
+    n = 0
+    for nid in list(nodes):
+        nd = nodes.get(nid)
+        if nd is None or len(nd["children"]) <= max_arity:
+            continue
+        buckets: dict[str, list[str]] = defaultdict(list)
+        for c in nd["children"]:
+            buckets[nodes[c]["dir"]].append(c)
+        if len(buckets) <= 1 or len(buckets) == len(nd["children"]):
+            continue
+        new_children: list[str] = []
+        for key in sorted(buckets):
+            group = buckets[key]
+            if len(group) == 1:
+                new_children.append(group[0])
+                continue
+            while f"N{n}" in nodes or f"G{n}" in nodes:
+                n += 1
+            gid = f"G{n}"
+            n += 1
+            members = sorted({m for c in group for m in nodes[c]["members"]})
+            nodes[gid] = {
+                "id": gid, "parent": nid, "members": members, "size": len(members), "dir": key,
+                "depth": nd["depth"] + 1, "children": group, "split_reason": "regrouped",
+            }
+            for c in group:
+                nodes[c]["parent"] = gid
+            new_children.append(gid)
+        nd["children"] = new_children
+    for r in roots:
+        _restamp_depth_by_id(nodes, r, nodes[r]["depth"])
+
+
 def _register(nodes: dict, node: dict, parent: str | None, counter: list[int]) -> str:
     """DFS: give every tree node a stable id, replace child dicts with child ids, index into nodes."""
     nid = f"N{counter[0]}"
@@ -577,6 +619,65 @@ def _rehome_pseudo_members(nodes: dict) -> None:
         for sym, target in moved:
             nodes[target]["members"].append(sym)
             nodes[target]["size"] = len(nodes[target]["members"])
+
+
+def _carve_authored(nodes: dict, roots: list[str], authored: dict) -> list[str]:
+    """Give every authored feature a leaf holding exactly its live members (U7, findings 79/80).
+
+    An authored feature is the one boundary the user drew by hand (`regroup split`/`move`,
+    `rename`, or a save-time lane), and the clusterer knows nothing about it: a refresh or a
+    `--rebuild` re-partitions the symbols on coupling alone and the feature's members land wherever
+    the graph puts them. Before this pass the feature then *claimed* the leaf holding the plurality
+    of its members (`_authored_leaf_claims`), so its membership silently became that leaf's --
+    seventeen ops became a hundred and ninety-five on the Sketchpad demo (finding 79) -- and a
+    second feature whose members landed in the same leaf lost the claim and vanished from the map
+    (finding 80).
+
+    Runs on the registered tree, after `_rehome_pseudo_members` and before `_prune_empty_leaves`:
+    for each authored feature (sorted by id, so contention over a shared member resolves the same
+    way every build) whose live members are not already exactly one leaf, mint a leaf with those
+    members as a sibling of the leaf that held their plurality, and take the members out of the
+    leaves that held them. A leaf emptied this way is pruned by the pass that follows, and a
+    parent left with one child is collapsed. Feature identity is untouched here: Greene matching
+    carries the feature's id onto the carved leaf (its member set continues the previous leaf),
+    and `_apply_assign_pins` renames it to the pinned id when the reorg verb wrote assign pins.
+    Members no longer alive in the ideal are ignored; a feature with no live member carves
+    nothing. Returns a log line per carve."""
+    if not authored:
+        return []
+    member_leaf = leaf_member_index(nodes)
+    carved: list[str] = []
+    n = 0
+    for aid in sorted(authored):
+        feat = authored[aid]
+        members = sorted(m for m in feat.live_members() if m in member_leaf)
+        if not members:
+            continue
+        counts = Counter(member_leaf[m] for m in members)
+        host = min(counts, key=lambda l: (-counts[l], l))
+        if counts[host] == len(members) and nodes[host]["size"] == len(members):
+            continue  # already exactly one leaf: nothing to carve
+        while f"A{n}" in nodes:
+            n += 1
+        nid = f"A{n}"
+        n += 1
+        parent = nodes[host]["parent"]
+        nodes[nid] = {
+            "members": members, "size": len(members), "dir": _dominant_dir(members),
+            "depth": nodes[host]["depth"], "children": [], "split_reason": "authored",
+            "id": nid, "parent": parent,
+        }
+        for m in members:
+            src = nodes[member_leaf[m]]
+            src["members"].remove(m)
+            src["size"] = len(src["members"])
+            member_leaf[m] = nid
+        if parent is None:
+            roots.append(nid)
+        else:
+            nodes[parent]["children"].append(nid)
+        carved.append(f"{feat.label or aid}: {len(members)} member(s) carved out of {sorted(counts)}")
+    return carved
 
 
 def _leaf_ids(nodes: dict, nid: str) -> list[str]:
@@ -727,9 +828,14 @@ def build(
     repo: Path, ops: list[Op], ideal, max_depth: int = MAX_DEPTH, pins: Pins | None = None,
     previous: dict | None = None, force_rebuild: bool = False, refresh_caches: bool = False,
     head: str | None = None, stability_alpha: float | None = None,
+    authored: dict | None = None,
 ) -> dict:
     """Build the tree from `ops`/`ideal` with stable feature ids and durable pins (no labeling --
     that is `tree.label_tree` / `sgt.lens.label`).
+
+    `authored` defaults to `load_authored(repo)` (the committed `.sgt/authored/features.json`).
+    Every authored feature gets a leaf holding exactly its live members (`_carve_authored`), so the
+    boundary a user drew survives a refresh and a `--rebuild` unchanged (findings 79 and 80).
 
     `pins` defaults to `load_pins(repo)` (the committed `.sgt/pins/pins.json`), mirroring how
     `mine()` auto-consults `load_identity_constraints`. Must-link (explicit + assign-derived) is
@@ -802,10 +908,18 @@ def build(
     _rehome_pseudo_members(nodes)      # residue/anchor members follow their anchor entity's lane
     # (the U4 rule op assignment already uses), which empties any residue-only leaf for the prune
     # below to drop. Without it such a leaf becomes a named, labelled, 0-symbol feature (F21).
+    if authored is None:
+        from sgt.lens.authored import load_authored  # here, not at module top: authored -> reconcile -> tree
+
+        authored = load_authored(repo)
+    _carve_authored(nodes, roots, authored)  # a user-drawn feature is exactly its live members,
+    # whatever the clusterer proposed this run; the leaves it took members from may empty below.
     _prune_empty_leaves(nodes, roots)  # a member-less leaf is not a feature -- drop it before any
     # feature id is minted for it, so the phantom never reaches identity/op-assignment or the tree.
     _collapse_single_child_internals(nodes, roots)  # ...and a parent left with one child after
     # that prune is a group of one: drop the level, keep the child (see the function).
+    _regroup_wide_internals(nodes, roots)  # carving adds siblings; a subsystem that now fans out past
+    # the arity target is bucketed by package the way `_regroup_flat_root` buckets the root.
 
     cannot_link_moves = enforce_cannot_link(nodes, pins, real_adj)
 
@@ -1150,11 +1264,16 @@ def _post_order(nodes: dict, nid: str) -> list[str]:
     return out
 
 
-def _dedup(nodes: dict, roots: list[str]) -> dict[str, str]:
+def _dedup(nodes: dict, roots: list[str], protected: set[str] | frozenset[str] = frozenset()) -> dict[str, str]:
     """DEDUP (plan R15): merge same-label sibling leaves -- a shared label means the split invented
     a distinction the labeler couldn't name -- then disambiguate any leftover cross-subsystem label
     collision by folder so no two leaves share a label. Mutates `nodes` in place and returns a
-    ``{removed_leaf_id -> surviving_leaf_id}`` remap the caller applies to `op_leaf`."""
+    ``{removed_leaf_id -> surviving_leaf_id}`` remap the caller applies to `op_leaf`.
+
+    `protected` leaves (the developer named them: a `rename` pin or an authored feature) are never
+    merged, in either direction -- their boundary is the user's, and the shared-label heuristic
+    says nothing about it. In the collision pass they keep their label and the colliding
+    clustered leaf takes the folder suffix."""
     remap: dict[str, str] = {}
     for rid in roots:
         for nid in _post_order(nodes, rid):
@@ -1167,14 +1286,14 @@ def _dedup(nodes: dict, roots: list[str]) -> dict[str, str]:
             # internal siblings is left to the folder-suffix pass below.
             leaves_by_label: dict[str, list[str]] = defaultdict(list)
             for c in nd["children"]:
-                if not nodes[c]["children"]:
+                if not nodes[c]["children"] and c not in protected:
                     leaves_by_label[nodes[c]["label"]].append(c)
             new_children: list[str] = []
             for c in nd["children"]:
                 if c not in nodes:
                     continue  # a non-first same-label leaf already merged away (deleted) below
-                if nodes[c]["children"]:
-                    new_children.append(c)  # internal node: keep as-is
+                if nodes[c]["children"] or c in protected:
+                    new_children.append(c)  # internal node or a developer-named leaf: keep as-is
                     continue
                 dupes = leaves_by_label[nodes[c]["label"]]
                 if c != dupes[0]:
@@ -1204,6 +1323,8 @@ def _dedup(nodes: dict, roots: list[str]) -> dict[str, str]:
             continue
         seen: dict[str, int] = defaultdict(int)
         for nid in sorted(ids):
+            if nid in protected:
+                continue  # the developer's name stands; the clustered leaf is the one suffixed
             tail = nodes[nid]["dir"].split("/")[-1]
             seen[tail] += 1
             suffix = tail if seen[tail] == 1 else f"{tail} {seen[tail]}"
@@ -1312,6 +1433,19 @@ def label_tree(
     subjects_by_leaf = subjects_by_leaf or {}
     kinds_by_leaf = kinds_by_leaf or {}
 
+    # A leaf the developer named -- a `rename` (pins.labels) or an authored feature with a label --
+    # is not sent to the labeler at all: its name is settled, and asking anyway once produced the
+    # same name for the authored leaf and its clustered neighbour (both carried the founding commit's
+    # subject), which DEDUP then merged, folding the user's 7-symbol feature into a 23-symbol one.
+    # Those leaves are also `protected` in `_dedup`: a user-drawn boundary is never merged away, and
+    # when a clustered sibling collides with its label the sibling is the one suffixed.
+    from sgt.lens.authored import load_authored
+    authored_claims = _authored_leaf_claims(nodes, load_authored(repo))
+    named: dict[str, str] = {
+        leaf: feat.label for leaf, feat in authored_claims.items() if feat.label
+    }
+    named.update((nid, label) for nid, label in pins.labels.items() if nid in nodes)
+
     remaining: set[str] = set()
     for rid in result["roots"]:
         remaining.update(_post_order(nodes, rid))
@@ -1322,7 +1456,9 @@ def label_tree(
         batch: list[tuple[str, tuple[str, str, list[str]]]] = []  # (nid, (key, prompt, members))
         for nid in ready:
             nd = nodes[nid]
-            if not nd["children"]:
+            if not nd["children"] and nid in named:
+                nd["label"], nd["why"] = named[nid], "Named by the developer."
+            elif not nd["children"]:
                 # A feature is always named from what its members ARE (the labeler, with the
                 # commit subjects as evidence in the prompt), never verbatim from a single commit
                 # subject. The own-words shortcut that used to live here (`label.subject_label`,
@@ -1359,7 +1495,7 @@ def label_tree(
 
         remaining -= set(ready)
 
-    remap = _dedup(nodes, result["roots"])
+    remap = _dedup(nodes, result["roots"], protected=set(named))
     if remap:
         result["op_leaf"] = {op: remap.get(leaf, leaf) for op, leaf in result["op_leaf"].items()}
 
@@ -1375,9 +1511,8 @@ def label_tree(
     # cascade (`ledger.assign_at_save`) seeds an authored feature with an *empty* label register on
     # purpose, so its clustered/LLM label stands here until a real `rename` names it -- an empty
     # register is "claimed but unnamed", not a rename to blank.
-    from sgt.lens.authored import load_authored
-    for leaf, feat in _authored_leaf_claims(nodes, load_authored(repo)).items():
-        if feat.label:
+    for leaf, feat in authored_claims.items():
+        if feat.label and leaf in nodes:
             nodes[leaf]["label"] = feat.label
 
     return labeler

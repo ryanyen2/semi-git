@@ -1322,6 +1322,7 @@ def map_view(repo) -> dict:
     # to the lane actually holding hourly.py::render).
     from sgt.core.op import _symbol_kind as _sym_kind
     own_symbols: dict[str, set[str]] = {}
+    files_touched: dict[str, set[str]] = {}
     for op_id, leaf in op_leaf.items():
         op = by_id.get(op_id)
         if op is None:
@@ -1329,6 +1330,22 @@ def map_view(repo) -> dict:
         own_symbols.setdefault(leaf, set()).update(
             s for s in op.footprint if _sym_kind(s) in ("entity", "nested", "whole_file")
         )
+        files_touched.setdefault(leaf, set()).update(s.partition("::")[0] for s in op.footprint)
+    # A file the parser finds no named entity in (the Sketchpad demo's `src/kinds/T.ts` is one
+    # `register(...)` call) is mined as a HEAD residue plus its imports, so a feature made of such
+    # files owned nothing by the rule above and every surface hid it as a husk -- while `sgt revert`
+    # on it removed eleven edits. Such a feature owns those files at file level. Only files with no
+    # entity in ANY leaf qualify, so a real husk (sentinel-only ops on a file whose entities live in
+    # another lane) still reads as owning nothing.
+    files_with_entities = {
+        s.partition("::")[0] for syms in own_symbols.values() for s in syms
+    } | {
+        m.partition("::")[0] for nd in nodes.values() if not nd["children"]
+        for m in nd.get("members", ()) if _sym_kind(m) in ("entity", "nested", "whole_file")
+    }
+    for leaf, files in files_touched.items():
+        if not own_symbols.get(leaf):
+            own_symbols[leaf] = {f for f in files if f not in files_with_entities}
 
     def _emit(nid: str, nd: dict) -> dict:
         # A node id is a content hash (`f-`/`af-`), never a name -- it must never reach a surface as
@@ -3469,11 +3486,19 @@ def _show_footprint(repo, op_ids, *, only: str | None = None) -> tuple[list[str]
 
     wanted = frozenset(op_ids)
     symbols: set[str] = set()
+    touched: set[str] = set()
+    files_with_entities: set[str] = set()
     for op in opindex.index_ops(repo):
+        named = [s for s in op.footprint if _symbol_kind(s) in ("entity", "nested", "whole_file")]
+        files_with_entities.update(s.partition("::")[0] for s in named)
         if op.id in wanted:
             # kind-classified like map_view's own_symbols: import crumbs are bookkeeping too
-            symbols.update(s for s in op.footprint
-                           if _symbol_kind(s) in ("entity", "nested", "whole_file"))
+            symbols.update(named)
+            touched.update(s.partition("::")[0] for s in op.footprint)
+    if not symbols:
+        # the same file-level rule as `compose`'s own_symbols: a file no parser names an entity in
+        # is owned whole, so a feature made of such files does not read as `0 symbols in 0 files`
+        symbols = {f for f in touched if f not in files_with_entities}
     if only is not None:
         symbols &= {only}
     files = sorted({s.partition("::")[0] for s in symbols})

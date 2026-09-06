@@ -336,26 +336,13 @@ def _log_grid(repo: str, *, as_json: bool = False, frontier: int | None = None, 
     group = None
     if focus is not None:
         group = resolve_focus_group(focus, mv, gv, themes_raw)
-    # Spatial LOD: with no focus the default map folds every LEAF subsystem (one whose children are
-    # all features) to a single meta-lane, so its features read as one row instead of many. Interior
-    # subsystems stay expanded as nested headers -- the map is a single-rooted tree, so collapsing
-    # every subsystem would fold the whole codebase into the root's one lane. Under a focus nothing
-    # folds: a fold could hide the very lanes the emphasis is trying to show.
-    #
-    # The root is never collapsed. On a small repo the root IS a leaf subsystem -- every feature
-    # hangs directly off it -- so the rule above folded the entire map to a single lane labelled
-    # with the root's theme, under a header still counting four features. That is the first thing a
-    # participant sees in the warm-up repo, and "4 feature(s)" above one row is worse than no map.
-    if focus is None:
-        kind = {n["id"]: n.get("kind") for n in mv.get("nodes", [])}
-        collapsed = tuple(
-            n["id"] for n in mv.get("nodes", [])
-            if n.get("kind") == "subsystem"
-            and n.get("parent") is not None
-            and not any(kind.get(c) == "subsystem" for c in n.get("children") or [])
-        )
-    else:
-        collapsed = ()
+    # Spatial LOD: with no focus the map folds LEAF subsystems (ones whose children are all
+    # features) to a single meta-lane each, but only while the map is over its row budget, and it
+    # folds the largest first. Under a focus nothing folds, since a fold could hide the very lanes
+    # the emphasis is trying to show. The root is never folded: on a small repo the root IS a leaf
+    # subsystem, and folding it puts the whole codebase on one lane under a header still counting
+    # its features.
+    collapsed = _default_collapsed(mv) if focus is None else ()
     segs = segments_view(repo)
     for line in render_graph_lines(
         mv, gv, segs, frontier=frontier, color=color,
@@ -368,6 +355,48 @@ def _log_grid(repo: str, *, as_json: bool = False, frontier: int | None = None, 
         for line in _group_chapter_lines(group, segs, focus, color=color):
             print(line)
     return 0
+
+
+MAP_ROW_BUDGET = 24  # feature lanes plus headers a reader takes in without scrolling
+
+
+def _default_collapsed(map_view: dict) -> tuple[str, ...]:
+    """The leaf subsystems the map folds when nothing is focused, largest first.
+
+    Folding every leaf subsystem by tree shape hid work the reader was looking for: on the
+    Sketchpad demo the five hand-named constraint features, one of them named a minute earlier,
+    sat behind a single row reading `Geometric Constraints (5)`, and `--full` does not open it
+    (finding 81). The fold earns its place on a repository with more features than a screen, so
+    it is spent by row budget instead: a map that already fits stays open, and a map that does
+    not folds its biggest leaf subsystems until it does.
+
+    A fold trades one subsystem's feature rows for the one meta-lane its header becomes, so the
+    largest subsystem buys the most room per fold. Husk features (no `own_symbols`) are not
+    counted, because `graph_layout` drops them from the render as well."""
+    nodes = {n["id"]: n for n in map_view.get("nodes", [])}
+    kind = {nid: n.get("kind") for nid, n in nodes.items()}
+
+    def is_row(nid: str) -> bool:  # the husk filter `graph_layout` applies to leaves
+        own = nodes[nid].get("own_symbols")
+        return own is None or len(own) > 0
+
+    rows = sum(1 for nid, n in nodes.items()
+               if (kind[nid] == "subsystem") or (kind[nid] == "feature" and is_row(nid)))
+    leaf_subs = [
+        nid for nid, n in nodes.items()
+        if kind[nid] == "subsystem" and n.get("parent") is not None
+        and not any(kind.get(c) == "subsystem" for c in n.get("children") or [])
+    ]
+    saved = {nid: sum(1 for c in nodes[nid].get("children") or []
+                      if kind.get(c) == "feature" and is_row(c))
+             for nid in leaf_subs}
+    collapsed: list[str] = []
+    for nid in sorted(leaf_subs, key=lambda i: (-saved[i], i)):
+        if rows <= MAP_ROW_BUDGET:
+            break
+        collapsed.append(nid)
+        rows -= saved[nid]  # the header row stays, as the meta-lane
+    return tuple(collapsed)
 
 
 def _group_chapter_lines(group: dict, segments: list[dict], typed: str, color: bool) -> list[str]:

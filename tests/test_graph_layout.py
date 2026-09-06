@@ -238,3 +238,64 @@ def test_deterministic_across_runs():
 def test_empty_map_is_empty_timeline():
     out = _run({"roots": [], "nodes": [], "edges": []})
     assert out["lanes"] == [] and out["edges"] == [] and out["headers"] == []
+
+
+# --- which subsystems the CLI map folds by default (finding 81) --------------------------------
+
+
+def _mv(features_per_sub: list[int], husks: int = 0) -> dict:
+    """A map view: a root, one leaf subsystem per entry, that many features under each."""
+    nodes = [{"id": "N0", "parent": None, "children": [], "kind": "subsystem", "label": "root"}]
+    f = 0
+    for s, k in enumerate(features_per_sub):
+        sid = f"S{s}"
+        kids = []
+        for _ in range(k):
+            fid = f"F{f}"
+            f += 1
+            own = [] if len(kids) < husks else [f"{fid}.py::x"]
+            nodes.append({"id": fid, "parent": sid, "children": [], "kind": "feature",
+                          "label": fid, "own_symbols": own})
+            kids.append(fid)
+        nodes.append({"id": sid, "parent": "N0", "children": kids, "kind": "subsystem", "label": sid})
+        nodes[0]["children"].append(sid)
+    return {"nodes": nodes}
+
+
+def test_a_map_inside_the_row_budget_folds_nothing():
+    from sgt.cli.inspect import _default_collapsed
+
+    assert _default_collapsed(_mv([5, 4, 3])) == ()  # 12 features + 4 headers
+
+
+def test_an_oversized_map_folds_its_largest_leaf_subsystems_until_it_fits():
+    from sgt.cli.inspect import MAP_ROW_BUDGET, _default_collapsed
+
+    mv = _mv([12, 9, 6, 3])  # 30 features + 5 headers = 35 rows
+    assert _default_collapsed(mv) == ("S0",)  # one fold of 12 already fits; it stops there
+
+    mv = _mv([10, 10, 10, 10])  # 40 features + 5 headers = 45 rows, three folds to fit
+    collapsed = _default_collapsed(mv)
+    assert collapsed == ("S0", "S1", "S2")  # largest first, ties by id
+    kind = {n["id"]: n["kind"] for n in mv["nodes"]}
+    parent = {n["id"]: n["parent"] for n in mv["nodes"]}
+    rows = sum(1 for n in mv["nodes"]
+               if kind[n["id"]] == "subsystem" or parent[n["id"]] not in collapsed)
+    assert rows <= MAP_ROW_BUDGET
+
+
+def test_the_root_is_never_folded():
+    from sgt.cli.inspect import _default_collapsed
+
+    root_only = {"nodes": [{"id": "N0", "parent": None, "kind": "subsystem",
+                            "children": [f"F{i}" for i in range(40)], "label": "root"}]
+                 + [{"id": f"F{i}", "parent": "N0", "children": [], "kind": "feature",
+                     "label": f"F{i}", "own_symbols": ["a.py::x"]} for i in range(40)]}
+    assert _default_collapsed(root_only) == ()
+
+
+def test_husk_features_do_not_push_the_map_over_its_budget():
+    from sgt.cli.inspect import _default_collapsed
+
+    # 30 features, but 18 of them own nothing and never render, so the map fits and nothing folds
+    assert _default_collapsed(_mv([10, 10, 10], husks=6)) == ()

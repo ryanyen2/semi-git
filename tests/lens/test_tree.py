@@ -993,3 +993,107 @@ def test_assign_pin_does_not_alias_a_leaf_that_already_wears_its_id(tmp_path):
     freed = [nid for nid in nodes if nid not in {"N0", "af-x"}]
     assert len(freed) == 1 and nodes[freed[0]]["members"] == ["c1"]
     assert result["op_leaf"] == {"opA": freed[0], "opB": "af-x"}
+
+
+# --- authored features are carved, not claimed (U7, findings 79/80) ---------------------------
+
+
+def test_carve_authored_gives_a_feature_a_leaf_of_exactly_its_live_members():
+    from sgt.lens import authored
+
+    nodes = {
+        "N0": {"id": "N0", "parent": None, "depth": 0, "members": ["a", "b", "c", "d", "e"],
+               "size": 5, "dir": "pkg", "children": ["N1", "N2"], "split_reason": None},
+        "N1": _leaf("N1", "N0", ["a", "b", "c"], "pkg"),
+        "N2": _leaf("N2", "N0", ["d", "e"], "pkg"),
+    }
+    roots = ["N0"]
+    # the user's feature spans both clustered leaves and leaves one member behind in each
+    feat = authored.create(["b", "c", "d", "zombie"], "mine")
+
+    log = tree._carve_authored(nodes, roots, {feat.id: feat})
+
+    carved = next(nid for nid, nd in nodes.items() if nd.get("split_reason") == "authored")
+    assert nodes[carved]["members"] == ["b", "c", "d"]        # exactly the live members; "zombie" is not alive
+    assert nodes[carved]["parent"] == "N0" and carved in nodes["N0"]["children"]
+    assert nodes["N1"]["members"] == ["a"] and nodes["N2"]["members"] == ["e"]  # taken, not copied
+    assert tree.leaf_member_index(nodes)["b"] == carved
+    assert len(log) == 1 and log[0].startswith("mine: 3 member(s)")
+
+
+def test_carve_authored_is_a_noop_when_the_feature_already_is_one_leaf():
+    from sgt.lens import authored
+
+    nodes = {"N0": _leaf("N0", None, ["a", "b"], "pkg")}
+    feat = authored.create(["a", "b"], "exact")
+    assert tree._carve_authored(nodes, ["N0"], {feat.id: feat}) == []
+    assert set(nodes) == {"N0"}
+
+
+def test_authored_membership_survives_a_from_scratch_rebuild(tmp_path):
+    """Finding 79/80: after `--rebuild` the authored feature used to claim whichever leaf held the
+    plurality of its members, so a hand-drawn 2-symbol feature came back as the whole 10-symbol
+    leaf. It must come back as exactly the 2 symbols, and the rest of the leaf must stay a feature."""
+    from sgt.lens import authored
+
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    ideal, ops = get(repo), Store(repo).all_ops()
+
+    first = tree.build(repo, ops, ideal)
+    tree.save(repo, first)
+    leaf = next(nd for nd in first["nodes"].values() if not nd["children"])
+    # two members that are neither residue nor anchor: those kinds are the only ones
+    # `_rehome_pseudo_members` moves, so the carved leaf must hold exactly these two and nothing else
+    real = [m for m in leaf["members"] if tree._symbol_kind(m) not in ("residue", "anchor")]
+    mine = sorted(real[:2])
+    assert len(mine) == 2 and len(leaf["members"]) > 2
+
+    feat = authored.create(mine, "two of them")
+    authored.save_authored(repo, {feat.id: feat})
+
+    for rebuild in (False, True, False):
+        result = tree.build(repo, ops, ideal, force_rebuild=rebuild)
+        tree.label_tree(result, repo)
+        leaves = {nid: nd for nid, nd in result["nodes"].items() if not nd["children"]}
+        carved = [nid for nid, nd in leaves.items() if set(nd["members"]) >= set(mine)]
+        assert len(carved) == 1
+        assert leaves[carved[0]]["members"] == mine  # exactly the user's two, not the leaf they sat in
+        assert leaves[carved[0]]["label"] == "two of them"
+        assert len(leaves) == 2  # the rest of the old leaf is still a feature of its own
+        tree.save(repo, result)
+
+
+def test_dedup_never_merges_a_protected_leaf_and_suffixes_the_collider():
+    """A developer-named leaf (rename pin or authored feature) keeps its boundary and its label even
+    when the labeler hands a clustered sibling the same name; the sibling is the one disambiguated."""
+    nodes = {
+        "N0": {"id": "N0", "parent": None, "depth": 0, "members": ["a", "b", "c"], "size": 3,
+               "dir": "pkg", "children": ["mine", "N2"], "split_reason": None, "label": "root", "why": ""},
+        "mine": {**_leaf("mine", "N0", ["a"], "pkg/kinds"), "label": "fastened", "why": "", "split_reason": "authored"},
+        "N2": {**_leaf("N2", "N0", ["b", "c"], "pkg/drawing"), "label": "fastened", "why": ""},
+    }
+    remap = tree._dedup(nodes, ["N0"], protected={"mine"})
+    assert remap == {}
+    assert nodes["mine"]["members"] == ["a"] and nodes["mine"]["label"] == "fastened"
+    assert nodes["N2"]["label"] == "fastened · drawing"
+    assert nodes["N0"]["children"] == ["mine", "N2"]
+
+
+def test_wide_internal_node_is_regrouped_by_package_after_carving():
+    kids = {f"L{i}": _leaf(f"L{i}", "N1", [f"m{i}"], "src/kinds" if i < 6 else ("src/draw.ts" if i < 9 else f"src/solo{i}.ts"))
+            for i in range(11)}
+    nodes = {
+        "N0": {"id": "N0", "parent": None, "depth": 0, "members": [], "size": 0, "dir": "src", "children": ["N1"], "split_reason": None},
+        "N1": {"id": "N1", "parent": "N0", "depth": 1, "members": [f"m{i}" for i in range(11)], "size": 11,
+               "dir": "src", "children": list(kids), "split_reason": None},
+        **kids,
+    }
+    tree._regroup_wide_internals(nodes, ["N0"])
+    n1 = nodes["N1"]["children"]
+    assert len(n1) == 4  # kinds group, draw.ts group, and the two lone leaves
+    groups = [c for c in n1 if nodes[c]["children"]]
+    assert sorted(len(nodes[g]["children"]) for g in groups) == [3, 6]
+    kinds = next(g for g in groups if nodes[g]["dir"] == "src/kinds")
+    assert nodes[kinds]["depth"] == 2 and nodes["L0"]["parent"] == kinds and nodes["L0"]["depth"] == 3
+    assert nodes["L9"]["parent"] == "N1"  # a lone package is not wrapped
+    assert set(nodes["kinds" if False else kinds]["members"]) == {f"m{i}" for i in range(6)}

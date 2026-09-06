@@ -2338,7 +2338,7 @@ The original finding stands only in its weakest form. It was written against a r
 `scripts/`-driven saves, and finding 77 later showed that replay path loses content, so the
 labels probably died with the replay rather than in `--as`.
 
-### Finding 79 (open): `sgt log --refresh` silently rewrites an authored feature's membership
+### Finding 79 (FIXED 2026-09-05): `sgt log --refresh` silently rewrites an authored feature's membership
 
 An authored feature is a user-owned selection, and the docstring for `sgt.lens.authored` is
 explicit that it is "the feature object itself", carried and protected rather than derived. It
@@ -2373,7 +2373,7 @@ feature under the same name.
 The membership is an OR-Set. Re-attribution should be adding to the *clustered* lane it came
 from, never to the authored set, which is by construction the one thing the user said.
 
-### Finding 80 (open): `sgt log --rebuild` deletes authored features outright
+### Finding 80 (FIXED 2026-09-05): `sgt log --rebuild` deletes authored features outright
 
 Worse than 79 and one flag away from it. After `--rebuild`, eleven features became six and the
 authored one was gone, not merely widened:
@@ -2393,7 +2393,7 @@ The suggestion in the failure message is also wrong: `sgt log --refresh` cannot 
 deleted authored feature, and running it is how a user would discover that. There is no undo for
 this, and no confirmation before it. The only recovery today is a filesystem copy of `.sgt`.
 
-### Finding 81 (open): the feature map hides features, including the newest one
+### Finding 81 (FIXED 2026-09-05): the feature map hides features, including the newest one
 
 With no `--focus`, the map folds every leaf subsystem to one lane. On the Sketchpad demo that
 put three of eleven features behind a single row:
@@ -2419,6 +2419,40 @@ Flattening the tree by hand in `.sgt/tree/tree.json` gives the map this demo rec
    ├─ ● the constraint marks          ▅▅▅                             13
    └─ ● show the solving order                              ▅▅▅       17
 ```
+
+### The fix for 79, 80 and 81 (2026-09-05)
+
+All three came from the same decision: an authored feature was an overlay that *claimed*
+whichever clustered leaf held the plurality of its members, so a re-mine handed it that leaf's
+membership (79), a second feature landing in the same leaf lost the claim and disappeared (80),
+and the leaves themselves were folded by tree shape rather than by how many rows the reader
+could see (81).
+
+`tree.build` now carves instead of claiming. `sgt/lens/tree.py::_carve_authored` runs after
+`_rehome_pseudo_members` and gives every authored feature a leaf holding exactly its live
+members, taking those members out of whatever clustered leaves the run put them in; the leaves
+it empties are pruned by the pass that already follows it. Two supporting changes were needed
+to make the carve visible. `label_tree` no longer sends a developer-named leaf to the labeler
+and passes those leaves to `_dedup` as `protected`, because the labeler gave a carved leaf and
+its clustered neighbour the same name and DEDUP then merged the user's 7-symbol feature into a
+23-symbol one. `_regroup_wide_internals` buckets a subsystem that the carve widened past the
+arity target, so six hand-named `src/kinds` features group under one header instead of sitting
+flat beside the drawing features.
+
+For 81, `sgt/cli/inspect.py::_default_collapsed` spends the fold on a row budget
+(`MAP_ROW_BUDGET`, 24 rows) rather than on tree shape: a map that already fits stays open, and
+a map that does not folds its largest leaf subsystems, biggest first, until it fits.
+
+Measured on the Sketchpad demo record: a `sgt log --refresh` leaves `fastened at the corners` at
+11 edits, `full size` at 11, `stand upright` at 7, `lines of equal length` at 5, `a corner stays
+on its circle` at 8 and `the relaxation solver` at 48, all identical to the record it started
+from, and the map lists all six as their own rows. A re-mine still re-clusters and re-labels the
+machine-named rows, which is ordinary clustering rather than a defect, and the demo runbooks say
+to record from a stable copy for that reason. Tests: `tests/lens/test_tree.py` (carve, dedup
+protection, survival across `--rebuild`) and `tests/test_graph_layout.py` (the row budget).
+
+Finding 82 stands: the carve preserves an authored feature, and it does not give a user a verb
+for drawing one from scratch.
 
 ### Finding 82 (open): there is no way to author a feature, only to repair one
 
