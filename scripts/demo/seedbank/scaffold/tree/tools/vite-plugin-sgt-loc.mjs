@@ -1,12 +1,16 @@
-// Vite plugin: stamp every HOST jsx element with data-ugh-loc="<relpath>:<line>".
+// Vite plugin: stamp every HOST jsx element with data-sgt-loc="<relpath>:<line>".
+// The `sgt` in the plugin name, the attribute and the exported symbol stays after the rename to
+// ugh: every demo repo already built (sketchpad-v2, sketchpad-v3, seedbank-v3, variolite) carries
+// its own committed copy of this file and stamps `data-sgt-loc`, and `overlay/client.js` reads
+// what those repos emit. Renaming either half alone silently traces nothing.
 // Runs `pre`, so it rewrites source before the JSX transform. Parses with the TypeScript
 // compiler API rather than a regex -- JSX nesting, generics and string attrs all defeat regex.
 import ts from "typescript";
 import path from "node:path";
 
-export default function ughLoc({ root = process.cwd() } = {}) {
+export default function sgtLoc({ root = process.cwd() } = {}) {
   return {
-    name: "ugh-loc",
+    name: "sgt-loc",
     enforce: "pre",
     transform(code, id) {
       const [file] = id.split("?");
@@ -20,7 +24,7 @@ export default function ughLoc({ root = process.cwd() } = {}) {
           // Host elements only: a component's attributes are props, not DOM attributes.
           if (/^[a-z]/.test(name)) {
             const line = src.getLineAndCharacterOfPosition(node.tagName.getStart(src)).line + 1;
-            edits.push({ pos: node.tagName.getEnd(), text: ` data-ugh-loc="${rel}:${line}"` });
+            edits.push({ pos: node.tagName.getEnd(), text: ` data-sgt-loc="${rel}:${line}"` });
           }
         }
         ts.forEachChild(node, visit);
@@ -37,7 +41,7 @@ export default function ughLoc({ root = process.cwd() } = {}) {
 }
 
 // Verified 2026-08-26 against React 19.2 / Vite 8.2 / @vitejs/plugin-react 6.0.5.
-// Rendered output: <article data-ugh-loc="src/Card.tsx:3" class="card">…
+// Rendered output: <article data-sgt-loc="src/Card.tsx:3" class="card">…
 //
 // Why this exists rather than React's own `__source`: the Vite transform still emits
 // {fileName, lineNumber} at each jsxDEV call site, but React 19 DISCARDS it -- `jsxDEVImpl`'s

@@ -35,8 +35,8 @@ function boot() {
   // itself a dozen levels deep and turned the page into one flat wash.
   function elementsFor(symbol) {
     const all = [];
-    for (const el of document.querySelectorAll("[data-ugh-loc]")) {
-      const o = ownerOf(el.getAttribute("data-ugh-loc"));
+    for (const el of document.querySelectorAll("[data-sgt-loc]")) {
+      const o = ownerOf(el.getAttribute("data-sgt-loc"));
       if (o && o.symbol === symbol) all.push(el);
     }
     return all.filter((el) => !all.some((other) => other !== el && other.contains(el)));
@@ -72,7 +72,7 @@ function boot() {
   .ugh-rail:hover .ugh-count, .ugh-rail.ugh-open .ugh-count { opacity: 1; }
 
   /* Focus: the page is never edited, only outlined and dimmed -- both removed on mouseout. */
-  .ugh-dim [data-ugh-loc] { transition: opacity 140ms ease; }
+  .ugh-dim [data-sgt-loc] { transition: opacity 140ms ease; }
   .ugh-dim .ugh-faded { opacity: .3; }
   .ugh-lit { outline: 2px solid var(--ugh-hue); outline-offset: 2px; border-radius: 4px;
     box-shadow: 0 0 0 6px color-mix(in srgb, var(--ugh-hue) 14%, transparent);
@@ -105,8 +105,8 @@ function boot() {
   // built this whole app". A symbol is the unit the data actually supports: hovering `TrayButton`
   // lights exactly the twenty-four stars, and hovering `Card` lights the cards, which is true.
   const counts = new Map();  // symbol -> {n, fid}
-  for (const el of document.querySelectorAll("[data-ugh-loc]")) {
-    const o = ownerOf(el.getAttribute("data-ugh-loc"));
+  for (const el of document.querySelectorAll("[data-sgt-loc]")) {
+    const o = ownerOf(el.getAttribute("data-sgt-loc"));
     if (!o) continue;
     const key = o.symbol || "?";
     const cur = counts.get(key) || { n: 0, fid: o.fid };
@@ -129,14 +129,14 @@ function boot() {
     // faded `Card` dims the very star inside it that is supposed to be glowing -- the first
     // version of this lit all 24 buttons correctly and they were invisible anyway. Skip anything
     // that is lit, inside something lit, or CONTAINS something lit; everything else fades.
-    for (const el of document.querySelectorAll("[data-ugh-loc]")) {
+    for (const el of document.querySelectorAll("[data-sgt-loc]")) {
       const touches = els.some((lit) => lit === el || lit.contains(el) || el.contains(lit));
       if (!touches) el.classList.add("ugh-faded");
     }
   }
   function unlight() {
     document.body.classList.remove("ugh-dim");
-    for (const el of document.querySelectorAll("[data-ugh-loc]")) {
+    for (const el of document.querySelectorAll("[data-sgt-loc]")) {
       el.classList.remove("ugh-lit", "ugh-faded");
       el.style.removeProperty("--ugh-hue");
     }
@@ -174,9 +174,9 @@ function boot() {
     raf = requestAnimationFrame(() => {
       raf = 0;
       if (rail.contains(e.target)) { chip.classList.remove("on"); return; }
-      const host = e.target.closest?.("[data-ugh-loc]");
+      const host = e.target.closest?.("[data-sgt-loc]");
       if (!host) { chip.classList.remove("on"); return; }
-      const loc = host.getAttribute("data-ugh-loc");
+      const loc = host.getAttribute("data-sgt-loc");
       const o = ownerOf(loc);
       if (!o) { chip.classList.remove("on"); return; }
       const f = FEATURES[o.fid];
@@ -218,14 +218,14 @@ function boot() {
 }
 
 // The React entry is a module script, so at end-of-body the tree is still empty and every
-// `[data-ugh-loc]` query returns nothing -- the rail came up with no rows and the highlight lit
+// `[data-sgt-loc]` query returns nothing -- the rail came up with no rows and the highlight lit
 // nothing at all. Wait for the first stamped element, then boot once.
 if (Object.keys(FEATURES).length) {
-  if (document.querySelector("[data-ugh-loc]")) {
+  if (document.querySelector("[data-sgt-loc]")) {
     boot();
   } else {
     const obs = new MutationObserver(() => {
-      if (!document.querySelector("[data-ugh-loc]")) return;
+      if (!document.querySelector("[data-sgt-loc]")) return;
       obs.disconnect();
       boot();
     });

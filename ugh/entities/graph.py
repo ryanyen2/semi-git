@@ -68,7 +68,7 @@ def _jsx_tag_name(node) -> str | None:
     """The leaf name a JSX element references (`Badge`, or `Bar` in `<Foo.Bar />`), else None.
 
     Host vs component is React's capitalisation convention, tested on the whole tag exactly as
-    `tools/vite-plugin-ugh-loc.mjs` tests it (`/^[a-z]/`): `<div>` and `<foo.bar>` are DOM, and
+    `tools/vite-plugin-sgt-loc.mjs` tests it (`/^[a-z]/`): `<div>` and `<foo.bar>` are DOM, and
     depend on nothing in the codebase; `<Badge />` is a reference to `Badge`."""
     name = node.child_by_field_name("name")
     if name is None:

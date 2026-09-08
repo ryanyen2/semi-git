@@ -113,8 +113,8 @@ else bad "Card.tsx no longer begins with imports -- the anchor chain moved them"
 # --- beat 4: the overlay's join must resolve, or the rail comes up empty ----------
 echo
 echo "beat 4 — provenance overlay"
-if grep -q "ughLoc" "$repo/vite.config.ts" 2>/dev/null; then ok "demo stamps data-ugh-loc (ughLoc plugin wired)"
-else bad "vite.config.ts is missing the ughLoc plugin -- no element can be traced"; fi
+if grep -q "sgtLoc" "$repo/vite.config.ts" 2>/dev/null; then ok "demo stamps data-sgt-loc (sgtLoc plugin wired)"
+else bad "vite.config.ts is missing the sgtLoc plugin -- no element can be traced"; fi
 blame_json="$(cd "$repo" && "$UGH" advanced blame --all --json 2>/dev/null)"
 n_span=$(printf '%s' "$blame_json" | "$PY" -c "
 import json,sys

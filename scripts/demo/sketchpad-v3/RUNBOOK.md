@@ -19,13 +19,23 @@ record is kept at `~/repos/sgt-demo/.sgt-golden-v2-pre-carve-2026-09-05`.
 UGH_SRC=~/repos/semi-git
 bash $UGH_SRC/scripts/demo/sketchpad-v3/check-v3.sh      # want: 17 passed, 0 failed
 bash $UGH_SRC/scripts/demo/sketchpad-v3/stage.sh         # prints the take dir, vite on :5501
+cd <take-dir> && ugh init --agent                        # gives Claude Code the ugh MCP server
 ```
 
 The preflight runs the whole take with the agent scripted, so a failure there means the take will
 fail on camera. It takes a few minutes because it typechecks and photographs each step.
 
+`stage.sh` clones the demo repo and copies the golden record, and that is all it does: the clone
+carries no `.mcp.json`, and nothing wires one globally, so Claude Code started in the take has no
+`ugh_plan_intake` or `ugh_save` to call and shot 3 cannot happen. `ugh init --agent` writes the
+one it needs. Running it on a staged take is safe — it rewrites `.sgt/local/sync_cache.json` and
+nothing else, and the map prints byte for byte the same afterwards — but run it before shot 1
+rather than between shots.
+
 Put the browser on http://localhost:5501/ on the left and a terminal on the right, with its
-working directory set to the take directory. Start Claude Code in that same directory so its ugh
+working directory set to the take directory. Give the terminal at least 100 columns: at 80 the map
+folds `Geometric Constraints` into a single summary row and the `fastened at the corners` lane
+that shot 1 points at is not on screen at all. Start Claude Code in that same directory so its ugh
 MCP server points at the take. Say the word "ugh" out loud only after shot 1 has shown it.
 
 On camera the agent is Claude Code answering `request.txt`. If it goes off script,
@@ -125,7 +135,7 @@ ugh undo    # reload; the seam lattice is back
 
 ## What the take leaves behind
 
-After the agent's save the map gains two singleton rows, `ughLoc.transform.visit` and `App.press`,
+After the agent's save the map gains two singleton rows, `sgtLoc.transform.visit` and `App.press`,
 which are the two stale edits from shot 1 arriving as their own lanes. They push the map over its
 row budget, so `Geometric Constraints` folds back into one row. Show the map in shot 1 only. To put
 the feature on screen after the save, use `ugh log --focus "fastened at the corners"`, which shot 3

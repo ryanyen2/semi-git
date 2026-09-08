@@ -18,11 +18,11 @@ ugh's fold can be checked byte-for-byte.
 
 ## Provenance in the rendered page
 
-`tools/vite-plugin-ugh-loc.mjs` stamps every host element with `data-ugh-loc="<file>:<line>"`.
+`tools/vite-plugin-sgt-loc.mjs` stamps every host element with `data-sgt-loc="<file>:<line>"`.
 Open the page and inspect a card:
 
 ```html
-<article data-ugh-loc="src/Card.tsx:28" class="card" role="button">
+<article data-sgt-loc="src/Card.tsx:28" class="card" role="button">
 ```
 
 That line number lands inside the span `ugh advanced blame src/Card.tsx` reports for

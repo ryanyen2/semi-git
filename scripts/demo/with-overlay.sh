@@ -30,17 +30,17 @@ for f in index.html package.json tsconfig.json vite.config.ts src tools; do
 done
 ln -s "$repo/node_modules" "$work/node_modules"
 
-# The demo's own config already carries ughLoc + react; this one re-declares them rather than
+# The demo's own config already carries sgtLoc + react; this one re-declares them rather than
 # importing a .ts config from a .mjs one, and adds the overlay. Kept in lockstep by hand -- if the
 # demo's vite.config.ts grows a plugin, add it here too.
 cat > "$work/vite.overlay.config.mjs" <<CONFIG
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import ughLoc from "./tools/vite-plugin-ugh-loc.mjs";
+import sgtLoc from "./tools/vite-plugin-sgt-loc.mjs";
 import ughOverlay from "$here/overlay/ugh-overlay.mjs";
 
 export default defineConfig({
-  plugins: [ughLoc(), react(), ughOverlay({ repo: "$repo", ugh: "$UGH" })],
+  plugins: [sgtLoc(), react(), ughOverlay({ repo: "$repo", ugh: "$UGH" })],
 });
 CONFIG
 

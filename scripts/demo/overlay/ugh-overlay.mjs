@@ -7,9 +7,9 @@
 //
 // The join it builds is the one the design doc calls Layer B:
 //
-//     DOM element -> data-ugh-loc="<file>:<line>" -> `ugh advanced blame` span -> feature
+//     DOM element -> data-sgt-loc="<file>:<line>" -> `ugh advanced blame` span -> feature
 //
-// `data-ugh-loc` comes from the demo's own `tools/vite-plugin-ugh-loc.mjs`, which stamps every
+// `data-sgt-loc` comes from the demo's own `tools/vite-plugin-sgt-loc.mjs`, which stamps every
 // host JSX element. React 19 discards `__source`, so there is no built-in to read instead.
 //
 // WHAT THIS CAN AND CANNOT SAY
