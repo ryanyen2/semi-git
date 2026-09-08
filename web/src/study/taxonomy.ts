@@ -150,7 +150,11 @@ function classifyShell(text: string | null, ctx: ClassifyContext): Category | nu
     return 'inspect'
   }
 
-  if (bin === 'sgt') {
+  // Both spellings: every session recorded before the rename logged the binary as
+  // `sgt`, and those rows are the dataset this classifier reads. A session run after
+  // it logs `ugh` and has to land in the same categories, not fall through to the
+  // generic tail, which would file each of its commands as inspection.
+  if (bin === 'sgt' || bin === 'ugh') {
     const { verb, preview } = sgtVerb(parts)
     const rest = parts.slice(1).join(' ')
 

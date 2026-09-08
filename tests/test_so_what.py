@@ -1,10 +1,10 @@
-"""The pure "so-what" layer (`sgt.api.so_what_for`): the one-line consequence a mutating verb's
+"""The pure "so-what" layer (`ugh.api.so_what_for`): the one-line consequence a mutating verb's
 consequence pane leads with. These pin the exact sentences over hand-built projection dicts -- no
 store, no repo -- since the function is pure over the projection + the caller's kept-set. The
 projection *shape* (fallout/carry_count/reversible over a real corpus) is covered in
 `tests/test_api.py`; here we pin the wording and the kept-set arithmetic."""
 
-from sgt.api import so_what_for
+from ugh.api import so_what_for
 
 
 def _revert(symbol="a.py::foo", blast_ids=(), **extra):
@@ -53,7 +53,7 @@ def test_a_forked_refusal_points_at_resolve():
     pview = _revert(ok=False, forked=True)
     assert so_what_for(pview) == (
         "Won't apply — revert of a.py::foo would fork it. "
-        "Resolve the fork first (sgt resolve a.py::foo)."
+        "Resolve the fork first (ugh resolve a.py::foo)."
     )
 
 
@@ -106,7 +106,7 @@ def test_a_clean_land_says_how_many_ops_advance_and_that_it_is_one_way():
 def test_a_forked_land_names_the_blocker_and_the_resolve_remedy():
     pview = _land(ops_added=0, forks=[("api::route", "0ee9a65f11", "5e6eaf5822")])
     assert so_what_for(pview) == (
-        "Won't advance main — 1 fork(s) block it. Resolve first: sgt resolve api::route."
+        "Won't advance main — 1 fork(s) block it. Resolve first: ugh resolve api::route."
     )
 
 
@@ -114,7 +114,7 @@ def test_multiple_forks_count_the_extras():
     pview = _land(forks=[("a::x", "aaaa1111", "bbbb2222"), ("b::y", "cccc3333", "dddd4444")])
     assert so_what_for(pview) == (
         "Won't advance main — 2 fork(s) block it (+1 more). "
-        "Resolve first: sgt resolve a::x."
+        "Resolve first: ugh resolve a::x."
     )
 
 

@@ -38,7 +38,7 @@ GIT_WRITES = {
     "sparse-checkout", "stash", "submodule", "switch", "tag", "update-index",
     "update-ref", "worktree",
 }
-SGT_READS = {
+UGH_READS = {
     "log", "now", "status", "show", "why", "recall", "diff", "map", "blame",
     "explain", "drift", "feature", "sessions", "help",
 }
@@ -86,7 +86,7 @@ def resolve(name: str) -> str | None:
         return str(candidate)
 
     # PATH is not always the study's. An editor started from the Dock inherits
-    # the login shell's environment, and `sgt` lives in a virtualenv only the
+    # the login shell's environment, and `ugh` lives in a virtualenv only the
     # session shell knows about. Without this fallback the wrapper would report
     # "command not found" for a tool that is installed two directories away,
     # and the participant would conclude the tool is broken.
@@ -109,9 +109,9 @@ def tree_hash() -> str | None:
         error: invalid object 100644 e69de29... for '.sgt/oracle.json'
         fatal: git-write-tree: error building trees
 
-    sgt calls write-tree whenever it snapshots, so a measurement instrument
-    quietly disabled `sgt save` and `sgt revert` for the rest of the session --
-    the exact half of the study it was there to measure. It also staged sgt's
+    ugh calls write-tree whenever it snapshots, so a measurement instrument
+    quietly disabled `ugh save` and `ugh revert` for the rest of the session --
+    the exact half of the study it was there to measure. It also staged ugh's
     own `.sgt/` runtime directory, which was never anybody's edit.
 
     `git status --porcelain` reports tracked modifications and untracked files
@@ -170,8 +170,8 @@ def subcommand(args: list[str]) -> str:
 def moves_the_tree(name: str, sub: str) -> bool:
     if name == "git":
         return sub in GIT_WRITES
-    if name == "sgt":
-        return sub not in SGT_READS
+    if name == "ugh":
+        return sub not in UGH_READS
     return False
 
 

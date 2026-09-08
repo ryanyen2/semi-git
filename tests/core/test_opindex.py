@@ -1,14 +1,14 @@
-"""Tests for sgt.core.opindex -- the footprint-only sidecar over the op store (plan: optimize the
-sgt agent surface for context + retrieval speed, Part A)."""
+"""Tests for ugh.core.opindex -- the footprint-only sidecar over the op store (plan: optimize the
+ugh agent surface for context + retrieval speed, Part A)."""
 
 from __future__ import annotations
 
 import time
 
-from sgt import state
-from sgt.core import opindex
-from sgt.core.op import Attribution, make_op
-from sgt.core.store import Store
+from ugh import state
+from ugh.core import opindex
+from ugh.core.op import Attribution, make_op
+from ugh.core.store import Store
 
 
 def _op(sym: str = "a.py::foo", n: int = 0):
@@ -152,7 +152,7 @@ def test_apply_delta_rebuilds_when_snapshot_absent(tmp_path):
 def test_rebuild_and_index_ops_over_a_real_corpus(tmp_path):
     """End-to-end (plan Verification 1): `opindex.index_ops` matches `Store.all_ops()` on every
     identity-bearing field over a mined real corpus repo."""
-    from sgt.core.lens import get
+    from ugh.core.lens import get
     from tests.laws import corpus
 
     repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")

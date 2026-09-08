@@ -4,7 +4,7 @@
 #   scripts/demo/sketchpad-rebuild/build-sketchpad-v2.sh [<target-dir>]
 #
 # In the original history the constraint types lived as entries in two const tables,
-# and sgt's TypeScript grammar does not treat a top-level const as a symbol -- the
+# and ugh's TypeScript grammar does not treat a top-level const as a symbol -- the
 # entries sat in residue, the bytes between symbols, where every extension rewrites
 # one blob and only the newest edit reverts clean. So no idea but the last one could
 # be taken out by name.
@@ -12,8 +12,8 @@
 # This build replays the same commits with the types restructured: each constraint
 # type is one file under src/kinds/, born whole in the save that introduces it and
 # never edited again, plus one side-effect import line in constrain.ts owned by the
-# same save. Files and import lines are units sgt attributes cleanly, which is what
-# makes `sgt revert` able to subtract one type from today's program. The solver
+# same save. Files and import lines are units ugh attributes cleanly, which is what
+# makes `ugh revert` able to subtract one type from today's program. The solver
 # machinery still evolves on its original schedule, the masters-and-instances save is
 # split so the fastening and the size constraint are separate saves, and the balance
 # save disappears (its content is born in).
@@ -26,14 +26,14 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 SRC="${SRC:-$HOME/repos/sgt-demo/sketchpad}"
 DST="${1:-$HOME/repos/sgt-demo/sketchpad-v2}"
-SGT="${SGT:-$(cd "$script_dir/../../.." && pwd)/.venv/bin/sgt}"
+UGH="${UGH:-$(cd "$script_dir/../../.." && pwd)/.venv/bin/ugh}"
 
 say() { printf '  %s\n' "$*"; }
 
-command -v "$SGT" >/dev/null || { echo "no sgt at $SGT" >&2; exit 1; }
-PY_BIN="$(dirname "$SGT")/python"
-kind=$("$PY_BIN" -c "import sgt.core.op as o; print(o._symbol_kind('a.ts::__import__::./b'))" 2>/dev/null)
-[ "$kind" = "import" ] || { echo "wrong sgt: $SGT does not own import lines" >&2; exit 1; }
+command -v "$UGH" >/dev/null || { echo "no ugh at $UGH" >&2; exit 1; }
+PY_BIN="$(dirname "$UGH")/python"
+kind=$("$PY_BIN" -c "import ugh.core.op as o; print(o._symbol_kind('a.ts::__import__::./b'))" 2>/dev/null)
+[ "$kind" = "import" ] || { echo "wrong ugh: $UGH does not own import lines" >&2; exit 1; }
 
 [ -d "$SRC/.git" ] || { echo "no source repo at $SRC" >&2; exit 1; }
 [ -f "$script_dir/final/constrain.ts" ] || { echo "no final/ payload" >&2; exit 1; }
@@ -128,7 +128,7 @@ stage_tree() {  # <step> <override> <kinds> <dir>
 
 mkdir -p "$DST"; DST="$(cd "$DST" && pwd)"
 
-# Root: the scaffold, a real install, a plain commit, then sgt binds to the repo.
+# Root: the scaffold, a real install, a plain commit, then ugh binds to the repo.
 tmp=$(mktemp -d); stage_tree c8bbedd - - "$tmp"
 rsync -a --delete --exclude .git --exclude .sgt --exclude node_modules "$tmp/" "$DST/"; rm -rf "$tmp"
 cd "$DST"
@@ -141,8 +141,8 @@ git init -q
 git add -A
 git commit -q -m "$(message_of c8bbedd)"
 say "root $(git rev-parse --short HEAD)  $(git log -1 --format=%s)"
-"$SGT" init >/dev/null
-say "sgt init"
+"$UGH" init >/dev/null
+say "ugh init"
 
 n=1
 for entry in $PLAN; do
@@ -150,8 +150,8 @@ for entry in $PLAN; do
   tmp=$(mktemp -d); stage_tree "$step" "$override" "$kinds" "$tmp"
   rsync -a --delete --exclude .git --exclude .sgt --exclude node_modules "$tmp/" "$DST/"
   git add -A
-  "$SGT" save -m "$(step_message "$step")" >/dev/null 2>&1 \
-    || { echo "sgt save failed at $step" >&2; exit 1; }
+  "$UGH" save -m "$(step_message "$step")" >/dev/null 2>&1 \
+    || { echo "ugh save failed at $step" >&2; exit 1; }
   # Finding 77: a replayed save once lost content while reporting success. Compare
   # the working tree against the intended one after every save.
   if ! diff -rq --exclude .git --exclude .sgt --exclude node_modules "$tmp" "$DST" >/dev/null; then

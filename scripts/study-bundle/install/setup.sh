@@ -86,8 +86,8 @@ if [ -n "$wheel" ]; then
     uv pip install -q -p "$here/toolenv/bin/python" "$wheel" \
         || die "Could not install the history tool. Send your facilitator everything printed above."
     mkdir -p "$here/bin"
-    printf '#!/usr/bin/env bash\nexec "%s/toolenv/bin/sgt" "$@"\n' "$here" > "$here/bin/sgt"
-    chmod +x "$here/bin/sgt"
+    printf '#!/usr/bin/env bash\nexec "%s/toolenv/bin/ugh" "$@"\n' "$here" > "$here/bin/ugh"
+    chmod +x "$here/bin/ugh"
 
     # How the tool learns what the assistant was asked to do. Written here, on
     # this machine, against this folder's own copy: the same file built into the
@@ -96,7 +96,7 @@ if [ -n "$wheel" ]; then
     # What makes the tool usable by the assistant rather than only by hand: the
     # MCP server, the skills that say which verb answers which question, and the
     # pre-approval that stops Claude Code asking about the server mid-session.
-    # Without these the assistant can only guess at `sgt` through a shell, which
+    # Without these the assistant can only guess at `ugh` through a shell, which
     # is not the tool this condition is supposed to be testing.
     #
     # Two different paths on purpose. The MCP server runs the real binary: it is
@@ -106,14 +106,14 @@ if [ -n "$wheel" ]; then
     # recording entirely.
     "$here/toolenv/bin/python" - <<PYEOF || note "Could not wire up the assistant. Tell your facilitator."
 from pathlib import Path
-from sgt.agent_assets.install import (
+from ugh.agent_assets.install import (
     install_mcp_approval, install_mcp_json, install_skills, install_vscode_settings,
 )
 repo = Path("$here/work")
-install_mcp_json(repo, "$here/bin/sgt")
+install_mcp_json(repo, "$here/bin/ugh")
 install_mcp_approval(repo)
 count = install_skills(repo)
-install_vscode_settings(repo, "$here/bin/shims/sgt")
+install_vscode_settings(repo, "$here/bin/shims/ugh")
 print(f"  assistant wired up: mcp server, {count} skill(s)")
 PYEOF
 
@@ -122,12 +122,12 @@ PYEOF
 {
   "hooks": {
     "UserPromptSubmit": [
-      { "hooks": [ { "type": "command", "command": "\"$here/bin/sgt\" intent record" } ] }
+      { "hooks": [ { "type": "command", "command": "\"$here/bin/ugh\" intent record" } ] }
     ],
     "PostToolUse": [
       {
         "matcher": "Edit|Write|MultiEdit",
-        "hooks": [ { "type": "command", "command": "\"$here/bin/sgt\" intent activity" } ]
+        "hooks": [ { "type": "command", "command": "\"$here/bin/ugh\" intent activity" } ]
       }
     ]
   }
@@ -137,7 +137,7 @@ HOOKS
 else
     # The half without a history tool. Its assistant still gets guidance, or the
     # agent-half comparison is a guided tool against an unguided one. One skill,
-    # teaching git at the same depth the sgt half's skills teach sgt. Auto-found
+    # teaching git at the same depth the ugh half's skills teach ugh. Auto-found
     # by Claude Code the same way, so the wiring matches; there is no MCP server
     # and no intent hook here, because git ships neither and papering over that
     # would be measuring something the git arm does not have.
@@ -324,15 +324,15 @@ if [ -d "$here/work/.git" ]; then
     # environment never reaches.
     #
     # The pager is `sed`, not `cat`, and the one line it drops is the reason.
-    # `sgt save` records which ops a commit embodies as `Sgt-Op:` trailers in the
+    # `ugh save` records which ops a commit embodies as `Sgt-Op:` trailers in the
     # commit message, and they are load-bearing -- resync and sync read them back
     # as the tree-witnessed record of what the tip contains -- so they cannot be
     # stripped from the history. What they also do is bury the author's words:
     # footfall's newest commit is a six-line message followed by 125 lines of
-    # hex, and the whole sgt-arm history carries 2,050 such lines. The git arm's
+    # hex, and the whole ugh-arm history carries 2,050 such lines. The git arm's
     # repositories are rendered without them, so leaving them in place makes
-    # plain `git log` harder to read in the sgt arm than in the git arm -- a bias
-    # in sgt's own favour, on the one surface both arms share.
+    # plain `git log` harder to read in the ugh arm than in the git arm -- a bias
+    # in ugh's own favour, on the one surface both arms share.
     #
     # Set in BOTH arms, identically, so it is not a condition difference: the git
     # arm has no such lines, so the same filter is a no-op there. It drops only
@@ -354,12 +354,12 @@ fi
 
 say "Setting up session recording"
 mkdir -p "$here/bin/shims"
-for cmd in git sgt pytest python python3; do
+for cmd in git ugh pytest python python3; do
     # Where the real one lives, worked out now rather than at every call. The
     # wrapper needs it to be able to step aside without starting Python, which
     # is what makes a nested call free.
     case "$cmd" in
-        sgt)     real="$here/bin/sgt" ;;
+        ugh)     real="$here/bin/ugh" ;;
         python)  real="$PY" ;;
         python3) real="$PY" ;;
         pytest)  real="$here/work/.venv/bin/pytest" ;;
@@ -374,10 +374,10 @@ STUDY_HOME="$here"
 STUDY_SHIM_DIR="$here/bin/shims"
 export STUDY_HOME STUDY_SHIM_DIR
 
-# A command run by another recorded command is not a move somebody made. \`sgt\`
+# A command run by another recorded command is not a move somebody made. \`ugh\`
 # shells out to git constantly: in a two-minute editor session it produced 136
 # of the 167 git calls in the log, which would have read as "they mostly used
-# git" in the condition where they mostly used sgt. Stepping aside here rather
+# git" in the condition where they mostly used ugh. Stepping aside here rather
 # than in the recorder also keeps it free -- otherwise every one of those calls
 # pays for a Python start, and the tool that spawns subprocesses is the only one
 # that gets slower for being measured.

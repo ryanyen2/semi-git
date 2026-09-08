@@ -161,32 +161,32 @@ python3 check.py
 To cancel a revert while resolving conflicts, run \`git revert --abort\`.
 `
 
-const SGT_OPENING = `
-Practice reading, finding, and undoing changes with sgt. You can use the history views or the terminal.
+const UGH_OPENING = `
+Practice reading, finding, and undoing changes with ugh. You can use the history views or the terminal.
 
 A **feature** is a part of the project, such as "hourly charts." A **checkpoint** is a set of changes to a feature, such as "split weekday and weekend averages."
 `
 
-const SGT_BODY = `
+const UGH_BODY = `
 ## 1. Read the history
 
 The **workbench** shows a row for each feature. Blocks along a row are its checkpoints.
 
-![Features and checkpoints in the workbench](/materials/sgt_workbench.png)
+![Features and checkpoints in the workbench](/materials/ugh_workbench.png)
 
 Click a feature or checkpoint and the panel on the right lists the files it changed and the changed lines themselves. A ◆ marks work that changed several features. Click it to see those changes together. A hollow block marks work that has been reverted.
 
 You can also read the history in the terminal:
 
 \`\`\`
-sgt log
-sgt show <short id>
+ugh log
+ugh show <short id>
 \`\`\`
 
 Use the ID shown in the history, or enter a name in quotes:
 
 \`\`\`
-sgt show "<feature name>"
+ugh show "<feature name>"
 \`\`\`
 
 Find the work that added the CSV download and the by-year table. Read what each one changed.
@@ -196,7 +196,7 @@ Find the work that added the CSV download and the by-year table. Read what each 
 Search by describing what you are looking for:
 
 \`\`\`
-sgt find "calculate averages"
+ugh find "calculate averages"
 \`\`\`
 
 You can also use the search box in the workbench.
@@ -204,7 +204,7 @@ You can also use the search box in the workbench.
 To list a feature's checkpoints and their IDs, run:
 
 \`\`\`
-sgt log --focus "<feature name>"
+ugh log --focus "<feature name>"
 \`\`\`
 
 Checkpoint IDs look like \`f-08915a9f@1\`.
@@ -214,7 +214,7 @@ Checkpoint IDs look like \`f-08915a9f@1\`.
 Choose a checkpoint and preview removing it:
 
 \`\`\`
-sgt revert "<checkpoint id>"
+ugh revert "<checkpoint id>"
 \`\`\`
 
 Read which changes would be removed and which would remain. Warnings identify code that may stop working. The preview leaves the project unchanged.
@@ -222,25 +222,25 @@ Read which changes would be removed and which would remain. Warnings identify co
 Apply the revert and check that the pages still render:
 
 \`\`\`
-sgt revert "<checkpoint id>" --yes
+ugh revert "<checkpoint id>" --yes
 python3 check.py
 \`\`\`
 
 Restore the checkpoint:
 
 \`\`\`
-sgt restore "<checkpoint id>" --yes
+ugh restore "<checkpoint id>" --yes
 python3 check.py
 \`\`\`
 
 Both commands also accept the name of work marked with a ◆. In the workbench, click a feature or checkpoint and the panel on the right has **Revert** and **Restore**, along with the lines that feature or checkpoint changed.
 
-Use \`sgt undo\` to reverse your most recent sgt action. Use \`sgt now\` to see the current state.
+Use \`ugh undo\` to reverse your most recent ugh action. Use \`ugh now\` to see the current state.
 `
 
 export function tutorialFor(condition: Condition, project: Project): string {
-  const opening = condition === 'git' ? GIT_OPENING : SGT_OPENING
-  const body = condition === 'git' ? GIT_BODY : SGT_BODY
+  const opening = condition === 'git' ? GIT_OPENING : UGH_OPENING
+  const body = condition === 'git' ? GIT_BODY : UGH_BODY
 
   return (
     [opening, OPEN_EDITOR, PROJECT_TOUR[project], WARM_UP_STATE, body]
@@ -320,7 +320,7 @@ study-cleanup
 export const DEBRIEF_MD = `
 Thank you for taking part.
 
-We are studying how people use project history to understand a project, find the cause of a problem, and remove or restore work. We compare Git with sgt, which groups changes by feature.
+We are studying how people use project history to understand a project, find the cause of a problem, and remove or restore work. We compare Git with ugh, which groups changes by feature.
 
 Your recordings, answers, and command logs are stored under a participant code. Your name is stored separately with your consent record. We report results across participants and use short anonymized quotes with your consent.
 

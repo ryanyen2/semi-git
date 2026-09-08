@@ -13,7 +13,7 @@
 // Interaction: hover a node = dim the field, light it + its co-change neighbors + their edges;
 // click a feature = sticky select + inspector + action bar; click a meta-node = expand the
 // subsystem; hovering an action live-previews its blast radius via `previewVerb` postMessage
-// round-trips to the host (`sgt preview <verb> ... --json`). The armed-action pattern generalizes
+// round-trips to the host (`ugh preview <verb> ... --json`). The armed-action pattern generalizes
 // merge/move. The frontier scrubber (bottom axis) is a read-only fold point: it dims nodes past
 // the point (the graph accretes) and drives the code(I)/op-set panels, but previews/applies still
 // run against the real composition (state.compositionRef), never the scrubbed frontier.
@@ -41,7 +41,7 @@ function computeGraphLayout(map, grid, opts) {
   for (const n of map.nodes || []) byId[n.id] = n;
 
   // The op -> (feature, commit) join is `grid_view`'s already-computed cell table (plan U3, the
-  // canonical `sgt.api.grid_view`): a cell carries the ops one feature touched in one commit, so a
+  // canonical `ugh.api.grid_view`): a cell carries the ops one feature touched in one commit, so a
   // feature's ops are just the cells bearing its id -- no per-op DAG walk here. An op with no
   // feature has no cell and never appears. `frontier` folds by commit index so scrubbing accretes.
   const opsByFeature = {};
@@ -100,10 +100,10 @@ function computeGraphLayout(map, grid, opts) {
   // density strip at their own column resolution). Lanes with no ops at this frontier don't exist
   // yet -- dropped, so scrubbing left empties the timeline. Dropped too: a lane whose features hold
   // no symbols of their own, because a cluster whose ops touch only the residue/anchor sentinels is
-  // not something anyone can act on -- `sgt show` answers it with "0 symbols in 0 files" and
+  // not something anyone can act on -- `ugh show` answers it with "0 symbols in 0 files" and
   // reverting it removes nothing. The terminal has applied that filter for a while
-  // (`sgt/tui/graph.py`, `_print_map_tree`) and this surface did not, which is one of the reasons
-  // the workbench, the sidebar and `sgt log --map` listed different features for the same repo.
+  // (`ugh/tui/graph.py`, `_print_map_tree`) and this surface did not, which is one of the reasons
+  // the workbench, the sidebar and `ugh log --map` listed different features for the same repo.
   const lanes = [];
   for (const v of visible) {
     // Husks leave the leaf SET, not just the listing: `(N)` on a folded row and a header's `N feat`
@@ -209,7 +209,7 @@ function computeGraphLayout(map, grid, opts) {
   // four of the repo's own features (`seed catalog`, `sort the grid`, `show what is on the shelf`,
   // `seed tray`) under the `Plant Discovery` swimlane, whose header says "6 feat" above nine rows.
   // Grouping is what lets the indent mean containment; inside a group, time still orders.
-  // Mirrors `ordered_children` in sgt/tui/graph.py -- the two layouts stay behaviour-parallel.
+  // Mirrors `ordered_children` in ugh/tui/graph.py -- the two layouts stay behaviour-parallel.
   //
   // The halves split by NODE KIND, not by "is it a lane": a collapsed subsystem is a lane (one
   // meta row) while an expanded one is a header, so splitting on lane-ness moved the whole block
@@ -257,7 +257,7 @@ function computeGraphLayout(map, grid, opts) {
     commitCount: ((grid && grid.commits) || []).length };
 }
 // A post-layout VIEW transform, not a second layout: `computeGraphLayout` above is one half of a
-// pair whose other half is `graph_layout` in sgt/tui/graph.py, and a rule changed in one and not the
+// pair whose other half is `graph_layout` in ugh/tui/graph.py, and a rule changed in one and not the
 // other drifts silently. So the flat view reuses that output and only reassigns rows.
 //
 // The alternate view, not the default. Flat rows are leaves ordered by most-recently-touched --
@@ -287,7 +287,7 @@ function flattenLayout(layout) {
 // `segments` is the flat list the compose feed's `intent.segments` already carries (one entry per
 // checkpoint: `feature_id`, `seg_index`, `checkpoint`, `intent` (label), `op_ids`, `op_count`,
 // `first_index`, `last_index`, `tier`, `source`) -- passed in, never re-derived here, so this stays
-// pure like `computeGraphLayout`. The Python counterpart is `segment_layout` in sgt/tui/graph.py,
+// pure like `computeGraphLayout`. The Python counterpart is `segment_layout` in ugh/tui/graph.py,
 // kept behaviour-parallel.
 //
 // A car whose `first_index` is past `frontier` is kept and flagged `isFuture` rather than dropped:
@@ -347,7 +347,7 @@ function computeSegmentLayout(map, grid, segments, opts) {
           featureId: leaf, segIndex: seg.seg_index, checkpoint: seg.checkpoint, label: seg.intent,
           opCount: seg.op_count, tier: seg.tier, source: seg.source,
           // Whether this chapter's ops are still in HEAD's ideal (`present_op_count`, from
-          // `sgt.api._segments_out`). A revert leaves the chapter in the store and takes it out of
+          // `ugh.api._segments_out`). A revert leaves the chapter in the store and takes it out of
           // the ideal, so a client reading only the store cannot tell a rewound chapter from a live
           // one -- the inspector listed a reverted checkpoint with a working rewind button on it.
           // `null` (an unreadable ideal, or a payload written before the field existed) is no claim
@@ -374,8 +374,8 @@ function computeSegmentLayout(map, grid, segments, opts) {
 // ---- end-segment-layout (test slice boundary) ----
 
 // Classify a verb preview's affected features into the three roles the closure overlay paints, so
-// the graph reads the same as `sgt revert`'s terminal preview (blast/foundation are the CLI's own
-// buckets -- sgt.api._affected_rows). `target` = the acted-on feature; `blast` = OTHER features
+// the graph reads the same as `ugh revert`'s terminal preview (blast/foundation are the CLI's own
+// buckets -- ugh.api._affected_rows). `target` = the acted-on feature; `blast` = OTHER features
 // losing ops in the closure (collateral); `foundation` = features gaining re-drafted hollow ops.
 // Pure (no DOM); sliced for the node harness (tests/test_closure.py).
 function classifyAffected(result, targetId) {
@@ -444,8 +444,8 @@ function classifyCarImpact(removedIds, addedIds, segments, targetOpIds, verb) {
 // screenfuls of mostly-unchanged text by eye, in a 12px pre with no syntax highlighting, in the
 // one panel that exists to explain a selection.
 //
-// The input is `sgt <verb> <ref> --emit --json`'s `files`: per changed path a `before`/`after`
-// pair plus each side's entity spans (`sgt.api._side_entity_spans`). That projection *is* a
+// The input is `ugh <verb> <ref> --emit --json`'s `files`: per changed path a `before`/`after`
+// pair plus each side's entity spans (`ugh.api._side_entity_spans`). That projection *is* a
 // feature's change in this model -- the difference between the tree holding its ops and the tree
 // without them -- so the tree shows the closure too, not only the lane's own lines. Which stored
 // side holds the work is a property of the verb, never of the field name: `before` is always the
@@ -758,7 +758,7 @@ function changeMeter(added, removed, width) {
 
   // The words behind the selected chapter. Two levels, because they cost different things: the
   // excerpt is already in the payload for every chapter and is drawn for free, and the verbatim
-  // prompts are fetched only when a reader opens one (`requestAsked` -> `sgt show --asked`). A
+  // prompts are fetched only when a reader opens one (`requestAsked` -> `ugh show --asked`). A
   // prompt is a paragraph; forty of them would be most of a panel refresh, for words nobody is
   // reading yet.
   //
@@ -773,7 +773,7 @@ function changeMeter(added, removed, width) {
   let askedAnimated = null;
 
   // Multi-select union closure (Stage C): ⌘/ctrl/shift-click accretes a set of feature lanes; the
-  // host resolves the union via `sgt select` and we show the closure count + paint it. Transient
+  // host resolves the union via `ugh select` and we show the closure count + paint it. Transient
   // (a selection is exploratory, not worth persisting): the set lives on state.multi, the resolved
   // closure here.
   let selectionSeq = 0;
@@ -792,7 +792,7 @@ function changeMeter(added, removed, width) {
 
   // Composition-picker hover-preview: while the titlebar's composition QuickPick is open, arrowing
   // over a session/branch item folds it live and takes over the code(I) slot -- "what would
-  // switching to this show," seen before committing to the real `sgt switch`.
+  // switching to this show," seen before committing to the real `ugh switch`.
   let compositionPreviewActive = null; // the ref currently previewed, or null when the picker is closed
   let compositionPreviewCache = {}; // ref -> {files, oracle_verdict, forked, error}
   let latestCompositionPreviewSeq = 0; // discards a stale reply that lands after a newer hover
@@ -828,7 +828,7 @@ function changeMeter(added, removed, width) {
 
   let forkMarks = { byFeature: {}, unplaced: [] };
 
-  // Save-preview marks: which features would GAIN ops on the next `sgt save` (compose.save_preview)
+  // Save-preview marks: which features would GAIN ops on the next `ugh save` (compose.save_preview)
   // -- rendered as a dashed "ghost car" at the now-frontier of each affected lane, so the user sees
   // the consequence of saving before saving. Feature-granular by design (op-level reconciliation
   // stays out of the default surface). `prevPendingFeatures`/`prevCarCounts` snapshot across renders
@@ -843,7 +843,7 @@ function changeMeter(added, removed, width) {
   // compose.intent.themes each recompute -- the payload is the authority, state holds only the id.
   // While set, ganttGeom compresses every non-member lane to a thin density row and renderCars
   // outlines the member chapters, so "one piece of work across five features" is one visible band
-  // instead of a footnote in `sgt intent list`.
+  // instead of a footnote in `ugh intent list`.
   let themeMarks = null; // {id, label, tier, featureIds:Set, commitIdx:Set} | null
   function resolveThemeMarks() {
     if (!state.themeFocus) return null;
@@ -904,7 +904,7 @@ function changeMeter(added, removed, width) {
   }
 
   // ─── Plan marks (Phase 6) ─────────────────────────────────────────────────────────────────────
-  // `predicted_feature` is always a real existing feature id or null (sgt/loop/plan.py's decompose
+  // `predicted_feature` is always a real existing feature id or null (ugh/loop/plan.py's decompose
   // prompt never lets the LLM invent one) -- so a pending step always has a real row to attach to,
   // or none. Rather than injecting a synthetic ghost subtree ahead of `computeLayout` (Phase 5's
   // approach), a pending step is treated as a hypothetical *next op* on its predicted feature's
@@ -917,8 +917,8 @@ function changeMeter(added, removed, width) {
     const opFeature = {};
     for (const op of (hist && hist.ops) || []) opFeature[op.id] = op.feature_id;
 
-    // Footprint-overlap candidates (`sgt checkpoint`'s preview) a human hasn't confirmed yet --
-    // `step.status` only flips to "matched" after `sgt checkpoint --confirm-hollow/--confirm-op`
+    // Footprint-overlap candidates (`ugh checkpoint`'s preview) a human hasn't confirmed yet --
+    // `step.status` only flips to "matched" after `ugh checkpoint --confirm-hollow/--confirm-op`
     // actually runs, so a pending step can already have a candidate group here.
     const groupByHollow = {};
     for (const group of (plan && plan.checkpoint && plan.checkpoint.matches) || []) {
@@ -1111,7 +1111,7 @@ function changeMeter(added, removed, width) {
   // same ideal, so an undo fired mid-save is a race the reader did not mean to start. Only the
   // running one changes its label, because the other is unavailable rather than busy.
   //
-  // This was a Save/Commit/Undo trio. `sgt save` mines and commits in one verb, so the middle
+  // This was a Save/Commit/Undo trio. `ugh save` mines and commits in one verb, so the middle
   // button's label promised a step the first had already taken, while the command it ran
   // (`advanced commit`) lands a staged rewrite candidate and otherwise refuses -- drawn permanently
   // for a state that is rare and gated. Landing moved into the Working-changes card, where the state
@@ -1218,14 +1218,14 @@ function changeMeter(added, removed, width) {
       el.appendChild(b);
       return b;
     };
-    // The whole-group verbs take the theme's LABEL -- the same string `sgt revert "<name>"`
+    // The whole-group verbs take the theme's LABEL -- the same string `ugh revert "<name>"`
     // resolves -- through the ordinary staged-confirm path, so the consequence is previewed and
     // nothing runs until Apply.
     const anchor = [...themeMarks.featureIds][0] || null;
-    mkBtn("Revert this work", `sgt revert "${themeMarks.label}" — previews first`, () =>
+    mkBtn("Revert this work", `ugh revert "${themeMarks.label}" — previews first`, () =>
       stageAction({ verb: "revert", ref: themeMarks.label, targetId: anchor,
                     label: themeMarks.label, kind: "feature" }));
-    mkBtn("Restore", `sgt restore "${themeMarks.label}" — previews first`, () =>
+    mkBtn("Restore", `ugh restore "${themeMarks.label}" — previews first`, () =>
       stageAction({ verb: "restore", ref: themeMarks.label, targetId: anchor,
                     label: themeMarks.label, kind: "feature" }));
     mkBtn("✕ Show everything", "clear the focus", () => setThemeFocus(themeMarks.id));
@@ -1655,7 +1655,7 @@ function changeMeter(added, removed, width) {
         `\n${car.opCount} edit(s)` +
         (car.reverted ? " · reverted — Restore brings it back" : " · click to select");
       // A reverted car is drawn hollow in its own identity hue: the edits are still recorded and
-      // still addressable (`sgt restore`), they are just no longer in the ideal, so the car has to
+      // still addressable (`ugh restore`), they are just no longer in the ideal, so the car has to
       // stay in place and read as emptied rather than vanish or redraw as live. The inline stroke
       // is needed because `.gcar` sets `stroke: var(--bg)`, which a class rule cannot override
       // per-lane.
@@ -1814,7 +1814,7 @@ function changeMeter(added, removed, width) {
   }
 
   // ─── The forecast band: anticipated work as cars, not badges ────────────────────────────────
-  // A lane's future in ONE grammar. sgt has two kinds of not-yet-real work, and they used to be drawn
+  // A lane's future in ONE grammar. ugh has two kinds of not-yet-real work, and they used to be drawn
   // as two unrelated marks in two unrelated units: uncommitted ops became a dashed stub car with a
   // floating `+N` (N = edits), while pending plan steps became a dashed underline under the whole bar
   // with a different `+N` (N = steps). Same glyph, two denominators, two shapes, for one idea. Both
@@ -2501,7 +2501,7 @@ function changeMeter(added, removed, width) {
   // and none of the information: the row says it, then the bar inside the row says it again in title
   // case. Compared on the first few words, since the two strings are ellipsized independently and a
   // tail cut at a different place would otherwise read as new content.
-  // The terminal's `_echoes` in sgt/tui/graph.py is the same rule -- keep the two in step.
+  // The terminal's `_echoes` in ugh/tui/graph.py is the same rule -- keep the two in step.
   const WORD_RE = /[a-z0-9]+/g;
   function echoesLane(chapter, lane) {
     const laneWords = new Set(String(lane).toLowerCase().match(WORD_RE) || []);
@@ -2639,7 +2639,7 @@ function changeMeter(added, removed, width) {
     window.removeEventListener("pointerup", onScrubPointerUp);
   }
 
-  // Mirrors `overall_status()` in sgt/core/oracle.py: override wins if present; else "fail" if
+  // Mirrors `overall_status()` in ugh/core/oracle.py: override wins if present; else "fail" if
   // any recorded tier failed; else "pass" if at least one tier ran; else "pending".
   function oracleStatus(record) {
     if (!record) return "pending";
@@ -2899,7 +2899,7 @@ function changeMeter(added, removed, width) {
   }
 
   // What receded, why, and how to get it back. A map with half its rows dimmed and no caption is
-  // read as a rendering fault -- the terminal's `sgt log --focus` has said so above its own rows
+  // read as a rendering fault -- the terminal's `ugh log --focus` has said so above its own rows
   // for months and this surface had nothing.
   function renderLensBanner(lens) {
     const el = document.getElementById("lensBanner");
@@ -2980,7 +2980,7 @@ function changeMeter(added, removed, width) {
   }
 
   // ---- hover-intent
-  // Every hover preview shells out: the host runs `sgt <verb> --emit` in a subprocess to compute the
+  // Every hover preview shells out: the host runs `ugh <verb> --emit` in a subprocess to compute the
   // consequence. Fired straight off `mouseenter` that meant one process per row *crossed* -- a sweep
   // down forty lanes to reach the fortieth started forty of them, and every result that landed
   // painted, so the consequence flickered through each row on the way to the one being asked about.
@@ -3041,7 +3041,7 @@ function changeMeter(added, removed, width) {
   function stagedSummaryText(staged) {
     const res = staged.res;
     if (!res) return "computing consequence…";
-    if (res.ok === false) return humanizeRefusal(res.message) || `sgt refuses this ${staged.verb}.`;
+    if (res.ok === false) return humanizeRefusal(res.message) || `ugh refuses this ${staged.verb}.`;
     const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
     if (staged.kind === "multi") {
       return staged.summary || "computing union closure…";
@@ -3361,7 +3361,7 @@ function changeMeter(added, removed, width) {
     if (refused) {
       // A refusal drew a greyed-out Apply beside the reason, which reads as "this is loading" or
       // "you lack permission" -- neither of which is true, and both of which leave the reader
-      // clicking a button that will never do anything. sgt is not busy and it is not asking: it
+      // clicking a button that will never do anything. ugh is not busy and it is not asking: it
       // has answered no, and the useful thing to put where the dead button was is the way out.
       // On its own row, not in the action group: the reason and the remedy are both sentences, and
       // squeezed onto one line with the buttons they ellipsised each other into uselessness.
@@ -3391,7 +3391,7 @@ function changeMeter(added, removed, width) {
       // The one-live-version rule: something else is already live where this would land, so the
       // move is to take THAT out first. Naming the verb matters -- "resolve the fork" is the other
       // way and it is a CLI-only one, so the reader is told which of the two this surface offers.
-      return "way out: revert the live version first, then restore — or reconcile it with sgt resolve";
+      return "way out: revert the live version first, then restore — or reconcile it with ugh resolve";
     }
     // Every other refusal: the humanized reason above IS the whole answer, and inventing a remedy
     // from the absence of a known one would be guessing at the reader.
@@ -3474,7 +3474,7 @@ function changeMeter(added, removed, width) {
     requestPreview(verb, args, (res) => {
       clearPreviewPending();
       if (!res || !res.ok) {
-        // A blocked restore -- the symbol has a competing live version, so sgt refuses. Surface the
+        // A blocked restore -- the symbol has a competing live version, so ugh refuses. Surface the
         // two ways out in the preview overlay instead of silently doing nothing.
         if (verb === "restore" && res && res.forked) showRestoreRefusal(res, args[0]);
         // `say` marks the armed path, whose whole purpose is telling good targets from bad before the
@@ -3513,7 +3513,7 @@ function changeMeter(added, removed, width) {
   // ---- local-find (test slice boundary)
   // The instant rung of search: substring matching over what the client already holds -- feature
   // labels and ids, chapter intents, member symbols. Zero round-trips, so results land on the
-  // keystroke; `sgt find`'s meaning rung layers in underneath on Enter. Scoring is deliberately
+  // keystroke; `ugh find`'s meaning rung layers in underneath on Enter. Scoring is deliberately
   // simple (prefix > word-start > substring; features nudged above symbols on ties) and capped, so
   // the dropdown stays a glance, not a page.
   function localFindHits(query, nodes, segsByFeature, cap, themes, commits) {
@@ -3573,7 +3573,7 @@ function changeMeter(added, removed, width) {
                     detail: `across ${t.feature_span.length} features`, theme: t.theme_id, s: st + 0.3 });
       }
     }
-    // Saves, by subject or sha prefix -- the tokens `sgt find` and the terminal print. A save has
+    // Saves, by subject or sha prefix -- the tokens `ugh find` and the terminal print. A save has
     // no single lane, so its hit carries the commit index and the click flashes every lane it
     // touched (revealSave) instead of selecting nothing.
     for (const c of commits || []) {
@@ -3738,7 +3738,7 @@ function changeMeter(added, removed, width) {
     semanticState.message = msg.message || null;
     const idxOfSha = new Map(((grid && grid.commits) || []).map((c) => [String(c.sha || "").slice(0, 8), c.index]));
     semanticState.hits = (msg.hits || []).map((h) => {
-      // `sgt find` labels a symbol with its whole `path::name`, and the local rung labels the same
+      // `ugh find` labels a symbol with its whole `path::name`, and the local rung labels the same
       // symbol with its bare name. Two spellings of one thing read as two results, and the dedupe
       // below (keyed on the label) could not see they were the same. One shape for both rungs:
       // the name is the label, the file is part of the detail, and the full symbol travels
@@ -3753,7 +3753,7 @@ function changeMeter(added, removed, width) {
         feature: h.feature || (h.kind === "feature" ? h.id : null),
         symbol: isSym ? full : undefined,
         file: file || undefined,
-        // `sgt find` names a save by its sha; joining it to a commit index is what makes the hit
+        // `ugh find` names a save by its sha; joining it to a commit index is what makes the hit
         // land somewhere instead of being a dead row.
         commitIndex: h.kind === "save" ? idxOfSha.get(String(h.id || h.detail || "").slice(0, 8)) : undefined,
       };
@@ -3765,7 +3765,7 @@ function changeMeter(added, removed, width) {
   // ---- ask derivations (test slice boundary)
   //
   // The one ask to put on a single line: the one accounting for most of the chapter, latest first
-  // on a tie -- a correction is the standing word. Same rule as `sgt.intent.stint.dominant_ask`,
+  // on a tie -- a correction is the standing word. Same rule as `ugh.intent.stint.dominant_ask`,
   // so the tooltip, the panel and the CLI all quote the same sentence back.
   function dominantAsk(asks) {
     if (!asks || !asks.length) return null;
@@ -3977,7 +3977,7 @@ function changeMeter(added, removed, width) {
 
   // The cross-feature themes, on the idle panel: work that ran across lanes has no row of its own
   // in the graph, so with nothing selected the panel lists the groups by name -- the same names
-  // `sgt log` footers and `sgt revert "<name>"` take. Clicking one enters the TableLens focus.
+  // `ugh log` footers and `ugh revert "<name>"` take. Clicking one enters the TableLens focus.
   function renderThemesCard() {
     const themes = spanningThemes();
     if (!themes.length) return;
@@ -4010,7 +4010,7 @@ function changeMeter(added, removed, width) {
   // The multi-select union-closure card (Stage C): "N features -> M ops in closure", the OTHER
   // features that selection pulls in (the blast beyond the direct pick), the selected lanes as
   // deselectable chips, and a Revert-all action. The VS Code parallel of the TUI's frontier
-  // checklist header; the closure itself is `sgt select`'s report (selectionResult).
+  // checklist header; the closure itself is `ugh select`'s report (selectionResult).
   function renderSelectionCard() {
     const wrap = document.createElement("div");
     const h = document.createElement("div");
@@ -4144,7 +4144,7 @@ function changeMeter(added, removed, width) {
       // the titlebar chip. Naming the gate is the whole point: unshown, it arrives as a refusal
       // after the click, and a refusal after the click teaches nothing about why.
       const gate = (candidate && candidate.oracle_status) || "pending";
-      const abandon = { verb: "unstage", label: "Abandon", hint: "sgt advanced unstage — discard the candidate" };
+      const abandon = { verb: "unstage", label: "Abandon", hint: "ugh advanced unstage — discard the candidate" };
       return {
         state: "staged",
         title: verb ? `Staged · ${verb}` : "Staged rewrite",
@@ -4157,10 +4157,10 @@ function changeMeter(added, removed, width) {
           : `Oracle ${gate} — landing is blocked until it passes.`,
         actions: gate === "pass"
           ? [{ verb: "land", label: "Land", primary: true,
-               hint: "sgt advanced commit — replace those ops in the ideal" },
+               hint: "ugh advanced commit — replace those ops in the ideal" },
              abandon]
           : [{ verb: "oracle", label: "Check", primary: true,
-               hint: "sgt advanced oracle run — verify the rewrite preserved behavior" },
+               hint: "ugh advanced oracle run — verify the rewrite preserved behavior" },
              { verb: "land", label: "Land", disabled: true,
                hint: `oracle is ${gate}; landing a rewrite it has not passed needs an override` },
              abandon],
@@ -4171,11 +4171,11 @@ function changeMeter(added, removed, width) {
     return {
       state: "drift",
       title: `Working changes · ${paths.length}`,
-      // `sgt save` mines *and* commits, so this is one action and not the Save/Commit pair the card
+      // `ugh save` mines *and* commits, so this is one action and not the Save/Commit pair the card
       // used to draw. The second button shipped a promise the daily loop had already kept.
       why: "Edits the ideal has not seen. Save records them as ops and commits.",
       paths,
-      actions: [{ verb: "save", label: "Save ⏎", primary: true, hint: "sgt save — record these changes as ops" }],
+      actions: [{ verb: "save", label: "Save ⏎", primary: true, hint: "ugh save — record these changes as ops" }],
     };
   }
 
@@ -4307,7 +4307,7 @@ function changeMeter(added, removed, width) {
         bar.appendChild(btn);
       }
       if (step.checkpointMatch) {
-        // A footprint-overlap candidate `sgt checkpoint` already found between this pending step
+        // A footprint-overlap candidate `ugh checkpoint` already found between this pending step
         // and an unpredicted op -- confirming it is what actually flips the step to "matched" and
         // lands the rail's open-ring-to-solid-glyph transition on the next render.
         const group = step.checkpointMatch;
@@ -4597,7 +4597,7 @@ function changeMeter(added, removed, width) {
   // Composition-picker hover-preview panel: same shape as the playhead panel (unfiltered fold,
   // filtered to the selected feature's files client-side), fed by `compositionPreviewResult`
   // instead of `playheadResult`. Lets arrowing through the composition QuickPick show what each
-  // candidate would put in the code(I) panel before committing to a real `sgt switch`.
+  // candidate would put in the code(I) panel before committing to a real `ugh switch`.
   function renderCompositionPreviewPanel(featureNode) {
     const section = document.createElement("div");
     section.className = "code-panel";
@@ -4643,7 +4643,7 @@ function changeMeter(added, removed, width) {
 
   // The selected feature's checkpoints: its history as a short list of labeled chapters, newest
   // last, each one a rewind target. A dimmed dot marks a low-novelty chapter (mostly tweaks) --
-  // a low-value place to rewind to. Clicking a chapter rewinds it (`sgt revert <feature>@<n>`);
+  // a low-value place to rewind to. Clicking a chapter rewinds it (`ugh revert <feature>@<n>`);
   // hovering it previews the ops it covers on the timeline. This is the answer to "which version
   // of this feature do I go back to" that a flat 100-op feature never gave.
   function renderCheckpoints(id) {
@@ -4657,7 +4657,7 @@ function changeMeter(added, removed, width) {
     // A reverted chapter stays on this list -- it is still recorded and still addressable, and a
     // restore needs it named -- so the head says how many are gone rather than quietly shrinking.
     //
-    // It used to end with "(run sgt intent build to name)" whenever the names were fallbacks. That
+    // It used to end with "(run ugh intent build to name)" whenever the names were fallbacks. That
     // is a maintenance instruction, printed in the reader's way, for a job the reader did not ask
     // to do and mostly cannot do anything about -- and the names it offers to improve are already
     // on screen beneath it.
@@ -4682,9 +4682,9 @@ function changeMeter(added, removed, width) {
         (seg.checkpoint === state.selectedCheckpoint ? " selected" : "");
       row.dataset.checkpoint = seg.checkpoint;
       row.title = `${seg.rationale} · ${seg.tier}\n` + (gone
-        ? `Reverted — restore: sgt restore ${seg.checkpoint}`
+        ? `Reverted — restore: ugh restore ${seg.checkpoint}`
         : (partial ? `${seg.op_count - seg.present_op_count} of ${seg.op_count} edit(s) reverted\n` : "") +
-          `Revert this checkpoint: sgt revert ${seg.checkpoint}`);
+          `Revert this checkpoint: ugh revert ${seg.checkpoint}`);
       row.addEventListener("click", () => highlightCheckpoint(seg.checkpoint)); // sync with the gantt car
 
       const dot = document.createElement("span");
@@ -4742,7 +4742,7 @@ function changeMeter(added, removed, width) {
   // What a chapter was asked for, on the card the reader is deciding from. Two levels, and the
   // reader chooses: the excerpt (drawn as soon as a checkpoint is selected -- it is already in the
   // payload and costs nothing) and the verbatim prompts (fetched on click). The excerpt is not a
-  // summary anybody wrote: it is a cut of the prompt starting at the request (`sgt.intent.gist`),
+  // summary anybody wrote: it is a cut of the prompt starting at the request (`ugh.intent.gist`),
   // so opening the full text shows the same sentence again inside the paragraph it came from --
   // which is what makes the excerpt trustworthy rather than a claim to take on faith.
   //
@@ -4867,7 +4867,7 @@ function changeMeter(added, removed, width) {
     return {
       seg,
       gone: seg.present_op_count === 0,
-      // Newest first: each `sgt revert <feature>@<n>` peels the top chapter, so applying in this
+      // Newest first: each `ugh revert <feature>@<n>` peels the top chapter, so applying in this
       // order is always removing the current tip, never digging under later work.
       laterRefs: later.map((sg) => sg.checkpoint).reverse(),
       laterCount: later.length,
@@ -4902,8 +4902,8 @@ function changeMeter(added, removed, width) {
     const bar = el("div", "action-bar");
     const one = el("button", "action", scope.gone ? "⤻ Restore this checkpoint" : "⤺ Revert this checkpoint");
     one.title = scope.gone
-      ? `sgt restore ${seg.checkpoint} — bring this checkpoint's ${seg.op_count} edit(s) back`
-      : `sgt revert ${seg.checkpoint} — take out this checkpoint's edits only; later ones stay`;
+      ? `ugh restore ${seg.checkpoint} — bring this checkpoint's ${seg.op_count} edit(s) back`
+      : `ugh revert ${seg.checkpoint} — take out this checkpoint's edits only; later ones stay`;
     one.addEventListener("mouseenter", () =>
       onHoverIntent(() => previewAndBlast(scope.gone ? "restore" : "revert", [seg.checkpoint])));
     one.addEventListener("mouseleave", () => clearGhosts());
@@ -5008,7 +5008,7 @@ function changeMeter(added, removed, width) {
     const segs = checkpointsByFeature[id] || [];
     const scope = state.selectedCheckpoint && chapterScope(segs, state.selectedCheckpoint);
     if (scope) {
-      // "checkpoint", the word the list above this panel uses. It said "chapter" -- sgt's internal
+      // "checkpoint", the word the list above this panel uses. It said "chapter" -- ugh's internal
       // name for the same thing -- so one panel headed `Checkpoints · 10` sat directly above another
       // reading `changed by this chapter`, and a reader had to work out that the two were one noun.
       return { ref: scope.seg.checkpoint, verb: scope.gone ? "restore" : "revert",
@@ -5039,7 +5039,7 @@ function changeMeter(added, removed, width) {
     const heading = el("div", "code-panel-heading", `changed by this ${scope.noun}`);
     // The scope is wider than the lane, and saying so here is cheaper than a reader discovering it
     // from a diff: a revert takes its dependents with it, so the projection is the whole closure.
-    heading.title = `sgt ${scope.verb} ${scope.ref} --emit\n`
+    heading.title = `ugh ${scope.verb} ${scope.ref} --emit\n`
       + `The difference between the ideal holding this ${scope.noun}'s edits and the ideal without `
       + `them — dependents included, which is what the ${scope.verb} would actually do.`;
     section.appendChild(heading);
@@ -5287,7 +5287,7 @@ function changeMeter(added, removed, width) {
   // ---- arm-preview
   // Why these three verbs need a preview of their own. Merge, move and rename each ask a question
   // before they do anything -- which lane? what label? -- so the hover that arms one has no second
-  // operand and cannot round-trip to `sgt preview`, which is why all three previewed nothing. But the
+  // operand and cannot round-trip to `ugh preview`, which is why all three previewed nothing. But the
   // half that does not depend on the answer is the half that decides *which verb to pick*: what
   // becomes of the lane under the cursor. Merge ends it. Move empties it -- and `computeLayout` drops
   // a lane with no ops (`if (!commits.length) continue`), so the feature survives in the tree while
@@ -5324,7 +5324,7 @@ function changeMeter(added, removed, width) {
   function previewAction(verb, id) {
     // merge/move/rename have no target or label yet, so this is the pre-target half: paint the one
     // lane whose fate is already decided, and say it. `previewArmed` replaces this with the real
-    // two-operand `sgt preview` round-trip once a candidate target is under the cursor.
+    // two-operand `ugh preview` round-trip once a candidate target is under the cursor.
     if (verb === "rename" || verb === "merge" || verb === "move") {
       const say = armPreviewText(verb, byId(id), opIdsFor(id).length);
       paintClosure(say.role === "target" ? { target: id, blast: [], foundation: [] }
@@ -5335,7 +5335,7 @@ function changeMeter(added, removed, width) {
       return;
     }
     if (verb === "revert" || verb === "restore") previewAndBlast(verb, [id]);
-    // Split has no `sgt preview split` branch server-side by design (`sgt split <feature>` with
+    // Split has no `ugh preview split` branch server-side by design (`ugh split <feature>` with
     // no `--apply` already *is* that preview -- a second path would duplicate it), so this can't
     // go through the generic `previewVerb` round-trip the other verbs share.
     if (verb === "split") previewSplit(id);
@@ -5351,7 +5351,7 @@ function changeMeter(added, removed, width) {
 
   function humanizeRefusal(message) {
     let text = String(message || "").trim();
-    if (!text) return "sgt refused this — no reason given.";
+    if (!text) return "ugh refused this — no reason given.";
     // A bracketed list of long hex ids says only "there were N of them"; say that instead.
     text = text.replace(/\[[^\]]*\]/g, (list) => {
       const ids = list.match(HEXISH);
@@ -5559,7 +5559,7 @@ function changeMeter(added, removed, width) {
   }
 
   // The richer, held cousin of paintClosure: drive the "Focus & Morph" overlay from the backend
-  // `focus` subgraph (sgt.api.focus_subgraph). Deep-dim the whole field, re-light only the affected
+  // `focus` subgraph (ugh.api.focus_subgraph). Deep-dim the whole field, re-light only the affected
   // lanes with their role, and stamp each one's op-count with the "N -> M" delta -- so a revert
   // reads as "these features shrink, everything else is context" instead of an op-id wall. The morph
   // (a fully-emptied lane fading to a dashed ghost, a gaining lane landing) is CSS; this only sets
@@ -5684,16 +5684,16 @@ function changeMeter(added, removed, width) {
     previewContext.classList.toggle("dir-in", kind === "in");
   }
 
-  // A blocked-restore overlay: sgt refuses to restore a symbol that has a competing live version
+  // A blocked-restore overlay: ugh refuses to restore a symbol that has a competing live version
   // (`ok:false, forked:true`). Show the two ways out as plain text -- swap (revert the live tip, then
-  // restore) and reconcile (`sgt resolve <symbol>`) -- mirroring the CLI's own refusal, rather than
+  // restore) and reconcile (`ugh resolve <symbol>`) -- mirroring the CLI's own refusal, rather than
   // swallowing the preview. The symbol is the preview's `file::symbol` target, else its first
   // affected symbol. Hover-scoped; torn down by clearGhosts on the same mouseleave path as the ghosts.
   function showRestoreRefusal(res, fallbackId) {
     const sym = res.target && String(res.target).includes("::") ? res.target
       : (res.affected_symbols && res.affected_symbols[0]) || res.target || fallbackId;
     showRefusal(res.message || "Can't restore — this symbol has a competing live version.",
-                ["swap · revert the live tip, then restore", `reconcile · sgt resolve ${sym}`]);
+                ["swap · revert the live tip, then restore", `reconcile · ugh resolve ${sym}`]);
   }
 
   // The refusal card: a head, plus a remedy line per way out. A blocked restore has two; a feature

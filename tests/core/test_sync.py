@@ -1,4 +1,4 @@
-"""Tests for sgt.core.sync -- the U15 `sgt sync` pipeline (plan R19/AE4).
+"""Tests for ugh.core.sync -- the U15 `ugh sync` pipeline (plan R19/AE4).
 
 Op-store union is nearly free (git's own file merge dedups by content-addressed path); the real
 surface under test is what isn't free: same-symbol chain forks must be *surfaced* with a concrete
@@ -15,10 +15,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sgt.core import lens, sync, verbs
-from sgt.core.store import Store
-from sgt.lens.pins import Pins, load_pins, save_pins
-from sgt.store.gitbind import GitBinding
+from ugh.core import lens, sync, verbs
+from ugh.core.store import Store
+from ugh.lens.pins import Pins, load_pins, save_pins
+from ugh.store.gitbind import GitBinding
 from tests.conftest import _clone, _init_bare, _push
 
 
@@ -32,7 +32,7 @@ def _edit_and_commit(repo: Path, path: str, content: str, message: str) -> str:
     (repo / path).write_text(content, encoding="utf-8")
     content_sha = GitBinding(repo).commit_all(message)
     ideal = lens.get(repo)
-    put_sha = lens.put(repo, ideal, message=f"sgt: mine {message}")
+    put_sha = lens.put(repo, ideal, message=f"ugh: mine {message}")
     lens.record_ideal(repo, ideal, put_sha)
     return content_sha  # the commit that actually witnesses the diff -- ops' provenance points here
 
@@ -104,7 +104,7 @@ def test_sync_records_a_fork_and_lands_the_forked_symbol_at_the_common_ancestor(
     report = sync.sync(b, remote="origin", branch="main")
 
     assert not report.merged  # an open fork -- attention needed
-    assert "sgt resolve" in report.message
+    assert "ugh resolve" in report.message
     assert len(report.forks) == 1
     symbol, _tip_a, _tip_b = report.forks[0]
     assert symbol == "main.py::foo"
@@ -122,7 +122,7 @@ def test_forks_view_and_fork_detail_view_over_a_real_fork(tmp_path):
     own downward closure (`order.downset`) so a resolution UI sees both sides' real content -- the
     forked symbol itself sits at the pre-fork common ancestor in `code(current_ideal)`, never
     either tip, so this is the only way to see what each side actually wrote."""
-    from sgt.api import fork_detail_view, forks_view
+    from ugh.api import fork_detail_view, forks_view
 
     a, b = _two_clones(tmp_path, _BASE)
     _edit_and_commit(a, "main.py", "def foo():\n    return 999\n\n\ndef bar():\n    return 2\n", "A: rework foo")
@@ -157,13 +157,13 @@ def test_forks_view_and_fork_detail_view_over_a_real_fork(tmp_path):
 
 
 def test_resolve_cli_lands_a_fork_with_a_manual_override_when_no_oracle_is_configured(tmp_path):
-    """The guided `sgt resolve <sym> --apply` must be completable on the common path where no test
+    """The guided `ugh resolve <sym> --apply` must be completable on the common path where no test
     runner is configured. The land gate's own refusal names "land with an override", so the verb
     forwards `--override pass` to `land()` (and skips the pointless pre-land `oracle.run` that would
     otherwise reset the verdict to pending). Regression: before the override forwarding, an
     unconfigured oracle left the guided verb with no way to close a fork it had drafted."""
-    from sgt.api import forks_view
-    from sgt.cli.resolve import _resolve
+    from ugh.api import forks_view
+    from ugh.cli.resolve import _resolve
 
     a, b = _two_clones(tmp_path, _BASE)
     _edit_and_commit(a, "main.py", "def foo():\n    return 999\n\n\ndef bar():\n    return 2\n", "A: rework foo")
@@ -306,7 +306,7 @@ def test_revert_travels_to_a_fresh_clone_and_does_not_resurrect(tmp_path):
     A adds baz then reverts it and pushes; a brand-new clone C then bootstraps from the shared state
     ref + branch history. The reverted op is still in git history, so C's cold mine re-adds it via
     provenance -- the exclusion OR-Set is the only record that it was reverted, and it must travel on
-    `refs/sgt/state` for C to subtract it. Before exclusions travelled, C's exclusion table was empty
+    `refs/ugh/state` for C to subtract it. Before exclusions travelled, C's exclusion table was empty
     and baz silently resurrected in C's ideal (F20), diverging from A -- a later fold would even
     write its bytes back."""
     remote = _init_bare(tmp_path)
@@ -327,7 +327,7 @@ def test_revert_travels_to_a_fresh_clone_and_does_not_resurrect(tmp_path):
     assert "def baz" not in (c / "main.py").read_text(encoding="utf-8")
 
 
-# -- plan_sync: the side-effect-free dry run behind the `sgt sync` feedforward pane ------------
+# -- plan_sync: the side-effect-free dry run behind the `ugh sync` feedforward pane ------------
 
 def _committed_state(repo: Path) -> dict[str, bytes]:
     """A byte snapshot of everything a sync would materialize: `main.py` plus every committed `.sgt`
@@ -397,7 +397,7 @@ def test_plan_sync_surfaces_a_would_be_fork_without_recording_it(tmp_path):
     assert not (b / ".sgt" / "forks.json").is_file()  # nothing recorded -- a dry run leaves no fork state
 
 
-# -- `sgt sync` CLI gate: the pane is the confirm step on a tty, immediate-apply otherwise --------
+# -- `ugh sync` CLI gate: the pane is the confirm step on a tty, immediate-apply otherwise --------
 
 def _diverge_for_sync(tmp_path) -> Path:
     """A/B two clones with disjoint edits pushed on A, so a `sync` on B has real fork-free work to
@@ -409,9 +409,9 @@ def _diverge_for_sync(tmp_path) -> Path:
 
 
 def test_sync_cli_non_tty_merges_immediately(tmp_path):
-    """The machine/CI contract: `sgt sync` on a non-tty (pytest's captured streams) skips the
+    """The machine/CI contract: `ugh sync` on a non-tty (pytest's captured streams) skips the
     consequence confirm and folds the teammate's work in exactly as before the pane existed."""
-    from sgt.cli.sync import _sync
+    from ugh.cli.sync import _sync
 
     b = _diverge_for_sync(tmp_path)
     before = GitBinding(b).head()
@@ -423,9 +423,9 @@ def test_sync_cli_tty_abort_merges_nothing(tmp_path, monkeypatch, capsys):
     """On a tty, the pane is the confirm: an abort leaves the local branch frozen (rc 1)."""
     import sys
 
-    from sgt.cli import _common
-    from sgt.cli.sync import _sync
-    from sgt.tui.consequence import Decision
+    from ugh.cli import _common
+    from ugh.cli.sync import _sync
+    from ugh.tui.consequence import Decision
 
     b = _diverge_for_sync(tmp_path)
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True, raising=False)
@@ -442,9 +442,9 @@ def test_sync_cli_tty_confirm_merges(tmp_path, monkeypatch):
     """A confirm on a tty runs the real sync and advances the local branch."""
     import sys
 
-    from sgt.cli import _common
-    from sgt.cli.sync import _sync
-    from sgt.tui.consequence import Decision
+    from ugh.cli import _common
+    from ugh.cli.sync import _sync
+    from ugh.tui.consequence import Decision
 
     b = _diverge_for_sync(tmp_path)
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True, raising=False)
@@ -460,8 +460,8 @@ def test_sync_cli_json_never_confirms(tmp_path, monkeypatch):
     """`--json` keeps its immediate-apply contract even on a tty: the pane never launches."""
     import sys
 
-    from sgt.cli import _common
-    from sgt.cli.sync import _sync
+    from ugh.cli import _common
+    from ugh.cli.sync import _sync
 
     b = _diverge_for_sync(tmp_path)
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True, raising=False)
@@ -484,11 +484,11 @@ def _bare_head(remote: Path, branch: str = "main") -> str | None:
 
 def test_push_aborts_the_branch_when_state_ref_cannot_publish(tmp_path, monkeypatch):
     """Push-ordering invariant (§D, Step 6): a branch commit's `Sgt-Op:` trailers name ops that live
-    only on `refs/sgt/state`, so if that ref cannot be published to the remote, `sgt push` must NOT
+    only on `refs/ugh/state`, so if that ref cannot be published to the remote, `ugh push` must NOT
     push the branch -- else the branch references ops that aren't durable. Simulate an unrecoverable
     state push and assert the remote branch does not move."""
-    from sgt.cli.sync import _push
-    from sgt.core.sync import state_ref
+    from ugh.cli.sync import _push
+    from ugh.core.sync import state_ref
 
     remote = tmp_path / "remote.git"
     a, _b = _two_clones(tmp_path, _BASE)
@@ -505,19 +505,19 @@ def test_push_aborts_the_branch_when_state_ref_cannot_publish(tmp_path, monkeypa
 
 
 def test_pre_1_2_remote_without_state_ref_falls_back_to_mining(tmp_path):
-    """Backward-compat bootstrap (§D): a remote predating Phase 1.2 has no `refs/sgt/state`. A fresh
+    """Backward-compat bootstrap (§D): a remote predating Phase 1.2 has no `refs/ugh/state`. A fresh
     clone can't fetch it, but the branch history still carries every `Sgt-Op:` trailer, so `lens.get`
     reconstructs the ideal by mining from branch history -- never an error, just cold mining."""
     import subprocess
 
-    from sgt.core.sync import state_ref
+    from ugh.core.sync import state_ref
 
     remote = _init_bare(tmp_path)
     a = _clone(remote, tmp_path / "a")
     lens.init(a)
     _edit_and_commit(a, "main.py", _BASE, "init")
     _edit_and_commit(a, "main.py", "def foo():\n    return 100\n\n\ndef bar():\n    return 2\n", "bump foo")
-    # Push ONLY the branch -- simulate a pre-1.2 remote that never learned about refs/sgt/state.
+    # Push ONLY the branch -- simulate a pre-1.2 remote that never learned about refs/ugh/state.
     subprocess.run(["git", "-C", str(a), "push", "-q", "origin", "main"], check=True, capture_output=True)
     a_ideal = lens.get(a)
 

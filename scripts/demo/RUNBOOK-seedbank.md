@@ -19,42 +19,42 @@ If you are here because the app is not changing when you drag the playhead, read
 Everything below uses these, so set them in every terminal you open.
 
 ```bash
-export SGT_SRC=~/repos/semi-git          # the sgt source tree, see the check below
+export UGH_SRC=~/repos/semi-git          # the ugh source tree, see the check below
 export DEMO=~/repos/sgt-demo/seedbank-v3
-export SGT=$SGT_SRC/.venv/bin/sgt        # not the `sgt` on your PATH
+export UGH=$UGH_SRC/.venv/bin/ugh        # not the `ugh` on your PATH
 ```
 
-The `sgt` on your PATH is probably not the one this demo needs. The demo depends on import
+The `ugh` on your PATH is probably not the one this demo needs. The demo depends on import
 ownership, which means a feature can own an `import` line, so reverting the feature removes
-the import too. An sgt without import ownership mines a store where nothing owns an import
+the import too. An ugh without import ownership mines a store where nothing owns an import
 line, and beat 6 then deletes `Tray.tsx` while leaving `import { TrayButton } from './Tray'`
 above it. The app breaks with two `tsc` errors, and every other check still passes.
 
 Check instead of assuming:
 
 ```bash
-$SGT_SRC/.venv/bin/python -c "import sgt.core.op as o; print(o._symbol_kind('a.ts::__import__::./b'))"
+$UGH_SRC/.venv/bin/python -c "import ugh.core.op as o; print(o._symbol_kind('a.ts::__import__::./b'))"
 # must print: import
 ```
 
 If it prints `nested`, that tree is on `main`. Either check out `feat/live-render-timeline`
-there, or point `SGT_SRC` at `~/repos/semi-git-render`.
+there, or point `UGH_SRC` at `~/repos/semi-git-render`.
 
 ---
 
 ## 2. Preflight, immediately before recording
 
 ```bash
-bash $SGT_SRC/scripts/demo/demo-preflight.sh $DEMO
+bash $UGH_SRC/scripts/demo/demo-preflight.sh $DEMO
 ```
 
 It rehearses every beat against a throwaway copy and leaves the demo repo untouched. There are
-17 checks and you need all 17 before you start recording. It catches the wrong sgt, a dirty
+17 checks and you need all 17 before you start recording. It catches the wrong ugh, a dirty
 tree, a label that moved on a rebuild, and a revert that no longer compiles.
 
 As of 2026-08-27 it reports 16 passed, 1 failed, and the failure is real. The demo repo has a
 `.vscode/settings.json` in it, written by a past session against the advice in section 5, so
-the working tree is dirty. Move that one `sgt.path` setting into VS Code User settings and
+the working tree is dirty. Move that one `ugh.path` setting into VS Code User settings and
 delete the workspace copy.
 
 Check the stylesheet too, because the preflight does not. The seedbank was restyled on
@@ -77,7 +77,7 @@ than a rounded pill, and every radius in the app is 3px.
 | where | what |
 |---|---|
 | Terminal A | the app, `npm run dev`, stays up the whole take |
-| Terminal B | the sgt commands you type on camera, beats 2 and 6 |
+| Terminal B | the ugh commands you type on camera, beats 2 and 6 |
 | Terminal C | the provenance overlay, only for beat 4 |
 | VS Code | the workbench and the render panel, beats 3 and 5 |
 | Browser | `localhost:5173` for the app, `localhost:5174` for the overlay |
@@ -115,35 +115,35 @@ In Terminal B:
 
 ```bash
 cd $DEMO
-$SGT log --tree
-$SGT intent list
+$UGH log --tree
+$UGH intent list
 ```
 
 The first command shows 13 features under named themes. The second names each feature's
 chapters in English. That is the vocabulary the rest of the demo speaks in.
 
 Hashes do appear here, which is worth knowing before you narrate it. Measured 2026-08-27.
-`sgt log --tree` prints an eight character id in parentheses after every feature, and
-`sgt intent list` prints `[f-033224873a4a]` on every feature line and `(f-03322487@1)` on every
+`ugh log --tree` prints an eight character id in parentheses after every feature, and
+`ugh intent list` prints `[f-033224873a4a]` on every feature line and `(f-03322487@1)` on every
 chapter line. The demo's argument is that you never have to type a hash, which is still true
-and is what beat 6 shows, but saying that no hash is on screen is wrong. `sgt intent list` also
+and is what beat 6 shows, but saying that no hash is on screen is wrong. `ugh intent list` also
 truncates labels mid-word, so it reads as noise at video resolution. Film `log --tree` and
 leave `intent list` for a viewer who pauses.
 
-Do not run `sgt status` in the same take. It says 14 features where the tree says 13, on this
-repo, at the same moment. Finding 72 in `docs/study/sgt-findings.md` has the cause. Features
+Do not run `ugh status` in the same take. It says 14 features where the tree says 13, on this
+repo, at the same moment. Finding 72 in `docs/study/ugh-findings.md` has the cause. Features
 with no parent are counted by one surface and dropped by the other.
 
 ### Beat 3, the silent gap
 
-In VS Code, see section 5 for how to launch it, open the SGT Workbench panel and drag the
+In VS Code, see section 5 for how to launch it, open the UGH Workbench panel and drag the
 playhead from episode 3 to 4 to 5. At 3 and 4 the page does not move, because the whole search
 engine lands invisibly. At 5 the search box appears.
 
 If you want the measured evidence as a figure instead of a scrub:
 
 ```bash
-bash $SGT_SRC/scripts/demo/render-frontiers.sh $DEMO
+bash $UGH_SRC/scripts/demo/render-frontiers.sh $DEMO
 ```
 
 It renders every frontier and reports which ones changed pixels. Frontiers 3 and 4 are
@@ -154,7 +154,7 @@ byte-identical.
 In Terminal C:
 
 ```bash
-bash $SGT_SRC/scripts/demo/with-overlay.sh $DEMO
+bash $UGH_SRC/scripts/demo/with-overlay.sh $DEMO
 ```
 
 Then open http://localhost:5174. It is a second port on purpose, and it is a second script on
@@ -180,20 +180,20 @@ draws 25, because the rail counts every stamped element and the highlight outlin
 outermost element of each region. Both numbers are right and they count different things, which
 is finding 71. `TrayButton` does not nest inside itself, so its 24 and 24 agree.
 
-Putting `#sgt=<text>` in the URL deep-links to a lit state, so you can reproduce a figure
+Putting `#ugh=<text>` in the URL deep-links to a lit state, so you can reproduce a figure
 without a mouse.
 
 ### Beat 5, drag the playhead and the app becomes that frontier
 
 Open the panel first. In VS Code, press Cmd+Shift+P and run
-`sgt: Open Running App (render panel)`.
+`ugh: Open Running App (render panel)`.
 
 The panel does not open by itself, and no button in the workbench opens it. If you drag the
 playhead without opening it first, nothing happens anywhere, and that is the expected
 behaviour rather than a bug. The extension only spends a fold on a scrub when the panel is
 already open.
 
-The panel opens beside the graph as a VS Code tab whose title is "sgt — running app". Look
+The panel opens beside the graph as a VS Code tab whose title is "ugh — running app". Look
 inside VS Code, not in your browser. The panel starts its own dev server on a free port,
 pointed at a scratch copy of the folded tree under the extension's storage directory. Your
 browser tab on `localhost:5173` is a different server showing the present, and it will never
@@ -212,7 +212,7 @@ folds.
 In Terminal B:
 
 ```bash
-$SGT revert "seed tray"
+$UGH revert "seed tray"
 ```
 
 By name, with no hash and no symbol path. The preview names what goes and what stays, then you
@@ -225,17 +225,17 @@ else moved. It is not the app at a past commit. It is today's app minus one idea
 
 ## 5. Launching VS Code with the render panel
 
-The render panel lives in the extension built from `$SGT_SRC`, so build it once:
+The render panel lives in the extension built from `$UGH_SRC`, so build it once:
 
 ```bash
-cd $SGT_SRC/editor/vscode && npm run compile
-grep -c sgtRender dist/extension.js     # must print 1, not 0
+cd $UGH_SRC/editor/vscode && npm run compile
+grep -c ughRender dist/extension.js     # must print 1, not 0
 ```
 
 Then:
 
 ```bash
-code $SGT_SRC/editor/vscode
+code $UGH_SRC/editor/vscode
 ```
 
 Press F5. A second VS Code window opens, titled `[Extension Development Host]`. In that second
@@ -244,18 +244,18 @@ window, open `$DEMO` as the folder.
 If `grep` printed 0, you built the wrong tree. In that state the workbench looks completely
 normal and the render panel command does not exist at all.
 
-Point the extension at the same sgt as everything else. Put it in the dev host's User
+Point the extension at the same ugh as everything else. Put it in the dev host's User
 settings, through Cmd+Shift+P and "Preferences: Open User Settings (JSON)":
 
 ```json
-{ "sgt.path": "<the value of $SGT>" }
+{ "ugh.path": "<the value of $UGH>" }
 ```
 
 Use User settings rather than Workspace settings. A workspace setting is written to
 `$DEMO/.vscode/settings.json`, which leaves an untracked directory in the demo repo, so the
 preflight reports a dirty tree and refuses to pass.
 
-Without the setting the extension shells out to the `sgt` on your PATH and re-derives the store
+Without the setting the extension shells out to the `ugh` on your PATH and re-derives the store
 with it.
 
 ---
@@ -265,24 +265,24 @@ with it.
 Work through these in order.
 
 First, check which window you are watching. Beat 5 renders into a VS Code tab titled
-"sgt — running app", and it never touches `localhost:5173`. If your browser is the only thing
+"ugh — running app", and it never touches `localhost:5173`. If your browser is the only thing
 on screen, you are watching the server from beat 1, which always shows the present.
 
-Second, check that the panel is open. Run `sgt: Open Running App (render panel)` from the
+Second, check that the panel is open. Run `ugh: Open Running App (render panel)` from the
 command palette before you touch the playhead. Scrubbing with the panel closed does nothing at
 all, on purpose, because a drag fires continuously and each fold writes to disk.
 
 Third, check that the command exists. If Cmd+Shift+P does not offer
-`sgt: Open Running App (render panel)`, you are running an extension built from a tree without
-the render panel. Rebuild with `npm run compile` in `$SGT_SRC/editor/vscode` and confirm
-`grep -c sgtRender dist/extension.js` prints 1.
+`ugh: Open Running App (render panel)`, you are running an extension built from a tree without
+the render panel. Rebuild with `npm run compile` in `$UGH_SRC/editor/vscode` and confirm
+`grep -c ughRender dist/extension.js` prints 1.
 
 Fourth, if the panel opens but shows an error where the app should be, it is telling you why
 the dev server did not start. It waits 30 seconds for a response. The usual cause is a missing
 `node_modules` in `$DEMO`, since the panel symlinks the workspace's install into its scratch
 directory rather than running its own `npm install`.
 
-Fifth, if the bar reads correctly but the frame stays white, check that you are running an sgt
+Fifth, if the bar reads correctly but the frame stays white, check that you are running an ugh
 built after 2026-08-27. Before that date, materializing a fold rewrote every file even when the
 bytes had not changed, so each scrub touched `vite.config.ts` and `tsconfig.json` and Vite
 restarted the whole dev server rather than hot-replacing the files that differed. A restart that
@@ -294,20 +294,20 @@ with `ps ax | grep "vite --host 127.0.0.1"`.
 
 ## 7. Between takes, reset
 
-`sgt revert` is reversible, and `restore` is its exact inverse:
+`ugh revert` is reversible, and `restore` is its exact inverse:
 
 ```bash
-cd $DEMO && $SGT restore "seed tray"
+cd $DEMO && $UGH restore "seed tray"
 git -C $DEMO status --porcelain    # must print nothing
 ```
 
-`sgt undo` also works. The preflight verifies that the round trip is byte-identical, so if
+`ugh undo` also works. The preflight verifies that the round trip is byte-identical, so if
 `git status` shows anything, do not start the next take.
 
 For a full rebuild, if a take corrupts the repo beyond a restore:
 
 ```bash
-SGT=$SGT $SGT_SRC/scripts/demo/build-seedbank.sh $DEMO   # FORCE=1 to replace
+UGH=$UGH $UGH_SRC/scripts/demo/build-seedbank.sh $DEMO   # FORCE=1 to replace
 ```
 
 It takes a few minutes. The feature labels come from the episode messages, so `"seed tray"`
@@ -321,8 +321,8 @@ Do not revert a feature other than `seed tray`. Six of the seven original featur
 build when reverted, because later work legitimately builds on them, and
 `2026-08-27-import-ownership.md` section 7 explains why. Only a leaf reverts cleanly.
 
-Do not type `sgt revert` with loose natural language. It falls into a disambiguation menu that
-ends in `re-invoke: sgt revert 9df47906`, which is a hash, the exact thing this demo argues
+Do not type `ugh revert` with loose natural language. It falls into a disambiguation menu that
+ends in `re-invoke: ugh revert 9df47906`, which is a hash, the exact thing this demo argues
 against. Use the exact label.
 
 Do not describe hover-to-highlight as an editor feature. Beat 4 is a browser overlay that
@@ -332,7 +332,7 @@ draws in the page, not in the editor gutter.
 
 ## 9. Rough edges that are visible but survivable
 
-The CLI echoes a feature id on the rewind line, and again under it as `sgt revert 0934ac87`. It
+The CLI echoes a feature id on the rewind line, and again under it as `ugh revert 0934ac87`. It
 used to be the full 64 characters and is now 8, so it no longer dominates the frame, but a
 careful viewer still sees a hash in a demo that argues against them.
 

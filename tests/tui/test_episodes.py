@@ -1,11 +1,11 @@
-"""The episodic projection contract (Stage C): `sgt.tui.graph.episodes` rolls the flat op stream
+"""The episodic projection contract (Stage C): `ugh.tui.graph.episodes` rolls the flat op stream
 up into one episode per commit (ops sharing a `commit_index`) and groups episodes by their dominant
 feature into collapsible episode-groups. Kept behaviour-parallel with `rollupEpisodes` in
 editor/vscode/media/workbench.js (see tests/test_episodes.py for the JS side)."""
 
 from __future__ import annotations
 
-from sgt.tui.graph import episode_rail_layout, episodes
+from ugh.tui.graph import episode_rail_layout, episodes
 
 
 def _grid(commits, ops):

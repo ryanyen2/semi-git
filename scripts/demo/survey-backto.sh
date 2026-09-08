@@ -17,17 +17,17 @@ set -uo pipefail
 
 repo="$(cd "${1:-$HOME/repos/sgt-demo/sketchpad}" && pwd)"
 out="${2:-/tmp/sketchpad-backto-survey}"
-SGT="${SGT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/.venv/bin/sgt}"
+UGH="${UGH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/.venv/bin/ugh}"
 CHROME="${CHROME:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
 PORT="${PORT:-5397}"
 
 [ -x "$CHROME" ] || { echo "no headless Chrome at $CHROME; set CHROME=<path>" >&2; exit 1; }
 [ -d "$repo/node_modules" ] || { echo "$repo has no node_modules" >&2; exit 1; }
 
-PY_BIN="$(dirname "$SGT")/python"
+PY_BIN="$(dirname "$UGH")/python"
 if [ -x "$PY_BIN" ]; then
-  kind=$("$PY_BIN" -c "import sgt.core.op as o; print(o._symbol_kind('a.ts::__import__::./b'))" 2>/dev/null)
-  [ "$kind" = "import" ] || { echo "wrong sgt: $SGT does not own import lines" >&2; exit 1; }
+  kind=$("$PY_BIN" -c "import ugh.core.op as o; print(o._symbol_kind('a.ts::__import__::./b'))" 2>/dev/null)
+  [ "$kind" = "import" ] || { echo "wrong ugh: $UGH does not own import lines" >&2; exit 1; }
 fi
 
 rm -rf "$out"; mkdir -p "$out"
@@ -47,7 +47,7 @@ git clone -q "$repo" "$base" && cp -r "$repo/.sgt" "$base/.sgt" && ln -s "$repo/
 shoot "$base" "$out/base.png"
 [ -s "$out/base.png" ] || { echo "could not photograph the app as it stands" >&2; exit 1; }
 
-ids=$( cd "$repo" && "$SGT" log --map --json 2>/dev/null | python3 -c "
+ids=$( cd "$repo" && "$UGH" log --map --json 2>/dev/null | python3 -c "
 import json, sys
 for fid, f in json.load(sys.stdin)['features'].items():
     print(fid[2:10], f['label'], sep='\t')
@@ -61,7 +61,7 @@ while IFS=$'\t' read -r fid label; do
   # long way round: macOS ships bash 3.2, which has no `mapfile`.
   chapters=()
   while IFS= read -r line; do chapters+=("$line"); done < <(
-    cd "$repo" && "$SGT" log --focus "$fid" 2>/dev/null | sed -e 's/\x1b\[[0-9;]*m//g' \
+    cd "$repo" && "$UGH" log --focus "$fid" 2>/dev/null | sed -e 's/\x1b\[[0-9;]*m//g' \
       | sed -n 's/^ *@\([0-9][0-9]*\) \{1,\}\(.\{1,\}\)$/\1	\2/p' \
       | awk -F'\t' '{n=$2; sub(/  +[^ ].*$/,"",n); print $1"\t"n}' )
   [ "${#chapters[@]}" -gt 0 ] || continue
@@ -77,7 +77,7 @@ while IFS=$'\t' read -r fid label; do
     okall=yes; peeled=0
     for (( j = ${#chapters[@]} - 1; j > k; j-- )); do
       later="${chapters[$j]%%$'\t'*}"
-      res=$( cd "$work" && "$SGT" revert "$fid@$later" --yes 2>&1 | sed -e 's/\x1b\[[0-9;]*m//g' )
+      res=$( cd "$work" && "$UGH" revert "$fid@$later" --yes 2>&1 | sed -e 's/\x1b\[[0-9;]*m//g' )
       echo "--- $fid@$later" >> "$out/t$n.log"; echo "$res" >> "$out/t$n.log"
       echo "$res" | grep -q 'revert applied' && peeled=$((peeled + 1)) || okall=no
     done

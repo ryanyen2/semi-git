@@ -46,14 +46,14 @@ HERE = Path(__file__).resolve().parent
 
 def load_sessions(repo):
     """session name -> what it owns, read from op attribution."""
-    from sgt.core.store import Store
+    from ugh.core.store import Store
 
     out = defaultdict(lambda: {"ops": set(), "symbols": set(), "files": set(), "commits": set()})
     for op in Store(repo).all_ops():
         for name in {a.session for a in op.attribution if a.session}:
             rec = out[name]
             rec["ops"].add(op.id)
-            # Anchors and residues are sgt's own positioning records, not code a
+            # Anchors and residues are ugh's own positioning records, not code a
             # person wrote. Counting them makes every session look four times the
             # size it is.
             real = [s for s in op.footprint if "::__anchor__::" not in s and "::__residue__::" not in s]
@@ -159,7 +159,7 @@ def try_revert(repo, name, baseline, workdir):
     shutil.rmtree(copy, ignore_errors=True)
     shutil.copytree(repo, copy, symlinks=True)
 
-    r = subprocess.run(["sgt", "revert", "--session", name, "--yes"],
+    r = subprocess.run(["ugh", "revert", "--session", name, "--yes"],
                        cwd=copy, capture_output=True, text=True)
     applied = r.returncode == 0
     preview = (r.stdout + r.stderr).strip()
@@ -190,7 +190,7 @@ def main(repo, quick=False):
     order = commit_order(repo)
     latest = {n: max((order.get(c, 0) for c in r["commits"]), default=0) for n, r in sessions.items()}
 
-    workdir = Path("/private/tmp/claude-501/-Users-r4yen-repos-semi-git/"
+    workdir = Path("/private/tmp/claude-501/-Users-r4yen-repos-ugh/"
                    "98ec4b59-83fc-485f-855a-1a547335d911/scratchpad/select")
     workdir.mkdir(parents=True, exist_ok=True)
     baseline = workdir / "snap-baseline"
@@ -225,7 +225,7 @@ def main(repo, quick=False):
         visible = 0 < len(t["moved"]) < total_pages
         checks = {
             "plain git revert conflicts": bool(conflicts),
-            "sgt revert applies": t["applied"],
+            "ugh revert applies": t["applied"],
             "app still runs after": t["smoke_ok"] and t["renders"],
             "changes some pages, not all": visible,
         }

@@ -11,7 +11,7 @@ no network, no wall-clock leakage. This mirrors ``tests/golden/corpus.py``'s dis
 deterministic, offline fixtures, applied to real git history instead of in-memory `Project` state.
 
 A large (>=50k commit) external repo for BET-E (adoption scale) is opt-in only: set
-``SGT_LARGE_CORPUS_REPO`` to a local path. This module never clones one itself -- that is a
+``UGH_LARGE_CORPUS_REPO`` to a local path. This module never clones one itself -- that is a
 multi-gigabyte, multi-minute network operation no test run should trigger silently.
 """
 
@@ -24,10 +24,10 @@ from pathlib import Path
 from typing import Callable
 
 _IDENTITY = {
-    "GIT_AUTHOR_NAME": "sgt-corpus",
-    "GIT_AUTHOR_EMAIL": "corpus@semi-git.local",
-    "GIT_COMMITTER_NAME": "sgt-corpus",
-    "GIT_COMMITTER_EMAIL": "corpus@semi-git.local",
+    "GIT_AUTHOR_NAME": "ugh-corpus",
+    "GIT_AUTHOR_EMAIL": "corpus@ugh.local",
+    "GIT_COMMITTER_NAME": "ugh-corpus",
+    "GIT_COMMITTER_EMAIL": "corpus@ugh.local",
 }
 
 # Fixed, monotonically increasing commit dates (never `datetime.now()`) so commit SHAs -- which
@@ -203,7 +203,7 @@ def _case_mixed_coverage(root: Path) -> Path:
     """Two parseable Python files (each one def) plus two non-parseable paths (YAML, Markdown),
     all added cleanly in one commit -- a mixed tree with a known, stable entity-granularity
     coverage fraction (2 of 4 covered paths are entity-granular = 0.5). Fixture for R7 /
-    `sgt.api.state_view`: config and docs get honest whole-file coverage, code gets entity
+    `ugh.api.state_view`: config and docs get honest whole-file coverage, code gets entity
     coverage."""
     repo = root / "mixed_coverage"
     _init(repo)
@@ -577,7 +577,7 @@ def self_repo_clone(root: Path) -> Path:
 
 
 # BET-E budgets (R22): provisional numbers, to be recalibrated from real measurement once
-# sgt.core exists and `sgt init` can actually run against the large corpus (see the plan's Open
+# ugh.core exists and `ugh init` can actually run against the large corpus (see the plan's Open
 # Questions -- genesis-horizon default is explicitly deferred to that measurement). Encoded as
 # numbers now, not prose, per U1's Verification requirement; tightened in U6/U10.
 MAX_INIT_SECONDS_PER_1K_COMMITS = 5.0
@@ -585,9 +585,9 @@ MAX_STORE_BYTES_PER_COMMIT = 20_000
 
 
 def large_corpus_repo() -> Path | None:
-    """An opt-in >=50k-commit repo for BET-E. Set ``SGT_LARGE_CORPUS_REPO`` to a local clone;
+    """An opt-in >=50k-commit repo for BET-E. Set ``UGH_LARGE_CORPUS_REPO`` to a local clone;
     this module never fetches one on its own."""
-    raw = os.environ.get("SGT_LARGE_CORPUS_REPO")
+    raw = os.environ.get("UGH_LARGE_CORPUS_REPO")
     if not raw:
         return None
     path = Path(raw)

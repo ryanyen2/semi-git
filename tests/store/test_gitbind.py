@@ -1,6 +1,6 @@
 """U1 tests: git binding — init, commit mapping, trailer identity, orphan detection."""
 
-from sgt.store.gitbind import (
+from ugh.store.gitbind import (
     EMPTY_TREE,
     GitBinding,
     _CatFileBatch,
@@ -199,7 +199,7 @@ def test_symlink_paths_survives_more_paths_than_argv_holds(tmp_path):
     with `OSError: [Errno 7] Argument list too long` before git ever runs. Mining catches nothing,
     so the commit is never processed -- and because the backward genesis backfill only advances its
     frontier past commits it processed, the whole repo stalls three commits from HEAD forever while
-    `sgt log` keeps reporting the full history. Batch the invocation instead."""
+    `ugh log` keeps reporting the full history. Batch the invocation instead."""
     gb, _ = init_store(tmp_path)
     (tmp_path / "link.py").symlink_to("/etc/hostname")  # points outside the repo
     (tmp_path / "real.py").write_text("x = 1\n", encoding="utf-8")
@@ -278,7 +278,7 @@ def test_batch_reads_do_not_alias_across_chdir_with_relative_repo(tmp_path, monk
     assert GitBinding(".").blob_bytes("HEAD", "f.txt") == b"alpha\n"
 
 
-# -- refs/sgt/state tree primitives (plan 1.2) --------------------------------------------------
+# -- refs/ugh/state tree primitives (plan 1.2) --------------------------------------------------
 
 
 def test_write_tree_from_blobs_round_trips_through_read(tmp_path):
@@ -311,15 +311,15 @@ def test_state_tree_advances_a_ref_by_cas(tmp_path):
     """The state ref is advanced the way `log.append` advances its log ref: build a tree, commit it
     off the current tip, CAS the ref. A stale `old` loses the CAS without moving the ref."""
     gb, _ = init_store(tmp_path)
-    ref = "refs/sgt/state"
+    ref = "refs/ugh/state"
 
     t1 = gb.write_tree_from_blobs({".sgt/ideal.json": b"[1]\n"})
-    c1 = gb.commit_tree(t1, [], "sgt state")
+    c1 = gb.commit_tree(t1, [], "ugh state")
     assert gb.update_ref_cas(ref, c1, None)  # create-if-absent
     assert gb.rev_parse(ref) == c1
 
     t2 = gb.write_tree_from_blobs({".sgt/ideal.json": b"[1, 2]\n"})
-    c2 = gb.commit_tree(t2, [c1], "sgt state")
+    c2 = gb.commit_tree(t2, [c1], "ugh state")
     assert gb.update_ref_cas(ref, c2, c1)  # tip still c1 -> wins
     assert gb.read_tree_blobs(c2) == {".sgt/ideal.json": b"[1, 2]\n"}
 
@@ -331,27 +331,27 @@ def test_state_tree_advances_a_ref_by_cas(tmp_path):
 def test_history_meta_carries_time_and_the_bookkeeping_mark(tmp_path):
     """Both extras ride in the format of the walk `history()` already does. They used to be two
     separate full-history `git log` calls (`head_time`, and a `--grep` for the trailer) made by
-    surfaces that had just run this one, so `sgt log` paid four history walks where it needed two."""
+    surfaces that had just run this one, so `ugh log` paid four history walks where it needed two."""
     gb, _ = init_store(tmp_path)
     (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
     gb.commit_all("real work")
     (tmp_path / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
-    gb.commit_all("sgt revert a.py::foo", trailers=format_bookkeeping_trailer())
+    gb.commit_all("ugh revert a.py::foo", trailers=format_bookkeeping_trailer())
 
     meta = gb.history_meta()
 
-    assert [m[2] for m in meta] == ["real work", "sgt revert a.py::foo"]
+    assert [m[2] for m in meta] == ["real work", "ugh revert a.py::foo"]
     assert all(isinstance(m[3], int) and m[3] > 0 for m in meta)  # committer times
-    assert [m[4] for m in meta] == [False, True]  # only sgt's own is marked
+    assert [m[4] for m in meta] == [False, True]  # only ugh's own is marked
     # `history()` is unchanged, so the miner and every other caller are untouched.
     assert gb.history() == [(m[0], m[1], m[2]) for m in meta]
 
 
 def test_history_meta_marks_a_legacy_commit_by_subject(tmp_path):
     """A repo mined before the trailer existed has none to read, and a developer should not have to
-    see years of `sgt revert <hex>` rows to get the benefit."""
+    see years of `ugh revert <hex>` rows to get the benefit."""
     gb, _ = init_store(tmp_path)
     (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("sgt undo: restore prior ideal")  # no trailer
+    gb.commit_all("ugh undo: restore prior ideal")  # no trailer
 
     assert gb.history_meta()[0][4] is True

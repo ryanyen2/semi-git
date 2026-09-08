@@ -1,4 +1,4 @@
-"""Tests for sgt.core.store -- the content-addressed op store (plan U3, R1/R11/R12)."""
+"""Tests for ugh.core.store -- the content-addressed op store (plan U3, R1/R11/R12)."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ import threading
 
 import pytest
 
-from sgt.core.op import MINER_VERSION, Attribution, make_op
-from sgt.core.store import FsckReport, Store, StoreError, _serialize, fsck
+from ugh.core.op import MINER_VERSION, Attribution, make_op
+from ugh.core.store import FsckReport, Store, StoreError, _serialize, fsck
 
 
 def _op(sym: str = "a.py::foo", n: int = 0):
@@ -78,7 +78,7 @@ def test_all_ops_deterministic_order(tmp_path):
 def test_write_atomic_never_leaves_a_torn_file_on_crash(tmp_path, monkeypatch):
     """Simulates a crash between write and rename: os.replace failing must leave neither a
     torn destination file nor a leftover temp file."""
-    import sgt.core.store as store_mod
+    import ugh.core.store as store_mod
 
     store = Store(tmp_path)
     store.init()
@@ -185,7 +185,7 @@ def test_fsck_clean_store(tmp_path):
     store.add(_op())
     report = fsck(tmp_path)
     # op_index_stale is True here: this test writes via `Store.add` directly, never through
-    # `sgt.core.lens`'s `_sync` (the only writer that keeps the opindex sidecar current) -- an
+    # `ugh.core.lens`'s `_sync` (the only writer that keeps the opindex sidecar current) -- an
     # advisory finding, not corruption, so `ok` stays True.
     assert report == FsckReport(ok=True, checked=1, bad_hash=(), corrupt=(), op_index_stale=True)
 
@@ -320,7 +320,7 @@ def test_provenance_roundtrip_preserves_op_ids_across_a_corpus(tmp_path):
     """The U22 verification (D7 proven end to end): mine a real corpus repo, then enrich every op's
     structured provenance. No op id moves -- provenance/attribution are outside the content address
     -- and the store stays fsck-clean."""
-    from sgt.core.lens import get
+    from ugh.core.lens import get
     from tests.laws import corpus
 
     repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
@@ -343,7 +343,7 @@ def test_provenance_roundtrip_preserves_op_ids_across_a_corpus(tmp_path):
 
 def test_all_ops_skips_corrupt_file_instead_of_raising(tmp_path):
     """R1: a corrupt op file degrades to a read-side skip so every verb still runs; fsck is the
-    one place that reports it. Before U2 `all_ops` raised, crashing `sgt status` on any repo with
+    one place that reports it. Before U2 `all_ops` raised, crashing `ugh status` on any repo with
     a single truncated op file."""
     store = Store(tmp_path)
     store.init()
@@ -377,7 +377,7 @@ def test_fsck_moves_a_chain_gap_to_pending_when_it_sits_at_an_open_backfill_fron
     where a chunked backward walk (U3/U4) currently stopped -- expected and self-healing once the
     walk reaches genesis, not a genuine gap. fsck reports it under `pending_chain_gaps` instead of
     `chain_gaps`."""
-    from sgt import state
+    from ugh import state
     store = Store(tmp_path)
     store.init()
     store.add(make_op({"a.py::foo": (None, "v0")}, {"a.py::foo": b"b0"}, provenance=("s0",)))
@@ -397,7 +397,7 @@ def test_fsck_keeps_a_chain_gap_confirmed_once_its_ref_reached_genesis(tmp_path)
     """A ref whose backward walk already finished (`reached_genesis=True`) no longer excuses a gap
     at its old frontier -- a rebase/squash that drops an off-ref predecessor for good on a fully-
     backfilled ref still reports under `chain_gaps`, unchanged from before U5."""
-    from sgt import state
+    from ugh import state
     store = Store(tmp_path)
     store.init()
     store.add(make_op({"a.py::foo": (None, "v0")}, {"a.py::foo": b"b0"}, provenance=("s0",)))
@@ -414,7 +414,7 @@ def test_fsck_keeps_a_chain_gap_confirmed_once_its_ref_reached_genesis(tmp_path)
 def test_fsck_reports_invalid_ideal_table_entry_with_ref_key(tmp_path):
     """R11 ideal validity: an ideal-table entry naming an op id no op in the store produces is not
     a valid ideal. fsck reports the ref key and flips `ok`."""
-    from sgt import state
+    from ugh import state
     store = Store(tmp_path)
     store.init()
     store.add(_op())
@@ -428,8 +428,8 @@ def test_fsck_reports_invalid_ideal_table_entry_with_ref_key(tmp_path):
 def test_fsck_reports_unreachable_witness_with_ref_key(tmp_path):
     """R11 witness reachability: a witness SHA that no longer resolves (deleted branch, foreign
     clone) is reported against its ref key and flips `ok`; the remedy is prune-or-reseed."""
-    from sgt import state
-    from sgt.store.gitbind import init_store
+    from ugh import state
+    from ugh.store.gitbind import init_store
     gb, _ = init_store(tmp_path)
     (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
     gb.commit_all("seed")
@@ -479,12 +479,12 @@ def test_fsck_flags_mixed_miner_versions(tmp_path):
     store.init()
     store.add(make_op({"a.py::foo": (None, "v0")}, {"a.py::foo": b"b0"}, provenance=("s0",)))  # current MINER_VERSION
     from dataclasses import replace as _replace
-    from sgt.core.store import _serialize
+    from ugh.core.store import _serialize
     # A leftover op minted by a *prior* miner version (v2), the mid-migration hazard fsck must flag.
     prior = make_op({"a.py::bar": (None, "v0")}, {"a.py::bar": b"b1"}, provenance=("s1",))
     prior = _replace(prior, miner_version="2")
     # re-mint id under the v2 version so the file still hashes to its own name
-    from sgt.core.op import compute_id
+    from ugh.core.op import compute_id
     prior = _replace(prior, id=compute_id(prior.footprint, prior.images, prior.requires, prior.kind, "2"))
     (store.ops_dir / prior.id).write_bytes(_serialize(prior))
 

@@ -814,7 +814,7 @@ try {
 
   // A refusal is the other thing this bar has to be able to say. `renderConfirmBar` disabled Apply
   // on `ok:false` and left it there greyed out, which reads as "loading" or "not allowed" rather
-  // than "sgt answered no" -- and the two ways out of the one-live-version rule were shown only on
+  // than "ugh answered no" -- and the two ways out of the one-live-version rule were shown only on
   // the hover path, i.e. never at the moment somebody is actually blocked.
   console.log("\na refused stage says why, and what to do:");
   // The focus from the section above survives the state push, and clicking the group again would
@@ -975,14 +975,14 @@ try {
     clashes.join("; "));
 
   // ── The host's reads, audited as text ─────────────────────────────────────────────────────────
-  // `sgt log --tree --refresh` re-mines, and a mine absorbs HEAD's bytes as newly authored work.
+  // `ugh log --tree --refresh` re-mines, and a mine absorbs HEAD's bytes as newly authored work.
   // One landing between a `revert` and its `restore` leaves the removal with nothing to invert:
   // measured on the shipped footfall bundle, the restore then either refuses ("would leave two
   // live versions of `metrics.py::_exclude_events`") or prints ✓ having changed no files.
   //
-  // `Sgt.map()` used to pass `--refresh`, and every automatic reader goes through it -- hover,
+  // `Ugh.map()` used to pass `--refresh`, and every automatic reader goes through it -- hover,
   // inlay hints, the tree views, the workbench's per-selection fold. So opening a file or clicking
-  // a lane after a terminal `sgt revert` broke the restore that followed. This is invisible to
+  // a lane after a terminal `ugh revert` broke the restore that followed. This is invisible to
   // `tsc` (the flag is a string) and to the render tests (they never shell out), and the repair is
   // one word long, so it is exactly the shape that comes back.
   console.log("\nhost reads:");
@@ -1015,10 +1015,10 @@ try {
 
   // ...and it stays a rebuild nobody calls by reflex. One caller: the empty-tree heal, which is
   // gated on there being no tree at all, so there is no removal to lose. `Store`'s own hop down to
-  // the `Sgt` client is not a caller, so `sgt.rebuildMap()` does not count.
+  // the `Ugh` client is not a caller, so `ugh.rebuildMap()` does not count.
   const rebuildCallers = [...hostSrc]
     .flatMap(([file, text]) => text.split("\n")
-      .map((ln, i) => (/\.rebuildMap\(/.test(ln) && !/sgt\.rebuildMap\(/.test(ln)
+      .map((ln, i) => (/\.rebuildMap\(/.test(ln) && !/ugh\.rebuildMap\(/.test(ln)
         ? `${file}:${i + 1}` : null)).filter(Boolean));
   check("the rebuild has exactly one caller", rebuildCallers.length === 1,
     rebuildCallers.join(", ") || "none — the heal path lost its rebuild");

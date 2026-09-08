@@ -157,7 +157,7 @@ def test_a_parents_own_lanes_come_before_its_subsystem_blocks():
 
 def test_feature_with_no_own_symbols_is_dropped_like_the_terminal_drops_it():
     """One drop rule, honoured on every surface. A feature whose ops touch only the residue/anchor
-    sentinels has nothing to act on: `sgt show` reports "0 symbols in 0 files" and reverting it
+    sentinels has nothing to act on: `ugh show` reports "0 symbols in 0 files" and reverting it
     removes nothing. The terminal has dropped those rows for a while and this layout did not, so the
     workbench listed features the map didn't (and vice versa) for one and the same repo."""
     husk = _node("HUSK", None, [])
@@ -263,13 +263,13 @@ def _mv(features_per_sub: list[int], husks: int = 0) -> dict:
 
 
 def test_a_map_inside_the_row_budget_folds_nothing():
-    from sgt.cli.inspect import _default_collapsed
+    from ugh.cli.inspect import _default_collapsed
 
     assert _default_collapsed(_mv([5, 4, 3])) == ()  # 12 features + 4 headers
 
 
 def test_an_oversized_map_folds_its_largest_leaf_subsystems_until_it_fits():
-    from sgt.cli.inspect import MAP_ROW_BUDGET, _default_collapsed
+    from ugh.cli.inspect import MAP_ROW_BUDGET, _default_collapsed
 
     mv = _mv([12, 9, 6, 3])  # 30 features + 5 headers = 35 rows
     assert _default_collapsed(mv) == ("S0",)  # one fold of 12 already fits; it stops there
@@ -285,7 +285,7 @@ def test_an_oversized_map_folds_its_largest_leaf_subsystems_until_it_fits():
 
 
 def test_the_root_is_never_folded():
-    from sgt.cli.inspect import _default_collapsed
+    from ugh.cli.inspect import _default_collapsed
 
     root_only = {"nodes": [{"id": "N0", "parent": None, "kind": "subsystem",
                             "children": [f"F{i}" for i in range(40)], "label": "root"}]
@@ -295,7 +295,7 @@ def test_the_root_is_never_folded():
 
 
 def test_husk_features_do_not_push_the_map_over_its_budget():
-    from sgt.cli.inspect import _default_collapsed
+    from ugh.cli.inspect import _default_collapsed
 
     # 30 features, but 18 of them own nothing and never render, so the map fits and nothing folds
     assert _default_collapsed(_mv([10, 10, 10], husks=6)) == ()

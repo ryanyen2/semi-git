@@ -121,9 +121,9 @@ def main() -> int:
         checks.add("smoke", False, "no project environment")
 
     # 5, 6 and 7. The history tool, in the condition that has one
-    if meta.get("condition") == "sgt":
-        sgt = home / "bin" / "sgt"
-        rc, out = run([str(sgt), "--version"], timeout=90)
+    if meta.get("condition") == "ugh":
+        ugh = home / "bin" / "ugh"
+        rc, out = run([str(ugh), "--version"], timeout=90)
         checks.add("tool", rc == 0, out.splitlines()[0] if out else "could not run")
         warm = (home / "work" / ".sgt").exists()
         checks.add(
@@ -160,7 +160,7 @@ def main() -> int:
             rc, out = run(
                 [
                     str(home / "toolenv" / "bin" / "python"), "-c",
-                    "import sys;from sgt.config import get_client;"
+                    "import sys;from ugh.config import get_client;"
                     "get_client(sys.argv[1]).embeddings.create("
                     "model='text-embedding-3-small',input=['ping'],dimensions=256);"
                     "print('ok')",
@@ -176,7 +176,7 @@ def main() -> int:
             )
 
     # 6b. The assistant's skill, in the condition without a tool. It is what the
-    # sgt half's skills and MCP server are for that half: without it the git half
+    # ugh half's skills and MCP server are for that half: without it the git half
     # is plain Claude Code against git, and the agent-half comparison becomes a
     # guided tool against an unguided one -- a difference nothing in a session
     # makes visible, so it is checked here or not at all.
@@ -322,13 +322,13 @@ def main() -> int:
             timeout=90,
         )
         installed = [line.strip() for line in out.splitlines() if "." in line and "@" in line]
-        if meta.get("condition") == "sgt":
-            wanted = "semi-git"
+        if meta.get("condition") == "ugh":
+            wanted = "ugh"
             found = [x for x in installed if wanted in x.lower()]
             checks.add(
                 "editor_extension",
                 bool(found),
-                ", ".join(found) if found else "no semi-git in the study profile; re-run install/setup.sh",
+                ", ".join(found) if found else "no ugh in the study profile; re-run install/setup.sh",
             )
         else:
             # Nothing to install in this arm any more, which is exactly why it

@@ -1,4 +1,4 @@
-"""Unit coverage for `sgt.lens.authored` -- the authored-feature CRDT (U6/R3, KTD3).
+"""Unit coverage for `ugh.lens.authored` -- the authored-feature CRDT (U6/R3, KTD3).
 
 The highest-risk unit: a wrong merge rule is a cross-replica bug that only surfaces when two
 people's features disagree. Each of the three components is tested against its own failure mode:
@@ -16,7 +16,7 @@ The load-bearing property is that `merge` is commutative + idempotent (LAW-U), t
 
 from __future__ import annotations
 
-from sgt.lens import authored
+from ugh.lens import authored
 
 
 def _ancestry(edges):

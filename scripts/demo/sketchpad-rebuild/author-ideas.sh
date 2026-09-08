@@ -9,8 +9,8 @@
 # purpose: reverting the idea removes the program's ability to satisfy the condition
 # and leaves the drawing still asking, which is the beat the take films.
 #
-# Run this AFTER a rebuild and its `sgt log --refresh`. A later mining pass used to
-# rewrite the authored features without warning (findings 79 and 80); sgt 0.6.10 keeps
+# Run this AFTER a rebuild and its `ugh log --refresh`. A later mining pass used to
+# rewrite the authored features without warning (findings 79 and 80); ugh 0.6.10 keeps
 # each one as a lane of exactly its own symbols, and a re-mine now only re-clusters
 # and re-labels the machine-named rows. Cut a golden copy of .sgt when this script
 # says five passed, so the map you rehearse is the map you record.
@@ -22,7 +22,7 @@
 set -uo pipefail
 
 repo="$(cd "${1:-$HOME/repos/sgt-demo/sketchpad-v2}" && pwd)"
-SGT="${SGT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/.venv/bin/sgt}"
+UGH="${UGH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/.venv/bin/ugh}"
 cd "$repo"
 
 # kind letter | save-subject fragment | the name a person says
@@ -67,7 +67,7 @@ print(' '.join(sorted(json.load(open('.sgt/ops/$op')).get('footprint', {}).keys(
 }
 
 lane_ops() {  # <full feature id> -> the full op ids the lane holds now
-  "$SGT" log --map --json </dev/null 2>/dev/null | python3 -c "
+  "$UGH" log --map --json </dev/null 2>/dev/null | python3 -c "
 import json, sys
 d = json.load(sys.stdin)
 ops = set()
@@ -87,7 +87,7 @@ while IFS=$'\t' read -r k subject name; do
   want=$(ops_of_kind "$k" "$subject") || { bad "$name: save not found"; continue; }
   want_n=$(echo "$want" | grep -c .)
 
-  existing=$("$SGT" feature select "$name" </dev/null 2>/dev/null | head -1 \
+  existing=$("$UGH" feature select "$name" </dev/null 2>/dev/null | head -1 \
              | sed -n 's/.*: \([0-9]*\) direct.*/\1/p')
   if [ "${existing:-}" = "$want_n" ]; then
     ok "\"$name\" already holds its $want_n op(s)"
@@ -97,13 +97,13 @@ while IFS=$'\t' read -r k subject name; do
   # Mint a lane by splitting the feature that owns the kind file's body op.
   body=$(file_body_op "$k" "$want")
   [ -n "$body" ] || { bad "$name: no file-body op"; continue; }
-  owner=$("$SGT" show "$body" --json </dev/null 2>/dev/null \
+  owner=$("$UGH" show "$body" --json </dev/null 2>/dev/null \
           | python3 -c "
 import json, sys
 f = json.load(sys.stdin).get('feature')
 print(f['id'] if f else '')")
   [ -n "$owner" ] || { bad "$name: file-body op is in no feature"; continue; }
-  new=$("$SGT" feature regroup split "$owner" --apply </dev/null 2>&1 \
+  new=$("$UGH" feature regroup split "$owner" --apply </dev/null 2>&1 \
         | sed -e 's/\x1b\[[0-9;]*m//g' | grep -oE 'f-[a-z0-9]{16,}' | tail -1)
   if [ -z "$new" ] || [ "$new" = "$owner" ]; then
     bad "$name: split minted no lane"
@@ -114,13 +114,13 @@ print(f['id'] if f else '')")
   # Never with an empty lane id -- an empty match once evicted the whole repo.
   intruders=$(lane_ops "$new" | grep -v -F "$want" || true)
   if [ -n "$intruders" ]; then
-    "$SGT" feature regroup move $(echo "$intruders" | tr '\n' ' ') \
+    "$UGH" feature regroup move $(echo "$intruders" | tr '\n' ' ') \
       --to "$owner" --json </dev/null >/dev/null 2>&1
   fi
-  "$SGT" feature regroup move $(echo "$want" | tr '\n' ' ') --to "$new" --json </dev/null >/dev/null 2>&1
-  "$SGT" feature rename "$new" "$name" </dev/null >/dev/null 2>&1
+  "$UGH" feature regroup move $(echo "$want" | tr '\n' ' ') --to "$new" --json </dev/null >/dev/null 2>&1
+  "$UGH" feature rename "$new" "$name" </dev/null >/dev/null 2>&1
 
-  got=$("$SGT" feature select "$name" </dev/null 2>/dev/null | head -1 \
+  got=$("$UGH" feature select "$name" </dev/null 2>/dev/null | head -1 \
         | sed -n 's/.*: \([0-9]*\) direct.*/\1/p')
   if [ "${got:-0}" = "$want_n" ]; then
     ok "\"$name\" holds exactly its $want_n op(s)"

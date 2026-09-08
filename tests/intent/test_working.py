@@ -1,8 +1,8 @@
 """What the developer is working on, derived from what they already said rather than declared.
 
-The agentic loop asks an agent to call `sgt plan intake` before working. Most work does not arrive
+The agentic loop asks an agent to call `ugh plan intake` before working. Most work does not arrive
 that way: a developer using Claude Code plans in plan mode, or with a planning plugin, or just types
-a sentence -- and sgt is told nothing. The prompt hook has recorded every ask verbatim all along, so
+a sentence -- and ugh is told nothing. The prompt hook has recorded every ask verbatim all along, so
 the answer is on disk before anyone asks for it.
 """
 
@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import time
 
-from sgt.intent.turns import record_turn
-from sgt.intent.working import working_on
+from ugh.intent.turns import record_turn
+from ugh.intent.working import working_on
 
 
 def test_the_latest_prompt_is_the_current_task(tmp_path):
@@ -23,7 +23,7 @@ def test_the_latest_prompt_is_the_current_task(tmp_path):
     out = working_on(tmp_path)
 
     # The ask, not the whole prompt: "Actually" is throat-clearing, and every surface that shows
-    # captured words now takes the excerpt (`sgt.intent.gist`) rather than the first line.
+    # captured words now takes the excerpt (`ugh.intent.gist`) rather than the first line.
     assert out["title"] == "make it back off exponentially"
     assert out["source"] == "prompt"
     assert out["ts"] == 200.0
@@ -66,7 +66,7 @@ def test_only_human_chat_turns_count(tmp_path):
 
 
 def test_a_long_prompt_is_elided_for_display_but_kept_whole_for_reuse(tmp_path):
-    """The display title has to fit a status row; the suggested `sgt save -m "..."` has to be
+    """The display title has to fit a status row; the suggested `ugh save -m "..."` has to be
     pasteable, and an ellipsis in a shell command is not."""
     ask = ("Add rate limiting to the API so that repeated calls back off exponentially "
            "instead of erroring out immediately for the caller")
@@ -88,7 +88,7 @@ def test_only_the_first_line_of_a_multi_line_prompt_is_the_ask(tmp_path):
 
 
 def test_an_old_prompt_with_a_clean_tree_is_not_current_work(tmp_path):
-    """`sgt now` reported "working on X (9h ago)" directly above "next: nothing pending" -- two
+    """`ugh now` reported "working on X (9h ago)" directly above "next: nothing pending" -- two
     lines contradicting each other, which teaches the developer that the first cannot be trusted.
     With nothing in the tree to attribute to it, an old prompt was answered or abandoned."""
     record_turn(tmp_path, key="chat-1", key_kind="chat", actor="human", channel="hook",

@@ -1,5 +1,5 @@
-"""Phase 1.2 §F: `sgt migrate state-ref` moves a pre-1.2 repo's committed `.sgt/**` state off the
-branch tree onto `refs/sgt/state`. The one irreversible tree change of Phase 1.2 -- a single
+"""Phase 1.2 §F: `ugh migrate state-ref` moves a pre-1.2 repo's committed `.sgt/**` state off the
+branch tree onto `refs/ugh/state`. The one irreversible tree change of Phase 1.2 -- a single
 migration commit that `git rm --cached`s the moved paths -- is what kills F1 (saves stop dirtying
 the tree) and F10 (that state stops colliding on merge/rebase).
 
@@ -12,11 +12,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sgt import state
-from sgt.core import migrate
-from sgt.core.store import Store
-from sgt.core.sync import state_ref
-from sgt.store.gitbind import GitBinding, init_store
+from ugh import state
+from ugh.core import migrate
+from ugh.core.store import Store
+from ugh.core.sync import state_ref
+from ugh.store.gitbind import GitBinding, init_store
 
 
 def _pre_1_2_repo(root: Path, *, local_exclusions: bytes | None = None) -> tuple[GitBinding, Path]:

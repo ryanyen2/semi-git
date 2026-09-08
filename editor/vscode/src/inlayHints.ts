@@ -1,6 +1,6 @@
 // Opt-in inlay hints: `‹feature-label ·N ops›` appended to each symbol's definition line, from
 // the same blame/map data `blame.ts`/`hover.ts` already fetch. Off by default
-// (`sgt.inlayHints.enabled`) -- a hint per definition is a lot of visual noise for a whole-file
+// (`ugh.inlayHints.enabled`) -- a hint per definition is a lot of visual noise for a whole-file
 // view, unlike the on-hover/gutter surfaces that only show on demand.
 
 import * as vscode from "vscode";
@@ -16,7 +16,7 @@ export class FeatureInlayHintsProvider implements vscode.InlayHintsProvider {
   }
 
   async provideInlayHints(document: vscode.TextDocument, range: vscode.Range): Promise<vscode.InlayHint[]> {
-    if (!vscode.workspace.getConfiguration("sgt").get<boolean>("inlayHints.enabled", false)) {
+    if (!vscode.workspace.getConfiguration("ugh").get<boolean>("inlayHints.enabled", false)) {
       return [];
     }
     const rel = vscode.workspace.asRelativePath(document.uri, false);

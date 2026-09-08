@@ -1,4 +1,4 @@
-"""CLI dispatch tests for `sgt revert <lane> --to <commit>` (plan U11): the timeline-scrub
+"""CLI dispatch tests for `ugh revert <lane> --to <commit>` (plan U11): the timeline-scrub
 truncation edit. The plan-level algebra -- which ops the up-set removes, the `--keep` strand-guard,
 the `no change` no-op -- is pinned in tests/lens/test_feature_verbs.py; this file is the thin CLI
 layer: `--to` routes to `plan_revert_lane_to_commit`, `--emit` projects the preview (carrying U4's
@@ -13,9 +13,9 @@ import re
 
 import pytest
 
-from sgt.cli import main
-from sgt.core.lens import current_ideal, get
-from sgt.lens import map as lensmap
+from ugh.cli import main
+from ugh.core.lens import current_ideal, get
+from ugh.lens import map as lensmap
 from tests.laws import corpus
 
 
@@ -30,7 +30,7 @@ def _in(repo, argv):
 
 def _spanning_lane(repo):
     """A leaf lane spanning >=2 commit indices, with its earliest and latest cut points."""
-    from sgt.api import history_view
+    from ugh.api import history_view
 
     result = lensmap.build_map(repo)
     ci = {o["id"]: o["commit_index"] for o in history_view(repo, full=True)["ops"]}
@@ -98,12 +98,12 @@ def test_revert_to_commit_is_a_no_op_past_the_last_commit(tmp_path, capsys):
 
 
 # ── feedforward confirm gate (plain-text revert) ─────────────────────────────────────────────────
-# A bare `sgt revert <feature>` (no --json) draws the feedforward graph, then gates on [y/N].
+# A bare `ugh revert <feature>` (no --json) draws the feedforward graph, then gates on [y/N].
 # --yes skips the prompt; a non-tty stdin refuses to apply (exit 2). --json/--emit are covered above.
 
 
 def _revertable_feature(repo):
-    """A leaf feature id `sgt.lens.verbs.resolve_feature` will match -- reuse the spanning lane."""
+    """A leaf feature id `ugh.lens.verbs.resolve_feature` will match -- reuse the spanning lane."""
     lane, _, _ = _spanning_lane(repo)
     return lane
 
@@ -182,12 +182,12 @@ def test_revert_non_tty_without_yes_exits_2_and_applies_nothing(tmp_path, capsys
 # The overview advertises handles as bare hex (no `f-`), which collides with the founding op's id
 # (feature id = `f-<founding op id>`). Reverting by that handle must resolve the FEATURE
 # deterministically -- the full op-set, not the single founding op -- and never fall to the
-# 2-minute LLM rung (the hang the user reported: `sgt revert f-00aa` waited ~2 minutes then errored).
+# 2-minute LLM rung (the hang the user reported: `ugh revert f-00aa` waited ~2 minutes then errored).
 
 
 def test_a_reverted_checkpoint_can_be_restored_by_the_same_handle(tmp_path, capsys, monkeypatch):
-    """`sgt revert <feature>@<n>` is the rewind the map and the checkpoint detail both tell users to
-    type, so `sgt restore <feature>@<n>` has to be the way back. It was not: `restore` never entered
+    """`ugh revert <feature>@<n>` is the rewind the map and the checkpoint detail both tell users to
+    type, so `ugh restore <feature>@<n>` has to be the way back. It was not: `restore` never entered
     the checkpoint branch, so the handle fell through every deterministic rung to the NL rung and
     exited with `could not resolve ... set OPENAI_API_KEY` -- a one-way door out of the only rewind
     unit the UI advertises, and the checkpoint detail's own remedy line pointed straight at it. The
@@ -195,7 +195,7 @@ def test_a_reverted_checkpoint_can_be_restored_by_the_same_handle(tmp_path, caps
     _no_llm(monkeypatch)
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     get(repo)
-    from sgt.api import segments_view
+    from ugh.api import segments_view
 
     feat = _revertable_feature(repo)
     assert feat is not None
@@ -225,7 +225,7 @@ def test_the_restore_gap_warning_is_printed_once_under_yes_and_twice_around_a_co
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     get(repo)
     fid = _revertable_feature(repo)
-    monkeypatch.setattr("sgt.cli.ideal_edit._restore_gap_report", lambda repo, preview: ["  ⚠ GAP"])
+    monkeypatch.setattr("ugh.cli.ideal_edit._restore_gap_report", lambda repo, preview: ["  ⚠ GAP"])
 
     capsys.readouterr()
     _in(repo, ["restore", fid, "--yes"])
@@ -244,7 +244,7 @@ def test_restoring_a_checkpoint_that_was_never_reverted_changes_nothing(tmp_path
     _no_llm(monkeypatch)
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     get(repo)
-    from sgt.api import segments_view
+    from ugh.api import segments_view
 
     feat = _revertable_feature(repo)
     ckpt = [s for s in segments_view(repo) if s["feature_id"] == feat][-1]["checkpoint"]
@@ -257,7 +257,7 @@ def test_restoring_a_checkpoint_that_was_never_reverted_changes_nothing(tmp_path
 
 def _no_llm(monkeypatch):
     """Guard: fail loudly if the LLM NL rung is ever reached for a handle-shaped target."""
-    from sgt.cli import ideal_edit
+    from ugh.cli import ideal_edit
 
     def _boom(*a, **k):
         raise AssertionError("a handle-shaped target must resolve deterministically, never via the LLM")
@@ -268,7 +268,7 @@ def _no_llm(monkeypatch):
 def test_resolve_feature_accepts_f_prefix_and_bare_hex_prefix(tmp_path):
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     get(repo)
-    from sgt.lens import verbs
+    from ugh.lens import verbs
 
     fid = _revertable_feature(repo)
     assert fid and fid.startswith("f-")
@@ -283,7 +283,7 @@ def test_resolve_feature_ambiguous_prefix_returns_none(tmp_path, monkeypatch):
     never guesses). A synthetic tree stands in because every corpus mints exactly one feature."""
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     get(repo)
-    from sgt.lens import verbs
+    from ugh.lens import verbs
 
     fake = {"nodes": {"f-abcd0001": {"children": [], "label": "One"},
                       "f-abcd0002": {"children": [], "label": "Two"}},
@@ -315,10 +315,10 @@ def test_revert_on_a_dirty_unrelated_file_refuses_cleanly_not_a_traceback(tmp_pa
     remedy -- never a raw `DirtyWorkingTreeError` traceback with a half-written `.sgt`."""
     import json as _json
 
-    from sgt.core import order, verbs
-    from sgt.core.lens import current_ideal, get
-    from sgt.core.store import Store
-    from sgt.store.gitbind import init_store
+    from ugh.core import order, verbs
+    from ugh.core.lens import current_ideal, get
+    from ugh.core.store import Store
+    from ugh.store.gitbind import init_store
 
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
@@ -339,8 +339,8 @@ def test_revert_on_a_dirty_unrelated_file_refuses_cleanly_not_a_traceback(tmp_pa
     out = _json.loads(capsys.readouterr().out)
     assert out["ok"] is False
     assert "b.py" in out["error"]          # names the offending file
-    assert "sgt put" not in out["error"]   # no nonexistent verb
-    assert "sgt save" in out["error"]      # the actual, executable remedy
+    assert "ugh put" not in out["error"]   # no nonexistent verb
+    assert "ugh save" in out["error"]      # the actual, executable remedy
     assert current_ideal(repo).op_ids == before  # refused -- nothing applied
 
 
@@ -364,7 +364,7 @@ def test_revert_handle_shaped_miss_exits_2_without_the_llm(tmp_path, capsys, mon
 
 
 def test_revert_by_nl_resolves_via_the_intent_ledger_without_the_llm(tmp_path, capsys, monkeypatch):
-    from sgt.intent import rationale
+    from ugh.intent import rationale
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     get(repo)
@@ -393,7 +393,7 @@ def test_revert_by_nl_resolves_via_the_intent_ledger_without_the_llm(tmp_path, c
 def test_revert_by_nl_with_no_ledger_match_still_reaches_the_llm_rung(tmp_path, capsys, monkeypatch):
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     get(repo)
-    from sgt.cli import ideal_edit
+    from ugh.cli import ideal_edit
 
     def _sentinel(*a, **k):
         raise AssertionError("REACHED_LLM_RUNG")
@@ -435,14 +435,14 @@ def _shared_edit_repo(root):
 def test_show_does_not_report_a_subtraction_as_zero_edits(tmp_path, capsys):
     repo = _shared_edit_repo(tmp_path)
     get(repo)
-    from sgt.core import verbs as core_verbs
+    from ugh.core import verbs as core_verbs
 
     preview = core_verbs.plan_revert(repo, "slots.py::overlaps")
     assert preview.ok and not preview.removed and preview.subtracted_symbols  # the shape under test
 
     assert _in(repo, ["show", "slots.py::overlaps"]) == 0
     out = capsys.readouterr().out
-    assert "0 edit" not in out          # the consequence line, and the `sgt revert` cost beside it
+    assert "0 edit" not in out          # the consequence line, and the `ugh revert` cost beside it
     assert "1 symbol" in out            # what the revert would actually change
 
 
@@ -460,7 +460,7 @@ def test_revert_apply_reports_what_a_subtraction_changed(tmp_path, capsys):
 
 # F33. The other end of the same report: a revert whose removal is *entirely* overlapped by later
 # work changes nothing -- no op leaves the ideal, no file moves, no journal event is appended -- yet
-# the apply line still promised "`sgt undo` reverses this". Taking the tool at its word pops the
+# the apply line still promised "`ugh undo` reverses this". Taking the tool at its word pops the
 # *previous* save instead and silently drops that edit. Found by the WP-V4 random-op harness.
 
 
@@ -480,9 +480,9 @@ def _twice_reworked_repo(root):
 
 def _superseded_op(repo):
     """The middle rework of `c.py::qux` -- the one the last commit fully overwrote."""
-    from sgt.api import history_view
-    from sgt.core import verbs as core_verbs
-    from sgt.core.store import Store
+    from ugh.api import history_view
+    from ugh.core import verbs as core_verbs
+    from ugh.core.store import Store
 
     ci = {o["id"]: o["commit_index"] for o in history_view(repo, full=True)["ops"]}
     ops = [o for o in Store(repo).all_ops() if any("c.py::qux" in f for f in o.footprint)]
@@ -506,7 +506,7 @@ def test_a_revert_that_changes_nothing_does_not_claim_undo_reverses_it(tmp_path,
     out = capsys.readouterr().out
     assert current_ideal(repo).op_ids == before  # it really did change nothing
 
-    assert "sgt undo" not in out, "promised an undo for an edit that never happened"
+    assert "ugh undo" not in out, "promised an undo for an edit that never happened"
     assert "changed nothing" in out
 
 
@@ -514,7 +514,7 @@ def test_a_revert_that_changes_nothing_does_not_claim_undo_reverses_it(tmp_path,
 # `__residue__`/`__anchor__` ops are siblings of the entity, not dependents, so its up-set never
 # reaches them. The fold appends an orphaned residue at the end of the file, so `code(ideal)` is one
 # gap longer than whatever the developer types there next, forever: `put()` refuses every save in
-# that path, `sgt undo` included, and the file becomes unwritable. Found by the WP-V4 random-op
+# that path, `ugh undo` included, and the file becomes unwritable. Found by the WP-V4 random-op
 # harness (seed 11, op 66), minimized here.
 
 
@@ -529,7 +529,7 @@ def _one_symbol_module_repo(root):
 
 
 def test_a_file_emptied_by_revert_can_still_be_written_to(tmp_path, capsys):
-    from sgt.core.store import Store
+    from ugh.core.store import Store
 
     repo = _one_symbol_module_repo(tmp_path)
     ideal = get(repo)
@@ -546,7 +546,7 @@ def test_a_file_emptied_by_revert_can_still_be_written_to(tmp_path, capsys):
 
     # The point of the fix: the composed image agrees with the bytes on disk, so the path is
     # writable again rather than permanently drifted.
-    from sgt.core.lens import code
+    from ugh.core.lens import code
     composed = code(get(repo), Store(repo).all_ops())
     assert composed["mod.py"] == (repo / "mod.py").read_bytes()
 
@@ -583,7 +583,7 @@ def _phantom_shapes_repo(root):
 
 
 def _op_writing(repo, sym: str) -> str:
-    from sgt.core.store import Store
+    from ugh.core.store import Store
 
     ops = {o.id: o for o in Store(repo).all_ops()}
     return next(i for i in get(repo).op_ids if sym in ops[i].footprint)
@@ -614,7 +614,7 @@ def test_reverting_the_last_entity_keeps_the_files_header_comment(tmp_path, caps
     """The counterexample that killed the second attempt: bottoming the leading-gap sentinel
     unconditionally threw away the header comment's bytes, *and* left the ideal covering no symbol for
     the path -- so `_write_working_tree` routed it to `to_delete`, R4's backstop kept the un-reverted
-    file, and `sgt revert` printed a `✓` over a file it had not changed. A silent success."""
+    file, and `ugh revert` printed a `✓` over a file it had not changed. A silent success."""
     repo = _phantom_shapes_repo(tmp_path)
     get(repo)
     op_id = _op_writing(repo, "headed.py::only")
@@ -655,8 +655,8 @@ def test_reverting_a_referenced_last_entity_removes_the_file_not_just_the_ideal(
     *before* `put` runs. R4's backstop asks whether any valid ideal over the store can regenerate the
     live bytes, and `_reproducible_content`'s maximal ideal takes every chain to its tip -- including
     the prune this very edit just minted. So the answer is no by construction, the delete is refused,
-    `git commit` records an empty commit, and `sgt revert` prints `✓ revert applied` over a file it
-    did not touch. Seen on the study repo: `sgt revert 01f4dcde` reported 7 edits removed and left
+    `git commit` records an empty commit, and `ugh revert` prints `✓ revert applied` over a file it
+    did not touch. Seen on the study repo: `ugh revert 01f4dcde` reported 7 edits removed and left
     `bikecount/events.py` byte-identical."""
     repo = _referenced_solo_module_repo(tmp_path)
     get(repo)
@@ -712,11 +712,11 @@ def test_a_refused_restore_reports_its_reason_not_that_the_op_is_unknown(tmp_pat
     """F39's first collateral defect, and the reason a WP-V4 sweep recorded a hard stop with no
     working move. `_explain_restore_block` returns None both when the hex names no stored op and
     when it names one the ideal cannot re-admit for any reason *other* than a competing live
-    sibling -- and the ladder answered both with `no feature matches handle '<id>' -- run `sgt log
+    sibling -- and the ladder answered both with `no feature matches handle '<id>' -- run `ugh log
     --map``. That denies an op the store is holding and sends the reader to look for a feature,
     while `plan_restore`'s own truthful refusal is discarded."""
-    from sgt.core import verbs
-    from sgt.core.store import Store
+    from ugh.core import verbs
+    from ugh.core.store import Store
 
     repo = _reborn_symbol_repo(tmp_path)
     ideal = get(repo)
@@ -744,8 +744,8 @@ def test_a_refused_restore_names_the_symbol_rather_than_dumping_the_proposed_set
     """F39's second collateral defect. `Ideal.from_ops` raises with `sorted(ids)` -- the *whole*
     proposed ideal, thousands of 64-hex ids on a real repository and never the offending one -- and
     `_validated` passed it straight through. The reader needs the symbol whose chain forked."""
-    from sgt.core import verbs
-    from sgt.core.store import Store
+    from ugh.core import verbs
+    from ugh.core.store import Store
 
     repo = _reborn_symbol_repo(tmp_path)
     ideal = get(repo)
@@ -779,7 +779,7 @@ def test_a_symbol_target_that_cannot_be_planned_reports_why_not_an_api_key(
     `set OPENAI_API_KEY` where the planner had computed a true reason -- which is why both hard
     stops were unexplainable from their own artifacts."""
     # Offline means every credential `config.resolve_api_key` consults, not just this one. Any test
-    # whose code path calls `load_env(".")` imports this repo's real `.env` -- a Claude `SGT_MODEL`
+    # whose code path calls `load_env(".")` imports this repo's real `.env` -- a Claude `UGH_MODEL`
     # and an `ANTHROPIC_AUTH_TOKEN` -- into `os.environ` for the rest of the process, so deleting
     # `OPENAI_API_KEY` alone left these assertions passing or failing by collection order.
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
@@ -851,8 +851,8 @@ def test_a_whole_entity_revert_still_warns_about_surviving_references(tmp_path):
     the one shape whose `still references removed code` warning can never fire, even though it is
     the only shape whose `born` set is reliably non-empty. Same repository, same removed entity, same
     surviving reference: the warning appeared only when an unrelated symbol needed a splice."""
-    from sgt.core import order, verbs as core_verbs
-    from sgt.core.subtract import plan_subtraction
+    from ugh.core import order, verbs as core_verbs
+    from ugh.core.subtract import plan_subtraction
 
     repo = _string_reference_repo(tmp_path)
     get(repo)
@@ -882,8 +882,8 @@ def test_a_common_name_in_another_file_is_not_a_surviving_reference(tmp_path):
 
     A symbol in another file can only reach `events.py::label` through `events.label`, so that is
     what counts there. The same-file bare-name case keeps working -- the test above pins it."""
-    from sgt.core import verbs as core_verbs
-    from sgt.core.subtract import plan_subtraction
+    from ugh.core import verbs as core_verbs
+    from ugh.core.subtract import plan_subtraction
 
     repo = tmp_path / "commonname"
     corpus._init(repo)
@@ -939,7 +939,7 @@ def test_the_dry_run_carries_the_two_consequence_reports(tmp_path, capsys, monke
     different view that carries both. So the two reports reached the developer only in the result of
     the mutation that had already happened, and a dry run -- in either format -- named neither.
 
-    That is the surface §4's claim rests on: "\\sgt{} names every function it changes that way and
+    That is the surface §4's claim rests on: "\\ugh{} names every function it changes that way and
     every function it decided to leave alone", closing "Naming the function before the revert runs is
     as far as we are willing to go on the developer's behalf". True for a human at a tty, where the
     plain-text apply prints the report before the `[y/N]`. False for the preview and false for an
@@ -947,7 +947,7 @@ def test_the_dry_run_carries_the_two_consequence_reports(tmp_path, capsys, monke
 
     Same repository and same removed entity as the F123 test above, which fixed the sweep that
     computes this; nothing made the answer observable to a machine, so a harness counting the class
-    through `--emit --json` would have read zero forever whatever sgt did.
+    through `--emit --json` would have read zero forever whatever ugh did.
     """
     import json as _json
     import sys
@@ -967,9 +967,9 @@ def test_the_dry_run_carries_the_two_consequence_reports(tmp_path, capsys, monke
 
 
 def test_reverting_a_save_sha_says_it_is_a_save_and_names_the_features_it_touched(tmp_path, capsys):
-    """The pilot's dead end. `sgt save` prints the commit it made, so the obvious next move after a
-    save you regret is `sgt revert <that sha>` -- and a bare hex is handle-shaped, so it fell to
-    `_no_feature_match`, which denied the id exists and pointed at `sgt log --map`. The map never
+    """The pilot's dead end. `ugh save` prints the commit it made, so the obvious next move after a
+    save you regret is `ugh revert <that sha>` -- and a bare hex is handle-shaped, so it fell to
+    `_no_feature_match`, which denied the id exists and pointed at `ugh log --map`. The map never
     shows save shas, so the one pointer given cannot resolve the one id typed: a name the tool
     itself printed reads as unknown. The sha names a save, and the answer says so and names the
     moves that do work."""
@@ -989,9 +989,9 @@ def test_reverting_a_save_sha_says_it_is_a_save_and_names_the_features_it_touche
     assert "no feature matches" not in out, f"the sha names a save, and the CLI denies it:\n{out}"
     assert "save" in out and sha[:7] in out, out
     assert "add the cart tax" in out, f"the refusal doesn't say which save:\n{out}"
-    assert re.search(r"sgt revert [0-9a-f]{4,}\s{2,}\S", out), (
+    assert re.search(r"ugh revert [0-9a-f]{4,}\s{2,}\S", out), (
         f"the refusal names no feature to revert instead:\n{out}")
-    assert "sgt undo" in out and f"sgt why {sha[:7]}" in out, out
+    assert "ugh undo" in out and f"ugh why {sha[:7]}" in out, out
 
 
 def test_reverting_a_save_sha_answers_json_consumers_with_the_same_features(tmp_path, capsys):
@@ -1026,7 +1026,7 @@ def test_an_out_of_range_checkpoint_index_reports_the_range_not_an_api_key(
     _no_llm(monkeypatch)
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     get(repo)
-    from sgt.api import segments_view
+    from ugh.api import segments_view
 
     feat = _revertable_feature(repo)
     assert feat is not None

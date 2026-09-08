@@ -81,7 +81,7 @@ def seed_participant() -> None:
                             "mapValue": {
                                 "fields": {
                                     "half": {"integerValue": "1"},
-                                    "condition": {"stringValue": "sgt"},
+                                    "condition": {"stringValue": "ugh"},
                                     "project": {"stringValue": "coursecraft"},
                                     "label": {"stringValue": "Setup A"},
                                 }
@@ -153,7 +153,7 @@ def main() -> int:
     shutil.copytree(BUNDLE / "bin", home / "bin")
     (home / "work").mkdir()
     (home / "study.json").write_text(
-        json.dumps({"condition": "sgt", "project": "coursecraft", "bundleVersion": "test"})
+        json.dumps({"condition": "ugh", "project": "coursecraft", "bundleVersion": "test"})
     )
 
     env = dict(os.environ)
@@ -175,7 +175,7 @@ def main() -> int:
     check("accepts a matching bundle", proc.returncode == 0, proc.stdout + proc.stderr)
     check("writes the assistant key", (home / ".claude-study" / "api-key").exists())
     check("writes a key helper that does not prompt", (home / ".claude-study" / "api-key.sh").exists())
-    check("writes the .env sgt needs", (home / "work" / ".env").exists())
+    check("writes the .env ugh needs", (home / "work" / ".env").exists())
     check("records the half from the assignment", json.loads((home / "telemetry" / "state.json").read_text()).get("half") == 1)
 
     settings = json.loads((home / ".claude-study" / "settings.json").read_text())
@@ -209,7 +209,7 @@ def main() -> int:
         proc.stdout,
     )
     (home / "study.json").write_text(
-        json.dumps({"condition": "sgt", "project": "coursecraft", "bundleVersion": "test"})
+        json.dumps({"condition": "ugh", "project": "coursecraft", "bundleVersion": "test"})
     )
 
     # --- which study this bundle belongs to -------------------------------
@@ -308,7 +308,7 @@ def main() -> int:
     (work / "app.py").write_text("x = 1\n")
     subprocess.run(["git", "add", "-A"], cwd=work, timeout=60)
     subprocess.run(["git", "commit", "-qm", "first"], cwd=work, timeout=60)
-    # The tool's own runtime directory, untracked, exactly as sgt leaves it.
+    # The tool's own runtime directory, untracked, exactly as ugh leaves it.
     (work / ".sgt").mkdir(exist_ok=True)
     (work / ".sgt" / "oracle.json").write_text("{}")
     (work / "untracked.py").write_text("y = 2\n")
@@ -328,7 +328,7 @@ def main() -> int:
     empty_blob = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
     check("no phantom empty-blob entries are staged", empty_blob not in after, after)
 
-    # The failure this is really guarding: sgt snapshots via write-tree, and a
+    # The failure this is really guarding: ugh snapshots via write-tree, and a
     # poisoned index disables save and revert for the rest of the session.
     wt = subprocess.run(
         ["git", "write-tree"], cwd=work, capture_output=True, text=True, timeout=30

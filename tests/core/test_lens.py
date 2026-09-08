@@ -1,4 +1,4 @@
-"""Tests for sgt.core.lens -- get/put integration with git (plan U6/U7.5, R8/R9/R10/R20).
+"""Tests for ugh.core.lens -- get/put integration with git (plan U6/U7.5, R8/R9/R10/R20).
 
 `get()` mines committed history *and* the current uncommitted working tree (dirty edits land as
 pending ops with empty provenance, folded into the returned ideal but never persisted to
@@ -12,10 +12,10 @@ import time
 
 import pytest
 
-from sgt.core.fold import code
-from sgt.core.ideal import Ideal
-import sgt.core.lens as lens_mod
-from sgt.core.lens import (
+from ugh.core.fold import code
+from ugh.core.ideal import Ideal
+import ugh.core.lens as lens_mod
+from ugh.core.lens import (
     DirtyWorkingTreeError,
     _load_backfill_state,
     _load_ideal_table,
@@ -28,9 +28,9 @@ from sgt.core.lens import (
     put,
     sync_status,
 )
-from sgt.core.order import chain_edges, is_valid_ideal
-from sgt.core.store import Store
-from sgt.store.gitbind import GitBinding, init_store
+from ugh.core.order import chain_edges, is_valid_ideal
+from ugh.core.store import Store
+from ugh.store.gitbind import GitBinding, init_store
 from tests.laws import corpus
 
 
@@ -64,7 +64,7 @@ def test_ops_with_frontier_images_skips_a_corrupt_frontier_op(tmp_path, monkeypa
     assert frontier_ids  # the fixture has live symbols at the frontier
     victim = sorted(frontier_ids)[0]
 
-    monkeypatch.setattr("sgt.core.opindex.index_ops", lambda _repo: all_ops)
+    monkeypatch.setattr("ugh.core.opindex.index_ops", lambda _repo: all_ops)
     (store.ops_dir / victim).write_bytes(b"{ truncated not json")  # corrupt the on-disk full op
 
     result = ops_with_frontier_images(repo, ideal)  # must not raise
@@ -162,8 +162,8 @@ def test_checkout_between_diverged_branches_never_leaks_the_others_op(tmp_path):
 
 
 def test_foreign_hotfix_commit_mined_on_next_contact(tmp_path):
-    """A commit made directly via git (no sgt involvement) is mined on the next `get()` --
-    sgt can never be locked out of its own repo."""
+    """A commit made directly via git (no ugh involvement) is mined on the next `get()` --
+    ugh can never be locked out of its own repo."""
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
     (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
@@ -171,7 +171,7 @@ def test_foreign_hotfix_commit_mined_on_next_contact(tmp_path):
     ideal1 = get(repo)
 
     (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
-    gb.commit_all("hotfix: bump foo (no sgt)")
+    gb.commit_all("hotfix: bump foo (no ugh)")
 
     ideal2 = get(repo)
     assert ideal2.op_ids != ideal1.op_ids
@@ -249,7 +249,7 @@ def test_second_get_with_no_new_commits_does_not_rewrite_ideal_and_witness(tmp_p
     `.sgt/local/witness.json` on disk -- both are `.sgt/**/*.json` paths the VS Code extension
     watches to invalidate its cache, so an unconditional rewrite on every read (even a no-op one)
     makes every refresh retrigger another refresh, forever."""
-    import sgt.state as state
+    import ugh.state as state
 
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
@@ -283,7 +283,7 @@ def test_revert_survives_a_history_rewrite(tmp_path):
     exclusions)`, and the revert is a positive exclusion that survives the sha rewrite."""
     import json
 
-    from sgt.core import verbs
+    from ugh.core import verbs
 
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
@@ -330,7 +330,7 @@ def test_resync_completes_whatever_the_machine_is_doing(tmp_path, monkeypatch):
     progress at all, and the next call restarts the backward walk from head. Under load that is a
     treadmill: measured on the study's footfall bundle, the same `./stage 3` derived 206 live ops on
     an idle machine and 189 under eight busy cores, and `resync` reported the short one as success.
-    A record that short can no longer reproduce the committed tree, so the next `sgt revert` refused
+    A record that short can no longer reproduce the committed tree, so the next `ugh revert` refused
     with `put() would roll back files outside this edit's scope`, naming eight files nobody had
     touched -- on a bundle a participant completes without trouble.
 
@@ -484,7 +484,7 @@ def test_sync_survives_a_witness_planted_without_backfill_state(tmp_path):
     `test_cas_exhaustion_restores_and_persists_nothing`). The one hard requirement is that this
     shape must not crash `_sync` (no `gb.parent_of(None)` TypeError from mistaking a missing
     backfill record for one that needs a fresh genesis walk)."""
-    from sgt.core.lens import record_ideal
+    from ugh.core.lens import record_ideal
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     gb = GitBinding(repo)
@@ -520,7 +520,7 @@ def _count_snapshot_calls(monkeypatch):
 def test_clean_tree_skips_the_dirty_mining_pass(tmp_path, monkeypatch):
     """R16 (U4): on a tree whose only working-tree churn is untracked `.sgt/ops/*` (what every
     `get()` leaves behind), the pending pass never runs -- the snapshot it begins with is never
-    taken -- so `sgt status` on a real, source-clean repo stops paying the O(files) cost."""
+    taken -- so `ugh status` on a real, source-clean repo stops paying the O(files) cost."""
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
     (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
@@ -553,7 +553,7 @@ def test_untracked_source_file_triggers_the_dirty_pass(tmp_path, monkeypatch):
 
 
 def test_sgt_dir_change_is_not_mineable_dirt(tmp_path):
-    """R16 (U4): churn under `.sgt/` -- sgt's own state, never mined as codebase content -- is not
+    """R16 (U4): churn under `.sgt/` -- ugh's own state, never mined as codebase content -- is not
     counted, whether the changed `.sgt/` file is untracked or tracked. Without this exclusion the
     untracked `.sgt/ops/*` every `get()` writes would keep the guard permanently dirty."""
     repo = tmp_path / "repo"
@@ -563,7 +563,7 @@ def test_sgt_dir_change_is_not_mineable_dirt(tmp_path):
     get(repo)  # untracked .sgt/ops churn present
     assert not gb.has_dirty_source()
 
-    gb.commit_all("commit sgt state")  # now .sgt/ops/* are tracked
+    gb.commit_all("commit ugh state")  # now .sgt/ops/* are tracked
     op_files = sorted((repo / ".sgt" / "ops").iterdir())
     assert op_files, "expected committed .sgt/ops files"
     with op_files[0].open("a", encoding="utf-8") as f:
@@ -629,12 +629,12 @@ def test_put_refuses_to_clobber_an_unabsorbed_dirty_edit(tmp_path):
 
 
 def test_a_dirty_ignored_tier_file_does_not_block_a_materializing_edit(tmp_path):
-    """A tracked path sgt deliberately never mines -- a dot-path, a gitignored path, a lockfile:
-    the `ignored` tier -- is outside sgt's remit, not a path the ideal dropped. `code()` never
+    """A tracked path ugh deliberately never mines -- a dot-path, a gitignored path, a lockfile:
+    the `ignored` tier -- is outside ugh's remit, not a path the ideal dropped. `code()` never
     produces it, so the old guard read "tracked but absent from `materialized`" as "the ideal
     deletes this" and refused every `put()` while it was dirty. One uncommitted `.gitignore` line
     then blocked `save`, `undo`, `revert --yes` and `restore` alike, and the remedy the error named
-    (`sgt save`) answered `nothing to save` because an ignored path mints no op -- a loop with no
+    (`ugh save`) answered `nothing to save` because an ignored path mints no op -- a loop with no
     way out that does not go through git."""
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
@@ -647,14 +647,14 @@ def test_a_dirty_ignored_tier_file_does_not_block_a_materializing_edit(tmp_path)
 
     put(repo, baseline, message="an edit while the gitignore is dirty")
 
-    # The fold neither refused nor touched it: an ignored path is sgt's to leave alone entirely.
+    # The fold neither refused nor touched it: an ignored path is ugh's to leave alone entirely.
     assert (repo / ".gitignore").read_text(encoding="utf-8") == "__pycache__/\n.DS_Store\n"
     assert (repo / "a.py").is_file()
 
 
 def test_put_refuses_to_roll_back_committed_drift_outside_the_edit_delta(tmp_path):
     """Phase-0 0.1 (F7/F9): a one-symbol edit's fold rewrites *every* covered path, so a file whose
-    committed on-disk bytes drifted from sgt's recorded ideal (a merge/cherry-pick the miner
+    committed on-disk bytes drifted from ugh's recorded ideal (a merge/cherry-pick the miner
     mis-attributed) is silently rolled back to the stale ideal's content. The delta-scoped guard
     refuses when a path OUTSIDE the `before Δ after` op-delta would be rewritten, and names it. The
     drift here is committed (on-disk == HEAD), so `_dirty_conflicts` structurally cannot catch it --
@@ -732,7 +732,7 @@ def test_put_does_not_false_refuse_an_in_sync_unrelated_file(tmp_path):
     """The 0.1 guard is delta-scoped: on an in-sync repo an unrelated file's on-disk bytes already
     equal what the ideal materializes, so a one-symbol revert never trips the drift guard for it.
     Guards against over-refusal breaking every normal materializing verb."""
-    from sgt.core import verbs
+    from ugh.core import verbs
 
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
@@ -783,7 +783,7 @@ def test_persisted_ideal_survives_re_get_without_resurrecting_excluded_ops(tmp_p
 
 
 def test_init_on_large_corpus_repo_within_budgets(tmp_path):
-    """R22/BET-E: opt-in only, skipped unless SGT_LARGE_CORPUS_REPO is set (see tests/laws/corpus.py)."""
+    """R22/BET-E: opt-in only, skipped unless UGH_LARGE_CORPUS_REPO is set (see tests/laws/corpus.py)."""
     import shutil
     import time
 
@@ -791,7 +791,7 @@ def test_init_on_large_corpus_repo_within_budgets(tmp_path):
     if large_repo is None:
         import pytest
 
-        pytest.skip("SGT_LARGE_CORPUS_REPO not set -- opt-in BET-E large-repo check")
+        pytest.skip("UGH_LARGE_CORPUS_REPO not set -- opt-in BET-E large-repo check")
 
     dest = tmp_path / "large"
     shutil.copytree(large_repo, dest)
@@ -841,7 +841,7 @@ def test_get_survives_add_delete_readd_fork_in_linear_history(tmp_path):
     # The persisted table is itself a valid ideal -- a second read never re-raises, and the pure
     # read path (which reads the table straight back) constructs cleanly too.
     assert get(repo).op_ids == ideal.op_ids
-    from sgt.core.lens import current_ideal
+    from ugh.core.lens import current_ideal
 
     assert current_ideal(repo).op_ids == ideal.op_ids
 
@@ -850,10 +850,10 @@ def test_local_rebuild_records_a_genuine_fork_in_the_shared_store(tmp_path):
     """1.4 (F7/F8 residual): merge-aware mining (1.3) stops a *clean* merge from forking, but a merge
     that genuinely *conflicts* on one symbol still lands both divergent tips in committed history -- a
     real fork. `fork_free` parks the symbol at the common ancestor by dropping both tips, and used to
-    do so *silently* (`order.py`), so `sgt forks`/`resolve` saw nothing to reconcile. The local
+    do so *silently* (`order.py`), so `ugh forks`/`resolve` saw nothing to reconcile. The local
     rebuild must now record what it parked in the one shared fork store, exactly as sync/land do --
     park AND report, never silently exclude."""
-    from sgt import state
+    from ugh import state
 
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
@@ -895,8 +895,8 @@ def test_fidelity_marks_the_commits_of_a_reduction_drop(tmp_path):
     reduced ideal (`reduce_to_ideal`/`fork_free` drops them). `_record_fidelity` marks the commits
     that witnessed the dropped ops, so `grid_view` flags them "partial" rather than silently
     omitting the loss. Deterministic: the recorded set is stable across repeated `get()`s."""
-    from sgt import state
-    from sgt.core import sync
+    from ugh import state
+    from ugh.core import sync
     from tests.core.test_sync import _BASE, _edit_and_commit, _push, _two_clones
 
     a, b = _two_clones(tmp_path, _BASE)
@@ -918,7 +918,7 @@ def test_fidelity_marks_the_commits_of_a_reduction_drop(tmp_path):
 def test_fidelity_is_empty_on_clean_linear_history(tmp_path):
     """A single-clone linear history reconstructs fully -- no fork, nothing ungrounded -- so
     `reduce_to_ideal` drops nothing and no commit is marked partial."""
-    from sgt import state
+    from ugh import state
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     get(repo)
@@ -931,8 +931,8 @@ def test_fidelity_does_not_mark_a_user_revert(tmp_path):
     from the ref's raw provenance union, so `included \\ reduce_to_ideal(included)` never contains
     it -- an intentional edit is never mistaken for a reconstruction loss. Reverting on clean
     history leaves the marks empty."""
-    from sgt import state
-    from sgt.core import verbs
+    from ugh import state
+    from ugh.core import verbs
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     get(repo)
@@ -971,7 +971,7 @@ def test_put_does_not_write_or_delete_through_symlink(tmp_path):
 def test_write_working_tree_refuses_symlinked_ancestor(tmp_path):
     """Defense in depth: even if a materialized path's ancestor directory is a symlink on disk,
     the write is refused rather than following the link out of the repo."""
-    from sgt.core.lens import _write_working_tree
+    from ugh.core.lens import _write_working_tree
 
     repo = tmp_path / "repo"
     init_store(repo)
@@ -1016,7 +1016,7 @@ def test_put_reproduces_a_rebirth_file_via_its_chain(tmp_path):
 def test_fsck_tree_clean_after_put_has_no_drift(tmp_path):
     """R2: after `put` writes `code(ideal)` and commits, the HEAD tree *is* `code(current_ideal)`,
     so `fsck --tree` finds zero real drift (the self-hosting invariant in miniature)."""
-    from sgt.core.lens import fsck_tree
+    from ugh.core.lens import fsck_tree
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     ideal = get(repo)
     put(repo, ideal)
@@ -1029,7 +1029,7 @@ def test_fsck_tree_rebirth_file_reproduced_not_drift_or_backstop(tmp_path):
     from `code(I)` and `--tree` classified it backstop-kept; post-U9 (U9) the re-add chains into one
     valid chain, so the file is reproduced by `code(current_ideal)` and matches the HEAD tree -- no
     drift and no backstop entry. `--tree` must not misreport the now-reproducible file as drift (AE1)."""
-    from sgt.core.lens import fsck_tree
+    from ugh.core.lens import fsck_tree
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
     (repo / "keep.py").write_text("def keep():\n    return 1\n", encoding="utf-8")
@@ -1047,18 +1047,18 @@ def test_fsck_tree_rebirth_file_reproduced_not_drift_or_backstop(tmp_path):
 
 
 def test_fsck_tree_reports_real_drift_for_a_foreign_edit(tmp_path):
-    """R2: a committed edit sgt never absorbed (bytes at HEAD differ from `code(current_ideal)`)
+    """R2: a committed edit ugh never absorbed (bytes at HEAD differ from `code(current_ideal)`)
     is real drift -- surfaced with a remedy direction, not hidden."""
-    from sgt.core.lens import fsck_tree, current_ideal, record_ideal
+    from ugh.core.lens import fsck_tree, current_ideal, record_ideal
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     ideal = get(repo)
     put(repo, ideal)
-    # a foreign commit that changes a tracked file's bytes without going through sgt; pin the
+    # a foreign commit that changes a tracked file's bytes without going through ugh; pin the
     # recorded ideal/witness so `fsck_tree` compares the *old* ideal against the drifted HEAD.
     gb = GitBinding(repo)
     tracked = [p for p in _tracked_after(repo) if p.endswith(".py")][0]
     (repo / tracked).write_text("# drifted\n", encoding="utf-8")
-    gb.commit_all("foreign edit outside sgt")
+    gb.commit_all("foreign edit outside ugh")
 
     result = fsck_tree(repo)
     assert result["drift"], "a foreign edit at HEAD should surface as real drift"
@@ -1086,8 +1086,8 @@ def test_a_chunked_backfill_admits_every_op_the_finished_store_can_ground(tmp_pa
     the finished store rather than a hardcoded count: whatever the store can ground, the persisted
     ideal must admit.
     """
-    from sgt.core import order
-    from sgt.core.lens import current_ideal
+    from ugh.core import order
+    from ugh.core.lens import current_ideal
 
     # Self-calibrate the chunk budget instead of hardcoding one: a fixed number starves the walk on a
     # slow machine (below one commit's cost, no chunk ever mines anything and the frontier never moves)
@@ -1134,24 +1134,24 @@ def test_a_chunked_backfill_admits_every_op_the_finished_store_can_ground(tmp_pa
 
 
 def test_fsck_tree_classifies_a_tracked_path_with_a_non_ascii_name(tmp_path):
-    """F72: a tracked, in-scope file sgt cannot reproduce must appear in *some* `fsck --tree` class.
+    """F72: a tracked, in-scope file ugh cannot reproduce must appear in *some* `fsck --tree` class.
     `_tracked_paths` ran plain `git ls-files`, which C-quotes any path containing non-ASCII bytes
     (`"a/\\346\\234\\272.bin"`). That quoted literal names nothing on disk, so the `is_file()` guard in
     `_status_paths`' `to_delete` filter dropped it, and the path fell out of `backstop_kept`,
     `unmanaged`, and `drift` alike -- reported as nothing at all. On yanshengjia/ml-road that silently
-    excused three tracked PDFs (5.6MB, 12MB, 35MB) that sgt never composes, and because the evaluation's
+    excused three tracked PDFs (5.6MB, 12MB, 35MB) that ugh never composes, and because the evaluation's
     denominator counts them as in scope, they scored as *successes*: 10 points of inflation on a 30-file
     repo. Same `is_file()`-swallows-a-misparsed-path shape as the V4 harness defect, in the one function
-    whose job is to report what sgt cannot reproduce. `-z` is the fix; symlink entries stay in the list
+    whose job is to report what ugh cannot reproduce. `-z` is the fix; symlink entries stay in the list
     because `unmanaged` is built from them."""
-    from sgt.core.lens import fsck_tree
+    from ugh.core.lens import fsck_tree
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     ideal = get(repo)
     put(repo, ideal)
     assert not fsck_tree(repo)["drift"], "fixture should start clean"
 
-    # A binary blob under a non-ASCII name, committed outside sgt: nothing in the store can
+    # A binary blob under a non-ASCII name, committed outside ugh: nothing in the store can
     # regenerate its bytes, so it is exactly a `backstop_kept` path.
     name = "資料/機械学習.bin"
     (repo / "資料").mkdir()

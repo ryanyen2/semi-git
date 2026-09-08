@@ -1,8 +1,8 @@
-"""Tests for sgt.core.patch -- the three-way subtraction merge behind safe revert."""
+"""Tests for ugh.core.patch -- the three-way subtraction merge behind safe revert."""
 
 from __future__ import annotations
 
-from sgt.core.patch import merge3
+from ugh.core.patch import merge3
 
 
 BASE = b"def build():\n    a()\n    waitlist()\n    b()\n"        # after the removed op

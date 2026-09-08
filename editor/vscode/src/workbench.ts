@@ -6,7 +6,7 @@
 // webview's message protocol (`ready`/`previewVerb`/`applyVerb`/`renamePrompt`, plus
 // `pickComposition`/`requestFold`, and the staged-confirm trio `applyStaged`/`revertSequence`/
 // `openStagedDiff` whose progress flows back as `applyProgress`) drives media/workbench.js; every
-// mutation still goes through the real, unmodified `sgt merge`/`split`/`rename`/`move`/`revert`
+// mutation still goes through the real, unmodified `ugh merge`/`split`/`rename`/`move`/`revert`
 // commands -- a preview never writes anything, and a fold never materializes the working tree.
 //
 // Phase-3 scope: the static 3-pane skeleton, a QuickPick-driven composition selector (HEAD +
@@ -30,7 +30,7 @@ import * as vscode from "vscode";
 import { colorForNode } from "./color";
 import type { IdealEditPhase } from "./commands"; // type-only: keeps the commands↔workbench import cycle out of the emitted JS
 import { PreviewProvider } from "./preview";
-import { FoldFrontier, StaleRequestError } from "./sgt";
+import { FoldFrontier, StaleRequestError } from "./ugh";
 import type { EmitView } from "./types";
 import { Store } from "./store";
 
@@ -55,8 +55,8 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
   private readonly disposables: vscode.Disposable[] = [];
   private readonly previewCache = new Map<string, unknown>();
   private pendingReveal: string | null = null;
-  // The newest seq per interactive read class. Every `sgt` call is serialized behind the store
-  // flock (see Sgt.run), so a cursor sweep used to queue one subprocess per row crossed and run
+  // The newest seq per interactive read class. Every `ugh` call is serialized behind the store
+  // flock (see Ugh.run), so a cursor sweep used to queue one subprocess per row crossed and run
   // them all; each read now checks this when its queue turn arrives and a superseded one is
   // dropped before it spawns. Sequence numbers already existed for result-ordering -- this reuses
   // them for cancellation.
@@ -79,7 +79,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
       this.watchAgentActions(),
       // The uncommitted-work ghosts (`compose.save_preview`) go stale the moment a source file is
       // edited: the `.sgt/**` watcher deliberately ignores source saves (extension.ts), so nothing
-      // re-ran the preview until the next sgt command, and the rail showed a clean forecast over a
+      // re-ran the preview until the next ugh command, and the rail showed a clean forecast over a
       // dirty tree. A document save re-fetches the compose slice -- debounced, only while the rail
       // is visible, and `compose` mines on contact, so the ghost a save would land appears right
       // after ⌘S instead of after the fact.
@@ -179,7 +179,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
 <meta charset="UTF-8" />
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';" />
 <link rel="stylesheet" href="${cssUri}" />
-<title>SGT Composition Workbench</title>
+<title>ugh Composition Workbench</title>
 </head>
 <body>
 <div id="app">
@@ -201,8 +201,8 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     </div>
     <div id="titlebarActions" class="titlebar-actions">
       <button id="inspectorToggle" title="Hide detail panel">◧</button>
-      <button id="saveBtn" class="btn-primary" title="sgt save — record and commit">Save</button>
-      <button id="undoBtn" title="sgt undo">Undo</button>
+      <button id="saveBtn" class="btn-primary" title="ugh save — record and commit">Save</button>
+      <button id="undoBtn" title="ugh undo">Undo</button>
     </div>
   </div>
   <div id="main">
@@ -233,7 +233,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
   // deliver eagerly here and again on the next "ready" (covers a cold first open of the view).
   async revealFeature(featureId: string): Promise<void> {
     this.pendingReveal = featureId;
-    await vscode.commands.executeCommand("sgtWorkbench.focus");
+    await vscode.commands.executeCommand("ughWorkbench.focus");
     this.deliverReveal();
   }
 
@@ -253,10 +253,10 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
       return;
     }
     // `compose_view`'s `map` is a *pure read* of the last-built `tree.json`; `history` is projected
-    // straight from git ops. Right after `sgt init` (which writes the ideal.json marker but never
+    // straight from git ops. Right after `ugh init` (which writes the ideal.json marker but never
     // builds the tree) that leaves `map.nodes` empty while `history.ops` is full -- the timeline
     // renders no lanes even though the ops exist, and no reader will heal it: every read surface
-    // in this extension is a pure read too, deliberately (`Sgt.map` -- a rebuild re-mines, and a
+    // in this extension is a pure read too, deliberately (`Ugh.map` -- a rebuild re-mines, and a
     // mine landing between a revert and its restore destroys the removal record). A rebuild's
     // `.sgt/` write is also swallowed by the watcher's own loop-guard, so even one that happened
     // by accident would not refresh the compose cache: the timeline stayed blank until a window
@@ -367,16 +367,16 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
         await this.dailyLoop(msg.verb);
         return;
       case "resolveFork":
-        await vscode.commands.executeCommand("sgt.resolveFork", msg.symbol);
+        await vscode.commands.executeCommand("ugh.resolveFork", msg.symbol);
         return;
       case "confirmCheckpoint":
         await this.confirmCheckpoint(msg.hollowIds, msg.opIds);
         return;
       case "openPlanDiff":
-        await vscode.commands.executeCommand("sgt.showPlanDiff", msg.target);
+        await vscode.commands.executeCommand("ugh.showPlanDiff", msg.target);
         return;
       case "resumePlan":
-        await vscode.commands.executeCommand("sgt.resumePlan", msg.sessionId);
+        await vscode.commands.executeCommand("ugh.resumePlan", msg.sessionId);
         return;
       default:
         return;
@@ -406,7 +406,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     let result = this.previewCache.get(key);
     if (result === undefined) {
       try {
-        // Revert/restore of a single selector previews through the emit dry-run (`sgt <verb>
+        // Revert/restore of a single selector previews through the emit dry-run (`ugh <verb>
         // <sel> --emit`), NOT `advanced preview`. Two reasons. Emit's selection ladder resolves
         // everything the real verb resolves -- feature, label, symbol, `<f>@<n>` checkpoint --
         // on every deployed CLI (advanced preview's checkpoint branch is newer than some pinned
@@ -416,8 +416,8 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
         // so the confirm bar would honestly-but-wrongly say "no files change". Same projection
         // the apply flow itself runs from, so preview and apply can never disagree.
         result = (verb === "revert" || verb === "restore") && args.length === 1
-          ? await this.store.sgt.emit(args[0], verb, () => this.latest.preview === seq)
-          : await this.store.sgt.previewVerb(verb, args, () => this.latest.preview === seq);
+          ? await this.store.ugh.emit(args[0], verb, () => this.latest.preview === seq)
+          : await this.store.ugh.previewVerb(verb, args, () => this.latest.preview === seq);
       } catch (e: any) {
         if (e instanceof StaleRequestError) return; // superseded before it spawned; the newer one answers
         result = { ok: false, message: e.message, affected_features: [] };
@@ -427,8 +427,8 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     void this.view?.webview.postMessage({ type: "previewResult", seq, result });
   }
 
-  // Split has no `sgt preview split` entry (`sgt split <feature>` with no `--apply` already *is*
-  // that preview, by design -- see `sgt/cli/inspect.py`'s `_preview_verb`), so its hover-preview
+  // Split has no `ugh preview split` entry (`ugh split <feature>` with no `--apply` already *is*
+  // that preview, by design -- see `ugh/cli/inspect.py`'s `_preview_verb`), so its hover-preview
   // goes through `splitPreview` rather than the generic `previewVerb` round-trip every other
   // action-bar verb shares. Not cached like `preview()` -- a split's grouping is cheap to
   // recompute and, unlike merge/move/revert, has no meaningful memoization key beyond the
@@ -437,7 +437,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     this.latest.preview = seq; // shares the preview lane: a newer hover of ANY verb supersedes it
     let result;
     try {
-      result = await this.store.sgt.splitPreview(featureId, () => this.latest.preview === seq);
+      result = await this.store.ugh.splitPreview(featureId, () => this.latest.preview === seq);
     } catch (e: any) {
       if (e instanceof StaleRequestError) return;
       result = { ok: false, message: e.message };
@@ -445,13 +445,13 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     void this.view?.webview.postMessage({ type: "previewResult", seq, result });
   }
 
-  // The union closure a multi-select induces (Stage C): `sgt select` reports the feature ids +
+  // The union closure a multi-select induces (Stage C): `ugh select` reports the feature ids +
   // closure op count + pulled features, so the workbench can show "N features → M ops in closure"
   // and paint the union. Report-only (never materializes), same seq-drop pattern as preview().
   private async selectClosure(refs: string[], seq: number): Promise<void> {
     let result;
     try {
-      result = await this.store.sgt.select(refs);
+      result = await this.store.ugh.select(refs);
     } catch (e: any) {
       result = { ok: false, message: e.message };
     }
@@ -471,7 +471,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
   // common case, since the chip itself is that report.
   private async runOracle(): Promise<void> {
     try {
-      await this.store.sgt.mutate(["advanced", "oracle", "run"]);
+      await this.store.ugh.mutate(["advanced", "oracle", "run"]);
     } catch (e: any) {
       vscode.window.showErrorMessage(e.message);
     } finally {
@@ -479,7 +479,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     }
   }
 
-  // Alt-click on the chip: a human verdict that supersedes the tiers (`sgt oracle override`),
+  // Alt-click on the chip: a human verdict that supersedes the tiers (`ugh oracle override`),
   // for cases the configured tiers can't decide on their own.
   private async overrideOracle(): Promise<void> {
     const status = await vscode.window.showQuickPick(["pass", "fail"], { placeHolder: "Override verdict" });
@@ -491,7 +491,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
       return;
     }
     try {
-      await this.store.sgt.mutate(["advanced", "oracle", "override", "--status", status, "--reason", reason]);
+      await this.store.ugh.mutate(["advanced", "oracle", "override", "--status", status, "--reason", reason]);
       this.store.invalidate();
     } catch (e: any) {
       vscode.window.showErrorMessage(e.message);
@@ -500,14 +500,14 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
 
   // The plan-mark inspector card's "Confirm match" action: promotes a footprint-overlap candidate
   // to an actual confirmed match, which is what flips the step to "matched" and lands its rail mark
-  // on the next refresh. The former `sgt checkpoint --confirm-*` verb folded into `sgt save
+  // on the next refresh. The former `ugh checkpoint --confirm-*` verb folded into `ugh save
   // --resolve-plan` (U12); the confirm-hollow/confirm-op pairs are unchanged.
   private async confirmCheckpoint(hollowIds: string[], opIds: string[]): Promise<void> {
     const args = ["save", "--resolve-plan"];
     for (const h of hollowIds) args.push("--confirm-hollow", h);
     for (const o of opIds) args.push("--confirm-op", o);
     try {
-      await this.store.sgt.mutate(args);
+      await this.store.ugh.mutate(args);
     } catch (e: any) {
       vscode.window.showErrorMessage(e.message);
     } finally {
@@ -516,7 +516,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
   }
 
   // Landing is one of a staged candidate's two exits, and it used to be the titlebar's "Commit" --
-  // a button that was wrong in both directions at once. `sgt save` mines *and* commits, so a Commit
+  // a button that was wrong in both directions at once. `ugh save` mines *and* commits, so a Commit
   // beside Save promised a step Save had already taken; and what it actually ran was `advanced
   // commit`, which lands a staged rewrite candidate and otherwise refuses with "nothing staged". So
   // the daily loop's third button was either redundant or an error toast, never a useful action --
@@ -525,7 +525,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
   // the gate the refusal used to deliver *after* the click.
   private async landCandidate(): Promise<void> {
     try {
-      const result = await this.store.sgt.landCandidate();
+      const result = await this.store.ugh.landCandidate();
       this.store.invalidate();
       vscode.window.showInformationMessage(
         result.ok ? `✓ landed ${(result.sha || "").slice(0, 12)}` : "Landing failed."
@@ -536,7 +536,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
   }
 
   // The other exit. Abandoning discards a candidate the user built by hand-editing the tree and
-  // nothing in sgt can bring it back (`unstage` drops `staged.json` and restores the committed ideal
+  // nothing in ugh can bring it back (`unstage` drops `staged.json` and restores the committed ideal
   // over the top), so it asks first. The detail names what survives rather than what is lost: the
   // ops the rewrite was *of* are still recorded, which is the fact that makes the choice safe.
   private async abandonCandidate(): Promise<void> {
@@ -553,7 +553,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
       return;
     }
     try {
-      const result = await this.store.sgt.abandonCandidate();
+      const result = await this.store.ugh.abandonCandidate();
       this.store.invalidate();
       vscode.window.showInformationMessage(
         result.ok
@@ -567,22 +567,22 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
 
   // The compact titlebar action group (Save/Undo): reuse the existing palette commands rather than
   // re-implementing their confirm/mutate/invalidate/report sequence here, same as
-  // `apply("revert", ...)` reuses `sgt.revert` above.
+  // `apply("revert", ...)` reuses `ugh.revert` above.
   // The webview goes inert while one of these runs (loopButtonState in workbench.js). It sets that
   // state on the click and clears it on the `state` push the mutation triggers; this end signal is
   // what clears it on the paths that never reach a mutation -- a cancelled dialog, "nothing to
   // save" -- where no fresh composition is ever pushed.
   private async dailyLoop(verb: "save" | "undo"): Promise<void> {
     try {
-      await vscode.commands.executeCommand(verb === "save" ? "sgt.save" : "sgt.undo");
+      await vscode.commands.executeCommand(verb === "save" ? "ugh.save" : "ugh.undo");
     } finally {
       void this.view?.webview.postMessage({ type: "loopBusy", verb: null });
     }
   }
 
   // A staged apply from the webview's in-graph confirm bar: the consequence was already painted
-  // on the graph and the user clicked Apply there, so this drives the same `sgt.revert`/
-  // `sgt.restore` flow with `confirmed` (skip the modal that would ask the same question twice),
+  // on the graph and the user clicked Apply there, so this drives the same `ugh.revert`/
+  // `ugh.restore` flow with `confirmed` (skip the modal that would ask the same question twice),
   // `openDiff: false` (the bar offers the diff on demand instead of two tabs stealing focus), and
   // a phase callback the confirm bar renders as live progress -- checking → rewriting →
   // rebuilding, not a dead gap between click and toast.
@@ -593,7 +593,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
       // `--apply` call with the same phase reporting -- there is no emit/frontier flow to reuse.
       this.postPhase(verb, ref, "applying");
       try {
-        const r = await this.store.sgt.splitApply(ref);
+        const r = await this.store.ugh.splitApply(ref);
         if (!r.ok) throw new Error(r.message || "split failed");
         this.postPhase(verb, ref, "refreshing");
         this.store.invalidate();
@@ -607,7 +607,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
       return;
     }
     if (verb !== "revert" && verb !== "restore") return;
-    await vscode.commands.executeCommand(verb === "revert" ? "sgt.revert" : "sgt.restore", ref, {
+    await vscode.commands.executeCommand(verb === "revert" ? "ugh.revert" : "ugh.restore", ref, {
       confirmed: true,
       openDiff: false,
       onPhase: (phase: IdealEditPhase, detail?: string) => this.postPhase(verb, ref, phase, detail),
@@ -620,7 +620,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
 
   // "Back to here" (staged in the webview): rewind a feature to one of its checkpoints by
   // reverting every LATER chapter, newest-first (`refs` arrive in apply order). Sequential like
-  // `revertSelection` -- each `sgt revert` re-resolves against current state -- and STOPS on the
+  // `revertSelection` -- each `ugh revert` re-resolves against current state -- and STOPS on the
   // first refusal rather than pressing on into an inconsistent partial. The staged confirm bar
   // already carried the consequence; the per-ref phase reports are the intermediate feedback a
   // multi-commit rewind owes the person watching it.
@@ -632,7 +632,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     post("applying", refs.length > 1 ? `${noun} 1 of ${refs.length}…` : undefined);
     for (const ref of refs) {
       try {
-        await this.store.sgt.mutate(["revert", ref]);
+        await this.store.ugh.mutate(["revert", ref]);
         done++;
         if (done < refs.length) post("applying", `${noun} ${done + 1} of ${refs.length}…`);
       } catch (e: any) {
@@ -654,7 +654,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
   // with the consequence the bar states.
   private async openStagedDiff(verb: string, ref: string): Promise<void> {
     try {
-      const view = await this.store.sgt.emit(ref, verb === "restore" ? "restore" : "revert");
+      const view = await this.store.ugh.emit(ref, verb === "restore" ? "restore" : "revert");
       if (!view.ok) {
         vscode.window.showWarningMessage(view.message || `Cannot preview ${verb} of ${ref}.`);
         return;
@@ -698,9 +698,9 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
 
   private async apply(verb: string, args: string[]): Promise<void> {
     if (verb === "revert" || verb === "restore") {
-      // Reuse the existing `sgt.revert`/`sgt.restore` command (commands.ts) rather than
+      // Reuse the existing `ugh.revert`/`ugh.restore` command (commands.ts) rather than
       // re-implementing its confirm-dialog + mutate + invalidate + report sequence here.
-      await vscode.commands.executeCommand(verb === "revert" ? "sgt.revert" : "sgt.restore", args[0]);
+      await vscode.commands.executeCommand(verb === "revert" ? "ugh.revert" : "ugh.restore", args[0]);
       return;
     }
     try {
@@ -712,33 +712,33 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     }
   }
 
-  // Dispatches to the typed `Sgt` methods, which spell the verbs at their real CLI paths
-  // (`feature regroup merge`, `feature rename`, ...). This used to build bare `sgt merge` /
-  // `sgt rename` / `sgt move` / `sgt split` argv inline. Those spellings were re-homed under
+  // Dispatches to the typed `Ugh` methods, which spell the verbs at their real CLI paths
+  // (`feature regroup merge`, `feature rename`, ...). This used to build bare `ugh merge` /
+  // `ugh rename` / `ugh move` / `ugh split` argv inline. Those spellings were re-homed under
   // `feature` (KTD2) and are not top-level verbs any more, so the CLI answered them by printing
   // its help text and exiting 0 -- the action bar reported success and changed nothing. Going
   // through the typed methods means there is exactly one place each verb's path is written.
   private async runFeatureVerb(verb: string, args: string[]): Promise<string> {
     switch (verb) {
       case "merge": {
-        const r = await this.store.sgt.merge(args[0], args[1]);
+        const r = await this.store.ugh.merge(args[0], args[1]);
         if (!r.ok) throw new Error(r.message || "merge failed");
         return `Merged ${r.op_count ?? 0} op(s) into ${r.survivor ?? args[0]}.`;
       }
       case "rename": {
-        const r = await this.store.sgt.rename(args[0], args[1]);
+        const r = await this.store.ugh.rename(args[0], args[1]);
         if (!r.ok) throw new Error(r.message || "rename failed");
         return `Renamed to ${r.new_label ?? args[1]}.`;
       }
       case "move": {
         const target = args[args.length - 1];
         const opIds = args.slice(0, -1);
-        const r = await this.store.sgt.move(opIds, target);
+        const r = await this.store.ugh.move(opIds, target);
         if (!r.ok) throw new Error(r.message || "move failed");
         return `Moved ${r.op_ids?.length ?? opIds.length} op(s) to ${r.target ?? target}.`;
       }
       case "split": {
-        const r = await this.store.sgt.splitApply(args[0]);
+        const r = await this.store.ugh.splitApply(args[0]);
         if (!r.ok) throw new Error(r.message || "split failed");
         return `Split ${r.feature ?? args[0]} into a new feature ${r.new_feature ?? ""}.`.trim();
       }
@@ -752,7 +752,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
   // read-only proposal summary instead of changing the fold target. Uses `createQuickPick` rather
   // than `showQuickPick` so arrowing over an item (`onDidChangeActive`) can live-preview it in the
   // workbench's own code(I) panel before commit -- accepting a real branch actually runs
-  // `sgt switch` (the same confirm + mutate sequence as the palette's `sgt.switch`, reused here
+  // `ugh switch` (the same confirm + mutate sequence as the palette's `ugh.switch`, reused here
   // rather than reopening its own picker); HEAD needs no switch since it's already checked out.
   private async pickComposition(): Promise<void> {
     let compose;
@@ -800,7 +800,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     if (!pick.ref) {
       const proposal = proposals.find((p) => (p.title || p.id) === pick.label);
       if (proposal) {
-        await vscode.commands.executeCommand("sgt.viewProposal", proposal.id);
+        await vscode.commands.executeCommand("ugh.viewProposal", proposal.id);
       }
       return;
     }
@@ -818,7 +818,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
       return;
     }
     try {
-      const result = await this.store.sgt.switchBranch(pick.ref);
+      const result = await this.store.ugh.switchBranch(pick.ref);
       this.store.invalidate();
       vscode.window.showInformationMessage(
         result.ok ? `✓ switch ${result.branch}: ${result.ops} op(s) in the ideal` : result.error || "switch failed"
@@ -891,7 +891,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
   }
 
   /**
-   * `sgt <verb> <ref> --emit --json`, memoized in the cache `preview()` already fills.
+   * `ugh <verb> <ref> --emit --json`, memoized in the cache `preview()` already fills.
    *
    * Deliberately the same key shape (`<verb>:<ref>`) as the hover preview's, so the change panel,
    * the sentence in the confirm bar and the diff tabs are three readings of ONE dry run and cannot
@@ -906,7 +906,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     const key = `${verb}:${ref}`;
     const hit = this.previewCache.get(key) as EmitView | undefined;
     if (hit !== undefined) return hit;
-    const view = await this.store.sgt.emit(ref, verb, stillWanted);
+    const view = await this.store.ugh.emit(ref, verb, stillWanted);
     this.previewCache.set(key, view);
     return view;
   }
@@ -946,7 +946,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
   private async requestAsked(ref: string, seq: number): Promise<void> {
     this.latest.asked = seq;
     try {
-      const view = await this.store.sgt.asked(String(ref), () => this.latest.asked === seq);
+      const view = await this.store.ugh.asked(String(ref), () => this.latest.asked === seq);
       void this.view?.webview.postMessage({
         type: "askedResult", seq, ref,
         ok: view?.ok !== false,
@@ -1012,7 +1012,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
   }
 
   /**
-   * `sgt find`, from the box in the title bar.
+   * `ugh find`, from the box in the title bar.
    *
    * Report-only, and slow enough to want a sequence number: the semantic rung
    * embeds the query, so a fast typist can have three of these in flight and
@@ -1021,7 +1021,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
   private async find(query: string, seq: number): Promise<void> {
     this.latest.find = seq;
     try {
-      const view = await this.store.sgt.find(String(query || ""), () => this.latest.find === seq);
+      const view = await this.store.ugh.find(String(query || ""), () => this.latest.find === seq);
       void this.view?.webview.postMessage({ type: "findResult", seq, ...view });
     } catch (e: any) {
       if (e instanceof StaleRequestError) return; // retyped before this ran; the newer query answers
@@ -1030,7 +1030,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
   }
 
   // Phase 4: the draggable playhead. `{commitIndex}` is its own `FoldFrontier` variant --
-  // no new API needed, `foldAtSpec` already renders it as the plain digit string `sgt fold --at`
+  // no new API needed, `foldAtSpec` already renders it as the plain digit string `ugh fold --at`
   // expects. Deliberately not `requestFold` (which is keyed to a featureId for cache/dir-prefix
   // filtering): the playhead has no feature selection and folds the whole frontier, letting the
   // webview filter by the selected feature's `dir` client-side so dragging never re-requests.

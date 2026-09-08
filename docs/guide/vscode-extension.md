@@ -4,40 +4,40 @@ The extension shows which feature owns each line of code, draws the feature tree
 timeline of commits, and lets you merge, split, rename, move, or revert a feature from the editor.
 It also runs your day-to-day git commands for you: switch, save, undo, sync, push, and land. So
 you never have to leave VS Code for those. It never edits your code directly. It only calls
-`sgt`'s read commands and its commands for features, kernel state, and git.
+`ugh`'s read commands and its commands for features, kernel state, and git.
 
-An activity bar container called `semi-git` holds five tree views: Now, Features, Forks, Changes, and
+An activity bar container called `ugh` holds five tree views: Now, Features, Forks, Changes, and
 Compositions. A Composition Workbench panel shows the same data in a full window, with a tree and
 timeline, an inspector, and a panel that shows your files as they looked at any point you pick. If
-a workspace has no `sgt` store yet, the extension still activates. The Features view shows an
-**Initialize semi-git** button instead of an error, along with a short walkthrough.
+a workspace has no `ugh` store yet, the extension still activates. The Features view shows an
+**Initialize ugh** button instead of an error, along with a short walkthrough.
 
 ## Install
 
-First install the `sgt` command itself, because the extension is a front end for it and does
+First install the `ugh` command itself, because the extension is a front end for it and does
 nothing without it.
 
 ```bash
-uv tool install semi-git
+uv tool install ugh
 ```
 
-Then download `semi-git-<version>.vsix` from the
-[latest release](https://github.com/ryanyen2/semi-git/releases/latest). In VS Code, open the
+Then download `ugh-<version>.vsix` from the
+[latest release](https://github.com/ryanyen2/ugh/releases/latest). In VS Code, open the
 Extensions view, click the `...` menu at the top, and choose "Install from VSIX".
 
-Finally, run this in your repo so the extension knows where `sgt` is:
+Finally, run this in your repo so the extension knows where `ugh` is:
 
 ```bash
-sgt init --agent
+ugh init --agent
 ```
 
-That writes `.vscode/settings.json` with an absolute `sgt.path`. The absolute path matters, because
+That writes `.vscode/settings.json` with an absolute `ugh.path`. The absolute path matters, because
 a VS Code started from your Dock or Applications folder inherits the login shell's PATH rather than
-your terminal's, and `sgt` usually lives in a directory only your terminal knows about. If the
-extension can't run `sgt`, it says so and offers to open the setting, rather than leaving the panels
+your terminal's, and `ugh` usually lives in a directory only your terminal knows about. If the
+extension can't run `ugh`, it says so and offers to open the setting, rather than leaving the panels
 empty.
 
-The extension activates in any workspace that has run `sgt init`.
+The extension activates in any workspace that has run `ugh init`.
 
 ### Building from source
 
@@ -57,7 +57,7 @@ a `.vsix` file yourself.
 | Feature blame | A colored tint on each line, based on the feature that owns it |
 | Composition Workbench | The feature tree and a timeline of commits, with an inspector that shows a feature's code at any point you pick, and a preview before any action that changes state |
 | Now, Features, Forks, Changes, and Compositions (activity bar) | What needs you and the one next action, the feature tree, open forks with a count badge, changes no plan predicted, and active sessions and proposals |
-| Plan status | Lines that match or drift from an active plan you started with `sgt plan` |
+| Plan status | Lines that match or drift from an active plan you started with `ugh plan` |
 | Revert preview | A read-only preview of what reverting a feature would change, before you commit to it |
 | Git bridge | Commands and a status bar item for switch, save, undo, sync, push, and land |
 | Fork resolution | A side-by-side view of a fork's two versions, walking you through merge, edit, and land |
@@ -67,37 +67,37 @@ a `.vsix` file yourself.
 ## A plain walkthrough
 
 If you have never used this before, here is what a real session looks like, step by step. You do
-not need any prior knowledge of how semi-git works internally.
+not need any prior knowledge of how ugh works internally.
 
 ### 1. Open a project for the first time
 
-Open a folder in VS Code. If it has not been set up with semi-git yet, you will see a `semi-git`
+Open a folder in VS Code. If it has not been set up with ugh yet, you will see a `ugh`
 icon in the activity bar, the icon strip on the far left, with a single button: **Initialize
-semi-git**. Click it. That runs `sgt init` for you and starts a short walkthrough that checks that
-the `sgt` command is installed and opens the workbench for the first time.
+ugh**. Click it. That runs `ugh init` for you and starts a short walkthrough that checks that
+the `ugh` command is installed and opens the workbench for the first time.
 
 ### 2. Write code like you normally would
 
-You, or your AI coding agent, write and save code exactly as before. Semi-git never touches your
+You, or your AI coding agent, write and save code exactly as before. Ugh never touches your
 files. As you open a file, every line gets a thin colored stripe in the left margin and a faint
-tint in the background. Each color is a different feature, a piece of functionality semi-git has
+tint in the background. Each color is a different feature, a piece of functionality ugh has
 automatically grouped that line into, for example "user login" or "PDF export". Hover over any
 line to see that feature's name; the hover's **Open Workbench** link jumps to the graph with that
 feature selected and spotlit, so code → graph is one click (the command palette form is
-**semi-git: Reveal in Workbench**).
+**ugh: Reveal in Workbench**).
 
 ### 3. Check what is new
 
-Click the `semi-git` icon in the activity bar. You will see five lists:
+Click the `ugh` icon in the activity bar. You will see five lists:
 
 - **Now**, the short answer to "what should I do next": edits not saved yet, anything that needs a
   decision from you, the last few saves, and a single next action whose row runs the command for
   you.
-- **Features**, everything semi-git knows about, shown as a tree where bigger areas contain
+- **Features**, everything ugh knows about, shown as a tree where bigger areas contain
   smaller ones.
 - **Forks**, places where two different versions of the same code disagree and need a decision
   from you. This is empty most of the time.
-- **Changes**, two read-only lists: **Unplanned changes**, edits semi-git found that no plan of
+- **Changes**, two read-only lists: **Unplanned changes**, edits ugh found that no plan of
   yours predicted, one row per symbol, and **Untracked files**, paths it does not understand yet.
 - **Compositions**, your branches, any in-progress planning sessions, and proposals waiting to be
   merged in.
@@ -107,7 +107,7 @@ See step 7.
 
 ### 4. Open the full picture
 
-Run **semi-git: Open Composition Workbench** from the command palette (`Cmd/Ctrl+Shift+P`), or
+Run **ugh: Open Composition Workbench** from the command palette (`Cmd/Ctrl+Shift+P`), or
 click the status bar icon at the bottom of the window. This opens a tab with three parts side by
 side: the feature tree on the left, a timeline of every change across the top, and a detail panel
 on the right. Click any feature to see its details and its actual code on the right.
@@ -131,13 +131,13 @@ clicking first previews the effect, and you confirm with `Enter` or back out wit
 
 ### 7. Resolve a conflict
 
-If **Forks** shows a badge, click it, pick the conflict, and semi-git opens a side-by-side view
+If **Forks** shows a badge, click it, pick the conflict, and ugh opens a side-by-side view
 with one column per version of the code that disagrees. Follow the buttons in order:
 
-1. **Draft merge**, semi-git prepares a starting point that reconciles both versions.
+1. **Draft merge**, ugh prepares a starting point that reconciles both versions.
 2. **Open affected files**, jump straight to the files you need to edit by hand.
 3. Edit the code until it looks the way you want.
-4. **Fulfill from working tree**, then **Land**. Semi-git records your edit as the resolution and
+4. **Fulfill from working tree**, then **Land**. Ugh records your edit as the resolution and
    finishes the merge.
 
 ### 8. Use it instead of the git commands you already know
@@ -160,7 +160,7 @@ fork is open, and tells you which one.
 
 ### 9. Review what an agent, or a teammate, did
 
-Open **Changes** in the sidebar. Anything semi-git picked up that was not part of an active plan
+Open **Changes** in the sidebar. Anything ugh picked up that was not part of an active plan
 shows up under **Unplanned changes**, one row per symbol; clicking a row jumps to that code. This is
 the short list to read after an agent run: not the whole diff, only the parts that fall outside what
 you asked for. Nothing here is a chore to tick off — you act on it by editing code. In the editor,
@@ -178,16 +178,16 @@ instead of the terminal.
 ### Feature blame
 
 Each line is tinted in its owning feature's color, on the background, the left border, and the
-overview ruler. Hovering shows the feature's label and id. Toggle it with **semi-git: Toggle
-Feature Blame** (`sgt.blame.enabled`). Each feature's color comes from its id, so the same feature
+overview ruler. Hovering shows the feature's label and id. Toggle it with **ugh: Toggle
+Feature Blame** (`ugh.blame.enabled`). Each feature's color comes from its id, so the same feature
 always gets the same color in the gutter and in the feature map, and colors adjust to your VS Code
 theme so they stay readable.
 
 ### Composition Workbench
 
-**semi-git: Open Composition Workbench** (`sgt.openWorkbench`) opens a panel with two parts: a
+**ugh: Open Composition Workbench** (`ugh.openWorkbench`) opens a panel with two parts: a
 tree and timeline on one side, and an inspector on the other. It reads one combined snapshot from
-`sgt` per refresh instead of making several separate calls.
+`ugh` per refresh instead of making several separate calls.
 
 - The left side is the feature tree. Features and the subsystems that contain them are listed in
   order, each collapsible, with a colored dot, a label, and a bar showing its size.
@@ -211,7 +211,7 @@ still card is a plan step someone intends where no code exists yet. Each card ca
 name; hovering shows its reason and the symbols it is predicted to touch, and clicking selects that
 step in the inspector. If the pane is too narrow to name every card, the extras collapse into a
 single named stack card rather than shrinking into unreadable stubs. The band is absent when nothing
-is pending, so an idle repo keeps exactly the axis it had. `sgt log --map` draws the same band in the
+is pending, so an idle repo keeps exactly the axis it had. `ugh log --map` draws the same band in the
 terminal, past a `┊` rule.
 
 Hovering a row or a connecting line dims everything else and highlights what you are looking at
@@ -229,7 +229,7 @@ would affect. For Revert, this can cover more than the one feature you named, be
 real, complete effect of the change rather than a guess. A Restore that can't legally apply —
 because a different version of the same symbol is live — doesn't fail silently: the preview
 explains the one-live-version rule and offers the two ways forward (swap the versions, or
-reconcile them with `sgt resolve`). Merge into and Move ops let you pick a
+reconcile them with `ugh resolve`). Merge into and Move ops let you pick a
 target feature. Hovering a candidate previews the merge or move against it, and clicking confirms
 and applies it. Every preview is read-only. Only a click on Split or Revert, or a confirmed Merge
 or Move target, actually changes anything.
@@ -245,10 +245,10 @@ does not reload the files on every small move, only when you stop.
 
 ### Git bridge
 
-Six commands in the command palette, **semi-git: Switch Branch**, **Save**, **Undo Last Ideal
+Six commands in the command palette, **ugh: Switch Branch**, **Save**, **Undo Last Ideal
 Edit**, **Sync**, **Push**, and **Land Branch**, cover your daily git work and your work with
 remotes, so you never have to run `git checkout`, `stash`, `reset`, `pull`, or `push` directly
-against a repo `sgt` is tracking.
+against a repo `ugh` is tracking.
 
 - **Switch** records your current state first, so nothing is lost, then checks out the branch you
   pick or type, and reads its history back in.
@@ -256,9 +256,9 @@ against a repo `sgt` is tracking.
   anything, so it runs immediately with no confirmation needed. The toast that follows names the
   feature(s) the save's work landed in — and when a save minted a brand-new, unnamed feature, it
   offers a **Name it…** button so you can label the work the moment you still remember what it
-  was. (On the command line the same moment is `sgt save --as "<label>"`.)
+  was. (On the command line the same moment is `ugh save --as "<label>"`.)
 - **Undo** removes the last recorded change and restores what came before it, as a new forward
-  commit, since history in `sgt` is never rewritten, only added to.
+  commit, since history in `ugh` is never rewritten, only added to.
 - **Sync** fetches a remote branch and merges its op set into yours, flagging any fork on a symbol
   you both touched instead of doing a text-based merge with conflict markers.
 - **Push** and **Land Branch** ask you to confirm first, since both write to shared or remote
@@ -270,10 +270,10 @@ forks are open if any. Clicking it opens the Composition Workbench.
 
 ### Fork resolution
 
-A fork is the one real kind of conflict in `sgt`: two versions of the same symbol, each claiming
+A fork is the one real kind of conflict in `ugh`: two versions of the same symbol, each claiming
 to be the next step after the same starting point. It blocks landing until you resolve it. The
 Forks view lists every open fork with a count badge, and a marker in the editor points at the
-symbol in conflict. **semi-git: Resolve Fork**, or the right-click menu on a fork, opens a view
+symbol in conflict. **ugh: Resolve Fork**, or the right-click menu on a fork, opens a view
 with one column per version, each showing every file that version touches. The wizard walks you
 through the real steps one confirmation at a time, and never guesses at a merge on your behalf:
 
@@ -284,7 +284,7 @@ through the real steps one confirmation at a time, and never guesses at a merge 
 3. **Fulfill from working tree** saves your edit as the content for that placeholder.
 4. **Land** commits the result, checked against your build and test checks like any other commit.
 
-There is a lower-level command, `sgt pin`, that this wizard does not use and does not offer,
+There is a lower-level command, `ugh pin`, that this wizard does not use and does not offer,
 because it has no command-line entry point of its own.
 
 ### Hovers, diagnostics, and inlay hints
@@ -296,11 +296,11 @@ shows both.
 
 Two kinds of markers appear as you edit, each with its own setting to turn it off:
 
-- **Drift** (`sgt.diagnostics.drift`) is a hint on any code that has been edited but not yet saved
-  through `sgt`, with a quick fix that saves it and clears the marker.
-- **Forks** (`sgt.diagnostics.forks`) is a warning on the symbol a fork is open on.
+- **Drift** (`ugh.diagnostics.drift`) is a hint on any code that has been edited but not yet saved
+  through `ugh`, with a quick fix that saves it and clears the marker.
+- **Forks** (`ugh.diagnostics.forks`) is a warning on the symbol a fork is open on.
 
-An inlay hint, off by default (`sgt.inlayHints.enabled`), adds a short note after each symbol's
+An inlay hint, off by default (`ugh.inlayHints.enabled`), adds a short note after each symbol's
 definition showing its feature and how many edits it has, for when you want that context without
 hovering or opening the workbench.
 
@@ -314,34 +314,34 @@ branch and creates or updates its GitHub pull request.
 
 ### Plan CodeLens and status bar
 
-When you have an active plan, started with `sgt plan intake`, lines that match or drift from it
+When you have an active plan, started with `ugh plan intake`, lines that match or drift from it
 get a short note above them, either "matches plan step N" or "drift", that opens a comparison of
 what the plan expected against what was actually written. A status bar item shows how many steps
-are done. Toggle this with `sgt.plan.enabled`. Both are hidden when no plan is active.
+are done. Toggle this with `ugh.plan.enabled`. Both are hidden when no plan is active.
 
 ### Revert preview
 
-From the feature map's action buttons, or **semi-git: Preview Revert Feature**, open a read-only
+From the feature map's action buttons, or **ugh: Preview Revert Feature**, open a read-only
 preview comparing your current files against what they would look like after a revert. This
 writes nothing. If the revert would be refused, for example because of an open fork, it shows the
-reason instead of a preview. **semi-git: Revert Feature** applies it for real after you confirm,
+reason instead of a preview. **ugh: Revert Feature** applies it for real after you confirm,
 then rebuilds the files and commits.
 
 ## Settings
 
 | Setting | Default | Description |
 | --- | --- | --- |
-| `sgt.path` | `sgt` | Path to the `sgt` executable. |
-| `sgt.blame.enabled` | `true` | Tint each line by the feature that owns it. |
-| `sgt.plan.enabled` | `true` | Show a note on lines that match or drift from the active plan. |
-| `sgt.inlayHints.enabled` | `false` | Show a short feature and edit-count note at each symbol's definition line. |
-| `sgt.diagnostics.drift` | `true` | Show a hint, with a quick fix, on code that has drifted from what was last saved. |
-| `sgt.diagnostics.forks` | `true` | Show a warning on symbols with an open fork. |
+| `ugh.path` | `ugh` | Path to the `ugh` executable. |
+| `ugh.blame.enabled` | `true` | Tint each line by the feature that owns it. |
+| `ugh.plan.enabled` | `true` | Show a note on lines that match or drift from the active plan. |
+| `ugh.inlayHints.enabled` | `false` | Show a short feature and edit-count note at each symbol's definition line. |
+| `ugh.diagnostics.drift` | `true` | Show a hint, with a quick fix, on code that has drifted from what was last saved. |
+| `ugh.diagnostics.forks` | `true` | Show a warning on symbols with an open fork. |
 
-## How it talks to sgt
+## How it talks to ugh
 
-Every read runs `sgt <command> --json` in your workspace root. Results are cached and refreshed
+Every read runs `ugh <command> --json` in your workspace root. Results are cached and refreshed
 whenever a file under `.sgt/` changes, or you save a Python file. Writes call the same commands
-the terminal version of `sgt` calls. The workbench's preview on hover and the command line's own
+the terminal version of `ugh` calls. The workbench's preview on hover and the command line's own
 preview option read the same data, so the extension, the command line, and any MCP client all see
 the same information.

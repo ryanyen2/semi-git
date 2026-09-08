@@ -1,4 +1,4 @@
-"""Materializing a fold onto disk: `sgt advanced fold --at <spec> --out <dir>` and the
+"""Materializing a fold onto disk: `ugh advanced fold --at <spec> --out <dir>` and the
 `revert/restore --emit --out <dir>` counterfactual.
 
 `fold_view` has always been able to reconstruct `code(I)` at any frontier, but only as JSON text
@@ -11,8 +11,8 @@ properties that make the difference: the bytes are the fold's own bytes, and the
 import json
 import subprocess
 
-from sgt.api import FOLD_MANIFEST, blame_all_view, fold_out_view, fold_view, history_view
-from sgt.core.lens import current_ideal, get, ideal_for_ref
+from ugh.api import FOLD_MANIFEST, blame_all_view, fold_out_view, fold_view, history_view
+from ugh.core.lens import current_ideal, get, ideal_for_ref
 from tests.laws import corpus
 
 
@@ -28,7 +28,7 @@ def _forward_subtracting_target(repo):
     later work has since touched, and the only case in which `result_op_ids` says something a
     client could not have derived. Found rather than hardcoded so a re-mine that reshuffles op-ids
     fails loudly here instead of silently weakening every assertion downstream."""
-    from sgt.core import verbs
+    from ugh.core import verbs
 
     for op_id in sorted(current_ideal(repo).op_ids):
         preview = verbs.plan_revert(repo, op_id)
@@ -40,7 +40,7 @@ def _forward_subtracting_target(repo):
 def _in(repo, argv):
     import os
 
-    from sgt.cli import main
+    from ugh.cli import main
 
     cwd = os.getcwd()
     os.chdir(repo)
@@ -91,8 +91,8 @@ def test_fold_out_writes_the_folds_raw_bytes_not_the_json_views_text(tmp_path):
 
 
 def test_fold_out_at_a_ref_matches_a_real_git_checkout_byte_for_byte(tmp_path):
-    """`--at <sha>` materializes what `git checkout <sha>` would, for every path sgt mines.
-    Extracted with `git archive` rather than compared through sgt's own reader, so the fold is
+    """`--at <sha>` materializes what `git checkout <sha>` would, for every path ugh mines.
+    Extracted with `git archive` rather than compared through ugh's own reader, so the fold is
     checked against git's bytes and not against itself."""
     import tarfile
 
@@ -197,7 +197,7 @@ def test_fold_out_still_writes_a_file_whose_content_changed(tmp_path):
 def test_fold_out_into_a_populated_directory_with_no_manifest_deletes_nothing(tmp_path):
     """Pointed at a directory it has never written to, `--out` inventories rather than scrubs.
     Without this the first scrub into someone's existing project directory is a data-loss bug,
-    and there is no manifest yet to tell sgt's files from theirs."""
+    and there is no manifest yet to tell ugh's files from theirs."""
     repo = _mined(tmp_path, "removed_paths")
     out = tmp_path / "existing"
     (out / "node_modules").mkdir(parents=True)
@@ -244,7 +244,7 @@ def test_fold_at_now_resolves_the_current_ideal_never_a_ref(tmp_path):
     so the two now agree, which is the correct outcome and the reason the assertion was retired
     rather than the test.
 
-    What `now` still guarantees, and what is pinned here, is its *source*: the present as sgt
+    What `now` still guarantees, and what is pinned here, is its *source*: the present as ugh
     records it, independent of whether any commit's trailers survived, whether HEAD is detached, or
     whether a ref exists to name. Numeric agreement with HEAD on a healthy repo is a property of
     that repo, not of the spelling."""
@@ -270,23 +270,23 @@ def test_fold_at_now_resolves_the_current_ideal_never_a_ref(tmp_path):
 def test_ideal_for_ref_reads_trailers_so_save_authored_history_is_not_lost(tmp_path):
     """The seedbank defect, at corpus scale.
 
-    `op.provenance` is stamped only by *mining* pre-existing git history. Ops minted by `sgt save`
+    `op.provenance` is stamped only by *mining* pre-existing git history. Ops minted by `ugh save`
     and by `verbs.apply` carry none, so provenance projection cannot select them and
     `ideal_for_ref` returned whatever fraction of the store happened to be mined. On a React app
-    authored the way sgt asks people to author -- one scaffold commit mined, twelve `sgt save`
+    authored the way ugh asks people to author -- one scaffold commit mined, twelve `ugh save`
     commits on top -- that was **10 of 151 ops, 7 of 30 files, and 0 of its 23 source files**. The
     repo rendered as if it had no source code. bikecount hid it at 111 of 189, because its history
     was authored as real git commits and then mined, which is the one shape that looks healthy.
 
     Reading the ref tip's own `Sgt-Op:` trailers fixes it, because `record_ideal` writes the whole
-    ideal into every commit sgt makes. Here that is asserted the strict way: the ref fold must equal
+    ideal into every commit ugh makes. Here that is asserted the strict way: the ref fold must equal
     the current ideal exactly, so a re-mine that happens to restore provenance cannot mask a
     regression in the trailer path."""
     repo = _mined(tmp_path, "linear_history")
     target = _forward_subtracting_target(repo)
     assert _in(repo, ["revert", target, "--json"]) == 0  # mints ops with no provenance
 
-    from sgt.core import opindex
+    from ugh.core import opindex
 
     ops = opindex.index_ops(repo)
     provenanced = {o.id for o in ops if o.provenance}
@@ -300,7 +300,7 @@ def test_an_unresolvable_ref_stays_a_clean_refusal(tmp_path):
     """`commit_shas` answers `[]` for a ref that does not resolve, so the provenance rung has always
     degraded to an empty ideal rather than raising. Reading trailers introduced a way to break that:
     `commit_message` raises `GitError` where `commit_shas` returns empty, which turned
-    `sgt advanced fold --at no-such-branch` into a traceback instead of a refusal. Caught in review
+    `ugh advanced fold --at no-such-branch` into a traceback instead of a refusal. Caught in review
     of my own change, pinned here so the trailer rung cannot re-tighten what the fallback keeps
     loose."""
     repo = _mined(tmp_path, "linear_history")
@@ -313,7 +313,7 @@ def test_an_unresolvable_ref_stays_a_clean_refusal(tmp_path):
 def test_at_now_parses_to_the_current_ideal_and_never_to_a_ref(tmp_path):
     """The grammar rung itself. `now` shadows a branch of that name, exactly as the all-digit rung
     already shadows a branch named `5`; `refs/heads/now` is the escape hatch."""
-    from sgt.cli.inspect import _parse_at
+    from ugh.cli.inspect import _parse_at
 
     assert _parse_at("now") == {"current": True}
     assert _parse_at("refs/heads/now") == {"ref": "refs/heads/now"}
@@ -329,7 +329,7 @@ def test_at_now_parses_to_the_current_ideal_and_never_to_a_ref(tmp_path):
 def test_fold_out_prunes_a_directory_its_own_deletion_emptied_but_keeps_an_occupied_one(tmp_path):
     """An emptied directory is swept, because a stale empty `pages/` in the overlay is a
     directory that does not exist in the state being rendered. One that still holds anything --
-    including something sgt did not write -- stays."""
+    including something ugh did not write -- stays."""
     repo = _mined(tmp_path, "removed_paths")
     out = tmp_path / "overlay"
 
@@ -340,7 +340,7 @@ def test_fold_out_prunes_a_directory_its_own_deletion_emptied_but_keeps_an_occup
     (out / "nested" / "gone.py").write_bytes((out / "gone.py").read_bytes())
     (out / "shared").mkdir()
     (out / "shared" / "gone.py").write_bytes((out / "gone.py").read_bytes())
-    (out / "shared" / "keep.txt").write_text("not sgt's\n")
+    (out / "shared" / "keep.txt").write_text("not ugh's\n")
     manifest.write_text(json.dumps(
         {"paths": sorted(set(json.loads(manifest.read_text())["paths"])
                          | {"nested/gone.py", "shared/gone.py"})}
@@ -349,7 +349,7 @@ def test_fold_out_prunes_a_directory_its_own_deletion_emptied_but_keeps_an_occup
     fold_out_view(repo, out, at_commit_index=1)
 
     assert not (out / "nested").exists()  # emptied by its own deletion -> swept
-    assert (out / "shared" / "keep.txt").read_text() == "not sgt's\n"  # occupied -> kept
+    assert (out / "shared" / "keep.txt").read_text() == "not ugh's\n"  # occupied -> kept
     assert not (out / "shared" / "gone.py").exists()
 
 
@@ -419,14 +419,14 @@ def test_restore_emit_out_round_trips_the_same_way(tmp_path):
 
 
 def _worktree_managed(repo):
-    """Every git-tracked path in `repo` that sgt has an opinion about, as `{path: bytes}` --
-    tracked, not `ignored` tier, not sgt's own state. The set a materialized preview is supposed
+    """Every git-tracked path in `repo` that ugh has an opinion about, as `{path: bytes}` --
+    tracked, not `ignored` tier, not ugh's own state. The set a materialized preview is supposed
     to be able to reproduce."""
     import subprocess
 
-    from sgt.core.lens import _outside_sgts_remit
+    from ugh.core.lens import _outside_ughs_remit
 
-    ignored = _outside_sgts_remit(repo)
+    ignored = _outside_ughs_remit(repo)
     listed = subprocess.run(["git", "-C", str(repo), "ls-files"], check=True,
                             capture_output=True, text=True).stdout.split()
     return {
@@ -436,8 +436,8 @@ def _worktree_managed(repo):
 
 
 def _foreign_commit(repo, message):
-    """Commit the working tree with plain `git`, bypassing sgt entirely -- the "foreign edit" whose
-    committed drift `put()` documents. Deliberately not `sgt save`: the point is bytes that reach
+    """Commit the working tree with plain `git`, bypassing ugh entirely -- the "foreign edit" whose
+    committed drift `put()` documents. Deliberately not `ugh save`: the point is bytes that reach
     HEAD without any op recording them."""
     import os
 
@@ -458,24 +458,24 @@ def test_the_backstop_predictor_agrees_with_the_writer(tmp_path):
     So this runs the pair against each other on a repo where the backstop genuinely fires, using
     the trigger `put()` itself names -- "a local merge/cherry-pick the miner mis-attributed (F7/F9),
     or a **foreign edit** ... the drift is committed (on-disk == HEAD), not an uncommitted change".
-    A tracked file edited and committed with plain `git commit`, bypassing sgt, carries bytes no
-    ideal produces. Every sgt-authored shape (fork, rebirth, sync, revert) keeps the tree inside
+    A tracked file edited and committed with plain `git commit`, bypassing ugh, carries bytes no
+    ideal produces. Every ugh-authored shape (fork, rebirth, sync, revert) keeps the tree inside
     some ideal by construction, which is why none of them strand anything.
 
-    Why this is a function-level test and not an end-to-end one: every sgt verb mines on contact,
+    Why this is a function-level test and not an end-to-end one: every ugh verb mines on contact,
     so `get()` absorbs the foreign commit and the drift is gone before a CLI revert could observe
     it -- measured, `backstop_kept` is `['c.py']` before `get()` and `[]` after. The condition is
-    real but has a lifetime of exactly one sgt command, so the pair has to be checked directly."""
-    from sgt.core import lens
-    from sgt.core.fold import code
-    from sgt.core.store import Store
+    real but has a lifetime of exactly one ugh command, so the pair has to be checked directly."""
+    from ugh.core import lens
+    from ugh.core.fold import code
+    from ugh.core.store import Store
 
     repo = _mined(tmp_path, "linear_history")
     ops = Store(repo).all_ops()
     prior = current_ideal(repo)
 
-    (repo / "c.py").write_text("def qux():\n    return 'edited outside sgt'\n")
-    _foreign_commit(repo, "foreign edit: committed without sgt")
+    (repo / "c.py").write_text("def qux():\n    return 'edited outside ugh'\n")
+    _foreign_commit(repo, "foreign edit: committed without ugh")
     # Everything the current ideal folds, minus the one path -- so `c.py` alone reaches the
     # delete-or-keep decision and the assertion is about that decision, not about bulk deletion.
     materialized = {p: b for p, b in code(prior, ops).items() if p != "c.py"}
@@ -493,14 +493,14 @@ def test_prior_ideal_does_not_suppress_genuinely_unrecoverable_bytes(tmp_path):
     no ideal can produce are still kept, because deleting those is the unrecoverable case R4 exists
     to prevent. If this ever passes with an empty list, `prior_ideal` has become a way to lose
     data rather than a way to stop over-keeping."""
-    from sgt.core import lens
-    from sgt.core.store import Store
+    from ugh.core import lens
+    from ugh.core.store import Store
 
     repo = _mined(tmp_path, "linear_history")
     ops = Store(repo).all_ops()
     prior = current_ideal(repo)
-    (repo / "c.py").write_text("def qux():\n    return 'edited outside sgt'\n")
-    _foreign_commit(repo, "foreign edit: committed without sgt")
+    (repo / "c.py").write_text("def qux():\n    return 'edited outside ugh'\n")
+    _foreign_commit(repo, "foreign edit: committed without ugh")
 
     assert lens.materialization_skips(repo, {}, ops)["backstop_kept"] == ["c.py"]
     assert lens.materialization_skips(repo, {}, ops, prior_ideal=prior)["backstop_kept"] == ["c.py"]
@@ -548,7 +548,7 @@ def test_emit_out_carries_a_backstop_kept_path_at_its_on_disk_bytes(tmp_path):
 
     A backstop-kept path is carried at its *current on-disk* bytes, because the apply keeps it by
     not touching it -- never at whatever the ideal would have folded for it."""
-    from sgt.core import lens
+    from ugh.core import lens
 
     repo = _mined(tmp_path, "linear_history")
     kept_path = "c.py"
@@ -581,8 +581,8 @@ def test_emit_out_writes_nothing_for_a_refused_preview(tmp_path):
     *current* state into the overlay and read back as a successful counterfactual -- the render
     panel would show today's app and call it "today minus this feature". Nothing is written and
     the view carries no `out` key to mistake for one."""
-    from sgt.cli.ideal_edit import _emit_verb_result
-    from sgt.core.verbs import VerbPreview
+    from ugh.cli.ideal_edit import _emit_verb_result
+    from ugh.core.verbs import VerbPreview
 
     repo = _mined(tmp_path, "linear_history")
     ids = current_ideal(repo).op_ids
@@ -648,10 +648,10 @@ def test_blame_all_matches_per_file_blame_and_folds_once(tmp_path):
     """`blame --all` is the repo-wide provenance map the render panel joins DOM elements against.
     Its spans must be the same objects `blame_view` returns per file -- one parser, either
     surface -- and its `features` map the union of theirs."""
-    from sgt.api import blame_view
+    from ugh.api import blame_view
 
     repo = _mined(tmp_path, "mixed_coverage")
-    from sgt.lens import map as lensmap
+    from ugh.lens import map as lensmap
 
     lensmap.build_map(repo)  # blame attributes through the feature tree's op_leaf
 
@@ -670,8 +670,8 @@ def test_blame_all_covers_every_file_the_current_fold_contains(tmp_path):
     """One pass over the whole ideal, not a walk of the working tree: a client asking for the
     provenance map gets an entry per covered file, including the ones with no attributable span
     yet, so a missing key means "not covered" rather than "not asked about"."""
-    from sgt.core.fold import code
-    from sgt.core.store import Store
+    from ugh.core.fold import code
+    from ugh.core.store import Store
 
     repo = _mined(tmp_path, "linear_history")
     materialized = code(current_ideal(repo), Store(repo).all_ops())

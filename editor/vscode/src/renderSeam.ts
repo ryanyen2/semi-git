@@ -68,7 +68,7 @@ export function errorHtml(cspSource: string, message: string): string {
   <h2>Could not start the dev server</h2>
   <p><code>${plain(message)}</code></p>
   <p>The panel runs one command in a scratch copy of the folded tree. If this project does not
-     use Vite, set <code>sgt.render.devCommand</code> &mdash; <code>\${port}</code> is substituted.</p>
+     use Vite, set <code>ugh.render.devCommand</code> &mdash; <code>\${port}</code> is substituted.</p>
 </div>`);
 }
 

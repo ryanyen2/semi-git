@@ -1,4 +1,4 @@
-"""CLI dispatch tests for `sgt edit <selection>` (plan U4, R5/KTD5).
+"""CLI dispatch tests for `ugh edit <selection>` (plan U4, R5/KTD5).
 
 Verb *behavior* -- the chain-extension hollow, the mechanical repoint, the red-oracle repair path
 -- is tested in `tests/core/test_rewrite.py`; this file is the thin CLI layer: selection resolves
@@ -10,10 +10,10 @@ from __future__ import annotations
 import json
 import os
 
-from sgt.core.lens import get
-from sgt.core.store import Store
-from sgt.cli import main
-from sgt.store.gitbind import init_store
+from ugh.core.lens import get
+from ugh.core.store import Store
+from ugh.cli import main
+from ugh.store.gitbind import init_store
 
 
 def _in(tmp_path, argv):
@@ -45,7 +45,7 @@ def _seed(tmp_path):
 def test_edit_verb_is_registered_and_dispatches(tmp_path):
     # U14: `edit` demoted under `advanced` (opt-in oracle-gated ceremony; ordinary edits go through
     # plain `save`). No longer a top-level verb; re-homed via `_ROUTING`.
-    from sgt.cli import _ROUTING, _VERBS
+    from ugh.cli import _ROUTING, _VERBS
 
     assert "edit" not in _VERBS
     assert _ROUTING["edit"] == "advanced"

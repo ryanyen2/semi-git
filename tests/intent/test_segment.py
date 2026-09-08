@@ -1,14 +1,14 @@
-"""Tests for sgt.intent.segment -- the deterministic feature-scoped segmentation (rungs 0/1).
+"""Tests for ugh.intent.segment -- the deterministic feature-scoped segmentation (rungs 0/1).
 No LLM/network anywhere; every assertion is pure, rebuildable derivation from the mined store +
 git history + a hand-authored feature tree, same idiom as tests/intent/test_group.py."""
 
 from __future__ import annotations
 
-from sgt.core.lens import get
-from sgt.core.store import Store
-from sgt.intent import segment
-from sgt.lens import tree
-from sgt.store.gitbind import init_store
+from ugh.core.lens import get
+from ugh.core.store import Store
+from ugh.intent import segment
+from ugh.lens import tree
+from ugh.store.gitbind import init_store
 
 
 def _leaf(members: list[str], label: str) -> dict:
@@ -23,8 +23,8 @@ def _mine_fully(repo) -> None:
     entirely a test-machine-speed artifact, not anything about the fixture's content. Loop until
     the backward walk actually reaches genesis so a fixture's commit count is never gated by how
     fast this happens to run."""
-    from sgt.core.lens import _load_backfill_state, _ref_key
-    from sgt.store.gitbind import GitBinding
+    from ugh.core.lens import _load_backfill_state, _ref_key
+    from ugh.store.gitbind import GitBinding
 
     gb = GitBinding(repo)
     key = _ref_key(gb) or gb.head()
@@ -268,7 +268,7 @@ def test_apply_label_pins_ignores_unmatched_key(tmp_path):
 def test_verb_preview_view_resolves_a_checkpoint(tmp_path):
     """The VS Code hover-preview path: `verb_preview_view('revert', '<feature>@<n>')` must resolve
     to the segment's deterministic op-set (not silently fall through to an unresolvable plan)."""
-    from sgt.api import verb_preview_view
+    from ugh.api import verb_preview_view
 
     segs = _feature_with_two_segments(tmp_path)
     v = verb_preview_view(tmp_path, "revert", "F-A@1")
@@ -300,7 +300,7 @@ def test_soft_cap_bounds_segment_count(tmp_path):
 
 def test_stale_record_leftover_is_capped_not_appended_one_by_one(tmp_path):
     """A partial/stale persisted record must not let a feature's segment count grow unbounded as
-    commits land after the last `sgt intent build` -- the runs it doesn't name are cut with the
+    commits land after the last `ugh intent build` -- the runs it doesn't name are cut with the
     same MAX_SEGMENTS-capped partition a from-scratch feature gets (`_partition_runs`), not one
     raw trailing segment per unclaimed commit."""
     gb, _ = init_store(tmp_path)
@@ -381,7 +381,7 @@ def test_segment_runs_prior_boundaries_default_is_byte_identical():
 
 # -- granularity gate ------------------------------------------------------------------------------
 # The redesign plan (2026-07-21, "segment-chunks as the atom") makes the segment the visual atom of
-# `sgt graph` -- if the cut weights ever drift towards over-fragmenting, every lane in that view
+# `ugh graph` -- if the cut weights ever drift towards over-fragmenting, every lane in that view
 # degrades back into the "confetti" the redesign exists to fix. This harness measures the two
 # numbers that redesign is gated on (median cars/feature, single-op-car fraction) against a fixed
 # mix of realistic feature shapes -- a one-shot feature, a tweaked-in-place feature, a genuinely

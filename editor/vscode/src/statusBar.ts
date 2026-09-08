@@ -19,7 +19,7 @@ export class GitStatusBar implements vscode.Disposable {
 
   constructor(private store: Store) {
     this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99);
-    this.item.command = "sgt.openWorkbench";
+    this.item.command = "ugh.openWorkbench";
     this.disposables.push(this.item, this.store.onDidChange(() => void this.refresh()));
   }
 
@@ -28,8 +28,8 @@ export class GitStatusBar implements vscode.Disposable {
     try {
       status = await this.store.status();
     } catch {
-      this.item.text = "sgt: error";
-      this.item.tooltip = "Failed to read sgt status. Click to open the workbench.";
+      this.item.text = "ugh: error";
+      this.item.tooltip = "Failed to read ugh status. Click to open the workbench.";
       this.item.show();
       return;
     }

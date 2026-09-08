@@ -1,4 +1,4 @@
-"""Tests for sgt.core.oracle -- async tiered build/test verdicts (plan U9, R13).
+"""Tests for ugh.core.oracle -- async tiered build/test verdicts (plan U9, R13).
 
 Materialization never calls this module -- that's the whole of the "async" requirement, and is
 exercised directly below (a `verbs.revert` with no `.sgt/oracle.json` writes nothing to the
@@ -11,10 +11,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from sgt.core import oracle, verbs
-from sgt.core.lens import get
-from sgt.core.store import Store
-from sgt.store.gitbind import init_store
+from ugh.core import oracle, verbs
+from ugh.core.lens import get
+from ugh.core.store import Store
+from ugh.store.gitbind import init_store
 
 
 def _foo_chain(repo_path, n: int):

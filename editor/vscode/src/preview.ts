@@ -1,13 +1,13 @@
 // Revision navigation: preview what reverting a feature would do, without writing anything.
-// Drives `sgt revert <feature> --emit --json` (a sandboxed dry-run), then opens a read-only diff
+// Drives `ugh revert <feature> --emit --json` (a sandboxed dry-run), then opens a read-only diff
 // per changed file. Refusals (e.g. a fork) surface the message instead of a diff. Content is
-// served through a virtual `sgt-preview:` scheme.
+// served through a virtual `ugh-preview:` scheme.
 
 import * as vscode from "vscode";
 import { Store } from "./store";
 import { ChangeSpan, EmitView } from "./types";
 
-const SCHEME = "sgt-preview";
+const SCHEME = "ugh-preview";
 
 export class PreviewProvider implements vscode.TextDocumentContentProvider, vscode.Disposable {
   private contents = new Map<string, string>();
@@ -30,9 +30,9 @@ export class PreviewProvider implements vscode.TextDocumentContentProvider, vsco
   async preview(feature: string): Promise<void> {
     let res: EmitView;
     try {
-      res = await this.store.sgt.emit(feature);
+      res = await this.store.ugh.emit(feature);
     } catch (e: any) {
-      vscode.window.showErrorMessage(`sgt revert --emit failed: ${e.message}`);
+      vscode.window.showErrorMessage(`ugh revert --emit failed: ${e.message}`);
       return;
     }
     if (!res.ok) {
@@ -45,7 +45,7 @@ export class PreviewProvider implements vscode.TextDocumentContentProvider, vsco
   }
 
   /** Open a read-only before→after diff per changed file for an already-fetched emit view -- the
-   * "where this lands" preview. Shared by `sgt.previewRevert` and the revert/restore confirm flows
+   * "where this lands" preview. Shared by `ugh.previewRevert` and the revert/restore confirm flows
    * (so an exact ideal edit always shows its resulting diff before it commits) without re-running
    * `emit`. Titles come from the view's own `verb`, so nothing here assumes revert. Returns the
    * count of files shown. */

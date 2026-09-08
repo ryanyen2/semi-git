@@ -1,6 +1,6 @@
-"""`sgt resolve <symbol>` (plan U13/R11): the guided one-verb fork resolution.
+"""`ugh resolve <symbol>` (plan U13/R11): the guided one-verb fork resolution.
 
-`resolve` only sequences existing `sgt.core.rewrite` verbs (`merge_op` -> `fulfill` -> oracle ->
+`resolve` only sequences existing `ugh.core.rewrite` verbs (`merge_op` -> `fulfill` -> oracle ->
 `land`) over the fork the sync recorded in `.sgt/forks.json`, so these tests drive it end to end on
 a real two-clone fork and check the error surfaces (no fork, no drafted resolution yet).
 """
@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import json
 
-from sgt.api import forks_view
-from sgt.cli.resolve import _resolve
-from sgt.core import sync
+from ugh.api import forks_view
+from ugh.cli.resolve import _resolve
+from ugh.core import sync
 from tests.core.test_sync import _BASE, _edit_and_commit, _push, _two_clones
 
 
@@ -27,7 +27,7 @@ def _forked_clone(tmp_path):
 
 
 def test_resolve_drafts_then_applies_and_closes_the_fork(tmp_path):
-    """`sgt resolve <symbol>` drafts the reconciliation; after the user edits the file,
+    """`ugh resolve <symbol>` drafts the reconciliation; after the user edits the file,
     `--apply` fulfills from the tree, passes the oracle, lands, and closes the fork."""
     b = _forked_clone(tmp_path)
     # a trivially-passing oracle so the guided --apply can land (R14's gate is real)
@@ -52,7 +52,7 @@ def test_resolve_reports_no_open_fork(tmp_path):
 
 
 def test_resolve_apply_without_a_drafted_resolution_errors(tmp_path):
-    """`--apply` before any `sgt resolve <symbol>` drafted a reconciliation reports the missing
+    """`--apply` before any `ugh resolve <symbol>` drafted a reconciliation reports the missing
     draft, rather than silently doing nothing."""
     b = _forked_clone(tmp_path)
     assert _resolve(str(b), "main.py::foo", apply=True, as_json=False) == 1  # nothing drafted yet
@@ -68,7 +68,7 @@ def test_resolve_apply_preview_view_states(tmp_path):
     """The `resolve --apply` feedforward projection: refuses (clean=False) with a reason when there's
     no open fork or no drafted reconciliation yet, and once a draft exists reports a clean three-step
     plan carrying the fork's two tips -- so the pane refuses before the apply path would."""
-    from sgt.api import resolve_apply_preview_view
+    from ugh.api import resolve_apply_preview_view
 
     b = _forked_clone(tmp_path)
 
@@ -88,8 +88,8 @@ def test_resolve_cli_tty_abort_resolves_nothing(tmp_path, monkeypatch, capsys):
     """On a tty the pane is the confirm: aborting a `resolve --apply` leaves the fork open (rc 1)."""
     import sys
 
-    from sgt.cli import _common
-    from sgt.tui.consequence import Decision
+    from ugh.cli import _common
+    from ugh.tui.consequence import Decision
 
     b = _forked_clone(tmp_path)
     _configure_true_oracle(b)
@@ -106,7 +106,7 @@ def test_resolve_cli_tty_abort_resolves_nothing(tmp_path, monkeypatch, capsys):
 
 
 def test_resolve_cli_interactive_pick_left_closes_the_fork(tmp_path, monkeypatch):
-    """On a tty, a bare `sgt resolve <symbol>` shows a side-by-side diff and lets the user pick a side
+    """On a tty, a bare `ugh resolve <symbol>` shows a side-by-side diff and lets the user pick a side
     in one step: `l` writes tip A's content, then the flow fulfills+lands and closes the fork -- no
     second `--apply` command."""
     import builtins
@@ -145,8 +145,8 @@ def test_resolve_cli_tty_confirm_closes_the_fork(tmp_path, monkeypatch):
     """A confirm on a tty runs the real guided apply and closes the fork."""
     import sys
 
-    from sgt.cli import _common
-    from sgt.tui.consequence import Decision
+    from ugh.cli import _common
+    from ugh.tui.consequence import Decision
 
     b = _forked_clone(tmp_path)
     _configure_true_oracle(b)

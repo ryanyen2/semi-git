@@ -1,13 +1,13 @@
-"""Tests for sgt.lens.tree -- the hierarchical feature tree (plan U12, R15/R16/R17)."""
+"""Tests for ugh.lens.tree -- the hierarchical feature tree (plan U12, R15/R16/R17)."""
 
 from __future__ import annotations
 
 from itertools import combinations
 
-from sgt.core.lens import get
-from sgt.core.op import make_op
-from sgt.core.store import Store
-from sgt.lens import tree
+from ugh.core.lens import get
+from ugh.core.op import make_op
+from ugh.core.store import Store
+from ugh.lens import tree
 from tests.laws import corpus
 
 
@@ -235,7 +235,7 @@ def test_build_partitions_every_alive_symbol_into_exactly_one_leaf(tmp_path):
     result = tree.build(repo, ops, ideal)
     nodes = result["nodes"]
 
-    from sgt.lens.cluster import alive_nodes
+    from ugh.lens.cluster import alive_nodes
     expected = alive_nodes(ideal, ops)
 
     leaf_members = [m for nid, nd in nodes.items() if not nd["children"] for m in nd["members"]]
@@ -318,7 +318,7 @@ def test_save_skips_the_write_when_byte_identical_to_disk(tmp_path):
     """A rebuild with no new ops must not touch `tree.json`'s mtime -- it's a `.sgt/**/*.json`
     path a client's file watcher invalidates its cache on, so an unconditional rewrite on every
     no-op read makes a client's own refresh retrigger another refresh, forever."""
-    import sgt.state as state
+    import ugh.state as state
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     ideal, ops = get(repo), Store(repo).all_ops()
@@ -376,7 +376,7 @@ def test_dirty_subtree_rebuild_is_deterministic(tmp_path):
 
 
 def test_assign_pin_overrides_greene_and_survives_reruns(tmp_path):
-    from sgt.lens.pins import Pins, save_pins
+    from ugh.lens.pins import Pins, save_pins
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     ideal, ops = get(repo), Store(repo).all_ops()
@@ -400,7 +400,7 @@ def test_pinned_label_on_a_carried_id_survives_an_ordinary_rebuild(tmp_path):
     """A continuation always carries its old feature id, so a feature the user renamed (a `labels`
     pin keyed to that id) rebuilds with the id -- and therefore the pinned label -- intact. The id
     is never re-minted out from under the pin by an ordinary build."""
-    from sgt.lens.pins import Pins
+    from ugh.lens.pins import Pins
 
     repo = corpus.CORPUS["class_with_methods"].build(tmp_path / "repo")
     ideal, ops = get(repo), Store(repo).all_ops()
@@ -424,7 +424,7 @@ def test_authored_feature_label_overrides_the_cluster_leaf_and_survives_a_rebuil
     """U7/R3: an authored feature (U6) is the authority over the clustered leaf. `label_tree` shows
     the authored label where a leaf's symbols are claimed, and a re-cluster does not scatter the
     authored members or drop the override."""
-    from sgt.lens import authored
+    from ugh.lens import authored
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     ideal, ops = get(repo), Store(repo).all_ops()
@@ -452,7 +452,7 @@ def test_authored_feature_with_empty_label_defers_to_the_clustered_label(tmp_pat
     is "claimed but unnamed": it must NOT override the clustered/LLM label -- otherwise a save-time
     lane permanently shadows the real name a rebuild computes. Only a deliberate `rename` (non-empty)
     overrides (the test above)."""
-    from sgt.lens import authored
+    from ugh.lens import authored
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     ideal, ops = get(repo), Store(repo).all_ops()
@@ -478,8 +478,8 @@ def test_build_is_shape_stable_whether_or_not_authored_features_exist(tmp_path):
     """Authored `af-` ids are additive: a build with an authored collection present produces the
     same tree shape as one without (authored features overlay the tree, they do not restructure
     it)."""
-    from sgt.lens import authored
-    from sgt.lens.pins import Pins
+    from ugh.lens import authored
+    from ugh.lens.pins import Pins
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     ideal, ops = get(repo), Store(repo).all_ops()
@@ -500,7 +500,7 @@ class _StubLabeler:
         self._labels = labels
 
     def _fl(self, label):
-        from sgt.lens.label import FeatureLabel
+        from ugh.lens.label import FeatureLabel
         return FeatureLabel(label=label, rationale=f"stub for {label}")
 
     def label(self, members, subjects=None):
@@ -594,7 +594,7 @@ def test_assign_pin_with_scattered_members_resolves_to_one_leaf(tmp_path):
     # so its pinned members can scatter across several current leaves. Renaming *every* such leaf to the
     # pinned id aliased two leaves onto one node -> duplicate children -> `_dedup` deleted the survivor
     # and crashed with KeyError. The pin must resolve to the single plurality leaf instead.
-    from sgt.lens.pins import Pins
+    from ugh.lens.pins import Pins
 
     result = {
         "roots": ["N0"],
@@ -629,7 +629,7 @@ def test_competing_pins_on_one_leaf_converge_to_a_fixpoint(tmp_path):
     # leaf to some pin's id, a different pin self-skipped each pass -> the leaf's id flipped every
     # rebuild (a deterministic 2-cycle). The winner must instead be a pure function of the pins
     # (strongest, tie -> smallest fid), so it holds across rebuilds regardless of the current id.
-    from sgt.lens.pins import Pins
+    from ugh.lens.pins import Pins
 
     pins = Pins(assign={"m1": "af-b", "m2": "af-c", "m3": "af-a"})  # three competing 1-symbol pins
 
@@ -717,7 +717,7 @@ def test_single_child_root_is_left_alone():
 
 def test_residue_members_rehome_to_their_anchor_entitys_leaf():
     # F21: the clusterer can group residue/anchor pseudo-symbols together into a leaf of their own,
-    # which then gets a feature id, a label from its commit subject, and a `sgt log` row -- while
+    # which then gets a feature id, a label from its commit subject, and a `ugh log` row -- while
     # holding no real symbol at all. In the study fixtures 4 of 21 features were this shape, named
     # "add course search" / "waitlist for full sections", i.e. the task keywords, showing
     # "0 symbols in 0 files". Residue follows its anchor ENTITY's lane for op assignment already
@@ -854,7 +854,7 @@ def test_dedup_never_merges_internal_siblings_that_share_a_label():
 
 
 def test_stale_signals_version_forces_recluster_but_matching_version_splices(tmp_path, monkeypatch):
-    from sgt.lens import cluster
+    from ugh.lens import cluster
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     ideal, ops = get(repo), Store(repo).all_ops()
@@ -878,7 +878,7 @@ def test_stale_signals_version_forces_recluster_but_matching_version_splices(tmp
 
 
 def test_label_tree_offline_fallback_is_deterministic(tmp_path, monkeypatch):
-    import sgt.config
+    import ugh.config
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     ideal, ops = get(repo), Store(repo).all_ops()
@@ -886,7 +886,7 @@ def test_label_tree_offline_fallback_is_deterministic(tmp_path, monkeypatch):
     def _no_client(*_a, **_k):
         raise RuntimeError("no API key")
 
-    monkeypatch.setattr(sgt.config, "get_client", _no_client)
+    monkeypatch.setattr(ugh.config, "get_client", _no_client)
 
     def labels_of(result):
         return {nid: nd["label"] for nid, nd in result["nodes"].items()}
@@ -903,12 +903,12 @@ def test_label_tree_offline_fallback_is_deterministic(tmp_path, monkeypatch):
 def test_the_root_is_named_after_the_repo_not_by_the_labeler(tmp_path, monkeypatch):
     """The root holds every alive symbol, so a name for it is a name for the whole repo. Asked for
     one anyway, the labeler produced the only thing it could: with no client, the study's practice
-    copy headed both `sgt log --tree` and `sgt log --map` with `README.md add_item remove_item total
+    copy headed both `ugh log --tree` and `ugh log --map` with `README.md add_item remove_item total
     cart.py`, on the first command a participant runs. A root with no children is a repo with one
     feature, and that node is a feature, so it keeps a feature's name."""
-    import sgt.config
+    import ugh.config
 
-    monkeypatch.setattr(sgt.config, "get_client",
+    monkeypatch.setattr(ugh.config, "get_client",
                         lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("no API key")))
     repo = tmp_path / "confplan"
     repo.mkdir()
@@ -963,8 +963,8 @@ def test_assign_pin_does_not_alias_a_leaf_that_already_wears_its_id(tmp_path):
     # renamed the new winner onto an id another live leaf still wore: `_apply_id_map` kept one of the
     # two node dicts and dropped the other leaf's members outright, and the parent listed the id
     # twice, which `_dedup` then resolved by deleting the survivor (KeyError). Found on the confplan
-    # study fixture, where `sgt log --refresh` crashed on every run.
-    from sgt.lens.pins import Pins
+    # study fixture, where `ugh log --refresh` crashed on every run.
+    from ugh.lens.pins import Pins
 
     result = {
         "roots": ["N0"],
@@ -999,7 +999,7 @@ def test_assign_pin_does_not_alias_a_leaf_that_already_wears_its_id(tmp_path):
 
 
 def test_carve_authored_gives_a_feature_a_leaf_of_exactly_its_live_members():
-    from sgt.lens import authored
+    from ugh.lens import authored
 
     nodes = {
         "N0": {"id": "N0", "parent": None, "depth": 0, "members": ["a", "b", "c", "d", "e"],
@@ -1022,7 +1022,7 @@ def test_carve_authored_gives_a_feature_a_leaf_of_exactly_its_live_members():
 
 
 def test_carve_authored_is_a_noop_when_the_feature_already_is_one_leaf():
-    from sgt.lens import authored
+    from ugh.lens import authored
 
     nodes = {"N0": _leaf("N0", None, ["a", "b"], "pkg")}
     feat = authored.create(["a", "b"], "exact")
@@ -1034,7 +1034,7 @@ def test_authored_membership_survives_a_from_scratch_rebuild(tmp_path):
     """Finding 79/80: after `--rebuild` the authored feature used to claim whichever leaf held the
     plurality of its members, so a hand-drawn 2-symbol feature came back as the whole 10-symbol
     leaf. It must come back as exactly the 2 symbols, and the rest of the leaf must stay a feature."""
-    from sgt.lens import authored
+    from ugh.lens import authored
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     ideal, ops = get(repo), Store(repo).all_ops()

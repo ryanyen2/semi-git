@@ -1,12 +1,12 @@
-"""Tests for sgt.core.mine -- the operation stream (plan U2, R1/R2/R7/R12/R22)."""
+"""Tests for ugh.core.mine -- the operation stream (plan U2, R1/R2/R7/R12/R22)."""
 
 from __future__ import annotations
 
 import time
 
-from sgt.core import order
-from sgt.core.mine import mine
-from sgt.store.gitbind import GitBinding, init_store
+from ugh.core import order
+from ugh.core.mine import mine
+from ugh.store.gitbind import GitBinding, init_store
 from tests.laws import corpus
 
 
@@ -82,7 +82,7 @@ def test_unparseable_midedit_degrades_to_whole_file(tmp_path):
     (tmp_path / "a.py").write_text("def foo(: %%% broken >>> \n", encoding="utf-8")
     sha2 = gb.commit_all("break foo mid-edit")
 
-    from sgt.core.op import is_bottom
+    from ugh.core.op import is_bottom
 
     ops, _last_sha = mine(tmp_path)
     broken_ops = _ops_for_commit(ops, sha2)
@@ -94,9 +94,9 @@ def test_unparseable_midedit_degrades_to_whole_file(tmp_path):
         if op is not whole_file_ops[0]:
             assert all(is_bottom(after) for _before, after in op.footprint.values())
 
-    from sgt.core.fold import code
-    from sgt.core.lens import get
-    from sgt.core.store import Store
+    from ugh.core.fold import code
+    from ugh.core.lens import get
+    from ugh.core.store import Store
 
     ideal = get(tmp_path)
     assert whole_file_ops[0].id in ideal.op_ids
@@ -227,7 +227,7 @@ def test_mine_skips_symlink_delete(tmp_path):
 
 
 def _readd_bottom(sha: str) -> str:
-    from sgt.core.op import salted_bottom
+    from ugh.core.op import salted_bottom
     return salted_bottom(sha)
 
 
@@ -236,9 +236,9 @@ def test_add_delete_readd_is_one_chain(tmp_path):
     (add None->v1, prune v1->salted-bottom, re-add salted-bottom->v2) -- never two births of
     `(symbol, None)` that `fork_free` would drop. The re-add's before_version is the *deleting*
     commit's salted bottom, so it grounds and the file materializes completely in `code(I)`."""
-    from sgt.core.fold import code
-    from sgt.core.ideal import Ideal
-    from sgt.core.op import is_bottom
+    from ugh.core.fold import code
+    from ugh.core.ideal import Ideal
+    from ugh.core.op import is_bottom
 
     gb, _ = init_store(tmp_path)
     (tmp_path / "notes.txt").write_text("alpha\n", encoding="utf-8")
@@ -277,8 +277,8 @@ def test_readd_cycle_produces_distinct_chained_ops(tmp_path):
     rebirths (content-addressing: identical bytes == identical version) -- so `reduce_to_ideal`
     collapses that value-collision, but the bytes still materialize correctly. The salt's job (a
     distinct bottom per deletion, so re-adds don't re-collide on `(symbol, None)`) holds in both."""
-    from sgt.core.fold import code
-    from sgt.core.ideal import Ideal
+    from ugh.core.fold import code
+    from ugh.core.ideal import Ideal
 
     gb, _ = init_store(tmp_path)
     (tmp_path / "n.txt").write_text("A\n", encoding="utf-8")
@@ -326,9 +326,9 @@ def test_extension_flip_bridges_without_scheme_mix(tmp_path):
     """R14: a whole-file path replaced by a parseable file of the same stem (`.txt` -> `.py`)
     bridges cleanly -- the old whole-file symbol is closed with a BOTTOM op and the new entity
     symbols are born, so `code(I)` shows only the new representation, never both."""
-    from sgt.core.fold import code
-    from sgt.core.ideal import Ideal
-    from sgt.core.op import is_bottom
+    from ugh.core.fold import code
+    from ugh.core.ideal import Ideal
+    from ugh.core.op import is_bottom
 
     gb, _ = init_store(tmp_path)
     (tmp_path / "m.txt").write_text("def foo():\n    return 1\n", encoding="utf-8")
@@ -352,9 +352,9 @@ def test_dirty_pass_syntax_error_mints_no_transition_ops(tmp_path):
     """R14: a transient syntax error in the *dirty* working tree must mint nothing permanent -- the
     flip transition ops (closing the entity representation) are suppressed for the pending pass, so
     no BOTTOM prune for a live entity lands in the store after a plain read."""
-    from sgt.core.lens import get
-    from sgt.core.op import is_bottom
-    from sgt.core.store import Store
+    from ugh.core.lens import get
+    from ugh.core.op import is_bottom
+    from ugh.core.store import Store
 
     gb, _ = init_store(tmp_path)
     (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
@@ -532,9 +532,9 @@ def test_readd_after_merge_chains_across_the_merge(tmp_path):
 
 
 def _materialized(repo):
-    from sgt.core.fold import code
-    from sgt.core.lens import get
-    from sgt.core.store import Store
+    from ugh.core.fold import code
+    from ugh.core.lens import get
+    from ugh.core.store import Store
 
     return code(get(repo), Store(repo).all_ops())
 
@@ -604,8 +604,8 @@ def test_displaced_anchor_is_a_revision_not_a_fork(tmp_path):
         "def zulu():\n    return 0\n\ndef alpha():\n    return 1\n", encoding="utf-8")
     gb.commit_all("insert zulu at top")
 
-    from sgt.core.lens import get
-    from sgt.core.store import Store
+    from ugh.core.lens import get
+    from ugh.core.store import Store
 
     ideal = get(tmp_path)
     ops = Store(tmp_path).all_ops()

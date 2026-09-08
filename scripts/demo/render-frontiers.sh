@@ -37,7 +37,7 @@ set -euo pipefail
 repo="${1:-$HOME/repos/sgt-demo/seedbank}"
 out="${2:-/tmp/seedbank-frontiers}"
 repo="$(cd "$repo" && pwd)"
-SGT="${SGT:-sgt}"
+UGH="${UGH:-ugh}"
 CHROME="${CHROME:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
 PORT="${PORT:-5311}"
 
@@ -53,7 +53,7 @@ to="${4:-$((last - 1))}"
 for idx in $(seq "$from" "$to"); do
     dir="$out/$idx"
     mkdir -p "$dir"
-    "$SGT" advanced fold --at "$idx" --json > "$out/$idx.json" 2>/dev/null
+    "$UGH" advanced fold --at "$idx" --json > "$out/$idx.json" 2>/dev/null
 
     # Deletion is half of materializing: scrubbing backward has to remove the
     # files that left the fold, not leave them behind for the next render to

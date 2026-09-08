@@ -5,18 +5,18 @@
 #   scripts/demo/idea-grid.sh [<repo-dir>]
 #
 # Each variant is a fresh clone with the shared store copied in and one
-# `sgt revert "<name>"` applied. Nothing touches the demo repo. The servers stay up
+# `ugh revert "<name>"` applied. Nothing touches the demo repo. The servers stay up
 # until this script is interrupted, and every window shows an identical console over
 # a different drawing, which is the point of the shot.
 set -euo pipefail
 
 repo="$(cd "${1:-$HOME/repos/sgt-demo/sketchpad-v2}" && pwd)"
-SGT="${SGT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/.venv/bin/sgt}"
+UGH="${UGH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/.venv/bin/ugh}"
 work=/tmp/sketchpad-grid
 
-PY_BIN="$(dirname "$SGT")/python"
-kind=$("$PY_BIN" -c "import sgt.core.op as o; print(o._symbol_kind('a.ts::__import__::./b'))" 2>/dev/null)
-[ "$kind" = "import" ] || { echo "wrong sgt: $SGT does not own import lines" >&2; exit 1; }
+PY_BIN="$(dirname "$UGH")/python"
+kind=$("$PY_BIN" -c "import ugh.core.op as o; print(o._symbol_kind('a.ts::__import__::./b'))" 2>/dev/null)
+[ "$kind" = "import" ] || { echo "wrong ugh: $UGH does not own import lines" >&2; exit 1; }
 
 # name<TAB>port. "today" is an unreverted clone on the first port.
 # All four variants show on the lattice sheet the grid opens on. The two sheet-one
@@ -41,7 +41,7 @@ while IFS=$'\t' read -r name port; do
   cp -r "$repo/.sgt" "$dir/.sgt"
   ln -s "$repo/node_modules" "$dir/node_modules"
   if [ "$name" != today ]; then
-    out=$( cd "$dir" && "$SGT" revert "$name" --yes 2>&1 | sed -e 's/\x1b\[[0-9;]*m//g' | tail -1 )
+    out=$( cd "$dir" && "$UGH" revert "$name" --yes 2>&1 | sed -e 's/\x1b\[[0-9;]*m//g' | tail -1 )
     case "$out" in
       *"revert applied"*) ;;
       *) echo "revert of \"$name\" failed: $out" >&2; exit 1 ;;

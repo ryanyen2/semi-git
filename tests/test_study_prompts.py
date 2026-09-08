@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from sgt.intent.gist import ask_gist
+from ugh.intent.gist import ask_gist
 
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURE = json.loads((ROOT / "scripts/study/capture-prompts.json").read_text(encoding="utf-8"))

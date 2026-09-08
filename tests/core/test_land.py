@@ -1,4 +1,4 @@
-"""Tests for `sgt land` -- the U23 SYNC-2 CAS-gated shared-branch advance (plan C9/LAW-G).
+"""Tests for `ugh land` -- the U23 SYNC-2 CAS-gated shared-branch advance (plan C9/LAW-G).
 
 The load-bearing surface is concurrency: two sessions racing to advance one shared branch record.
 The concurrency tests run each lander in its own `git worktree` of a shared *bare* repo, which is
@@ -20,10 +20,10 @@ from pathlib import Path
 
 import pytest
 
-from sgt import state
-from sgt.core import lens, oracle, sync
-from sgt.core.store import Store, fsck
-from sgt.store.gitbind import GitBinding
+from ugh import state
+from ugh.core import lens, oracle, sync
+from ugh.core.store import Store, fsck
+from ugh.store.gitbind import GitBinding
 
 _BASE = "def foo():\n    return 1\n\n\ndef bar():\n    return 2\n"
 
@@ -39,13 +39,13 @@ def _seed_shared(root: Path, oracle_cmd: str | None = "exit 0") -> Path:
         state.save_json(src, "oracle_config", {"tiers": [{"name": "gate", "command": oracle_cmd}]})
     GitBinding(src).commit_all("init")
     ideal = lens.get(src)
-    put_sha = lens.put(src, ideal, message="sgt: init")
+    put_sha = lens.put(src, ideal, message="ugh: init")
     lens.record_ideal(src, ideal, put_sha)
 
     bare = root / "shared.git"
     subprocess.run(["git", "clone", "-q", "--bare", str(src), str(bare)], check=True, capture_output=True)
-    subprocess.run(["git", "-C", str(bare), "config", "user.email", "sgt@semi-git.local"], check=True)
-    subprocess.run(["git", "-C", str(bare), "config", "user.name", "semi-git"], check=True)
+    subprocess.run(["git", "-C", str(bare), "config", "user.email", "ugh@ugh.local"], check=True)
+    subprocess.run(["git", "-C", str(bare), "config", "user.name", "ugh"], check=True)
     return bare
 
 
@@ -72,7 +72,7 @@ def _stage_local_op(wt: Path, symbol: str, content: str | None = None) -> None:
     GitBinding(wt).init()  # ensure committer identity (idempotent; shares the bare repo's config)
     GitBinding(wt).commit_all(f"add {symbol}")
     ideal = lens.get(wt)
-    put_sha = lens.put(wt, ideal, message=f"sgt: add {symbol}")
+    put_sha = lens.put(wt, ideal, message=f"ugh: add {symbol}")
     lens.record_ideal(wt, ideal, put_sha)
 
 
@@ -177,10 +177,10 @@ def test_plan_land_reports_a_missing_oracle_without_running_one(tmp_path):
 
 
 def test_land_cli_non_tty_applies_immediately(tmp_path):
-    """The machine/CI contract: `sgt land` on a non-tty (pytest's captured streams) skips the
+    """The machine/CI contract: `ugh land` on a non-tty (pytest's captured streams) skips the
     consequence confirm entirely and advances the branch exactly as it did before the pane existed
     -- no new args, no interactive refusal."""
-    from sgt.cli.sync import _land_branch
+    from ugh.cli.sync import _land_branch
 
     bare = _seed_shared(tmp_path, oracle_cmd="exit 0")
     wt = tmp_path / "wt"
@@ -196,9 +196,9 @@ def test_land_cli_tty_abort_lands_nothing(tmp_path, monkeypatch, capsys):
     """On a tty, the pane is the confirm step: an abort leaves the shared tip frozen (rc 1)."""
     import sys
 
-    from sgt.cli import _common
-    from sgt.cli.sync import _land_branch
-    from sgt.tui.consequence import Decision
+    from ugh.cli import _common
+    from ugh.cli.sync import _land_branch
+    from ugh.tui.consequence import Decision
 
     bare = _seed_shared(tmp_path, oracle_cmd="exit 0")
     wt = tmp_path / "wt"
@@ -219,9 +219,9 @@ def test_land_cli_tty_confirm_advances(tmp_path, monkeypatch):
     """A confirm on a tty runs the real (oracle-gated) land and advances the shared tip."""
     import sys
 
-    from sgt.cli import _common
-    from sgt.cli.sync import _land_branch
-    from sgt.tui.consequence import Decision
+    from ugh.cli import _common
+    from ugh.cli.sync import _land_branch
+    from ugh.tui.consequence import Decision
 
     bare = _seed_shared(tmp_path, oracle_cmd="exit 0")
     wt = tmp_path / "wt"
@@ -241,8 +241,8 @@ def test_land_cli_json_never_confirms(tmp_path, monkeypatch):
     """`--json` keeps its immediate-apply contract even on a tty: the pane never launches."""
     import sys
 
-    from sgt.cli import _common
-    from sgt.cli.sync import _land_branch
+    from ugh.cli import _common
+    from ugh.cli.sync import _land_branch
 
     bare = _seed_shared(tmp_path, oracle_cmd="exit 0")
     wt = tmp_path / "wt"
@@ -283,8 +283,8 @@ def _worktree_state(repo: Path) -> dict[str, bytes]:
     main = repo / "main.py"
     if main.is_file():
         state_map["main.py"] = main.read_bytes()
-    sgt = repo / ".sgt"
-    for p in sorted(sgt.rglob("*")):
+    ugh = repo / ".sgt"
+    for p in sorted(ugh.rglob("*")):
         if not p.is_file():
             continue
         rel = p.relative_to(repo).as_posix()
@@ -380,7 +380,7 @@ def test_crashed_land_is_recovered_on_next_land(tmp_path):
 def test_land_appends_an_entry_to_the_land_log(tmp_path):
     """A green land writes a D1 log entry recording its landed sha and merged ideal, keyed by the
     branch it advanced."""
-    from sgt.core.sync import log as _log
+    from ugh.core.sync import log as _log
 
     bare = _seed_shared(tmp_path, oracle_cmd="exit 0")
     wt = tmp_path / "wt"
@@ -399,7 +399,7 @@ def test_land_appends_an_entry_to_the_land_log(tmp_path):
 def test_a_blocked_land_writes_no_log_entry(tmp_path):
     """The log records only real, gated advances -- a red-oracle refusal leaves it untouched,
     matching the transactional no-trace contract (R7)."""
-    from sgt.core.sync import log as _log
+    from ugh.core.sync import log as _log
 
     bare = _seed_shared(tmp_path, oracle_cmd="exit 1")
     wt = tmp_path / "wt"
@@ -414,7 +414,7 @@ def test_a_blocked_land_writes_no_log_entry(tmp_path):
 def test_log_append_contention_never_blocks_the_land(tmp_path, monkeypatch):
     """Best-effort (D1): if the log ref's own CAS can't win (forced here), `land` still lands --
     the log is advisory, not on the correctness path."""
-    from sgt.core.sync import log as _log
+    from ugh.core.sync import log as _log
 
     bare = _seed_shared(tmp_path, oracle_cmd="exit 0")
     wt = tmp_path / "wt"
@@ -483,13 +483,13 @@ def test_land_has_no_advisory_when_the_worktree_is_already_caught_up(tmp_path):
 def _seed_checked_out(root: Path) -> tuple[GitBinding, str]:
     """A normal (non-bare) repo checked out on its default branch, seeded with one green op-set.
     Returns the binding and the checked-out ref (e.g. `refs/heads/main`)."""
-    from sgt.store.gitbind import init_store
+    from ugh.store.gitbind import init_store
     gb, _ = init_store(root)
     (root / "main.py").write_text(_BASE, encoding="utf-8")
     state.save_json(root, "oracle_config", {"tiers": [{"name": "gate", "command": "exit 0"}]})
     gb.commit_all("init")
     ideal = lens.get(root)
-    put = lens.put(root, ideal, message="sgt: init")
+    put = lens.put(root, ideal, message="ugh: init")
     lens.record_ideal(root, ideal, put)
     return gb, gb.symbolic_ref()
 
@@ -503,7 +503,7 @@ def _commit_op(gb: GitBinding, root: Path, symbol: str) -> str:
     )
     gb.commit_all(f"add {symbol}")
     ideal = lens.get(root)
-    put = lens.put(root, ideal, message=f"sgt: add {symbol}")
+    put = lens.put(root, ideal, message=f"ugh: add {symbol}")
     lens.record_ideal(root, ideal, put)
     return put
 
@@ -552,11 +552,11 @@ def test_land_other_branch_updates_only_that_branch_and_restores_session_tree(tm
 
 
 def test_land_fork_refusal_persists_the_fork_records(tmp_path):
-    """F23: `land` computes forks on the fly and used to refuse "run `sgt merge-op`" *without*
+    """F23: `land` computes forks on the fly and used to refuse "run `ugh merge-op`" *without*
     persisting them, while `forks`/`resolve` read committed `.sgt/forks.json` (written only by
-    sync's materialize) -- so `sgt forks` reported none, a dead end. A fork-blocked land now routes
+    sync's materialize) -- so `ugh forks` reported none, a dead end. A fork-blocked land now routes
     through the same shared writer, so `forks_view` shows exactly what land refused on."""
-    from sgt.api import forks_view
+    from ugh.api import forks_view
 
     bare = _seed_shared(tmp_path, oracle_cmd="exit 0")
     tip = GitBinding(bare).rev_parse("refs/heads/main")
@@ -573,15 +573,15 @@ def test_land_fork_refusal_persists_the_fork_records(tmp_path):
 
     assert not report.landed and report.forks              # land refused on a genuine fork
     assert (wt_b / ".sgt" / "forks.json").is_file()         # ...and now leaves the fork on disk (F23)
-    assert forks_view(wt_b)["open"] == len(report.forks)    # `sgt forks` sees what land refused on
+    assert forks_view(wt_b)["open"] == len(report.forks)    # `ugh forks` sees what land refused on
 
     # ...and the remedy land named is actually followable. The record is only useful if this repo can
     # read the ops it points at: `ingest` keeps theirs' ops in memory and `stage_candidate` (the
     # usual writer) runs only *after* the fork check, so the refusal used to record a tip it never
     # stored. `_open_fork_records` treats an unreadable tip as a stale record and drops it, which
-    # made `sgt forks` report none and `sgt resolve <sym>` answer "no open fork" -- for the exact
+    # made `ugh forks` report none and `ugh resolve <sym>` answer "no open fork" -- for the exact
     # symbol the refusal told the user to resolve. Both tips' content must be foldable here.
-    from sgt.api import fork_detail_view
+    from ugh.api import fork_detail_view
 
     symbol = report.forks[0][0]
     detail = fork_detail_view(wt_b, symbol)

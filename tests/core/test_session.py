@@ -1,8 +1,8 @@
-"""Tests for `sgt.core.session` -- the U30/D5 scratch-tree session layer.
+"""Tests for `ugh.core.session` -- the U30/D5 scratch-tree session layer.
 
 Each session is a real `git worktree` nested under `.sgt/local/sessions/<name>` (gitignored, so
 it never shows up in the main tree's own `git status`), checked out on its own
-`sgt-session/<name>` branch. `land` reuses the U23 CAS `sgt.core.sync.land` verbatim, run against
+`ugh-session/<name>` branch. `land` reuses the U23 CAS `ugh.core.sync.land` verbatim, run against
 the scratch tree (worktrees share one ref store, so the CAS is against the one shared branch
 record regardless of which worktree issues it); `gc` reaps sessions whose owning pid has died.
 """
@@ -11,12 +11,12 @@ from __future__ import annotations
 
 import os
 
-from sgt import state
-from sgt.core import lens
-from sgt.core import session as session_mod
-from sgt.core.lens import get
-from sgt.core.store import Store, fsck
-from sgt.store.gitbind import init_store
+from ugh import state
+from ugh.core import lens
+from ugh.core import session as session_mod
+from ugh.core.lens import get
+from ugh.core.store import Store, fsck
+from ugh.store.gitbind import init_store
 
 
 def _seed_repo(root, oracle_cmd="exit 0"):
@@ -26,18 +26,18 @@ def _seed_repo(root, oracle_cmd="exit 0"):
     (root / "main.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
     gb.commit_all("init")
     ideal = get(root)
-    put_sha = lens.put(root, ideal, message="sgt: init")
+    put_sha = lens.put(root, ideal, message="ugh: init")
     lens.record_ideal(root, ideal, put_sha)
     return gb
 
 
 def _write_and_commit(scratch, path, content):
-    from sgt.store.gitbind import GitBinding
+    from ugh.store.gitbind import GitBinding
 
     (scratch / path).write_text(content, encoding="utf-8")
     GitBinding(scratch).commit_all(f"edit {path}")
     ideal = get(scratch)
-    put_sha = lens.put(scratch, ideal, message=f"sgt: edit {path}")
+    put_sha = lens.put(scratch, ideal, message=f"ugh: edit {path}")
     lens.record_ideal(scratch, ideal, put_sha)
 
 
@@ -47,7 +47,7 @@ def test_start_creates_a_worktree_on_its_own_branch(tmp_path):
     session = session_mod.start(tmp_path, "s1")
 
     assert session.name == "s1"
-    assert session.branch == "sgt-session/s1"
+    assert session.branch == "ugh-session/s1"
     assert session.target_branch == "main"
     assert os.path.isdir(session.scratch)
     assert session.scratch.startswith(str(tmp_path / ".sgt" / "local" / "sessions"))

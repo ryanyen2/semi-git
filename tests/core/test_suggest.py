@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from sgt.core import suggest
+from ugh.core import suggest
 
 
 def test_add_load_and_dismiss_lifecycle(tmp_path):
@@ -44,7 +44,7 @@ def test_bad_kind_or_empty_op_set_refuses(tmp_path):
 
 
 def test_suggestion_view_projects_the_open_queue(tmp_path):
-    from sgt.api import suggestion_view
+    from ugh.api import suggestion_view
 
     assert suggestion_view(tmp_path) == {"count": 0, "suggestions": []}
     suggest.add(tmp_path, "conflict", ["F-a", "F-b"], ["op1"], "dual membership")
@@ -55,7 +55,7 @@ def test_suggestion_view_projects_the_open_queue(tmp_path):
 
 
 def test_cli_list_and_dismiss(tmp_path, capsys, monkeypatch):
-    from sgt.cli.suggestions import _suggestions
+    from ugh.cli.suggestions import _suggestions
 
     r = suggest.add(tmp_path, "merge", ["F-a", "F-b"], ["op1"], "couple")
     monkeypatch.chdir(tmp_path)

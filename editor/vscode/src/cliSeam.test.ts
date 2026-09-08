@@ -12,7 +12,7 @@ import { test } from "node:test";
 import type { ExecFailure } from "./cliSeam.ts";
 import { failureDetail, isSpawnFailure, mutationArgs } from "./cliSeam.ts";
 
-const BIN = "/usr/local/bin/sgt";
+const BIN = "/usr/local/bin/ugh";
 const detail = (err: ExecFailure) => failureDetail(err, BIN, 30_000);
 
 test("revert and restore carry the --yes the tty gate needs", () => {
@@ -40,7 +40,7 @@ test("a semantic refusal is read off stdout, not lost to err.message", () => {
     code: 1,
     stdout: "✗ [revert] nope::nothing — symbol 'nope::nothing' is not live in the ideal\n",
     stderr: "",
-    message: "Command failed: /usr/local/bin/sgt revert nope::nothing\n",
+    message: "Command failed: /usr/local/bin/ugh revert nope::nothing\n",
   });
   assert.match(d, /not live in the ideal/);
   assert.doesNotMatch(d, /Command failed/);
@@ -50,7 +50,7 @@ test("a dispatch error still comes from stderr, which is where the CLI puts it",
   const d = detail({
     code: 2,
     stdout: "",
-    stderr: "sgt: unknown verb `bogusverb`.\n  run `sgt help` for the verb surface.\n",
+    stderr: "ugh: unknown verb `bogusverb`.\n  run `ugh help` for the verb surface.\n",
     message: "Command failed",
   });
   assert.match(d, /unknown verb/);
@@ -84,7 +84,7 @@ test("a long prose refusal is capped but keeps its last lines", () => {
 test("a spawn failure is classified apart from a CLI that ran and refused", () => {
   const missing: ExecFailure = { code: "ENOENT", stdout: "", stderr: "", message: "spawn ENOENT" };
   assert.ok(isSpawnFailure(missing));
-  assert.match(detail(missing), /could not run the sgt CLI at '\/usr\/local\/bin\/sgt'/);
+  assert.match(detail(missing), /could not run the ugh CLI at '\/usr\/local\/bin\/ugh'/);
   // A refusal carries output, so it must never be mistaken for a bad binary path -- the two need
   // completely different fixes and the wrong one sends the user to their settings.
   assert.equal(isSpawnFailure({ code: 1, stdout: "✗ nope", stderr: "", message: "Command failed" }), false);

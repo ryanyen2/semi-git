@@ -1,12 +1,12 @@
-"""Tests for sgt.intent.prompts -- the intent overlay's live prompt capture sidecar (U3/KTD5):
+"""Tests for ugh.intent.prompts -- the intent overlay's live prompt capture sidecar (U3/KTD5):
 write-once by key, a committed G-Set-by-key merge, and its wiring into `loop.plan.intake` and
 `core.session.start` (the two proven capture points; MCP's `tool_plan_intake` funnels through
 `loop.plan.intake` and so is covered transitively, with no separate wiring needed)."""
 
 from __future__ import annotations
 
-from sgt.intent import prompts
-from sgt.store.gitbind import init_store
+from ugh.intent import prompts
+from ugh.store.gitbind import init_store
 
 
 def test_record_then_retrieve_round_trips(tmp_path):
@@ -53,7 +53,7 @@ def test_merge_same_key_both_sides_is_deterministic_no_crash(tmp_path):
 
 
 def test_plan_intake_records_a_retrievable_prompt_keyed_by_session_id(tmp_path):
-    from sgt.loop import plan as plan_mod
+    from ugh.loop import plan as plan_mod
 
     init_store(tmp_path)
     session = plan_mod.intake(tmp_path, "Fix the login bug across auth and session store.")
@@ -64,16 +64,16 @@ def test_plan_intake_records_a_retrievable_prompt_keyed_by_session_id(tmp_path):
 
 
 def test_session_start_with_task_records_a_retrievable_prompt_keyed_by_name(tmp_path):
-    from sgt import state
-    from sgt.core import lens
-    from sgt.core import session as session_mod
-    from sgt.core.lens import get
+    from ugh import state
+    from ugh.core import lens
+    from ugh.core import session as session_mod
+    from ugh.core.lens import get
 
     gb, _ = init_store(tmp_path)
     (tmp_path / "main.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
     gb.commit_all("init")
     ideal = get(tmp_path)
-    put_sha = lens.put(tmp_path, ideal, message="sgt: init")
+    put_sha = lens.put(tmp_path, ideal, message="ugh: init")
     lens.record_ideal(tmp_path, ideal, put_sha)
 
     session_mod.start(tmp_path, "s1", task="add rate limiting")
@@ -82,15 +82,15 @@ def test_session_start_with_task_records_a_retrievable_prompt_keyed_by_name(tmp_
 
 
 def test_session_start_without_task_records_nothing(tmp_path):
-    from sgt.core import lens
-    from sgt.core import session as session_mod
-    from sgt.core.lens import get
+    from ugh.core import lens
+    from ugh.core import session as session_mod
+    from ugh.core.lens import get
 
     gb, _ = init_store(tmp_path)
     (tmp_path / "main.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
     gb.commit_all("init")
     ideal = get(tmp_path)
-    put_sha = lens.put(tmp_path, ideal, message="sgt: init")
+    put_sha = lens.put(tmp_path, ideal, message="ugh: init")
     lens.record_ideal(tmp_path, ideal, put_sha)
 
     session_mod.start(tmp_path, "s1")

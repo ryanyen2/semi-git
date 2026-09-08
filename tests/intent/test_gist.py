@@ -1,6 +1,6 @@
 """The ask inside a real prompt.
 
-Every surface that shows captured words -- a checkpoint's name, a recorded reason, `sgt now`'s
+Every surface that shows captured words -- a checkpoint's name, a recorded reason, `ugh now`'s
 current task -- used to show the prompt's first *line*, which is only the ask when the prompt was
 typed like a commit message. Real prompts are not: they open with "so i think we should probably",
 they run three requests together with commas, they carry the reasoning after the request, and a
@@ -13,7 +13,7 @@ input is a gist that works on the input nobody types.
 
 from __future__ import annotations
 
-from sgt.intent.gist import ask_gist
+from ugh.intent.gist import ask_gist
 
 # The prompt that prompted this module, near enough verbatim: two asks, a clarification, three
 # qualifications, no full stop anywhere, 900 characters of it.
@@ -22,8 +22,8 @@ _LONG = (
     "the hooks not active, but I guess we can just add is post hoc, we can simulate the prompt "
     "that was written, and making sure they correctly being parsed (not the raw) and then "
     "allocated and correctly refelcted that by how the checkpoint named and organized? also one "
-    "thing I would like to clarify is that I dont think user will really use the sgt intent edit, "
-    "intent show ... they should be more like an attribute showing when users sgt show some "
+    "thing I would like to clarify is that I dont think user will really use the ugh intent edit, "
+    "intent show ... they should be more like an attribute showing when users ugh show some "
     "commit or feature@checkpoint"
 )
 

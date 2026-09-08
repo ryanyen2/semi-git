@@ -1,4 +1,4 @@
-"""Tests for `sgt.core.sync.log` -- the D1 append-only shared-branch land log.
+"""Tests for `ugh.core.sync.log` -- the D1 append-only shared-branch land log.
 
 Unit-level coverage of the module's own contract (append/read/lookup, ref-scoping by branch,
 best-effort failure tolerance). Cross-module integration -- `land` writing an entry, `ingest`
@@ -7,8 +7,8 @@ reading one back as a recovery rung -- lives in `test_land.py`/`test_sync_stages
 
 from __future__ import annotations
 
-from sgt.core.sync import log
-from sgt.store.gitbind import GitBinding
+from ugh.core.sync import log
+from ugh.store.gitbind import GitBinding
 
 
 def _sha(tag: str) -> str:

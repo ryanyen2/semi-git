@@ -1,13 +1,13 @@
-"""Tests for sgt.api.intent_view -- the intent overlay's canonical projection (plan U6): every
+"""Tests for ugh.api.intent_view -- the intent overlay's canonical projection (plan U6): every
 commit-keyed atom (recomputed on read) plus every persisted, LLM-named theme, each carrying its
 dependency-graph-backed tier and cross-feature span. Additive to compose_view (R21)."""
 
 from __future__ import annotations
 
-from sgt.api import compose_view, intent_view
-from sgt.core.lens import get
-from sgt.intent import prompts, theme
-from sgt.store.gitbind import init_store
+from ugh.api import compose_view, intent_view
+from ugh.core.lens import get
+from ugh.intent import prompts, theme
+from ugh.store.gitbind import init_store
 
 
 def test_shape_emits_themes_and_atoms_with_documented_keys_sorted(tmp_path, monkeypatch):
@@ -68,8 +68,8 @@ def test_no_ops_at_all_returns_empty_lists(tmp_path):
 def test_segments_carry_documented_keys_and_addressable_checkpoint(tmp_path):
     """The feature-scoped intent segments (checkpoints): deterministic on read, one per feature
     chapter, addressable as `<feature_id>@<seg_index>`, each carrying tier + novelty."""
-    from sgt.core.store import Store
-    from sgt.lens import tree
+    from ugh.core.store import Store
+    from ugh.lens import tree
 
     gb, _ = init_store(tmp_path)
     (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
@@ -109,8 +109,8 @@ def test_cross_feature_theme_reports_both_features_with_correct_tier(tmp_path, m
         raise RuntimeError("OPENAI_API_KEY not found in environment or .env")
 
     monkeypatch.setattr(theme, "get_client", _no_client)
-    from sgt.core.store import Store
-    from sgt.lens import tree
+    from ugh.core.store import Store
+    from ugh.lens import tree
 
     gb, _ = init_store(tmp_path)
     (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
@@ -182,7 +182,7 @@ def test_stale_shas_reports_a_member_sha_that_no_longer_resolves(tmp_path, monke
     """Simulates a rebase/amend invalidating a persisted theme member: `themes.json` still names
     a sha the current atom partition (`group.atoms`) no longer has -- `intent_view` must surface
     it rather than silently filtering it out of `atom_shas`/`op_ids` with no signal."""
-    from sgt import state
+    from ugh import state
 
     def _no_client(*args, **kwargs):
         raise RuntimeError("OPENAI_API_KEY not found in environment or .env")
@@ -211,11 +211,11 @@ def test_atom_joins_local_turns_rationale_and_chat_provenance(tmp_path):
     EXISTING atom projection -- a sha-keyed local turn reaches `prompt` via `_atom_prompt`'s
     fallback, a live rationale covering the atom's ops lands in `rationale`, and a plan session's
     `claude_session_id` rides along so a UI can offer `claude --resume` on the commit."""
-    from sgt import state
-    from sgt.core.op import Attribution
-    from sgt.core.store import Store
-    from sgt.intent import rationale as rationale_mod
-    from sgt.intent import turns
+    from ugh import state
+    from ugh.core.op import Attribution
+    from ugh.core.store import Store
+    from ugh.intent import rationale as rationale_mod
+    from ugh.intent import turns
 
     gb, _ = init_store(tmp_path)
     (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
@@ -255,10 +255,10 @@ def test_chat_provenance_joins_through_the_session_field_confirm_match_stamps(tm
     `plan`), so the planned path's chat provenance arrives at the projection as a session id --
     the join must read both (testbed 2026-07-31: reading `plan_ids` alone meant no `chat:` line
     ever rendered for exactly the plan-matched commits the feature was built for)."""
-    from sgt import state
-    from sgt.core.op import Attribution
-    from sgt.core.store import Store
-    from sgt.intent import turns
+    from ugh import state
+    from ugh.core.op import Attribution
+    from ugh.core.store import Store
+    from ugh.intent import turns
 
     gb, _ = init_store(tmp_path)
     (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")

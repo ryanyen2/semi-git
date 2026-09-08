@@ -9,7 +9,7 @@
 # the study and does not. `npm run build` builds the *website*; the four bundles
 # are separate artefacts that the deploy merely copies out of
 # `web/public/bundles/` because they happen to sit in the static directory. So
-# changing sgt and deploying gets you an updated site serving the old tool, with
+# changing ugh and deploying gets you an updated site serving the old tool, with
 # nothing on screen to say so -- and the participant who downloads it runs a
 # build nobody can name afterwards.
 #
@@ -36,14 +36,14 @@ if [ "$SITE_ONLY" -eq 0 ]; then
     # so a dirty tree ships code that is not any commit. The bundle records it
     # as `-dirty`, which is honest but useless: "which build did participant 7
     # run" then has no answer.
-    if [ -n "$(git status --porcelain -- sgt/ pyproject.toml editor/vscode/)" ]; then
-        echo "Refusing: sgt has uncommitted changes, so the wheel would not be any commit."
+    if [ -n "$(git status --porcelain -- ugh/ pyproject.toml editor/vscode/)" ]; then
+        echo "Refusing: ugh has uncommitted changes, so the wheel would not be any commit."
         echo "Commit first, or pass --site if you only meant to publish the website."
         exit 1
     fi
 
     echo "==> Building the four bundles."
-    for spec in "git bikecount" "sgt bikecount" "git footfall" "sgt footfall"; do
+    for spec in "git bikecount" "ugh bikecount" "git footfall" "ugh footfall"; do
         # Split explicitly: zsh does not word-split an unquoted expansion, so
         # `set -- $spec` passes one argument there and silently builds nothing.
         condition="${spec%% *}"

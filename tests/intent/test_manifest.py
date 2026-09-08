@@ -1,4 +1,4 @@
-"""Tests for `sgt.intent.manifest` (capture weave P1, design doc 2026-09-01 §4b): the per-save
+"""Tests for `ugh.intent.manifest` (capture weave P1, design doc 2026-09-01 §4b): the per-save
 capture manifest -- window harvesting, non-overlapping chaining, write-once per sha, and the
 footprint anchor. The save-beat integration (porcelain writing one) lives in tests/test_porcelain.py;
 the MCP carry that feeds it lives in tests/mcp/test_server.py."""
@@ -7,10 +7,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sgt.intent.activity import record_activity
-from sgt.intent.manifest import load_manifests, record_manifest
-from sgt.intent.turns import record_turn
-from sgt.store.gitbind import init_store
+from ugh.intent.activity import record_activity
+from ugh.intent.manifest import load_manifests, record_manifest
+from ugh.intent.turns import record_turn
+from ugh.store.gitbind import init_store
 
 
 @dataclass(frozen=True)

@@ -1,4 +1,4 @@
-"""Tests for sgt.core.verbs -- ideal-edit verbs (plan U8, R5/R14-surfacing/R20).
+"""Tests for ugh.core.verbs -- ideal-edit verbs (plan U8, R5/R14-surfacing/R20).
 
 Each verb is an exact set edit of the current ref's ideal, previewable with no I/O and validated
 through `Ideal.from_ops` so an invalid (forked) result is refused, never committed. The property
@@ -15,15 +15,15 @@ from pathlib import Path
 import pytest
 from hypothesis import HealthCheck, given, settings, strategies as st
 
-from sgt.core import order
-from sgt.core import session as session_mod
-from sgt.core import verbs
-from sgt.core.fold import code
-from sgt.core.lens import get
-from sgt.core.op import make_op
-from sgt.core.order import is_valid_ideal
-from sgt.core.store import Store
-from sgt.store.gitbind import init_store
+from ugh.core import order
+from ugh.core import session as session_mod
+from ugh.core import verbs
+from ugh.core.fold import code
+from ugh.core.lens import get
+from ugh.core.op import make_op
+from ugh.core.order import is_valid_ideal
+from ugh.core.store import Store
+from ugh.store.gitbind import init_store
 from tests.core.test_session import _seed_repo, _write_and_commit
 from tests.laws import corpus
 
@@ -105,7 +105,7 @@ def test_restore_resolves_a_superseded_ghost_and_validation_gates_reentry(tmp_pa
     resolves a ghost against the whole store (the fork-reduced HEAD ideal parks both siblings,
     so the old source-only resolution could never see v2 again), while `Ideal.from_ops`
     validation still decides what may re-enter."""
-    from sgt.store.gitbind import GitBinding
+    from ugh.store.gitbind import GitBinding
 
     repo = _foo_chain(tmp_path / "repo", 2)
     get(repo)
@@ -134,7 +134,7 @@ def test_restore_by_symbol_resolves_a_ghost_with_no_live_frontier_tip(tmp_path):
     `resolve_target`'s live-frontier path can't see it) must still bring the symbol back over the
     whole store, not fall through to the NL rung's "set OPENAI_API_KEY". `_validated` keeps the
     result legal. README flagship inverse."""
-    from sgt.store.gitbind import init_store
+    from ugh.store.gitbind import init_store
 
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
@@ -360,12 +360,12 @@ def test_every_verb_output_is_a_valid_ideal(tmp_path_factory, data):
 
 
 def test_redo_after_undo_saves_again(tmp_path):
-    """`sgt undo` of a save excludes that save's ops; re-authoring the same content by hand is a
+    """`ugh undo` of a save excludes that save's ops; re-authoring the same content by hand is a
     new statement of intent, so the next save must lift the exclusion (tombstone its tags) instead
     of wedging every future save on put()'s byte-drift refusal (found 2026-08-09 building the
     study testbed: save -> undo -> redo -> save failed forever)."""
-    from sgt.cli.porcelain import _undo, save
-    from sgt.store.gitbind import init_store
+    from ugh.cli.porcelain import _undo, save
+    from ugh.store.gitbind import init_store
 
     gb, _ = init_store(tmp_path)
     (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
@@ -390,7 +390,7 @@ def test_default_revert_subtracts_cleanly_and_keeps_interleaved_later_work(tmp_p
     into a shared symbol; a later feature reworks the same shared symbol. Default revert of F
     prunes F's own symbol, splices F's wiring out of the shared symbol's tip, and leaves the
     later feature byte-identical -- nothing beyond F is removed."""
-    from sgt.store.gitbind import init_store
+    from ugh.store.gitbind import init_store
 
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
@@ -436,7 +436,7 @@ def test_revert_regrounds_the_layout_facts_of_symbols_it_keeps():
     study repo -- `a` and `c` still live, their residue and anchor chains gone with the removal,
     `b` removed from between them.
     """
-    from sgt.core.subtract import _ANCHOR_FIRST, _repair_layout
+    from ugh.core.subtract import _ANCHOR_FIRST, _repair_layout
 
     path = "m.py"
 
@@ -477,7 +477,7 @@ def test_repair_layout_is_a_no_op_when_the_removal_left_the_partition_intact():
     """The repair only fires where facts are missing or point at removed code -- a removal that
     leaves a file's layout alone must mint no ops, or every revert would churn the residue chain
     and ungroundthe next save's mined rework."""
-    from sgt.core.subtract import _ANCHOR_FIRST, _repair_layout
+    from ugh.core.subtract import _ANCHOR_FIRST, _repair_layout
 
     path = "m.py"
 
@@ -514,8 +514,8 @@ def test_restore_picks_one_layout_head_when_repairs_forked_the_anchor_chain(tmp_
     added by hand in the shape `_repair_layout` emits it (`intent="revert <tag>: keep <name>'s place
     in <path>"`), rather than driven through the multi-cycle revert sequence the sweep took to it.
     """
-    from sgt.core.mine import _content_version, _positional_version
-    from sgt.core.subtract import _ANCHOR_FIRST
+    from ugh.core.mine import _content_version, _positional_version
+    from ugh.core.subtract import _ANCHOR_FIRST
 
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
@@ -561,7 +561,7 @@ def test_restore_picks_one_layout_head_when_repairs_forked_the_anchor_chain(tmp_
 
 
 def _journal_events(repo):
-    from sgt.core import oplog
+    from ugh.core import oplog
 
     return oplog.load(repo).get(oplog._ref_key(Path(repo)), [])
 
@@ -585,14 +585,14 @@ def test_apply_records_the_verb_and_its_target_ops_on_the_journal_event(tmp_path
 def test_the_revert_a_restore_reverses_is_found_by_the_name_the_person_typed(tmp_path):
     """Op ids do not survive a re-derivation. A name does.
 
-    `sgt log --refresh` and `advanced resync` re-mine and re-cluster, and afterwards the same
+    `ugh log --refresh` and `advanced resync` re-mine and re-cluster, and afterwards the same
     handle resolves to a different op-set -- 39 ops where the revert had recorded 20, measured on
     the study's footfall bundle. Both comparisons this resolver made were over op ids, so neither
     matched, and `restore` fell back to the algebraic union: `would leave two live versions of
     footfall/metrics.py::_exclude_events` on one path, and on the other a ✓ over a commit that
     changed no files -- which is what a participant hit in stage 4, twice, on two different days.
 
-    `sgt undo` reversed the very same edit without trouble the whole time, because it replays the
+    `ugh undo` reversed the very same edit without trouble the whole time, because it replays the
     journal instead of re-resolving a name. This is the rule that lets restore do the same.
     """
     repo = _foo_chain(tmp_path / "repo", 3)
@@ -688,7 +688,7 @@ def test_restore_peels_the_splice_a_subtraction_revert_minted(tmp_path):
     inverse-patch splice at the tip. A union can never take that back off, so `restore` used to
     either refuse the exact rewind as a fork or report ✓ with the call site still spliced out --
     the case `cli.ideal_edit._restore_gap` exists to warn about."""
-    from sgt.store.gitbind import init_store
+    from ugh.store.gitbind import init_store
 
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
@@ -721,11 +721,11 @@ def test_restore_peels_the_splice_a_subtraction_revert_minted(tmp_path):
 
 
 def test_restore_keeps_work_committed_after_the_revert(tmp_path):
-    """What makes the event inverse worth having over `sgt undo`: undo re-materializes the prior
+    """What makes the event inverse worth having over `ugh undo`: undo re-materializes the prior
     ideal as an absolute snapshot and so *refuses* once anything landed on top (the F3 guard).
     The event inverse is a delta applied to the current ideal, so it is random-access -- the
     reverted work comes back and the intervening commit stays."""
-    from sgt.store.gitbind import init_store
+    from ugh.store.gitbind import init_store
 
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
@@ -760,7 +760,7 @@ def test_restore_declines_the_event_inverse_when_later_work_built_on_the_splice(
 
     What is pinned here is that the decline is non-destructive: the ideal does not move, it stays
     valid, and the later work is still there to be built on."""
-    from sgt.store.gitbind import init_store
+    from ugh.store.gitbind import init_store
 
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
@@ -826,7 +826,7 @@ def test_meta_cannot_overwrite_the_fields_undo_relies_on(tmp_path):
     """`record_ideal` merges caller metadata into the entry, and undo reads that same entry to
     re-materialize a prior ideal. A caller that could set `ideal` or `result` through `meta`
     could therefore rewrite what undo restores, so the reserved keys are not overridable."""
-    from sgt.core import lens
+    from ugh.core import lens
 
     repo = _foo_chain(tmp_path / "repo", 2)
     ideal = get(repo)
@@ -876,7 +876,7 @@ def test_restore_never_peels_only_some_of_the_stand_ins_a_revert_minted(tmp_path
     spliced out. `_validated` accepts that: groundedness and fork-freedom say nothing about
     whether a reversal is *complete*. So the result is a half-edit reported as a success, which is
     the failure class this whole path exists to remove."""
-    from sgt.store.gitbind import init_store
+    from ugh.store.gitbind import init_store
 
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
@@ -918,7 +918,7 @@ def test_restore_matches_the_revert_event_across_shifted_layout_attribution(tmp_
     stage 4, 2026-08-30, every extra one layout-only), the exact-equality journal lookup missed,
     and the algebraic fallback refused the rewind as a fork. Removals that agree on every entity
     op are the same removal, so the lookup compares entity cores."""
-    from sgt.core.op import _symbol_kind
+    from ugh.core.op import _symbol_kind
 
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
@@ -981,7 +981,7 @@ def test_the_inverse_is_the_whole_peel_not_only_the_stand_ins_still_at_a_tip(tmp
     frontier tip, on the grounds that the caller's union fallback would refuse. It does not
     refuse: it re-admits the closure of the removed set while the mints keep holding the current
     bytes, so both sides fold to identical text. On the study's footfall bundle that answered
-    `restores 39 edits` and changed no file, under a ✓ -- while `sgt undo` reversed the same edit
+    `restores 39 edits` and changed no file, under a ✓ -- while `ugh undo` reversed the same edit
     without trouble, because it replays the recorded snapshot instead of asking where tips are.
 
     So the plan is the complete reversal and `_validated` is the judge. What this pins is that a
@@ -1006,13 +1006,13 @@ def test_the_inverse_is_the_whole_peel_not_only_the_stand_ins_still_at_a_tip(tmp
 
 
 def test_apply_journals_the_planned_edit_even_when_a_reader_syncs_mid_apply(tmp_path, monkeypatch):
-    """F146. The editor polls sgt every few seconds. A poll that lands between `put()`'s commit and
+    """F146. The editor polls ugh every few seconds. A poll that lands between `put()`'s commit and
     `record_ideal` sees HEAD moved past the witness and mines the revert's own commit as ordinary
     edits. `record_ideal` then read the journal's "before" set off disk, so the entry claimed the
     revert removed those mined ops too -- and `restore`, reversing the entry exactly, re-admitted
     ops that hold the removed bytes and changed no file. Measured live on footfall: 39 re-admitted,
     0 files, `./check 4` still red. The journal must describe the edit that was planned."""
-    from sgt.core import lens
+    from ugh.core import lens
 
     repo = _foo_chain(tmp_path / "repo", 3)
     original = get(repo).op_ids

@@ -1,4 +1,4 @@
-"""Tests for sgt.intent.theme -- the intent overlay's rung 2 (U4/KTD4/KTD7): LLM naming +
+"""Tests for ugh.intent.theme -- the intent overlay's rung 2 (U4/KTD4/KTD7): LLM naming +
 scope-less coalescing, cached by content-hash, with a deterministic offline fallback. `FakeClient`/
 `_FakeResponses` mirror `tests/intent/test_resolve.py`'s idiom -- no network or API key needed."""
 
@@ -6,9 +6,9 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from sgt.core.lens import _load_backfill_state, _load_witnesses, _ref_key, get
-from sgt.intent import group, theme
-from sgt.store.gitbind import GitBinding, init_store
+from ugh.core.lens import _load_backfill_state, _load_witnesses, _ref_key, get
+from ugh.intent import group, theme
+from ugh.store.gitbind import GitBinding, init_store
 
 
 class _FakeResponses:
@@ -49,7 +49,7 @@ def test_no_op_ids_anywhere_in_schema_or_persisted_themes(tmp_path, monkeypatch)
 
     themes = theme.build_themes(tmp_path)
 
-    from sgt.core.store import Store
+    from ugh.core.store import Store
 
     real_op_ids = {op.id for op in Store(tmp_path).all_ops()}
     for t in themes.values():
@@ -92,7 +92,7 @@ def test_cache_hit_makes_zero_live_calls_on_second_build(tmp_path, monkeypatch):
 
     first = theme.build_themes(tmp_path)
 
-    from sgt.core.store import Store
+    from ugh.core.store import Store
 
     themer = theme.IntentThemer(tmp_path)
     bundles = group.scope_bundles(group.atoms(tmp_path), Store(tmp_path).all_ops())
@@ -230,7 +230,7 @@ def test_group_scopeless_unchanged_chunk_hits_cache_changed_chunk_does_not(tmp_p
     assert themer2.calls == 0
 
     # a 46th scope-less atom only changes the second (smaller) chunk's content hash
-    from sgt.store.gitbind import GitBinding
+    from ugh.store.gitbind import GitBinding
 
     (tmp_path / "f45.py").write_text("def fn45():\n    return 45\n", encoding="utf-8")
     GitBinding(tmp_path).commit_all("touch f45.py")

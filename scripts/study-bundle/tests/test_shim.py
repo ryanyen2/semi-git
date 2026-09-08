@@ -67,18 +67,18 @@ def main() -> int:
     subprocess.run([git, "add", "-A"], cwd=work, timeout=60)
     subprocess.run([git, "commit", "-qm", "first"], cwd=work, timeout=60)
 
-    # A stand-in for sgt: a recorded tool that shells out to git, which is what
-    # sgt does on nearly every command.
-    (home / "bin" / "sgt").write_text(
+    # A stand-in for ugh: a recorded tool that shells out to git, which is what
+    # ugh does on nearly every command.
+    (home / "bin" / "ugh").write_text(
         f'#!/bin/sh\n"{git}" log --oneline -n 1 >/dev/null 2>&1\n'
-        f'"{git}" diff HEAD >/dev/null 2>&1\necho "sgt ran"\n'
+        f'"{git}" diff HEAD >/dev/null 2>&1\necho "ugh ran"\n'
     )
-    (home / "bin" / "sgt").chmod(0o755)
+    (home / "bin" / "ugh").chmod(0o755)
 
     shim_dir = home / "bin" / "shims"
     shim_dir.mkdir(parents=True)
-    real_for = {"git": git, "sgt": str(home / "bin" / "sgt")}
-    for cmd in ("git", "sgt"):
+    real_for = {"git": git, "ugh": str(home / "bin" / "ugh")}
+    for cmd in ("git", "ugh"):
         wrapper = shim_dir / cmd
         wrapper.write_text(
             "#!/bin/sh\n"
@@ -189,11 +189,11 @@ def main() -> int:
     # --- one move is one event --------------------------------------------
     print("\nOne move is one event")
     before = len(read_log(home))
-    run(["sgt", "log"], STUDY_SURFACE="editor")
+    run(["ugh", "log"], STUDY_SURFACE="editor")
     fresh = [e for e in read_log(home)[before:] if e["kind"] == "command"]
     check(
         "a tool that shells out to git is recorded once, as itself",
-        [e["name"] for e in fresh] == ["sgt"],
+        [e["name"] for e in fresh] == ["ugh"],
         f"recorded: {[(e['name'], e.get('text')) for e in fresh]}",
     )
 

@@ -1,4 +1,4 @@
-"""Stage-level tests for the `sgt.core.sync` package (plan U19, D4).
+"""Stage-level tests for the `ugh.core.sync` package (plan U19, D4).
 
 The 6 integration tests in `test_sync.py` are the behavior contract; these cover the decomposed
 stages in isolation -- the pieces that reuse into `land`/`propose` later (U23/U24) -- plus the
@@ -11,16 +11,16 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
-from sgt.core import lens, order, sync
-from sgt.core.fold import code
-from sgt.core.ideal import Ideal
-from sgt.core.op import make_op
-from sgt.core.store import Store
-from sgt.core.sync.fetch import fetch
-from sgt.core.sync.ingest import Ingested, ingest
-from sgt.core.sync.resolve import resolve
-from sgt.lens.pins import Pins
-from sgt.store.gitbind import GitBinding
+from ugh.core import lens, order, sync
+from ugh.core.fold import code
+from ugh.core.ideal import Ideal
+from ugh.core.op import make_op
+from ugh.core.store import Store
+from ugh.core.sync.fetch import fetch
+from ugh.core.sync.ingest import Ingested, ingest
+from ugh.core.sync.resolve import resolve
+from ugh.lens.pins import Pins
+from ugh.store.gitbind import GitBinding
 
 from tests.core.test_sync import _BASE, _edit_and_commit, _push, _two_clones
 
@@ -131,8 +131,8 @@ def test_sync_materializes_exactly_the_ideal_algebra(tmp_path):
 
 import subprocess as _subprocess
 
-from sgt.core.store import _serialize
-from sgt.core.sync.ingest import recover_base
+from ugh.core.store import _serialize
+from ugh.core.sync.ingest import recover_base
 from tests.core.test_sync import _clone, _init_bare
 
 
@@ -150,7 +150,7 @@ def _squash(repo: Path, tip_sha: str, parent_sha: str, message: str) -> str:
 
 
 def test_u7_base_recovery_from_witnessed_trailers(tmp_path):
-    """Scenario 1: the merge-base (an sgt-native `put` commit) carries witnessed `Sgt-Op:` trailers,
+    """Scenario 1: the merge-base (an ugh-native `put` commit) carries witnessed `Sgt-Op:` trailers,
     so its *full* ideal is recovered -- both foo and bar, not just a divergent contribution."""
     a, b = _two_clones(tmp_path, _BASE)
     _edit_and_commit(a, "main.py", _BASE + "\n\ndef baz():\n    return 42\n", "A: add baz")
@@ -186,7 +186,7 @@ def test_u7_base_recovery_rejects_a_stale_inherited_record_and_mines(tmp_path):
 def test_u7_squash_tip_recovers_via_mining(tmp_path):
     """Scenario 3 (Phase 1.2 / behavior change I.1): a server-side squash-merge destroys theirs' tip
     trailers, and the in-tree `.sgt/ideal.json` recovery rung (C5) is gone with the op store's move
-    off the branch tree -- so a squash where sgt never ran to push the log ref recovers by *mining*
+    off the branch tree -- so a squash where ugh never ran to push the log ref recovers by *mining*
     the divergent range (coarser, but LAW-0 reproducible), never from a tree-resident ideal record
     that would reintroduce F10. The recovery ladder is now log -> trailers -> mine."""
     remote = _init_bare(tmp_path)
@@ -236,7 +236,7 @@ def test_u7_disjoint_base_recovers_none_and_warns(tmp_path):
 
 
 def test_u7_tip_with_new_ops_but_no_trailers_is_a_detected_footgun(tmp_path):
-    """Scenario 5: theirs' tip carries a *new* `.sgt/ops` blob (it ran sgt) but no trailers and no
+    """Scenario 5: theirs' tip carries a *new* `.sgt/ops` blob (it ran ugh) but no trailers and no
     witnessed record -- a detected footgun. Recovery degrades to ∅ with a named remedy rather than
     mis-mining a coarse squash."""
     a, b = _two_clones(tmp_path, _BASE)
@@ -269,17 +269,17 @@ def test_u7_forged_trailers_are_rejected(tmp_path):
 
 # -- D1: the land log as a rung-0 base/tip recovery method ---------------------------------------
 
-from sgt.core.sync import log as _log
+from ugh.core.sync import log as _log
 
 
 def test_base_recovery_via_the_land_log(tmp_path):
-    """A base sha that a prior `sgt land` recorded in the D1 log recovers as `"log"` -- checked
+    """A base sha that a prior `ugh land` recorded in the D1 log recovers as `"log"` -- checked
     before trailers, since it survives a squash the same way a witnessed record does but without
     depending on `.sgt/ideal.json` staying untouched by later commits."""
     remote = _init_bare(tmp_path)
     a = _clone(remote, tmp_path / "a")
     lens.init(a)
-    from sgt import state
+    from ugh import state
     state.save_json(a, "oracle_config", {"tiers": [{"name": "gate", "command": "exit 0"}]})
     _edit_and_commit(a, "main.py", _BASE, "init")
     _push(a)
@@ -311,9 +311,9 @@ def test_land_log_recovery_is_rejected_when_unwitnessed_and_falls_through(tmp_pa
 
 def test_land_log_ref_transports_across_clones_and_recovers_the_base(tmp_path):
     """The log ref is best-effort transport, not just a local artifact: pushed alongside the
-    branch (`sgt push`), it's there for a *different* clone's base recovery after a plain fetch."""
-    from sgt import state
-    from sgt.cli.sync import _push as cli_push
+    branch (`ugh push`), it's there for a *different* clone's base recovery after a plain fetch."""
+    from ugh import state
+    from ugh.cli.sync import _push as cli_push
 
     remote = _init_bare(tmp_path)
     a = _clone(remote, tmp_path / "a")

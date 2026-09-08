@@ -1,5 +1,5 @@
-"""Tests for the U32 review surface: `sgt.api.proposal_review_view`'s feature checklist, `sgt
-propose land --subset`'s partial-accept CLI, and `sgt propose publish`'s `gh`-porcelain behavior.
+"""Tests for the U32 review surface: `ugh.api.proposal_review_view`'s feature checklist, `ugh
+propose land --subset`'s partial-accept CLI, and `ugh propose publish`'s `gh`-porcelain behavior.
 
 Reuses the two-clone rig from `test_sync` and `_configure_oracle` from `test_claims`, exactly like
 `test_propose.py`. Two disjoint additions -- each a brand-new file -- are hand-assigned to two
@@ -17,11 +17,11 @@ import shutil
 
 import pytest
 
-from sgt import api
-from sgt.core import lens, propose
-from sgt.core.store import Store
-from sgt.lens import tree
-from sgt.store.gitbind import GitBinding, parse_op_ids
+from ugh import api
+from ugh.core import lens, propose
+from ugh.core.store import Store
+from ugh.lens import tree
+from ugh.store.gitbind import GitBinding, parse_op_ids
 from tests.core.test_claims import _configure_oracle
 from tests.core.test_sync import _BASE, _two_clones
 from tests.core.test_propose import _branch
@@ -38,7 +38,7 @@ def _two_feature_proposal(tmp_path, *, oracle_cmd="exit 0"):
     (a / "qux.py").write_text("def qux():\n    return 4\n", encoding="utf-8")
     GitBinding(a).commit_all("add baz.py and qux.py")
     ideal = lens.get(a)
-    put_sha = lens.put(a, ideal, message="sgt: mine add baz/qux")
+    put_sha = lens.put(a, ideal, message="ugh: mine add baz/qux")
     lens.record_ideal(a, ideal, put_sha)
 
     op_leaf = {}
@@ -88,13 +88,13 @@ def test_proposal_review_view_reports_error_for_unknown_id(tmp_path):
 
 
 def test_cli_propose_status_checklist_flag_emits_proposal_review_view(tmp_path, monkeypatch, capsys):
-    """R21: `sgt propose status <id> --checklist --json` is byte-identical to
+    """R21: `ugh propose status <id> --checklist --json` is byte-identical to
     `proposal_review_view` -- the extension's compositions view needs the feature checklist
     (op_ids/requires per feature) to drive partial-accept review, and plain `propose status`
     stays on the lighter `proposal_view` shape for everyone else."""
     import json
 
-    from sgt.cli import main
+    from ugh.cli import main
 
     a, p = _two_feature_proposal(tmp_path)
     expected = api.proposal_review_view(a, p.id)
@@ -154,7 +154,7 @@ def test_cli_land_subset_refuses_when_a_required_feature_is_left_out(tmp_path, m
     pinned features never actually require one another."""
     a, p = _two_feature_proposal(tmp_path)
 
-    from sgt.cli import propose as propose_cli
+    from ugh.cli import propose as propose_cli
 
     real_view = api.proposal_review_view
 
@@ -165,7 +165,7 @@ def test_cli_land_subset_refuses_when_a_required_feature_is_left_out(tmp_path, m
                 f["requires"] = ["F-qux"]
         return view
 
-    monkeypatch.setattr("sgt.api.proposal_review_view", _fake_view)
+    monkeypatch.setattr("ugh.api.proposal_review_view", _fake_view)
     rc = propose_cli._propose(str(a), "land", p.id, "main", None, None, False, ["F-baz"], "origin", False, False)
     assert rc == 1
     out = capsys.readouterr().out
@@ -174,7 +174,7 @@ def test_cli_land_subset_refuses_when_a_required_feature_is_left_out(tmp_path, m
 
 def test_cli_publish_refuses_cleanly_when_gh_is_absent(tmp_path, monkeypatch, capsys):
     a, p = _two_feature_proposal(tmp_path)
-    from sgt.cli import propose as propose_cli
+    from ugh.cli import propose as propose_cli
 
     monkeypatch.setattr("shutil.which", lambda _name: None)
     rc = propose_cli._propose(str(a), "publish", p.id, "main", None, None, False, None, "origin", False, False)
@@ -191,7 +191,7 @@ def test_cli_publish_edits_an_existing_pr_instead_of_creating_a_second_one(tmp_p
     import subprocess
 
     a, p = _two_feature_proposal(tmp_path)
-    from sgt.cli import propose as propose_cli
+    from ugh.cli import propose as propose_cli
 
     real_run = subprocess.run
     calls = []
@@ -221,7 +221,7 @@ def test_cli_publish_pushes_the_pr_branch_and_reports_create_failure_off_github(
     `GitBinding.push_head_as` reaches the remote -- and then fails cleanly when `gh pr create`
     can't resolve a GitHub repo for it, rather than crashing."""
     a, p = _two_feature_proposal(tmp_path)
-    from sgt.cli import propose as propose_cli
+    from ugh.cli import propose as propose_cli
 
     rc = propose_cli._propose(str(a), "publish", p.id, "main", None, None, False, None, "origin", False, False)
     assert rc == 1  # gh has no GitHub host to create a PR against for a local-only remote

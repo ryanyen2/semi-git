@@ -1,4 +1,4 @@
-"""Characterization golden master for the `sgt.api` projection (plan P0, INV-1).
+"""Characterization golden master for the `ugh.api` projection (plan P0, INV-1).
 
 For each deterministic corpus project, capture every public view and compare it byte-for-byte
 against a committed snapshot. Later refactor phases (op-log fold, verbatim splice, Node-store
@@ -7,7 +7,7 @@ observable behavior change a client would see.
 
 Regenerate after an intentional, additive projection change:
 
-    SGT_UPDATE_GOLDEN=1 uv run pytest tests/golden/ -q
+    UGH_UPDATE_GOLDEN=1 uv run pytest tests/golden/ -q
 
 then review the snapshot diff before committing.
 """
@@ -33,11 +33,11 @@ def _dump(views: dict) -> str:
 def _assert_matches_golden(snapshot_name: str, actual: str) -> None:
     snapshot = _SNAPSHOTS / snapshot_name
 
-    if os.environ.get("SGT_UPDATE_GOLDEN"):
+    if os.environ.get("UGH_UPDATE_GOLDEN"):
         snapshot.write_text(actual, encoding="utf-8")
         pytest.skip(f"updated golden snapshot {snapshot.name}")
 
-    assert snapshot.exists(), f"missing golden {snapshot} — regenerate with SGT_UPDATE_GOLDEN=1"
+    assert snapshot.exists(), f"missing golden {snapshot} — regenerate with UGH_UPDATE_GOLDEN=1"
 
     expected = snapshot.read_text(encoding="utf-8")
     if actual != expected:
@@ -50,7 +50,7 @@ def _assert_matches_golden(snapshot_name: str, actual: str) -> None:
                 lineterm="",
             )
         )
-        pytest.fail(f"sgt.api projection drifted for {snapshot_name!r}:\n{diff}")
+        pytest.fail(f"ugh.api projection drifted for {snapshot_name!r}:\n{diff}")
 
 
 @pytest.mark.parametrize("name", sorted(KERNEL_CORPUS))

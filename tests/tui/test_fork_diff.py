@@ -1,8 +1,8 @@
-"""Tests for sgt.tui.fork_diff -- the plain side-by-side fork-tip diff `sgt resolve` renders."""
+"""Tests for ugh.tui.fork_diff -- the plain side-by-side fork-tip diff `ugh resolve` renders."""
 
 from __future__ import annotations
 
-from sgt.tui.fork_diff import side_by_side
+from ugh.tui.fork_diff import side_by_side
 
 
 def test_side_by_side_shows_both_columns_and_a_gutter_on_a_divergent_hunk():

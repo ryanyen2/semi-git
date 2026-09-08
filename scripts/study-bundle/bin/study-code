@@ -6,10 +6,10 @@
 # condition allows, everything it does to the repository is recorded, and the
 # participant's own editor is left exactly as it was.
 #
-# The recording works because the editor never runs git or sgt directly. Both
-# are pointed at the wrappers in bin/shims -- through `git.path` and `sgt.path`
+# The recording works because the editor never runs git or ugh directly. Both
+# are pointed at the wrappers in bin/shims -- through `git.path` and `ugh.path`
 # in the profile below, and through PATH as a second route in case a setting is
-# ever ignored. The built-in Source Control view and the semi-git extension both
+# ever ignored. The built-in Source Control view and the ugh extension both
 # resolve their binary from those two settings, so a click that reads history
 # lands in the same log as a command typed in the shell.
 set -euo pipefail
@@ -43,7 +43,7 @@ mkdir -p "$PROFILE/User"
 # to.
 #
 # The git arm only. Both arms have the built-in Source Control view -- it cannot
-# be uninstalled -- but turning a git history surface *on* in the sgt arm would
+# be uninstalled -- but turning a git history surface *on* in the ugh arm would
 # be adding to a condition rather than describing it.
 if [ "$CONDITION" = git ]; then
     GIT_ARM_SETTINGS='  "git.blame.editorDecoration.enabled": true,'
@@ -70,7 +70,7 @@ fi
 cat > "$PROFILE/User/settings.json" <<SETTINGS
 {
   "git.path": "$SHIMS/git",
-  "sgt.path": "$SHIMS/sgt",
+  "ugh.path": "$SHIMS/ugh",
 
   "git.autofetch": false,
   "git.openRepositoryInParentFolders": "never",

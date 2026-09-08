@@ -39,7 +39,7 @@ repo="${1:-$HOME/repos/sgt-demo/variolite}"
 out="${2:-/tmp/variolite-frontiers}"
 repo="$(cd "$repo" && pwd)"
 here="$(cd "$(dirname "$0")" && pwd)"
-SGT="${SGT:-sgt}"
+UGH="${UGH:-ugh}"
 PORT="${PORT:-5312}"
 
 [ -d "$repo/node_modules" ] || { echo "$repo has no node_modules; npm install there first" >&2; exit 1; }
@@ -256,7 +256,7 @@ JSON
 for idx in $(seq "$from" "$to"); do
     dir="$out/$idx"
     mkdir -p "$dir"
-    "$SGT" advanced fold --at "$idx" --json > "$out/$idx.json" 2>/dev/null
+    "$UGH" advanced fold --at "$idx" --json > "$out/$idx.json" 2>/dev/null
 
     python3 - "$out/$idx.json" "$dir" <<'PY'
 import json, pathlib, sys

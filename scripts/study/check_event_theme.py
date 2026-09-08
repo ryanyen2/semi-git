@@ -27,7 +27,7 @@ def main() -> int:
         return 2
     path = Path(sys.argv[1]) / ".sgt" / "intent" / "themes.json"
     if not path.is_file():
-        print(f"  no themes in {sys.argv[1]} -- run `sgt log --rebuild` first", file=sys.stderr)
+        print(f"  no themes in {sys.argv[1]} -- run `ugh log --rebuild` first", file=sys.stderr)
         return 1
     squash = lambda t: "".join(c for c in (t or "").casefold() if c.isalnum())
     body = json.loads(path.read_text(encoding="utf-8")).get("data", {})

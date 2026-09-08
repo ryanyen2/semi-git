@@ -10,9 +10,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from sgt.cli import main
-from sgt.intent import resolve as resolve_mod
-from sgt.store.gitbind import init_store
+from ugh.cli import main
+from ugh.intent import resolve as resolve_mod
+from ugh.store.gitbind import init_store
 
 
 def _boom(*args, **kwargs):
@@ -38,7 +38,7 @@ def _seed(tmp_path, n: int = 2):
 
 
 def test_init_with_horizon_mines_only_from_that_commit_forward(tmp_path, capsys):
-    """`sgt init --horizon <ref>` must reach `lens.init`'s `horizon` param, not get swallowed
+    """`ugh init --horizon <ref>` must reach `lens.init`'s `horizon` param, not get swallowed
     as a positional path -- the escape hatch for a repo whose pre-horizon history is unminable
     (e.g. self-referential rename/delete cycles the miner can't represent, R10)."""
     gb, _ = init_store(tmp_path)
@@ -64,7 +64,7 @@ def test_init_with_horizon_mines_only_from_that_commit_forward(tmp_path, capsys)
 
 
 def test_init_and_log_roundtrip(tmp_path, capsys):
-    # U1 moved the raw op-DAG dump under `sgt log --ops` (bare `sgt log` is now the lane×commit
+    # U1 moved the raw op-DAG dump under `ugh log --ops` (bare `ugh log` is now the lane×commit
     # grid, which doesn't print raw `file::symbol` names).
     _seed(tmp_path, 1)
     capsys.readouterr()  # drain seed commit output (none, but keep symmetry with other tests)
@@ -74,7 +74,7 @@ def test_init_and_log_roundtrip(tmp_path, capsys):
 
 
 def test_log_human_rail_and_map_wire_state_projections(tmp_path, capsys):
-    # The rail (bare `sgt log`) and the map (`--map`) both build `states` from forks_view/
+    # The rail (bare `ugh log`) and the map (`--map`) both build `states` from forks_view/
     # rewrite_view and read grid_view ghosts. A clean repo has no forks/drafts/plans -> no banner,
     # but the projections must still wire through without error and render the tree.
     _seed(tmp_path, 3)
@@ -93,32 +93,32 @@ def test_log_human_rail_and_map_wire_state_projections(tmp_path, capsys):
 def _seed_resolvable_fork(tmp_path, symbol="a.py::foo"):
     """Record a genuinely-divergent open fork (real symbol, differing after versions) so the state
     banner must render on any fork-surfacing verb."""
-    from sgt import state
-    from sgt.core.op import make_op
-    from sgt.core.store import Store
+    from ugh import state
+    from ugh.core.op import make_op
+    from ugh.core.store import Store
 
     store = Store(tmp_path)
     a = store.add(make_op({symbol: ("v0", "v1")}, {symbol: b"a"}, kind="touched"))
     b = store.add(make_op({symbol: ("v0", "v2")}, {symbol: b"b"}, kind="rebirth"))
     state.save_json(tmp_path, "forks", [
-        {"symbol": symbol, "tips": [a.id, b.id], "remedy": f"sgt merge-op {a.id} {b.id}"},
+        {"symbol": symbol, "tips": [a.id, b.id], "remedy": f"ugh merge-op {a.id} {b.id}"},
     ])
 
 
 def test_log_and_now_surface_a_loud_non_blocking_fork_banner(tmp_path, capsys):
-    """A genuine open fork renders the red `⋔` banner on both `sgt log` and `sgt now`, naming the
-    symbol and its `sgt resolve` remedy -- and neither verb changes its exit code (non-blocking)."""
+    """A genuine open fork renders the red `⋔` banner on both `ugh log` and `ugh now`, naming the
+    symbol and its `ugh resolve` remedy -- and neither verb changes its exit code (non-blocking)."""
     _seed(tmp_path, 2)
     _seed_resolvable_fork(tmp_path)
     capsys.readouterr()
 
     assert _in(tmp_path, ["log", "--no-color"]) == 0
     log_out = capsys.readouterr().out
-    assert "⋔" in log_out and "sgt resolve a.py::foo" in log_out
+    assert "⋔" in log_out and "ugh resolve a.py::foo" in log_out
 
     assert _in(tmp_path, ["now", "--no-color"]) == 0
     now_out = capsys.readouterr().out
-    assert "⋔" in now_out and "sgt resolve a.py::foo" in now_out
+    assert "⋔" in now_out and "ugh resolve a.py::foo" in now_out
 
 
 def test_log_focus_unknown_group_falls_through_to_the_map(tmp_path, capsys):
@@ -181,11 +181,11 @@ def test_log_json_limit_and_offset_flags(tmp_path, capsys):
 
 
 def test_history_json_cli_matches_view_at_default_and_full(tmp_path, capsys):
-    """R21: `sgt history --json` (and `--full`) is byte-identical to `sgt.api.history_view` at
+    """R21: `ugh history --json` (and `--full`) is byte-identical to `ugh.api.history_view` at
     the same mode -- the compact default gained CLI-side limit/offset forwarding in this diff,
     so it needs its own guardrail alongside `log`/`state`/`compose`'s existing ones."""
-    from sgt.api import history_view
-    from sgt.core.lens import get
+    from ugh.api import history_view
+    from ugh.core.lens import get
 
     _seed(tmp_path, 2)
     get(tmp_path)  # mine before computing the expected payload directly
@@ -223,7 +223,7 @@ def test_revert_unknown_ref_fails_with_message(tmp_path, monkeypatch, capsys):
     # rung fails; force it offline so this stays the deterministic-failure case it always was.
     # Offline means every credential `config.resolve_api_key` consults, not just `OPENAI_API_KEY`:
     # any test whose code path calls `load_env(".")` imports this repo's real `.env` -- a Claude
-    # `SGT_MODEL` and an `ANTHROPIC_AUTH_TOKEN` -- into `os.environ` for the rest of the process, so
+    # `UGH_MODEL` and an `ANTHROPIC_AUTH_TOKEN` -- into `os.environ` for the rest of the process, so
     # deleting the one variable left these assertions passing or failing by collection order.
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
@@ -248,7 +248,7 @@ class _FakeResponses:
 
 class FakeClient:
     """Stands in for `get_client(repo).responses.parse(...)` -- the `tests/loop/test_plan.py`
-    idiom, applied to `sgt.intent.resolve`."""
+    idiom, applied to `ugh.intent.resolve`."""
 
     def __init__(self, output_parsed):
         self.responses = _FakeResponses(output_parsed)
@@ -264,8 +264,8 @@ def test_revert_by_op_id_never_touches_the_intent_resolver(tmp_path, monkeypatch
 
 
 def test_revert_by_feature_label_never_touches_the_intent_resolver(tmp_path, monkeypatch, capsys):
-    from sgt.api import map_view
-    from sgt.lens.map import build_map
+    from ugh.api import map_view
+    from ugh.lens.map import build_map
 
     monkeypatch.setattr(resolve_mod, "get_client", _boom)
     _seed(tmp_path, 2)
@@ -278,7 +278,7 @@ def test_revert_by_feature_label_never_touches_the_intent_resolver(tmp_path, mon
 
 
 def test_revert_nl_query_prints_candidates_and_leaves_ideal_unchanged(tmp_path, monkeypatch, capsys):
-    from sgt.core.lens import current_ideal, get
+    from ugh.core.lens import current_ideal, get
 
     _seed(tmp_path, 2)
     get(tmp_path)  # mine, so "before" reflects the real ideal the command itself would mine
@@ -292,7 +292,7 @@ def test_revert_nl_query_prints_candidates_and_leaves_ideal_unchanged(tmp_path, 
     assert _in(tmp_path, ["revert", "the foo logic"]) == 2
     out = capsys.readouterr().out
     assert "a.py::foo" in out
-    assert "sgt revert a.py::foo" in out
+    assert "ugh revert a.py::foo" in out
     assert (tmp_path / "a.py").read_text() == "def foo():\n    return 2\n"  # untouched
     assert current_ideal(tmp_path).op_ids == before
 
@@ -377,8 +377,8 @@ def test_revert_nl_feature_candidate_routes_through_feature_plan(tmp_path, monke
     """A `feature`-kind NL candidate must re-plan through `plan_revert_feature` (as the
     deterministic feature rung does), not a single-op `plan_revert` that can't resolve a feature
     id -- otherwise the prompt invites feature ids the survivor filter then silently drops."""
-    from sgt.api import map_view
-    from sgt.lens.map import build_map
+    from ugh.api import map_view
+    from ugh.lens.map import build_map
 
     _seed(tmp_path, 2)
     _in(tmp_path, ["log"])  # mine
@@ -408,7 +408,7 @@ def test_revert_nl_offline_reports_clear_message(tmp_path, monkeypatch, capsys):
 
 
 def test_restore_nl_query_prints_candidates_and_leaves_ideal_unchanged(tmp_path, monkeypatch, capsys):
-    from sgt.core.lens import current_ideal
+    from ugh.core.lens import current_ideal
 
     _seed(tmp_path, 2)
     assert _in(tmp_path, ["revert", "a.py::foo", "--yes"]) == 0
@@ -422,7 +422,7 @@ def test_restore_nl_query_prints_candidates_and_leaves_ideal_unchanged(tmp_path,
 
     assert _in(tmp_path, ["restore", "bring back the old foo logic"]) == 2
     out = capsys.readouterr().out
-    assert "sgt restore a.py::foo" in out
+    assert "ugh restore a.py::foo" in out
     assert current_ideal(tmp_path).op_ids == before
 
 
@@ -487,7 +487,7 @@ def _no_client(*args, **kwargs):
 
 
 def test_plan_intake_and_status_json(tmp_path, capsys, monkeypatch):
-    from sgt.loop import plan as plan_mod
+    from ugh.loop import plan as plan_mod
 
     monkeypatch.setattr(plan_mod, "get_client", _no_client)
     _seed(tmp_path, 1)
@@ -503,7 +503,7 @@ def test_plan_intake_and_status_json(tmp_path, capsys, monkeypatch):
 
 
 def test_plan_abandon(tmp_path, capsys, monkeypatch):
-    from sgt.loop import plan as plan_mod
+    from ugh.loop import plan as plan_mod
 
     monkeypatch.setattr(plan_mod, "get_client", _no_client)
     _seed(tmp_path, 1)
@@ -519,10 +519,10 @@ def test_plan_abandon(tmp_path, capsys, monkeypatch):
 
 
 def test_log_summary_surfaces_the_residual_of_open_intents(tmp_path, capsys, monkeypatch):
-    """`sgt log --summary` folds in the residual (intent-ledger P1): a plan step stated but never
+    """`ugh log --summary` folds in the residual (intent-ledger P1): a plan step stated but never
     landed (its session abandoned with the step pending) resurfaces here as "what needs attention",
     so an unfinished intention isn't lost -- and without a separate open/done queue to groom."""
-    from sgt.loop import plan as plan_mod
+    from ugh.loop import plan as plan_mod
 
     monkeypatch.setattr(plan_mod, "get_client", _no_client)
     _seed(tmp_path, 1)
@@ -548,7 +548,7 @@ def test_log_summary_omits_the_residual_when_nothing_is_open(tmp_path, capsys):
 
 def test_fmt_age_is_coarse():
     """The residual age is a coarse day/hour/minute string, never a raw timestamp."""
-    from sgt.cli.inspect import _fmt_age
+    from ugh.cli.inspect import _fmt_age
 
     assert _fmt_age(0) == "just now"
     assert _fmt_age(120) == "2m ago"
@@ -562,8 +562,8 @@ def _seed_pending_step(tmp_path, plan_mod, hollow_id_suffix: str, *, session="s1
     op set. Appends to the session if it already exists. Returns the step's hollow id."""
     from pathlib import Path
 
-    from sgt.core.op import make_op
-    from sgt.core.store import Store
+    from ugh.core.op import make_op
+    from ugh.core.store import Store
 
     store = Store(tmp_path)
     baseline = sorted(op.id for op in store.all_ops())
@@ -588,7 +588,7 @@ def _seed_pending_step(tmp_path, plan_mod, hollow_id_suffix: str, *, session="s1
 def test_save_auto_confirms_a_single_plan_step(tmp_path, capsys, monkeypatch):
     """A save fulfilling exactly one pending plan step auto-confirms it -- no separate `checkpoint`
     verb (U12/R10). The save reports the fold and the step flips to `matched`."""
-    from sgt.loop import plan as plan_mod
+    from ugh.loop import plan as plan_mod
 
     monkeypatch.setattr(plan_mod, "get_client", _no_client)
     _seed(tmp_path, 1)  # a.py::foo == "return 1"
@@ -617,7 +617,7 @@ def test_save_auto_confirms_every_step_of_a_plan_built_as_stated(tmp_path, capsy
     different work, one save that does both: each step is its own match, so the save confirms both
     and the plan closes. Sharing a save -- or a single op inside it -- is not ambiguity; only two
     steps predicting the same work are, and that path is the test below."""
-    from sgt.loop import plan as plan_mod
+    from ugh.loop import plan as plan_mod
 
     monkeypatch.setattr(plan_mod, "get_client", _no_client)
     _seed(tmp_path, 1)
@@ -642,7 +642,7 @@ def test_save_resolve_plan_settles_an_ambiguous_match(tmp_path, capsys, monkeypa
     """Two pending steps both predicting `a.py::foo` tangle into one op cluster on a save -- an n:m
     match that does NOT auto-confirm. `save --resolve-plan --confirm-hollow/--confirm-op` settles
     one group by name (the standalone-on-a-clean-tree resolution path)."""
-    from sgt.loop import plan as plan_mod
+    from ugh.loop import plan as plan_mod
 
     monkeypatch.setattr(plan_mod, "get_client", _no_client)
     _seed(tmp_path, 1)
@@ -676,8 +676,8 @@ def test_resolve_plan_confirm_resolves_truncated_refs_to_full_ids(tmp_path, caps
     the full canonical id -- and the recorded match must key on the *full* op id, never the prefix.
     Keying on a prefix would leave the real op absent from `recorded_matches`, so it would resurface
     as drift on the next checkpoint. Also asserts unknown/ambiguous refs fail cleanly."""
-    from sgt.loop import plan as plan_mod
-    from sgt.loop.match import recorded_matches
+    from ugh.loop import plan as plan_mod
+    from ugh.loop.match import recorded_matches
 
     monkeypatch.setattr(plan_mod, "get_client", _no_client)
     _seed(tmp_path, 1)
@@ -713,9 +713,9 @@ def test_history_json_lists_commits_and_places_ops_on_the_axis(tmp_path, capsys)
 
 
 def test_compose_json_matches_the_api_view_byte_for_byte(tmp_path, capsys):
-    """R21: `sgt compose --json` is byte-identical to `sgt.api.compose_view` -- no CLI-side
+    """R21: `ugh compose --json` is byte-identical to `ugh.api.compose_view` -- no CLI-side
     reshaping of the workbench's single-call refresh."""
-    from sgt.api import compose_view
+    from ugh.api import compose_view
 
     _seed(tmp_path, n=2)
     capsys.readouterr()
@@ -777,11 +777,11 @@ def test_split_without_apply_previews_groups_and_writes_nothing(tmp_path, capsys
 
     # feature ids are now content-addressed (`f-<founding op>`, U21) rather than a hardcoded `F0`,
     # so the target is derived from the built tree; a manual split still mints the next `F<n>`.
-    from sgt.lens.tree import load as _load_tree
+    from ugh.lens.tree import load as _load_tree
     feature_id = next(nid for nid, nd in _load_tree(tmp_path)["nodes"].items() if not nd["children"])
 
-    # `sgt split <feature>` with no `--apply` *is* the preview -- there is no separate
-    # `sgt preview split` path (removed: it duplicated this exact read, see `_preview_verb`).
+    # `ugh split <feature>` with no `--apply` *is* the preview -- there is no separate
+    # `ugh preview split` path (removed: it duplicated this exact read, see `_preview_verb`).
     assert _in(tmp_path, ["feature", "regroup", "split", feature_id, "--json"]) == 0
     view = json.loads(capsys.readouterr().out)
     assert view["ok"] is True
@@ -790,7 +790,7 @@ def test_split_without_apply_previews_groups_and_writes_nothing(tmp_path, capsys
 
 
 def test_map_rebuild_forces_a_full_recluster(tmp_path, capsys):
-    """`sgt log --tree --rebuild` (the former `sgt map --rebuild`, folded into `log` in U14) is the
+    """`ugh log --tree --rebuild` (the former `ugh map --rebuild`, folded into `log` in U14) is the
     escape hatch out of dirty-subtree splicing (Phase 2): it must at least run without error and
     still produce a valid tree, even though the common no-op-edit case would otherwise splice
     everything through verbatim."""
@@ -807,14 +807,14 @@ def test_tree_drops_phantom_empty_member_leaves():
     """A feature leaf that owns no symbol is a clustering artifact (an empty split child, or a lane
     whose ops touch only bookkeeping), not a real feature -- it and any subsystem left with nothing
     else to show must not print, and must not be counted. A leaf with real members but 0 ops
-    (pre-existing code sgt never mined an op for) is still a real feature and must still print --
+    (pre-existing code ugh never mined an op for) is still a real feature and must still print --
     the tree shows what exists, not just what has history.
 
-    This is asserted against the renderer `sgt log --tree` actually calls. It used to be asserted
+    This is asserted against the renderer `ugh log --tree` actually calls. It used to be asserted
     against a second, unreachable renderer that kept the filter after the live one lost it, so the
     test passed for months while every real tree printed the phantom rows -- which is how the study
     bundles shipped a tree listing ten features next to a map drawing nine."""
-    from sgt.tui.views import tree_lines
+    from ugh.tui.views import tree_lines
 
     view = {
         "roots": ["N0"],
@@ -840,17 +840,17 @@ def test_preview_unknown_verb_or_bad_arity_prints_usage(tmp_path, capsys):
     _seed(tmp_path, n=1)
     capsys.readouterr()
     assert _in(tmp_path, ["advanced", "preview", "not-a-verb"]) == 2
-    assert "usage: sgt preview" in capsys.readouterr().out
+    assert "usage: ugh preview" in capsys.readouterr().out
     assert _in(tmp_path, ["advanced", "preview", "merge", "only-one-arg"]) == 2
-    assert "usage: sgt preview" in capsys.readouterr().out
+    assert "usage: ugh preview" in capsys.readouterr().out
 
 
 def test_preview_split_is_no_longer_a_verb(tmp_path, capsys):
-    """Removed: bare `sgt split <feature>` already previews without `--apply` (see above)."""
+    """Removed: bare `ugh split <feature>` already previews without `--apply` (see above)."""
     _seed(tmp_path, n=1)
     capsys.readouterr()
     assert _in(tmp_path, ["advanced", "preview", "split", "whatever"]) == 2
-    assert "usage: sgt preview" in capsys.readouterr().out
+    assert "usage: ugh preview" in capsys.readouterr().out
 
 
 def test_help_mentions_kernel_verbs(capsys):
@@ -861,7 +861,7 @@ def test_help_mentions_kernel_verbs(capsys):
 
 
 def test_help_mentions_agentic_loop_verbs(capsys):
-    # The agentic loop is `sgt plan` + `sgt save --resolve-plan`; checkpoint/drift folded into
+    # The agentic loop is `ugh plan` + `ugh save --resolve-plan`; checkpoint/drift folded into
     # `save` (U12), so help advertises the loop, not those (now-removed) verbs.
     main(["help"])
     out = capsys.readouterr().out
@@ -884,13 +884,13 @@ def test_unknown_verb_is_an_error_not_a_help_dump(capsys):
     assert main(["nonsense"]) == 2
     captured = capsys.readouterr()
     assert "unknown verb" in captured.err
-    assert "sgt —" not in captured.out
+    assert "ugh —" not in captured.out
 
 
 def test_verbs_is_exactly_the_spine_groupings_and_collaboration_set():
     """R12/KTD8/KTD9 (U14): the grid is the only inspection surface, so the top-level `_VERBS` is
     the daily spine + `log` + the two groupings + the unchanged collaboration/setup verbs.
-    `map`/`graph`/`episodes` collapsed onto `sgt log` render modes; `blame`/`edit`/`commit`/
+    `map`/`graph`/`episodes` collapsed onto `ugh log` render modes; `blame`/`edit`/`commit`/
     `fulfill` demoted under `advanced`. `intent` stays top-level (its subcommands don't map to a
     `log` mode; re-promoted in c4f9966/KTD8).
 
@@ -903,13 +903,13 @@ def test_verbs_is_exactly_the_spine_groupings_and_collaboration_set():
     commit. `show` is where you point at a thing to see it: an id when you do not yet know what kind
     of thing you are holding, or a file plus `--at` to read it as it was -- and a verb for "I don't
     know what this is" cannot sit behind a grouping you would have to guess."""
-    from sgt.cli import _VERBS
+    from ugh.cli import _VERBS
 
     assert _VERBS == {
         "save", "log", "undo", "revert", "restore", "resolve",
         "switch", "diff", "intent", "now",  # `now` = state-of-actions orient (state block + what-next)
         "status",  # alias of `log --summary` (same handler, cannot drift)
-        "why",  # selector-scoped, not feature-scoped: `sgt why <sha>` is its most-reached form
+        "why",  # selector-scoped, not feature-scoped: `ugh why <sha>` is its most-reached form
         "show",  # "show me this thing": an id, or a file + `--at` for how it was
         # `find` is the way in when you do not hold an id at all. Every other
         # verb here takes one, which assumes you already know what the thing is
@@ -940,7 +940,7 @@ def test_revert_keep_selects_which_frontier_dependents_to_retain(tmp_path, capsy
     named dependent, drafting a continuation hollow for its symbol, while `--keep ""` keeps none (a
     plain revert, no hollow). Exercises the argparse `--keep` parsing that the core-level
     `revert_keep_dependents` behavior (tests/core/test_rewrite.py) never sees."""
-    from sgt.core.store import Store
+    from ugh.core.store import Store
 
     gb, _ = init_store(tmp_path)
     (tmp_path / "a.py").write_text("def helper():\n    return 1\n", encoding="utf-8")
@@ -969,7 +969,7 @@ def test_revert_keep_selects_which_frontier_dependents_to_retain(tmp_path, capsy
 
 # -- inline revert confirm gate (feedforward graph + `[y/N]` in the normal log flow) -------------
 #
-# A bare `sgt revert <ref>` on an interactive tty draws the feedforward inline (no modal pane) and
+# A bare `ugh revert <ref>` on an interactive tty draws the feedforward inline (no modal pane) and
 # gates on `[y/N]`. Both isattys are forced so the gate is entered deterministically regardless of
 # how pytest was invoked, and `input` is monkeypatched so no real prompt blocks the suite.
 
@@ -1031,7 +1031,7 @@ def _feature_repo(tmp_path):
     (tmp_path / "b.py").write_text("def bar():\n    return 2\n", encoding="utf-8")
     gb.commit_all("add foo and bar")
     assert _in(tmp_path, ["log", "--tree", "--refresh"]) == 0
-    from sgt.lens.tree import load as _load_tree
+    from ugh.lens.tree import load as _load_tree
     return next(nid for nid, nd in _load_tree(tmp_path)["nodes"].items() if not nd["children"])
 
 
@@ -1045,8 +1045,8 @@ def _as_tty(monkeypatch):
 
 
 def test_rename_on_a_tty_applies_when_the_pane_confirms(tmp_path, monkeypatch, capsys):
-    from sgt.cli import _common
-    from sgt.tui.consequence import Decision
+    from ugh.cli import _common
+    from ugh.tui.consequence import Decision
 
     fid = _feature_repo(tmp_path)
     _as_tty(monkeypatch)
@@ -1055,13 +1055,13 @@ def test_rename_on_a_tty_applies_when_the_pane_confirms(tmp_path, monkeypatch, c
 
     assert _in(tmp_path, ["feature", "rename", fid, "Renamed"]) == 0
     assert "renamed" in capsys.readouterr().out
-    from sgt.lens.pins import load_pins
+    from ugh.lens.pins import load_pins
     assert load_pins(tmp_path).labels[fid] == "Renamed"
 
 
 def test_rename_on_a_tty_changes_nothing_when_the_pane_aborts(tmp_path, monkeypatch, capsys):
-    from sgt.cli import _common
-    from sgt.tui.consequence import Decision
+    from ugh.cli import _common
+    from ugh.tui.consequence import Decision
 
     fid = _feature_repo(tmp_path)
     _as_tty(monkeypatch)
@@ -1070,12 +1070,12 @@ def test_rename_on_a_tty_changes_nothing_when_the_pane_aborts(tmp_path, monkeypa
 
     assert _in(tmp_path, ["feature", "rename", fid, "Renamed"]) == 1
     assert "skipped" in capsys.readouterr().out
-    from sgt.lens.pins import load_pins
+    from ugh.lens.pins import load_pins
     assert "Renamed" not in load_pins(tmp_path).labels.values()  # not applied
 
 
 def test_rename_json_never_launches_the_pane_and_applies(tmp_path, monkeypatch, capsys):
-    from sgt.cli import _common
+    from ugh.cli import _common
 
     fid = _feature_repo(tmp_path)
 
@@ -1092,20 +1092,20 @@ def test_rename_json_never_launches_the_pane_and_applies(tmp_path, monkeypatch, 
 def test_rename_non_tty_keeps_immediate_apply(tmp_path, monkeypatch, capsys):
     """maybe_confirm -> None (no tty / no textual) means proceed: the metadata verb still applies
     immediately, exactly as it did before the pane existed."""
-    from sgt.cli import _common
+    from ugh.cli import _common
 
     fid = _feature_repo(tmp_path)
     monkeypatch.setattr(_common, "maybe_confirm", lambda *a, **k: None)
     capsys.readouterr()
 
     assert _in(tmp_path, ["feature", "rename", fid, "Renamed"]) == 0
-    from sgt.lens.pins import load_pins
+    from ugh.lens.pins import load_pins
     assert load_pins(tmp_path).labels[fid] == "Renamed"
 
 
 def test_split_on_a_tty_applies_when_the_pane_confirms(tmp_path, monkeypatch, capsys):
-    from sgt.cli import _common
-    from sgt.tui.consequence import Decision
+    from ugh.cli import _common
+    from ugh.tui.consequence import Decision
 
     fid = _feature_repo(tmp_path)
     monkeypatch.setattr(_common, "maybe_confirm", lambda *a, **k: Decision(True))
@@ -1114,13 +1114,13 @@ def test_split_on_a_tty_applies_when_the_pane_confirms(tmp_path, monkeypatch, ca
     # No --apply: on a tty the pane *is* the confirm, so a confirm splits.
     assert _in(tmp_path, ["feature", "regroup", "split", fid]) == 0
     assert "split" in capsys.readouterr().out
-    from sgt.lens.tree import load as _load_tree
+    from ugh.lens.tree import load as _load_tree
     leaves = [nid for nid, nd in _load_tree(tmp_path)["nodes"].items() if not nd["children"]]
     assert len(leaves) == 2  # actually split
 
 
 def test_split_non_tty_still_prints_the_preview_only(tmp_path, monkeypatch, capsys):
-    from sgt.cli import _common
+    from ugh.cli import _common
 
     fid = _feature_repo(tmp_path)
     monkeypatch.setattr(_common, "maybe_confirm", lambda *a, **k: None)
@@ -1135,7 +1135,7 @@ def test_split_non_tty_still_prints_the_preview_only(tmp_path, monkeypatch, caps
 # -- P0 repair: verb spellings a developer actually types -----------------------------------------
 
 def test_status_is_a_top_level_verb_matching_log_summary(tmp_path, capsys):
-    """`sgt status` is the first command anyone arriving from git types. It used to print the help
+    """`ugh status` is the first command anyone arriving from git types. It used to print the help
     text, because U14 folded the spelling into `log --summary` and removed the verb."""
     _seed(tmp_path)
     assert _in(tmp_path, ["status", "--json"]) == 0
@@ -1145,7 +1145,7 @@ def test_status_is_a_top_level_verb_matching_log_summary(tmp_path, capsys):
 
 
 def test_why_is_a_top_level_verb_and_answers_for_a_commit_sha(tmp_path, capsys):
-    """"Why is this code like this" is a question about a selector, not about features. `sgt why`
+    """"Why is this code like this" is a question about a selector, not about features. `ugh why`
     lived under `feature why`, so pasting a commit sha printed the help text."""
     gb = _seed(tmp_path)
     sha = gb.head()
@@ -1162,7 +1162,7 @@ def test_why_names_every_selector_it_tried_when_nothing_resolves(tmp_path, capsy
 
 def test_switch_refuses_a_non_branch_instead_of_detaching_head(tmp_path, capsys):
     """`switch` passed its argument straight to `git checkout`, so a sha silently detached HEAD --
-    and a later `sgt save` then commits onto no branch at all."""
+    and a later `ugh save` then commits onto no branch at all."""
     gb = _seed(tmp_path)
     sha = gb.head()
     head_before = gb.symbolic_ref()
@@ -1186,7 +1186,7 @@ def test_switch_still_moves_to_a_real_branch(tmp_path, capsys):
 def test_intent_align_is_a_dry_run_that_writes_nothing_by_default(tmp_path, capsys):
     """The alignment pipeline has sat unwired since it was written: on a young corpus it scores
     confidently on too little evidence, and a wrong ALIGN record becomes a wrong answer from
-    `sgt why`. Making it *look at* a repo costs nothing and is the only way to find out whether a
+    `ugh why`. Making it *look at* a repo costs nothing and is the only way to find out whether a
     corpus is mature enough -- the judgment its author deliberately left open."""
     _seed(tmp_path)
     before = (tmp_path / ".sgt" / "local" / "rationale.json")
@@ -1203,10 +1203,10 @@ def test_intent_align_is_a_dry_run_that_writes_nothing_by_default(tmp_path, caps
 
 def test_show_prints_a_file_as_it_was_at_a_past_point(tmp_path, capsys):
     """The bytes were always computable -- `fold_view` reconstructs `code(I)` at any frontier and the
-    workbench playhead already displayed them. A terminal simply had no way to ask: `sgt fold --at`
+    workbench playhead already displayed them. A terminal simply had no way to ask: `ugh fold --at`
     prints file names and never their contents.
 
-    Reached as `sgt show <file> --at <spec>`: `show` is one verb for "show me this thing", and `--at`
+    Reached as `ugh show <file> --at <spec>`: `show` is one verb for "show me this thing", and `--at`
     is the same time modifier `log --at`/`fold --at` already use, so the past is a modifier on a verb
     rather than a second verb to learn."""
     _seed(tmp_path, 3)  # a.py::foo returns 1, then 2, then 3
@@ -1238,7 +1238,7 @@ def test_show_resolves_a_bare_filename_and_explains_a_miss(tmp_path, capsys):
 
 
 def test_show_never_touches_the_working_tree(tmp_path, capsys):
-    """Visiting the past is a read. sgt's history is append-only, so this must never be confusable
+    """Visiting the past is a read. ugh's history is append-only, so this must never be confusable
     with a checkout."""
     _seed(tmp_path, 3)
     before = (tmp_path / "a.py").read_text(encoding="utf-8")

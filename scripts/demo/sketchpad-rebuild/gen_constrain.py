@@ -4,7 +4,7 @@
 The rebuild exists for one property: each constraint type is one file under
 src/kinds/, born whole in the save that introduces the type and never edited again,
 plus one side-effect import line in constrain.ts owned by the same save. File and
-import line are both units sgt attributes cleanly (the earlier attempt kept the types
+import line are both units ugh attributes cleanly (the earlier attempt kept the types
 as entries in two const tables, and table entries live in residue -- the bytes
 between symbols -- where only the newest edit ever reverts clean).
 

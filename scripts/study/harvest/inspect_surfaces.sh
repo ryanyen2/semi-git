@@ -21,27 +21,27 @@ git log --oneline | head -40
 rule "git log --stat, most recent piece of work"
 git log --stat -1 --format="%s%n%n%b" | head -30
 
-rule "sgt now   (where am I, what next)"
-sgt now 2>&1 | head -40
+rule "ugh now   (where am I, what next)"
+ugh now 2>&1 | head -40
 
-rule "sgt log   (saved work, newest first)"
-sgt log 2>&1 | head -50
+rule "ugh log   (saved work, newest first)"
+ugh log 2>&1 | head -50
 
-rule "sgt log --tree   (the features, and their handles)"
-sgt log --tree 2>&1 | head -50
+rule "ugh log --tree   (the features, and their handles)"
+ugh log --tree 2>&1 | head -50
 
-rule "sgt log --map   (feature lanes over time)"
-sgt log --map 2>&1 | head -60
+rule "ugh log --map   (feature lanes over time)"
+ugh log --map 2>&1 | head -60
 
-rule "sgt log --summary   (what needs attention)"
-sgt log --summary 2>&1 | head -30
+rule "ugh log --summary   (what needs attention)"
+ugh log --summary 2>&1 | head -30
 
 if [ -n "$TARGET" ]; then
-  rule "sgt show $TARGET"
-  sgt show "$TARGET" 2>&1 | head -40
+  rule "ugh show $TARGET"
+  ugh show "$TARGET" 2>&1 | head -40
 
-  rule "sgt revert --session $TARGET   (the preview, nothing applied)"
-  sgt revert --session "$TARGET" 2>&1 | head -40
+  rule "ugh revert --session $TARGET   (the preview, nothing applied)"
+  ugh revert --session "$TARGET" 2>&1 | head -40
 fi
 
 rule "sessions that landed work"
@@ -49,7 +49,7 @@ python3 - <<'PY'
 import sys
 sys.path.insert(0, "/Users/r4yen/repos/semi-git")
 from collections import Counter
-from sgt.core.store import Store
+from ugh.core.store import Store
 c = Counter()
 for op in Store(".").all_ops():
     for a in op.attribution:

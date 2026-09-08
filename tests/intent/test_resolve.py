@@ -1,4 +1,4 @@
-"""Tests for sgt.intent.resolve -- NL target resolution (fallback ladder's last rung).
+"""Tests for ugh.intent.resolve -- NL target resolution (fallback ladder's last rung).
 
 `FakeClient`/`_FakeResponses` mirror the `tests/loop/test_plan.py` idiom: a stand-in for
 `get_client(repo).responses.parse(...)` whose `.output_parsed` is scripted directly, so no
@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from sgt.intent import resolve as resolve_mod
-from sgt.store.gitbind import init_store
+from ugh.intent import resolve as resolve_mod
+from ugh.store.gitbind import init_store
 
 
 def _no_client(*args, **kwargs):
@@ -34,7 +34,7 @@ class FakeClient:
 
 def _fixture(repo):
     """One committed, mined symbol -- just enough of a real repo for `_context` to run."""
-    from sgt.core.lens import get
+    from ugh.core.lens import get
 
     gb, _ = init_store(repo)
     (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
@@ -50,7 +50,7 @@ def test_resolve_intent_returns_none_when_get_client_raises(tmp_path, monkeypatc
 
 
 def test_context_filters_synthetic_anchor_residue_symbols(tmp_path):
-    """`_context` must not surface sgt's `__anchor__`/`__residue__` pseudo-symbols -- they're
+    """`_context` must not surface ugh's `__anchor__`/`__residue__` pseudo-symbols -- they're
     byte-fidelity internals a user would never name in a plain-language revert."""
     _fixture(tmp_path)
     ctx = resolve_mod._context(tmp_path, "revert")
@@ -62,12 +62,12 @@ def test_context_is_verb_aware_restore_shows_removed_not_live(tmp_path):
     """After reverting a symbol, `restore`'s context must list the *removed* op (so the LLM can
     name it to bring it back) while `revert`'s context must not -- the bug where restore only ever
     saw the live frontier and could only ever propose no-op candidates."""
-    from sgt.core import verbs
-    from sgt.core.lens import get
+    from ugh.core import verbs
+    from ugh.core.lens import get
 
     _fixture(tmp_path)
     (tmp_path / "a.py").write_text("def foo():\n    return 1\n\n\ndef bar():\n    return 2\n", "utf-8")
-    from sgt.store.gitbind import init_store
+    from ugh.store.gitbind import init_store
 
     gb, _ = init_store(tmp_path)
     gb.commit_all("add bar")

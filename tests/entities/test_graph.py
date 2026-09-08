@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from sgt.entities import Entity
-from sgt.entities.graph import build_entity_graph, owning_nodes
+from ugh.entities import Entity
+from ugh.entities.graph import build_entity_graph, owning_nodes
 
 
 def _edges(g, type_=None):

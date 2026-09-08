@@ -1,8 +1,8 @@
-// `sgtNow`: the state-of-actions surface from `now_view` -- one sectioned list answering "what's
+// `ughNow`: the state-of-actions surface from `now_view` -- one sectioned list answering "what's
 // happening, what needs me, what did I just do, what's next". Unsaved (dirty ops that would land
 // on the next save), Needs you (open forks / stalled plans / the review pile), Recently done (the
 // last few saves), and a single structured Next action whose row runs the recommended command.
-// Sourced from one `sgt now --json` call; refreshes live off the same `.sgt/**/*.json` watcher (the
+// Sourced from one `ugh now --json` call; refreshes live off the same `.sgt/**/*.json` watcher (the
 // PostToolUse activity hook and every save write under `.sgt/`), like every other tree.
 
 import * as vscode from "vscode";
@@ -61,7 +61,7 @@ export class NowTreeProvider implements vscode.TreeDataProvider<NowNode>, vscode
       // expands to show its single row); a 0-count section would have been filtered out already.
       const label = node.count === null ? node.label : `${node.label} (${node.count})`;
       const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.Expanded);
-      item.contextValue = "sgtNowSection";
+      item.contextValue = "ughNowSection";
       return item;
     }
     if (node.kind === "inflight") {
@@ -70,7 +70,7 @@ export class NowTreeProvider implements vscode.TreeDataProvider<NowNode>, vscode
       item.description = `${node.row.op_count} op(s)`;
       item.iconPath = new vscode.ThemeIcon("git-commit");
       item.tooltip = "Pending ops already attributed to this feature -- they land on the next save.";
-      item.contextValue = "sgtNowInFlight";
+      item.contextValue = "ughNowInFlight";
       return item;
     }
     if (node.kind === "fork") {
@@ -81,16 +81,16 @@ export class NowTreeProvider implements vscode.TreeDataProvider<NowNode>, vscode
         "warning",
         new vscode.ThemeColor("problemsWarningIcon.foreground")
       );
-      item.contextValue = "sgtNowFork";
-      item.command = { command: "sgt.resolveFork", title: "Resolve Fork", arguments: [node.record.symbol] };
+      item.contextValue = "ughNowFork";
+      item.command = { command: "ugh.resolveFork", title: "Resolve Fork", arguments: [node.record.symbol] };
       return item;
     }
     if (node.kind === "review") {
       const item = new vscode.TreeItem(node.review.subject, vscode.TreeItemCollapsibleState.None);
       item.description = node.review.reason;
       item.iconPath = new vscode.ThemeIcon("checklist");
-      item.tooltip = "In the review pile -- run `sgt intent review` to accept or discard.";
-      item.contextValue = "sgtNowReview";
+      item.tooltip = "In the review pile -- run `ugh intent review` to accept or discard.";
+      item.contextValue = "ughNowReview";
       return item;
     }
     if (node.kind === "stalled") {
@@ -99,9 +99,9 @@ export class NowTreeProvider implements vscode.TreeDataProvider<NowNode>, vscode
       item.description = `${node.plan.pending_count} pending`;
       item.iconPath = new vscode.ThemeIcon("debug-pause");
       item.tooltip = node.plan.remaining_titles.join("\n") || "Stalled plan.";
-      item.contextValue = "sgtNowStalled";
+      item.contextValue = "ughNowStalled";
       item.command = {
-        command: "sgt.resolveStalledPlan",
+        command: "ugh.resolveStalledPlan",
         title: "Resolve Stalled Plan",
         arguments: [node.plan.session_id],
       };
@@ -114,7 +114,7 @@ export class NowTreeProvider implements vscode.TreeDataProvider<NowNode>, vscode
       item.description = node.working.source === "plan" ? "plan step" : "your prompt";
       item.iconPath = new vscode.ThemeIcon(node.working.source === "plan" ? "checklist" : "comment");
       item.tooltip = node.working.full_title;
-      item.contextValue = "sgtNowWorking";
+      item.contextValue = "ughNowWorking";
       return item;
     }
     if (node.kind === "building") {
@@ -125,7 +125,7 @@ export class NowTreeProvider implements vscode.TreeDataProvider<NowNode>, vscode
       item.iconPath = new vscode.ThemeIcon("sync");
       item.tooltip = `${node.plan.matched_count} of ${node.plan.step_count} step(s) confirmed; ` +
         `${node.plan.pending_count} still pending.`;
-      item.contextValue = "sgtNowBuilding";
+      item.contextValue = "ughNowBuilding";
       return item;
     }
     if (node.kind === "activity") {
@@ -138,9 +138,9 @@ export class NowTreeProvider implements vscode.TreeDataProvider<NowNode>, vscode
       item.description = file ? node.event.tool : "";
       item.iconPath = new vscode.ThemeIcon("edit");
       item.tooltip = file ? `${node.event.tool} ${file}` : node.event.tool;
-      item.contextValue = "sgtNowActivity";
+      item.contextValue = "ughNowActivity";
       if (file) {
-        item.command = { command: "sgt.jumpToLocation", title: "Open", arguments: [file, 1] };
+        item.command = { command: "ugh.jumpToLocation", title: "Open", arguments: [file, 1] };
       }
       return item;
     }
@@ -148,7 +148,7 @@ export class NowTreeProvider implements vscode.TreeDataProvider<NowNode>, vscode
       const item = new vscode.TreeItem(node.commit.subject, vscode.TreeItemCollapsibleState.None);
       item.description = (node.commit.sha || "").slice(0, 7);
       item.iconPath = new vscode.ThemeIcon("git-commit");
-      item.contextValue = "sgtNowCommit";
+      item.contextValue = "ughNowCommit";
       return item;
     }
     // next action
@@ -158,12 +158,12 @@ export class NowTreeProvider implements vscode.TreeDataProvider<NowNode>, vscode
       item.description = node.action.command;
       item.tooltip = `Run: ${node.action.command}`;
     }
-    item.contextValue = "sgtNowNext";
+    item.contextValue = "ughNowNext";
     // A fork routes to its resolution wizard; anything else with a command runs it in a terminal.
     if (node.action.kind === "resolve_fork" && node.action.target) {
-      item.command = { command: "sgt.resolveFork", title: "Resolve Fork", arguments: [node.action.target] };
+      item.command = { command: "ugh.resolveFork", title: "Resolve Fork", arguments: [node.action.target] };
     } else if (node.action.command) {
-      item.command = { command: "sgt.runNextAction", title: "Run", arguments: [node.action] };
+      item.command = { command: "ugh.runNextAction", title: "Run", arguments: [node.action] };
     }
     return item;
   }

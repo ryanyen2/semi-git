@@ -1,4 +1,4 @@
-"""Tests for sgt.core.rewrite -- the explicit escape hatch (plan U11, R14/R17).
+"""Tests for ugh.core.rewrite -- the explicit escape hatch (plan U11, R14/R17).
 
 Each draft-producing verb (`merge_op`/`split_op`/`transplant`/`revert_keep_dependents`) computes
 the exact part and writes hollow op(s) off-chain; `stage`/`fulfill` supplies real images and
@@ -12,16 +12,16 @@ from __future__ import annotations
 import json
 import sys
 
-from sgt.config import load_identity_constraints
-from sgt.core import identity, mine, oracle, order, rewrite
-from sgt.core.fold import code
-from sgt.core.ideal import Ideal
-from sgt.core.lens import get, ideal_for_ref
-from sgt.core.op import make_op
-from sgt.core.order import is_valid_ideal
-from sgt.core.rewrite import RewriteDraft
-from sgt.core.store import Store
-from sgt.store.gitbind import init_store
+from ugh.config import load_identity_constraints
+from ugh.core import identity, mine, oracle, order, rewrite
+from ugh.core.fold import code
+from ugh.core.ideal import Ideal
+from ugh.core.lens import get, ideal_for_ref
+from ugh.core.op import make_op
+from ugh.core.order import is_valid_ideal
+from ugh.core.rewrite import RewriteDraft
+from ugh.core.store import Store
+from ugh.store.gitbind import init_store
 from tests.laws import corpus
 
 
@@ -82,7 +82,7 @@ def test_merge_op_fulfilled_op_carries_resolves_forward(tmp_path):
     real = next(o for o in Store(repo).all_ops() if o.id in candidate.op_ids and o.resolves)
     assert real.resolves == frozenset({main_tip, release_tip})
     # id-exclusion: the same footprint+image without `resolves` hashes identically.
-    from sgt.core.op import compute_id
+    from ugh.core.op import compute_id
     assert real.id == compute_id(real.footprint, real.images, real.requires, real.kind, real.miner_version)
 
 
@@ -345,7 +345,7 @@ def test_revert_frontier_keep_none_is_a_plain_full_upset_removal(tmp_path):
     That is `plan_revert(take_dependents=True)`, not the plain default. Since the forward-
     subtraction default, a bare `plan_revert` keeps its dependents and splices them, so its
     `removed` set is empty here -- the two verbs stopped being the same operation."""
-    from sgt.core import verbs
+    from ugh.core import verbs
 
     repo = _fan_repo(tmp_path)
     ops = Store(repo).all_ops()
@@ -393,7 +393,7 @@ def test_revert_frontier_keeping_only_a_transitive_dependent_drafts_no_hollow(tm
 
 def test_revert_frontier_with_no_dependents_equals_a_plain_revert(tmp_path):
     """A symbol nothing builds on has an empty frontier: keep-all is identical to `plan_revert`."""
-    from sgt.core import verbs
+    from ugh.core import verbs
 
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
@@ -526,7 +526,7 @@ def test_transplant_refuses_unresolvable_source(tmp_path):
 
 def _snap(name, file, kind, body):
     import dataclasses
-    from sgt.entities.extract import extract_file
+    from ugh.entities.extract import extract_file
 
     (base,) = extract_file("t.py", body)
     e = dataclasses.replace(base, id=f"{file}::{name}", name=name, file=file, kind=kind)
@@ -541,7 +541,7 @@ def test_never_link_blocks_a_would_be_hash_match():
     unconstrained = identity.match_pair(before, after)
     assert len(unconstrained.links) == 1
 
-    from sgt.config import IdentityConstraints
+    from ugh.config import IdentityConstraints
     blocked = identity.match_pair(
         before, after, IdentityConstraints(never_link=frozenset({("x.py::foo", "x.py::bar")}))
     )
@@ -557,7 +557,7 @@ def test_force_link_creates_a_link_hash_and_fuzzy_tiers_would_miss():
     unconstrained = identity.match_pair(before, after)
     assert unconstrained.links == []  # unrelated bodies, correctly not linked by default
 
-    from sgt.config import IdentityConstraints
+    from ugh.config import IdentityConstraints
     forced = identity.match_pair(
         before, after, IdentityConstraints(force_link=frozenset({("x.py::alpha", "x.py::beta")}))
     )
@@ -653,7 +653,7 @@ def test_identity_split_then_join_is_idempotent_and_mutually_exclusive():
 # -- api projection --------------------------------------------------------------------------------
 
 def test_rewrite_view_reports_pending_drafts_and_staged_candidate(tmp_path):
-    from sgt.api import rewrite_view
+    from ugh.api import rewrite_view
 
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
@@ -703,7 +703,7 @@ def test_unstage_abandons_the_stage_and_restores_the_committed_ideal(tmp_path):
     """Abandon after stage (U6): `unstage` drops `staged.json` and rematerializes the committed
     ideal, so the deliberately-dirty staged tree is fully reverted and a materializing edit (which
     `put` refuses while staged) works again."""
-    from sgt.core import lens
+    from ugh.core import lens
 
     repo = _stage_a_merge_op(tmp_path)
     committed = lens.current_ideal(repo)
@@ -756,7 +756,7 @@ def test_land_refuses_a_stale_stage_and_unstage_still_recovers(tmp_path):
 def test_fsck_tree_classifies_a_staged_candidate_as_staged_not_drift(tmp_path):
     """`fsck --tree` during staged state (U6, ties to U2): the divergent staged path is classified
     `staged`, never `drift` -- an in-progress rewrite candidate is planned divergence."""
-    from sgt.core.lens import fsck_tree
+    from ugh.core.lens import fsck_tree
 
     repo = _stage_a_merge_op(tmp_path)
     result = fsck_tree(repo)
@@ -766,14 +766,14 @@ def test_fsck_tree_classifies_a_staged_candidate_as_staged_not_drift(tmp_path):
 
 def test_status_view_classifies_a_staged_candidate_the_same_way_fsck_does(tmp_path):
     """`fsck --tree` has drawn the staged/drift distinction since U6, but `status_view` -- the
-    projection every *surface* actually reads (`sgt log --summary`, MCP, the workbench's
+    projection every *surface* actually reads (`ugh log --summary`, MCP, the workbench's
     Working-changes card) -- compared disk bytes against the committed ideal with no notion of a live
     stage. So it reported planned divergence as unrecorded drift, and the workbench titled a staged
     candidate "Working changes", said "Save to checkpoint them into the ideal", and offered a Save
     that `lens.put`'s staged guard refuses. Two projections answering the same question differently
     is the bug; the surfaces were faithfully rendering the one that was wrong."""
-    from sgt.api import status_view
-    from sgt.core.lens import fsck_tree
+    from ugh.api import status_view
+    from ugh.core.lens import fsck_tree
 
     repo = _stage_a_merge_op(tmp_path)
     staged = fsck_tree(repo)["staged"]
@@ -787,7 +787,7 @@ def test_status_view_classifies_a_staged_candidate_the_same_way_fsck_does(tmp_pa
 def test_status_view_still_reports_drift_when_nothing_is_staged(tmp_path):
     """The other half of the contract: excluding staged paths must not blind the view to a real
     edit. Without a live stage the same divergent bytes are drift, exactly as before."""
-    from sgt.api import status_view
+    from ugh.api import status_view
 
     repo = _stage_a_merge_op(tmp_path)
     rewrite.unstage(repo)
@@ -799,16 +799,16 @@ def test_status_view_still_reports_drift_when_nothing_is_staged(tmp_path):
 
 
 def test_log_summary_says_a_candidate_is_staged_instead_of_in_sync(tmp_path, capsys):
-    """`sgt log --summary` is the terminal's answer to "where am I", and over a staged candidate it
+    """`ugh log --summary` is the terminal's answer to "where am I", and over a staged candidate it
     gave two wrong answers in a row. While `status_view` counted the candidate as drift it printed
-    "1 file(s) on disk differ from the recorded state -- `sgt save` absorbs them", and `save` refuses
+    "1 file(s) on disk differ from the recorded state -- `ugh save` absorbs them", and `save` refuses
     while a stage is live; once the paths were classified `staged` it printed "✓ in sync" over a tree
     where every materializing verb refuses. Silence is the worse of the two: the first at least told
     you something had happened. So the summary names the state and both its exits, which is also the
     only place a terminal user learns the state exists at all."""
     import os
 
-    from sgt.cli import main
+    from ugh.cli import main
 
     repo = _stage_a_merge_op(tmp_path)
     cwd = os.getcwd()
@@ -820,15 +820,15 @@ def test_log_summary_says_a_candidate_is_staged_instead_of_in_sync(tmp_path, cap
     out = capsys.readouterr().out
 
     assert "in sync" not in out, "a tree holding an unlanded candidate is not in sync"
-    assert "sgt save" not in out, "`save` refuses while a stage is live; advising it is a dead end"
+    assert "ugh save" not in out, "`save` refuses while a stage is live; advising it is a dead end"
     assert "staged" in out and "slugify.py" in out
-    assert "sgt advanced commit" in out and "sgt advanced unstage" in out
+    assert "ugh advanced commit" in out and "ugh advanced unstage" in out
 
 
 def test_the_staged_refusal_names_remedies_that_actually_run(tmp_path):
     """The guard that blocks a materializing edit while a candidate is staged is the one place a
     user meets this state, so its two remedies are their whole next move -- and both were wrong
-    spellings. `sgt unstage` moved under `advanced`, and `sgt land` is a *different* verb (the U23
+    spellings. `ugh unstage` moved under `advanced`, and `ugh land` is a *different* verb (the U23
     shared-branch CAS advance, which `cli/__init__.py` documents as "deliberately not named
     `commit`"), so following that advice gets you an error demanding a branch rather than a
     committed candidate. Same contract `tests/test_show.py` holds `show_view`'s suggestions to."""
@@ -836,7 +836,7 @@ def test_the_staged_refusal_names_remedies_that_actually_run(tmp_path):
 
     from scripts.check_docs_commands import unrunnable
 
-    from sgt.core import lens
+    from ugh.core import lens
 
     repo = _stage_a_merge_op(tmp_path)
     try:
@@ -846,7 +846,7 @@ def test_the_staged_refusal_names_remedies_that_actually_run(tmp_path):
         message = str(e)
 
     # The other refusal a staged candidate can produce: land a stage the tree has drifted out
-    # from under. It offered the same dead `sgt unstage`, so both belong to one contract.
+    # from under. It offered the same dead `ugh unstage`, so both belong to one contract.
     (repo / "slugify.py").write_text("def slugify(s):\n    return 'X'\n", encoding="utf-8")
     try:
         rewrite.land(repo, override=("pass", "reviewed", "rev"))
@@ -855,7 +855,7 @@ def test_the_staged_refusal_names_remedies_that_actually_run(tmp_path):
         stale_message = str(e)
 
     for text in (message, stale_message):
-        quoted = re.findall(r"`(sgt [^`]+)`", text)
+        quoted = re.findall(r"`(ugh [^`]+)`", text)
         assert quoted, f"the refusal names no remedy at all: {text!r}"
         for command in quoted:
             assert unrunnable(command) is None, f"{command!r}: {unrunnable(command)}"
@@ -878,32 +878,32 @@ def _init_bare(root):
 def _clone(remote, dest):
     import subprocess
 
-    from sgt.store.gitbind import GitBinding
+    from ugh.store.gitbind import GitBinding
     subprocess.run(["git", "clone", "-q", str(remote), str(dest)], check=True, capture_output=True)
     GitBinding(dest).init()
     return dest
 
 
 def _edit_and_commit(repo, path, content, message):
-    from sgt.core import lens
-    from sgt.store.gitbind import GitBinding
+    from ugh.core import lens
+    from ugh.store.gitbind import GitBinding
     (repo / path).write_text(content, encoding="utf-8")
     GitBinding(repo).commit_all(message)
     ideal = lens.get(repo)
-    put_sha = lens.put(repo, ideal, message=f"sgt: mine {message}")
+    put_sha = lens.put(repo, ideal, message=f"ugh: mine {message}")
     lens.record_ideal(repo, ideal, put_sha)
 
 
 def test_sync_fork_remedy_from_forks_json_lands_end_to_end_and_closes_the_fork(tmp_path):
     """Verification (U6): the fork recorded in committed `forks.json` reconciles end-to-end on a
     two-clone fixture. A sync parks the forked symbol at the common ancestor (neither tip in the
-    ideal) and records the fork with a high-level `sgt resolve <symbol>` remedy; the mechanism that
+    ideal) and records the fork with a high-level `ugh resolve <symbol>` remedy; the mechanism that
     verb wraps -- `merge_op` -> `fulfill` -> `land` -- reconciles it and the fork record closes."""
     import subprocess
 
-    from sgt.core import lens, sync
-    from sgt.store.gitbind import GitBinding
-    from sgt import state
+    from ugh.core import lens, sync
+    from ugh.store.gitbind import GitBinding
+    from ugh import state
 
     base = "def foo():\n    return 1\n\n\ndef bar():\n    return 2\n"
     remote = _init_bare(tmp_path)
@@ -926,7 +926,7 @@ def test_sync_fork_remedy_from_forks_json_lands_end_to_end_and_closes_the_fork(t
     assert len(records) == 1 and records[0]["symbol"] == "main.py::foo"
     # The remedy is the high-level guided verb; the tips it reconciles live in the record.
     tip_a, tip_b = records[0]["tips"]
-    assert records[0]["remedy"] == "sgt resolve main.py::foo"
+    assert records[0]["remedy"] == "ugh resolve main.py::foo"
 
     draft = rewrite.merge_op(b, tip_a, tip_b)
     assert draft.ok
@@ -949,7 +949,7 @@ def test_sync_fork_remedy_from_forks_json_lands_end_to_end_and_closes_the_fork(t
     )
 
 
-# -- U4: `sgt edit <selection>` -- in-place change (KTD5, R5) -----------------------------------
+# -- U4: `ugh edit <selection>` -- in-place change (KTD5, R5) -----------------------------------
 
 def _configure_oracle(repo, tiers):
     """Same shell-tier oracle config the repair-loop tests use (`tests/repair/test_loop.py`).
@@ -974,7 +974,7 @@ class _CountingBackend:
         self.calls = 0
 
     def propose(self, request):
-        from sgt.repair.backends import RepairProposal
+        from ugh.repair.backends import RepairProposal
 
         idx = min(self.calls, len(self.images) - 1)
         self.calls += 1
@@ -1079,7 +1079,7 @@ def test_edit_breaking_a_caller_repairs_the_blast_dependent_and_regates_green(tm
     """Error path (R5/KTD5 bounded-safety): a behavior-changing edit breaks a caller's test, so the
     oracle goes red. `edit_repair_op` drafts a continuation hollow for the blast (direct) dependent;
     `--repair` (a fake backend) fills it and the oracle re-gates green."""
-    from sgt.repair.loop import repair
+    from ugh.repair.loop import repair
 
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
@@ -1168,7 +1168,7 @@ def test_fulfill_refuses_to_overwrite_uncommitted_work_and_stays_retryable(tmp_p
     leaves the draft registered but hollow-less, and the retry dies with "hollow not found" --
     a refusal that breaks the thing it refused to touch.
     """
-    from sgt.core.lens import DirtyWorkingTreeError
+    from ugh.core.lens import DirtyWorkingTreeError
 
     repo = tmp_path / "repo"
     gb, helper_op, _callers = _helper_with_three_callers(repo)
@@ -1208,7 +1208,7 @@ def test_revert_keep_dependents_takes_the_dead_symbols_layout_with_it(tmp_path):
     `revert_keep_dependents` computes `removed_ids` from `upset_in` alone, which does not reach
     siblings. The docstring promises the two are equivalent when nothing is kept, and the fold shows
     what the gap costs: the deleted symbol's blank lines stay in the file."""
-    from sgt.core import lens, verbs
+    from ugh.core import lens, verbs
 
     repo = tmp_path / "repo"
     corpus._init(repo)

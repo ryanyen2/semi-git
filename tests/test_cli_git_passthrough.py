@@ -1,6 +1,6 @@
-"""`sgt git <args...>` passthrough (plan U18, C8; refusal added in U26/D2): argv[1:] is forwarded
+"""`ugh git <args...>` passthrough (plan U18, C8; refusal added in U26/D2): argv[1:] is forwarded
 to real git verbatim -- no `--json` stripping, no flag rewriting -- EXCEPT a tree-mutating
-subcommand (`porcelain.REFUSALS`), which is refused (never run) with the native sgt verb named,
+subcommand (`porcelain.REFUSALS`), which is refused (never run) with the native ugh verb named,
 unless `--force` overrides (the token is consumed, the plain git command runs, and the out-of-band
 detector re-mines on next contact). U18 shipped this as an advisory; U26's porcelain plan turned it
 into the refusal the design doc §1 routing table calls for.
@@ -8,8 +8,8 @@ into the refusal the design doc §1 routing table calls for.
 
 import os
 
-import sgt.cli as cli
-from sgt.store.gitbind import init_store
+import ugh.cli as cli
+from ugh.store.gitbind import init_store
 
 
 class _FakeResult:
@@ -38,20 +38,20 @@ def test_forwards_args_verbatim_and_propagates_exit_code(monkeypatch):
     assert rc == 7
 
 
-def test_refuses_tree_mutating_subcommand_naming_the_sgt_verb(monkeypatch, capsys):
-    """A tree-mutating subcommand is refused (git never runs), exits non-zero, and names the sgt
-    remedy on stderr (D2). `checkout` routes to `sgt switch`; `pull` to `sgt sync`."""
+def test_refuses_tree_mutating_subcommand_naming_the_ugh_verb(monkeypatch, capsys):
+    """A tree-mutating subcommand is refused (git never runs), exits non-zero, and names the ugh
+    remedy on stderr (D2). `checkout` routes to `ugh switch`; `pull` to `ugh sync`."""
     calls = _record_run(monkeypatch)
     rc = cli.main(["git", "checkout", "main"])
     assert rc == 1
     assert calls == []  # git was NOT run
     err = capsys.readouterr().err
-    assert "sgt switch" in err and "--force" in err
+    assert "ugh switch" in err and "--force" in err
 
     rc = cli.main(["git", "pull", "origin", "main"])
     assert rc == 1
     assert calls == []
-    assert "sgt sync" in capsys.readouterr().err
+    assert "ugh sync" in capsys.readouterr().err
 
 
 def test_force_overrides_refusal_and_consumes_the_token(monkeypatch, capsys):
@@ -72,7 +72,7 @@ def test_no_advisory_for_read_only_subcommands(monkeypatch, capsys):
 
 
 def test_leading_git_global_flag_is_not_misparsed(monkeypatch, capsys):
-    """`sgt git --no-pager log`: the leading git global is forwarded untouched (not read as sgt's
+    """`ugh git --no-pager log`: the leading git global is forwarded untouched (not read as ugh's
     own `--json`-stripping logic), and it is not mistaken for a tree-mutating subcommand."""
     calls = _record_run(monkeypatch)
     cli.main(["git", "--no-pager", "log", "--json"])

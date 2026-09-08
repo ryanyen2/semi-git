@@ -1,4 +1,4 @@
-"""Tests for `sgt.core.review` -- the trust queue's dequeue mechanism (plan U31, S7).
+"""Tests for `ugh.core.review` -- the trust queue's dequeue mechanism (plan U31, S7).
 
 A review record marks an op-set reviewed, content-addressed by the sorted op-id set exactly like a
 claim (D8) or a proposal (C10): re-acking the same set is a no-op on content, and the file *set*
@@ -11,10 +11,10 @@ from pathlib import Path
 
 import pytest
 
-from sgt import state
-from sgt.core import review
-from sgt.core import sync
-from sgt.store.gitbind import GitBinding
+from ugh import state
+from ugh.core import review
+from ugh.core import sync
+from ugh.store.gitbind import GitBinding
 from tests.core.test_sync import _BASE, _edit_and_commit, _push, _two_clones
 
 

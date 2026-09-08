@@ -30,14 +30,14 @@ jobs:
           VERSION="${TAG#v}"
           PY=$(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)
           EXT=$(node -p "require('./editor/vscode/package.json').version")
-          # sgt/__init__.py is the third copy. Nothing imports it -- `sgt --version`
+          # ugh/__init__.py is the third copy. Nothing imports it -- `ugh --version`
           # reads installed package metadata -- so it drifts without anyone noticing,
           # and the number it drifts to is the one printed by any tool that does read
           # it later. Checking it here costs a line and stops that.
-          INIT=$(grep -m1 '^__version__' sgt/__init__.py | cut -d'"' -f2)
+          INIT=$(grep -m1 '^__version__' ugh/__init__.py | cut -d'"' -f2)
           echo "tag=$VERSION python=$PY extension=$EXT init=$INIT"
           if [ "$VERSION" != "$PY" ] || [ "$VERSION" != "$EXT" ] || [ "$VERSION" != "$INIT" ]; then
-            echo "::error::version mismatch. Tag says $VERSION, pyproject says $PY, extension says $EXT, sgt/__init__.py says $INIT."
+            echo "::error::version mismatch. Tag says $VERSION, pyproject says $PY, extension says $EXT, ugh/__init__.py says $INIT."
             exit 1
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
@@ -67,7 +67,7 @@ jobs:
       - run: npm ci
         working-directory: editor/vscode
       - name: Build the .vsix
-        run: npx --yes @vscode/vsce package --no-dependencies --out semi-git-${{ needs.check-version.outputs.version }}.vsix
+        run: npx --yes @vscode/vsce package --no-dependencies --out ugh-${{ needs.check-version.outputs.version }}.vsix
         working-directory: editor/vscode
       - uses: actions/upload-artifact@v4
         with:

@@ -8,7 +8,7 @@ Tests diff from a baseline commit (an empty placeholder file, since a commit nee
 staged) so the parent-vs-child diff isolates exactly the change under test.
 """
 
-from sgt.store.gitbind import FileChange, init_store
+from ugh.store.gitbind import FileChange, init_store
 
 
 def _write(gb, path, text):

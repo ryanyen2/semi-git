@@ -1,32 +1,32 @@
 // Render a REAL study bundle through the real webview code, and check what a participant would
 // look at.
 //
-//   node dev/render-bundle.js <bundle-work-dir> <path-to-sgt> [path-to-shipped-workbench.js]
+//   node dev/render-bundle.js <bundle-work-dir> <path-to-ugh> [path-to-shipped-workbench.js]
 //
 // `smoke.js` renders this repository's own history from a checked-in fixture, which is the right
 // thing for the layout contracts and the wrong thing for the study: the record a participant is
 // handed is a different shape (13 saves, two subsystems, a cross-feature theme the stages name),
 // and the panel that failed them was one the fixture never exercised. This drives the same
-// `workbench.js` off `sgt advanced compose`/`sgt log`/`sgt revert --emit` run against the unpacked
+// `workbench.js` off `ugh advanced compose`/`ugh log`/`ugh revert --emit` run against the unpacked
 // bundle, so the thing under test is the artefact.
 //
-// Called by `scripts/study/verify-bundles.sh` for each sgt-arm bundle.
+// Called by `scripts/study/verify-bundles.sh` for each ugh-arm bundle.
 const fs = require("fs");
 const path = require("path");
 const { execFileSync } = require("child_process");
 
 const WORK = process.argv[2];
-const SGT = process.argv[3];
+const UGH = process.argv[3];
 // The webview the BUNDLE ships, when the caller can name it (unpacked from its own .vsix). This
 // repo's copy is the same file until somebody edits it after a build, and that is precisely the
 // state where a gate reading the repo says the artefact is fine and it is not.
 const SHIPPED = process.argv[4];
-if (!WORK || !SGT) {
-  console.error("usage: node dev/render-bundle.js <bundle-work-dir> <path-to-sgt> [workbench.js]");
+if (!WORK || !UGH) {
+  console.error("usage: node dev/render-bundle.js <bundle-work-dir> <path-to-ugh> [workbench.js]");
   process.exit(2);
 }
 
-const sgt = (args) => JSON.parse(execFileSync(SGT, args, { cwd: WORK, maxBuffer: 1 << 28 }));
+const ugh = (args) => JSON.parse(execFileSync(UGH, args, { cwd: WORK, maxBuffer: 1 << 28 }));
 
 // The shim smoke.js already has. Sliced at a declared boundary rather than guessed at.
 const smokeSrc = fs.readFileSync(path.join(__dirname, "smoke.js"), "utf8");
@@ -36,8 +36,8 @@ if (SHIPPED) {
   shim = shim.replace(/const jsPath = [^;]+;/, `const jsPath = ${JSON.stringify(SHIPPED)};`);
 }
 
-const compose = sgt(["advanced", "compose", "--json", "--full"]);
-compose.grid = sgt(["log", "--json"]);
+const compose = ugh(["advanced", "compose", "--json", "--full"]);
+compose.grid = ugh(["log", "--json"]);
 // The host gives every node an identity hue before posting (colorForNode); fed raw, every lane is
 // grey and a regression that loses hue could not be seen.
 compose.map = {
@@ -47,7 +47,7 @@ compose.map = {
   })),
 };
 const feature = (compose.map.nodes || []).find((n) => n.kind === "feature");
-const emit = feature ? sgt(["revert", feature.id, "--emit", "--json"]) : { files: {} };
+const emit = feature ? ugh(["revert", feature.id, "--emit", "--json"]) : { files: {} };
 
 let fails = 0;
 const chk = (name, cond, detail) => {
@@ -103,7 +103,7 @@ if (req) {
   chk("nothing on the panel says 'chapter'", !/chapter/i.test(words));
   chk("no raw feature id leads the panel",
       !/f-[0-9a-f]{40}/.test([...insp.querySelectorAll(".detail-meta")].map((e) => e._text || "").join(" ")));
-  chk("the checkpoint list carries no maintenance instruction", !/sgt intent build/.test(words));
+  chk("the checkpoint list carries no maintenance instruction", !/ugh intent build/.test(words));
 
   // The words. This arm's claim is that its history says what each piece of work was asked for,
   // and the testbeds are replayed with no prompt hook running -- so an empty capture store is a

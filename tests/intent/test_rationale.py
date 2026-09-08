@@ -1,12 +1,12 @@
-"""Tests for sgt.intent.rationale -- the intent ledger's derived reflection layer (M1): local
+"""Tests for ugh.intent.rationale -- the intent ledger's derived reflection layer (M1): local
 rationale records, idempotent by (subject, reason, actor), the unfulfilled-intent (`open`) surface,
 and supersession as the historical/live signal `for_op` reads. The confirm_match -> reflect
 planned path is covered end-to-end in tests/loop/test_match.py."""
 
 from __future__ import annotations
 
-from sgt.intent import rationale
-from sgt.store.gitbind import init_store
+from ugh.intent import rationale
+from ugh.store.gitbind import init_store
 
 
 def test_record_and_read_for_op(tmp_path):
@@ -154,7 +154,7 @@ def test_retire_open_is_idempotent(tmp_path):
 def test_reflect_open_intents_records_pending_steps(tmp_path):
     """A closing session's still-pending steps become open intents (before their hollows vanish),
     carrying the step's reason and predicted footprint."""
-    from sgt.loop import plan as plan_mod
+    from ugh.loop import plan as plan_mod
 
     init_store(tmp_path)
     plan_mod._save_sessions(tmp_path, {"s1": {
@@ -189,8 +189,8 @@ def _one_pending_session(tmp_path, plan_mod, title="the bit never finished"):
 def test_mark_done_does_not_mint_open_intents(tmp_path):
     """`mark_done` asserts the work IS finished (done differently than predicted), so its pending
     steps must NOT become open intents -- on the testbed every such record was already-landed noise
-    filling `sgt intent open` and recall."""
-    from sgt.loop import plan as plan_mod
+    filling `ugh intent open` and recall."""
+    from ugh.loop import plan as plan_mod
 
     init_store(tmp_path)
     _one_pending_session(tmp_path, plan_mod)
@@ -202,7 +202,7 @@ def test_mark_done_does_not_mint_open_intents(tmp_path):
 def test_abandon_reflects_open_intents_through_the_plan_verb(tmp_path):
     """Walking away (`plan.abandon`) is the genuinely-unfulfilled close: its pending steps DO
     become open intents -- the wiring, not just the helper."""
-    from sgt.loop import plan as plan_mod
+    from ugh.loop import plan as plan_mod
 
     init_store(tmp_path)
     _one_pending_session(tmp_path, plan_mod)
@@ -230,8 +230,8 @@ def test_edit_supersedes_with_a_confirmed_user_record(tmp_path):
 
 
 def test_recall_matches_rationale_by_symbol_overlap_and_lists_open(tmp_path):
-    from sgt.core.op import make_op
-    from sgt.core.store import Store
+    from ugh.core.op import make_op
+    from ugh.core.store import Store
 
     init_store(tmp_path)
     op = Store(tmp_path).add(make_op({"a.py::foo": (None, "v1")}, {"a.py::foo": b"x"}))
@@ -252,8 +252,8 @@ def test_recall_matches_symbols_leniently_by_path_suffix(tmp_path):
     repo-relative form (`pkg/__main__.py::add`) -- recall must join the two (testbed 2026-07-31:
     the exact-set join silently returned nothing for a real agent query). Symbol names still
     match exactly: `add` never answers for `radd`."""
-    from sgt.core.op import make_op
-    from sgt.core.store import Store
+    from ugh.core.op import make_op
+    from ugh.core.store import Store
 
     init_store(tmp_path)
     op = Store(tmp_path).add(make_op({"pkg/__main__.py::add": (None, "v1")},
@@ -274,11 +274,11 @@ def test_why_view_aggregates_symbol_rationale_across_ops(tmp_path):
     symbol lives on every op that touched it -- `why_view` must surface the older ops' rationale
     too (testbed 2026-07-31: the first feature's reasoning went invisible the moment a second
     commit touched the same function)."""
-    from sgt.api import why_view
-    from sgt.core.lens import get
-    from sgt.core.store import Store
-    from sgt.lens import tree
-    from sgt.store.gitbind import init_store as _init
+    from ugh.api import why_view
+    from ugh.core.lens import get
+    from ugh.core.store import Store
+    from ugh.lens import tree
+    from ugh.store.gitbind import init_store as _init
 
     gb, _ = _init(tmp_path)
     (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
@@ -340,8 +340,8 @@ def test_auto_retire_overlap_retires_when_predicted_symbols_landed(tmp_path):
     """Overlap-retire: when every predicted symbol of a stated-but-never-landed intent is now live
     in the ideal, the work landed (in a plan or out), so the intent is fulfilled and retired -- even
     though it never went through `confirm_match`."""
-    from sgt.core.lens import get
-    from sgt.store.gitbind import init_store as _init
+    from ugh.core.lens import get
+    from ugh.store.gitbind import init_store as _init
 
     gb, _ = _init(tmp_path)
     (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
@@ -358,8 +358,8 @@ def test_auto_retire_overlap_needs_full_coverage(tmp_path):
     """A partial footprint match is too weak a signal to silently close a stated intent: overlap
     retires only when *every* predicted symbol is live, so a half-landed step stays on the residual
     (residual honesty is worth an occasional un-retired item over a wrong-retired one)."""
-    from sgt.core.lens import get
-    from sgt.store.gitbind import init_store as _init
+    from ugh.core.lens import get
+    from ugh.store.gitbind import init_store as _init
 
     gb, _ = _init(tmp_path)
     (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
@@ -374,13 +374,13 @@ def test_auto_retire_overlap_needs_full_coverage(tmp_path):
 
 
 def test_why_view_resolves_a_commit_sha_to_its_aligned_words(tmp_path):
-    """`sgt why <sha>` (intent-ledger P1): a commit sha isn't an op-id -- it maps to a whole atom --
+    """`ugh why <sha>` (intent-ledger P1): a commit sha isn't an op-id -- it maps to a whole atom --
     so `why_view` answers with the commit's captured words rather than forcing the ref through the
     op-scoped resolver. A unique sha prefix resolves the same commit."""
-    from sgt.api import intent_view, why_view
-    from sgt.core.lens import get
-    from sgt.intent import turns
-    from sgt.store.gitbind import init_store as _init
+    from ugh.api import intent_view, why_view
+    from ugh.core.lens import get
+    from ugh.intent import turns
+    from ugh.store.gitbind import init_store as _init
 
     gb, _ = _init(tmp_path)
     (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
@@ -404,9 +404,9 @@ def test_why_view_resolves_a_commit_sha_to_its_aligned_words(tmp_path):
 def test_why_view_unknown_ref_falls_back_to_the_op_scoped_error(tmp_path):
     """A ref that is neither a live op/symbol nor a known commit falls through to the op-scoped
     `why`'s own honest failure -- the commit branch never masks it, and never guesses a commit."""
-    from sgt.api import why_view
-    from sgt.core.lens import get
-    from sgt.store.gitbind import init_store as _init
+    from ugh.api import why_view
+    from ugh.core.lens import get
+    from ugh.store.gitbind import init_store as _init
 
     gb, _ = _init(tmp_path)
     (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")

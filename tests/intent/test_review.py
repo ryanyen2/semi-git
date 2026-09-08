@@ -1,4 +1,4 @@
-"""Tests for sgt.intent.review -- the alignment review queue (alignment-pipeline §3.2-F). REVIEW
+"""Tests for ugh.intent.review -- the alignment review queue (alignment-pipeline §3.2-F). REVIEW
 region (op, episode) pairs the aligner could not confidently ALIGN are held here for human
 adjudication, kept OUT of intent_rationale so an unconfirmed guess never leaks into recall()/for_op.
 A `--confirm` promotes one into the ledger (confirmed, recorded_by="user"); a `--reject` tombstones
@@ -7,8 +7,8 @@ pair. Same local-tier fixture idiom as tests/intent/test_rationale.py."""
 
 from __future__ import annotations
 
-from sgt.intent import rationale, review
-from sgt.store.gitbind import init_store
+from ugh.intent import rationale, review
+from ugh.store.gitbind import init_store
 
 _SUBJECT = [{"op": "o1", "sha": "shaX", "fp": "fp1"}]
 

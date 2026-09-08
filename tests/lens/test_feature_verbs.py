@@ -1,4 +1,4 @@
-"""Tests for sgt.lens.verbs -- the feature verbs (plan U13, R16): merge/split/rename/move over
+"""Tests for ugh.lens.verbs -- the feature verbs (plan U13, R16): merge/split/rename/move over
 the feature tree, plus `revert <feature>`'s bridge into the kernel's ideal-edit algebra.
 
 Each verb is a metadata-only patch of `tree.json` + one durable pin; the byte-neutrality property
@@ -9,14 +9,14 @@ from __future__ import annotations
 
 import pytest
 
-from sgt import api
-from sgt.core import order
-from sgt.core.fold import code
-from sgt.core.lens import current_ideal, get
-from sgt.core.store import Store
-from sgt.lens import map as lensmap
-from sgt.lens import tree, verbs
-from sgt.lens.pins import Pins, load_pins, save_pins
+from ugh import api
+from ugh.core import order
+from ugh.core.fold import code
+from ugh.core.lens import current_ideal, get
+from ugh.core.store import Store
+from ugh.lens import map as lensmap
+from ugh.lens import tree, verbs
+from ugh.lens.pins import Pins, load_pins, save_pins
 from tests.laws import corpus
 
 
@@ -243,7 +243,7 @@ def test_plan_revert_feature_refuses_on_an_unresolvable_ref(tmp_path):
 def _lane_commit_spans(repo, result):
     """Per leaf feature: the sorted `(op_id, commit_index)` of its ops that carry a commit index
     (i.e. appear in `history()` -- the axis `--to` scrubs along)."""
-    from sgt.api import history_view
+    from ugh.api import history_view
 
     ci = {o["id"]: o["commit_index"] for o in history_view(repo, full=True)["ops"]}
     spans: dict[str, list[tuple[str, int]]] = {}
@@ -427,7 +427,7 @@ def test_feature_verb_preview_view_move_reports_source_and_target_affected(tmp_p
 def test_the_move_summary_names_the_lane_that_loses_the_ops(tmp_path):
     """`move`'s summary was `N op(s) -> <target>` -- the destination and nothing else. The source is
     the half a reader has to judge, because a lane emptied of every op is dropped from the graph (the
-    husk filter in `sgt log --map`, and `computeLayout` in the workbench), so the feature survives in
+    husk filter in `ugh log --map`, and `computeLayout` in the workbench), so the feature survives in
     the tree while vanishing from every view. That result is indistinguishable from the `merge` the
     reader did not choose, and it was disclosed nowhere. `merge`'s own summary has always named both
     sides ("absorb X -> Y")."""
@@ -494,10 +494,10 @@ def test_feature_verb_preview_view_revert_ripples_across_a_second_feature(tmp_pa
 def test_feature_verb_preview_view_previews_a_checkpoint_the_same_way_it_reverts_one(tmp_path):
     """`<feature>@<n>` is the rewind unit both timelines tell users to click, and the workbench's
     checkpoint hover asks this view to preview it. Resolving it as a feature id instead made every
-    such hover come back `ok: false, feature ... not found; run \u0060sgt log --refresh\u0060` -- a dead
+    such hover come back `ok: false, feature ... not found; run \u0060ugh log --refresh\u0060` -- a dead
     hover whose remedy could not help, since nothing was stale. The preview has to name the same
-    op-set `sgt revert <feature>@<n>` removes."""
-    from sgt.api import segments_view
+    op-set `ugh revert <feature>@<n>` removes."""
+    from ugh.api import segments_view
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     get(repo)
@@ -515,7 +515,7 @@ def test_feature_verb_preview_view_previews_a_checkpoint_the_same_way_it_reverts
 def test_project_feature_preview_merge_carries_summary_and_metadata_so_what(tmp_path):
     """The consequence pane's projection for a metadata verb: no code rail (`files`/`fallout`
     empty, `reversible` True), a human `summary`, and a so-what that says code is untouched."""
-    from sgt.api import _project_feature_preview
+    from ugh.api import _project_feature_preview
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     get(repo)
@@ -536,7 +536,7 @@ def test_project_feature_preview_merge_carries_summary_and_metadata_so_what(tmp_
 
 
 def test_project_feature_preview_split_summary_names_both_groups(tmp_path):
-    from sgt.api import _project_feature_preview
+    from ugh.api import _project_feature_preview
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     get(repo)
@@ -579,7 +579,7 @@ def test_rename_survives_a_build_map_recluster(tmp_path):
 
 
 def test_rename_resolves_the_short_id_prefix_the_ui_prints(tmp_path):
-    """The tree/map/save-hint print an abbreviated feature id (e.g. `1a2131ff`), and `sgt revert`
+    """The tree/map/save-hint print an abbreviated feature id (e.g. `1a2131ff`), and `ugh revert`
     resolves it via `resolve_feature`'s prefix match. `plan_rename` must accept the same handle --
     otherwise the very id the tool prints reads as 'not found' under rename's exact-key lookup."""
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
@@ -600,10 +600,10 @@ def test_rename_resolves_the_short_id_prefix_the_ui_prints(tmp_path):
 
 
 def test_map_view_authored_label_overrides_the_cluster_leaf(tmp_path):
-    """R3 authority inversion: where a user has authored a feature over a leaf's symbols, `sgt map`
+    """R3 authority inversion: where a user has authored a feature over a leaf's symbols, `ugh map`
     (map_view) shows that authored feature's label/id, not the clustered one; un-authored leaves
     keep their cluster labels untouched."""
-    from sgt.lens import authored
+    from ugh.lens import authored
 
     repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
     get(repo)
@@ -673,7 +673,7 @@ def test_rename_also_writes_an_authored_feature(tmp_path):
     """A reorg verb writes an authored-feature op *in addition to* its pin (R3): renaming a cluster
     feature is an authoring act, recorded as first-class merged state, while the labels pin that
     keeps the rename stable across a recluster is still written."""
-    from sgt.lens import authored
+    from ugh.lens import authored
 
     repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
     get(repo)
@@ -690,7 +690,7 @@ def test_rename_also_writes_an_authored_feature(tmp_path):
 
 
 def test_split_also_writes_an_authored_feature_for_the_new_group(tmp_path):
-    from sgt.lens import authored
+    from ugh.lens import authored
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")  # a splittable feature (see above)
     get(repo)
@@ -712,7 +712,7 @@ def test_split_also_writes_an_authored_feature_for_the_new_group(tmp_path):
 def test_merge_absorbs_the_authored_feature_and_tombstones_the_absorbed(tmp_path):
     """R3 merge op: the survivor's authored feature gains the absorbed's members (OR-Set add), and a
     previously-authored absorbed feature is tombstoned (OR-Set delete) to zero live members."""
-    from sgt.lens import authored
+    from ugh.lens import authored
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")  # a splittable feature (see above)
     get(repo)
@@ -737,7 +737,7 @@ def test_merge_absorbs_the_authored_feature_and_tombstones_the_absorbed(tmp_path
 def test_move_adds_the_moved_member_to_the_targets_authored_feature(tmp_path):
     """R3 move op: moving an op re-homes its member symbols; the target's authored feature gains them
     (OR-Set add) and a previously-authored source feature drops them (OR-Set remove)."""
-    from sgt.lens import authored
+    from ugh.lens import authored
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")  # a splittable feature (see above)
     get(repo)

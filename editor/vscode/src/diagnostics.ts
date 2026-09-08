@@ -1,18 +1,18 @@
 // In-situ diagnostics: drift -> Hint ("mined but not predicted by any active plan session", with
 // a "Save to clear" quick-fix) and open forks -> Warning. `DriftEntry` carries its own spans
-// (`sgt.core.lens.plan`'s footprint projection); `ForkRecord` doesn't (plan API addition #5,
-// deferred -- see the module docstring in `sgt/api.py`'s fork projection), so a fork's range is
+// (`ugh.core.lens.plan`'s footprint projection); `ForkRecord` doesn't (plan API addition #5,
+// deferred -- see the module docstring in `ugh/api.py`'s fork projection), so a fork's range is
 // cross-referenced from `blame_view`'s per-symbol spans for that file instead of a dedicated
 // span field. Recomputed for every open document on `store.onDidChange`, gated by
-// `sgt.diagnostics.drift`/`sgt.diagnostics.forks`.
+// `ugh.diagnostics.drift`/`ugh.diagnostics.forks`.
 
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { Store } from "./store";
 import { ForkRecord } from "./types";
 
-const SOURCE_DRIFT = "sgt-drift";
-const SOURCE_FORK = "sgt-fork";
+const SOURCE_DRIFT = "ugh-drift";
+const SOURCE_FORK = "ugh-fork";
 
 export class DiagnosticsController implements vscode.Disposable {
   private collection: vscode.DiagnosticCollection;
@@ -20,13 +20,13 @@ export class DiagnosticsController implements vscode.Disposable {
   private debounce: NodeJS.Timeout | undefined;
 
   constructor(private store: Store, private root: string) {
-    this.collection = vscode.languages.createDiagnosticCollection("sgt");
+    this.collection = vscode.languages.createDiagnosticCollection("ugh");
     this.disposables.push(
       this.collection,
       this.store.onDidChange(() => this.schedule()),
       vscode.workspace.onDidCloseTextDocument((doc) => this.collection.delete(doc.uri)),
       vscode.workspace.onDidChangeConfiguration((e) => {
-        if (e.affectsConfiguration("sgt.diagnostics")) {
+        if (e.affectsConfiguration("ugh.diagnostics")) {
           this.schedule();
         }
       })
@@ -39,7 +39,7 @@ export class DiagnosticsController implements vscode.Disposable {
   }
 
   private config(key: string, def: boolean): boolean {
-    return vscode.workspace.getConfiguration("sgt").get<boolean>(key, def);
+    return vscode.workspace.getConfiguration("ugh").get<boolean>(key, def);
   }
 
   async render(): Promise<void> {
@@ -65,7 +65,7 @@ export class DiagnosticsController implements vscode.Disposable {
             const range = new vscode.Range(Math.max(0, span.start_line - 1), 0, Math.max(0, span.end_line - 1), 0);
             const d = new vscode.Diagnostic(
               range,
-              `sgt: drifted -- ${entry.kind} on ${span.symbol}, unpredicted by any active plan session`,
+              `ugh: drifted -- ${entry.kind} on ${span.symbol}, unpredicted by any active plan session`,
               vscode.DiagnosticSeverity.Hint
             );
             d.source = SOURCE_DRIFT;
@@ -81,7 +81,7 @@ export class DiagnosticsController implements vscode.Disposable {
         const range = await this.forkRange(record);
         const d = new vscode.Diagnostic(
           range ?? new vscode.Range(0, 0, 0, 0),
-          `sgt: fork on ${record.symbol} -- ${record.remedy}`,
+          `ugh: fork on ${record.symbol} -- ${record.remedy}`,
           vscode.DiagnosticSeverity.Warning
         );
         d.source = SOURCE_FORK;
@@ -112,7 +112,7 @@ export class DiagnosticsController implements vscode.Disposable {
   }
 }
 
-// The drift diagnostic's quick-fix: `sgt save` mines + commits the current ideal, which is what
+// The drift diagnostic's quick-fix: `ugh save` mines + commits the current ideal, which is what
 // clears drift (there's nothing to predict against once it's part of the recorded history).
 export class DriftCodeActionProvider implements vscode.CodeActionProvider {
   provideCodeActions(
@@ -124,8 +124,8 @@ export class DriftCodeActionProvider implements vscode.CodeActionProvider {
     if (!driftDiagnostics.length) {
       return [];
     }
-    const action = new vscode.CodeAction("Save to clear drift (sgt save)", vscode.CodeActionKind.QuickFix);
-    action.command = { command: "sgt.save", title: "Save" };
+    const action = new vscode.CodeAction("Save to clear drift (ugh save)", vscode.CodeActionKind.QuickFix);
+    action.command = { command: "ugh.save", title: "Save" };
     action.diagnostics = driftDiagnostics;
     return [action];
   }

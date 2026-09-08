@@ -6,7 +6,7 @@
 // background. Lightness is theme-aware (lighter on dark themes, darker on light ones).
 //
 // This same math is mirrored byte-for-byte in media/decision.js (the webview can't import this
-// module across the bundle boundary) and in sgt/tui/color.py. Keep the three in sync —
+// module across the bundle boundary) and in ugh/tui/color.py. Keep the three in sync —
 // tests/test_color_parity.py drives all three and fails on drift.
 
 import * as vscode from "vscode";

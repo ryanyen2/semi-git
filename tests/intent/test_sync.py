@@ -1,6 +1,6 @@
 """Tests for the intent overlay's sync reconciliation (plan U5, KTD7): the prompt sidecar unions
 by key as a real part of the sync commit (transactional, like pins/tree), while
-`themes.json` is deliberately left to the next explicit `sgt intent build` -- rebuilding it needs
+`themes.json` is deliberately left to the next explicit `ugh intent build` -- rebuilding it needs
 `GitBinding.history()`, which only reflects the merged history once the sync/land commit actually
 exists, so a transactional rebuild would either see stale history or write a committed artifact
 into the tree *after* it was already committed. `build_themes`, called as a normal follow-up once
@@ -12,10 +12,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sgt.core import lens, sync
-from sgt.core.store import Store
-from sgt.intent import group, prompts, theme
-from sgt.store.gitbind import GitBinding
+from ugh.core import lens, sync
+from ugh.core.store import Store
+from ugh.intent import group, prompts, theme
+from ugh.store.gitbind import GitBinding
 
 from tests.conftest import _clone, _init_bare, _push
 
@@ -24,7 +24,7 @@ def _edit_and_commit(repo: Path, path: str, content: str, message: str) -> str:
     (repo / path).write_text(content, encoding="utf-8")
     content_sha = GitBinding(repo).commit_all(message)
     ideal = lens.get(repo)
-    put_sha = lens.put(repo, ideal, message=f"sgt: mine {message}")
+    put_sha = lens.put(repo, ideal, message=f"ugh: mine {message}")
     lens.record_ideal(repo, ideal, put_sha)
     return content_sha
 

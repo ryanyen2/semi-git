@@ -1,7 +1,7 @@
 """The revert-closure classification contract: `classifyAffected` in
 editor/vscode/media/workbench.js splits a verb preview's `affected` rows into the three roles the
 graph overlay paints -- target / blast (features losing ops) / foundation (features gaining
-re-drafted ops) -- matching the CLI's blast/foundation buckets (sgt.api._affected_rows). Pure, so
+re-drafted ops) -- matching the CLI's blast/foundation buckets (ugh.api._affected_rows). Pure, so
 we slice it out and run it under node."""
 
 from __future__ import annotations

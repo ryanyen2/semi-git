@@ -1,5 +1,5 @@
 [project]
-name = "semi-git"
+name = "ugh"
 version = "0.6.10"
 description = "Semantic feature-level version control over git"
 readme = "README.md"
@@ -15,8 +15,8 @@ classifiers = [
     "Topic :: Software Development :: Version Control :: Git",
 ]
 
-# Everything needed for `sgt init` and the daily loop. `entities` (tree-sitter) and `lens`
-# (igraph/leidenalg) used to be extras, but `sgt.core.mine` and `sgt.lens.cluster` import them at
+# Everything needed for `ugh init` and the daily loop. `entities` (tree-sitter) and `lens`
+# (igraph/leidenalg) used to be extras, but `ugh.core.mine` and `ugh.lens.cluster` import them at
 # module scope -- a stock install without them crashed on the first command, so they are not
 # optional in any real sense.
 dependencies = [
@@ -29,25 +29,25 @@ dependencies = [
     "tree-sitter-typescript>=0.23",
     "igraph>=0.11",
     "leidenalg>=0.10",
-    # `sgt log` -- the daily command, and every one of its six render modes -- lays its columns out
-    # with rich (`sgt.tui.theme`). It used to sit in the `tui` extra alongside textual, which was
-    # fine while only the optional consequence pane imported it; a stock `pip install semi-git`
-    # would now crash on the first `sgt log`. Pure Python, no transitive dependencies of its own.
+    # `ugh log` -- the daily command, and every one of its six render modes -- lays its columns out
+    # with rich (`ugh.tui.theme`). It used to sit in the `tui` extra alongside textual, which was
+    # fine while only the optional consequence pane imported it; a stock `pip install ugh`
+    # would now crash on the first `ugh log`. Pure Python, no transitive dependencies of its own.
     "rich>=13",
 ]
 
 [project.urls]
-Homepage = "https://github.com/ryanyen2/semi-git"
-Repository = "https://github.com/ryanyen2/semi-git"
-Issues = "https://github.com/ryanyen2/semi-git/issues"
+Homepage = "https://github.com/ryanyen2/ugh"
+Repository = "https://github.com/ryanyen2/ugh"
+Issues = "https://github.com/ryanyen2/ugh/issues"
 
 [project.scripts]
-sgt = "sgt.cli:main"
+ugh = "ugh.cli:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "hypothesis>=6.100"]
-# `sgt.tui.consequence` imports textual, and the CLI imports that module lazily so the pane stays
-# optional. `rich` moved to the core dependencies (every `sgt log` mode draws with it), so this
+# `ugh.tui.consequence` imports textual, and the CLI imports that module lazily so the pane stays
+# optional. `rich` moved to the core dependencies (every `ugh log` mode draws with it), so this
 # extra is now just textual.
 tui = ["textual>=0.60"]
 
@@ -56,12 +56,12 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["sgt*"]
+include = ["ugh*"]
 
-# The agent assets `sgt init --agent` copies into a repo (Claude Code skills). They ship inside the
+# The agent assets `ugh init --agent` copies into a repo (Claude Code skills). They ship inside the
 # wheel so the command works from a plain `uv tool install`, with no checkout present.
 [tool.setuptools.package-data]
-"sgt.agent_assets" = ["skills/**/*"]
+"ugh.agent_assets" = ["skills/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

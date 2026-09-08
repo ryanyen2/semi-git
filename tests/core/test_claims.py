@@ -13,9 +13,9 @@ from pathlib import Path
 
 import pytest
 
-from sgt import state
-from sgt.core import lens, oracle, sync
-from sgt.store.gitbind import GitBinding
+from ugh import state
+from ugh.core import lens, oracle, sync
+from ugh.store.gitbind import GitBinding
 from tests.core.test_sync import _BASE, _push, _two_clones
 
 

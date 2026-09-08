@@ -17,19 +17,19 @@ set -uo pipefail
 
 repo="$(cd "${1:-$HOME/repos/sgt-demo/sketchpad}" && pwd)"
 out="${2:-/tmp/sketchpad-revert-survey}"
-SGT="${SGT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/.venv/bin/sgt}"
+UGH="${UGH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/.venv/bin/ugh}"
 CHROME="${CHROME:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
 PORT="${PORT:-5399}"
 
 [ -x "$CHROME" ] || { echo "no headless Chrome at $CHROME; set CHROME=<path>" >&2; exit 1; }
 [ -d "$repo/node_modules" ] || { echo "$repo has no node_modules" >&2; exit 1; }
 
-# Same guard as check-revert.sh: the wrong sgt previews correctly and then refuses to
+# Same guard as check-revert.sh: the wrong ugh previews correctly and then refuses to
 # apply, naming files it never touches (finding 84).
-PY_BIN="$(dirname "$SGT")/python"
+PY_BIN="$(dirname "$UGH")/python"
 if [ -x "$PY_BIN" ]; then
-  kind=$("$PY_BIN" -c "import sgt.core.op as o; print(o._symbol_kind('a.ts::__import__::./b'))" 2>/dev/null)
-  [ "$kind" = "import" ] || { echo "wrong sgt: $SGT does not own import lines" >&2; exit 1; }
+  kind=$("$PY_BIN" -c "import ugh.core.op as o; print(o._symbol_kind('a.ts::__import__::./b'))" 2>/dev/null)
+  [ "$kind" = "import" ] || { echo "wrong ugh: $UGH does not own import lines" >&2; exit 1; }
 fi
 
 rm -rf "$out"; mkdir -p "$out"
@@ -59,7 +59,7 @@ else
   # segments, and a survey that invented segment indices would report on refs that do
   # not resolve.
   : > "$targets_file"
-  ids=$( cd "$repo" && "$SGT" log --map --json 2>/dev/null | python3 -c "
+  ids=$( cd "$repo" && "$UGH" log --map --json 2>/dev/null | python3 -c "
 import json, sys
 for fid, f in json.load(sys.stdin)['features'].items():
     print(fid[2:10], f['label'], sep='\t')
@@ -67,7 +67,7 @@ for fid, f in json.load(sys.stdin)['features'].items():
   printf '%s\n' "$ids" | cut -f2 >> "$targets_file"
   while IFS=$'\t' read -r fid _; do
     [ -n "$fid" ] || continue
-    ( cd "$repo" && "$SGT" log --focus "$fid" 2>/dev/null ) \
+    ( cd "$repo" && "$UGH" log --focus "$fid" 2>/dev/null ) \
       | sed -e 's/\x1b\[[0-9;]*m//g' \
       | sed -n "s/^ *@\([0-9][0-9]*\) .*/$fid@\1/p" >> "$targets_file"
   done <<< "$ids"
@@ -82,7 +82,7 @@ while IFS= read -r target; do
   git clone -q "$repo" "$work" 2>/dev/null || continue
   cp -r "$repo/.sgt" "$work/.sgt"
   ln -s "$repo/node_modules" "$work/node_modules"
-  res=$( cd "$work" && "$SGT" revert "$target" --yes 2>&1 | sed -e 's/\x1b\[[0-9;]*m//g' )
+  res=$( cd "$work" && "$UGH" revert "$target" --yes 2>&1 | sed -e 's/\x1b\[[0-9;]*m//g' )
   echo "$res" > "$out/t$n.log"
   echo "$target" > "$out/t$n.target"
   if ! echo "$res" | grep -q 'revert applied'; then

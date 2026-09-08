@@ -1,4 +1,4 @@
-"""The terminal feature-timeline (Gantt) layout + renderer (`sgt.tui.graph`), and the TUI overlay.
+"""The terminal feature-timeline (Gantt) layout + renderer (`ugh.tui.graph`), and the TUI overlay.
 
 `graph_layout` is the Python counterpart of the VS Code `computeGraphLayout` and is held to the
 same contract (see tests/test_graph_layout.py): one lane per feature with first/last/commits,
@@ -13,7 +13,7 @@ import re
 
 import pytest
 
-from sgt.tui.graph import (
+from ugh.tui.graph import (
     _min_unique_prefixes,
     _reverted_gap_note,
     _state_banner,
@@ -54,7 +54,7 @@ def _seg(feature_id, seg_index, op_ids, first_index, last_index,
             "rationale": "", "op_ids": list(op_ids), "op_count": len(op_ids),
             "commit_shas": [], "first_index": first_index, "last_index": last_index,
             "novelty": 0.0, "tier": tier, "source": source,
-            # The projection carries excerpts, not prompts (`sgt.intent.stint.ask_record`).
+            # The projection carries excerpts, not prompts (`ugh.intent.stint.ask_record`).
             "asks": [_ask(a) for a in (asks or [])]}
 
 
@@ -156,7 +156,7 @@ def test_a_husk_is_not_counted_in_the_group_it_was_dropped_from():
     """Dropping a husk from the listing has to drop it from the count too. `Name (N)` on a folded row
     and the header's `N feature(s)` are both `len(leaves)`, so a husk left in the leaf set made the
     map promise rows that opening the fold does not deliver -- and put the map's headline total four
-    features above the same repo's `sgt log --tree` on the pilot fixture."""
+    features above the same repo's `ugh log --tree` on the pilot fixture."""
     husk, real = _node("HUSK", "N0", []), _node("REAL_IN", "N0", [])
     husk["own_symbols"], real["own_symbols"] = [], ["a.py::f"]
     m = {"roots": ["N0"],
@@ -175,7 +175,7 @@ def test_nested_subsystems_indent_by_depth_in_tree_order():
     """Rows follow TREE order and carry their nesting depth -- the same contract
     `tests/test_graph_layout.py` holds `computeGraphLayout` to. A flat group list sorted globally by
     first appearance printed a nested subsystem wherever its first commit fell, routinely *above* the
-    header of the parent containing it, which is why `sgt log --map` could not be matched against the
+    header of the parent containing it, which is why `ugh log --map` could not be matched against the
     workbench or the sidebar on the pilot's repo."""
     m = {"roots": ["R"],
          "nodes": [_node("R", None, ["S", "F0"], kind="subsystem"),
@@ -259,7 +259,7 @@ def test_nesting_is_drawn_inside_the_title_column_so_the_commit_axis_stays_align
 def test_a_feature_in_no_subsystem_sits_left_of_one_that_is_in_a_group():
     """A save lands in no subsystem until the next regrouping, and this view drew it at the same
     column as the members of the band above it -- so a just-saved feature read as belonging to a
-    subsystem it is not in, which is exactly the row a pilot participant could not find. `sgt log
+    subsystem it is not in, which is exactly the row a pilot participant could not find. `ugh log
     --tree` and the workbench both indent from the root; this row now does too."""
     m = {"roots": ["R", "LOOSE"],
          "nodes": [_node("R", None, ["F1"], kind="subsystem"),
@@ -311,7 +311,7 @@ def test_deterministic():
 
 
 def test_focus_view_renders_a_chapters_captured_words():
-    """The zoom (`sgt log --focus <feature>`) shows each chapter in the user's own words -- the
+    """The zoom (`ugh log --focus <feature>`) shows each chapter in the user's own words -- the
     intent-ledger P1 payoff: 'the history answers in my own words'. Words the projection carried on
     the segment reach the render; a chapter with none simply omits them (never a guessed reason)."""
     m = {"roots": ["A"], "nodes": [_node("A", None, [])], "edges": []}
@@ -382,10 +382,10 @@ def test_cars_carry_segment_metadata_and_are_ordered_by_seg_index():
 
 def test_a_reverted_checkpoint_is_drawn_as_removed_not_as_live():
     """A revert takes a chapter's ops out of the ideal and leaves them in the store -- the asymmetry
-    `sgt restore` needs -- so the checkpoint detail must keep the chapter and say it is gone. It used
+    `ugh restore` needs -- so the checkpoint detail must keep the chapter and say it is gone. It used
     to redraw it identically: same solid bar, same `3 checkpoints`, no marker, so the one screen
     that prints the `@n` handles told a user who had just reverted that nothing had happened. `░` is
-    the glyph the revert preview already spends on removal, and `sgt restore` is the way back, so
+    the glyph the revert preview already spends on removal, and `ugh restore` is the way back, so
     both belong on the row. A chapter with only *some* of its ops reverted says so as a count rather
     than picking one of the two extremes."""
     m = {"roots": ["A"], "nodes": [_node("A", None, [])], "edges": []}
@@ -409,7 +409,7 @@ def test_a_reverted_checkpoint_is_drawn_as_removed_not_as_live():
     kept = next(l for l in table.splitlines() if "kept" in l)
     assert "reverted" in rewound                    # the removed chapter says so, on its own row
     assert "reverted" not in kept                   # ...and the live one is not drawn the same way
-    assert "sgt restore A@1" in body                # and the way back is one copyable command
+    assert "ugh restore A@1" in body                # and the way back is one copyable command
     # A chapter with only SOME of its ops reverted reports the fraction rather than rounding
     # to either extreme; the "edits" the numbers count is the column header beside it now.
     assert "1 of 2 reverted" in next(l for l in table.splitlines() if "half" in l)
@@ -425,7 +425,7 @@ def test_a_checkpoint_with_no_presence_claim_is_drawn_as_live():
     seg = _seg("A", 0, ["o0"], 0, 0, label="unknown")  # `_seg` omits `present_op_count` entirely
     assert segment_layout(m, hist, [seg])["node_by_id"]["A"]["cars"][0]["reverted"] is False
     body = "\n".join(render_graph_lines(m, hist, [seg], focus="A", color=False))
-    assert "reverted" not in body and "sgt restore" not in body
+    assert "reverted" not in body and "ugh restore" not in body
 
 
 def test_sub_bins_group_a_cars_ops_by_commit_index():
@@ -520,7 +520,7 @@ def test_map_row_is_name_bar_and_count_with_checkpoints_one_command_away():
 def test_render_car_draws_tier_brackets():
     """`_render_car` (the shared checkpoint glyph, still used by the feedforward preview) brackets a
     car by its tier: `[ ]` co-changed/coupled, `( )` thematic."""
-    from sgt.tui.graph import _render_car
+    from ugh.tui.graph import _render_car
 
     co = {"seg_index": 0, "tier": "co-changed", "sub_bins": [(0, 1)], "is_future": False}
     th = {"seg_index": 1, "tier": "thematic", "sub_bins": [(1, 5)], "is_future": False}
@@ -681,7 +681,7 @@ def test_a_collapsed_group_does_not_print_a_build_local_id_in_the_handle_column(
 
     A collapsed subsystem's id is `N<k>` -- a DFS counter minted by `tree._register`, positional and
     therefore different after any reshape -- and no verb resolves it: `resolve_feature` matches leaves
-    only, so on the study fixture `sgt show N2` answers "not a known feature, checkpoint, op, or
+    only, so on the study fixture `ugh show N2` answers "not a known feature, checkpoint, op, or
     symbol" for a token the map had just printed in its copy-paste column. The renderer knew the id
     was short and padded it; it never asked whether it was typeable.
 
@@ -778,8 +778,8 @@ def test_the_map_strip_makes_every_checkpoint_addressable():
     # The footer closes the loop with a real handle, not a `<name>` placeholder: `show` before
     # `revert`, because it states what removing that checkpoint would cost without doing it.
     text = "\n".join(lines)
-    assert "sgt show aaaaaaaa@2" in text, text
-    assert "sgt revert aaaaaaaa@2" in text, text
+    assert "ugh show aaaaaaaa@2" in text, text
+    assert "ugh revert aaaaaaaa@2" in text, text
 
 
 def test_the_map_offers_the_prefix_handle_after_the_name():
@@ -891,14 +891,14 @@ def test_render_collab_preview_clean_land_shows_ops_and_the_oracle_gate():
 
 
 def test_render_collab_preview_fork_blocks_and_names_the_resolve_remedy():
-    """A fork blocks the land: it's listed with the high-level `sgt resolve <symbol>` remedy, the
+    """A fork blocks the land: it's listed with the high-level `ugh resolve <symbol>` remedy, the
     oracle is reported as not reached, and the summary says it won't advance."""
     pv = {"verb": "land", "target": "main", "clean": True, "ops_added": 0,
           "forks": [["api.py::route", "0ee9a65f11aa", "5e6eaf5822bb"]],
           "oracle_configured": True, "pin_contradictions": [], "declared_cycles": []}
     text = "\n".join(render_collab_preview_lines(pv, color=False))
     assert "1 fork block the land" in text
-    assert "api.py::route" in text and "sgt resolve api.py::route" in text
+    assert "api.py::route" in text and "ugh resolve api.py::route" in text
     assert "oracle: not reached" in text
     assert "adds 0 op" not in text          # the noisy zero-op line is suppressed under a blocking fork
     assert "won't advance" in text
@@ -933,14 +933,14 @@ def test_render_collab_preview_clean_sync_brings_in_ops_with_no_forks():
 
 def test_render_collab_preview_sync_fork_surfaces_without_blocking():
     """A sync fork *surfaces* (work waits at the common ancestor) rather than blocking: the fork is
-    drawn with its `sgt resolve <symbol>` remedy and the tail counts it, but the fold still happens."""
+    drawn with its `ugh resolve <symbol>` remedy and the tail counts it, but the fold still happens."""
     pv = {"verb": "sync", "remote": "origin", "target": "main", "ops_added": 2,
           "forks": [["api.py::route", "0ee9a65f11aa", "5e6eaf5822bb"]],
           "pin_contradictions": [], "declared_cycles": [], "base_recovery": "mined",
           "theirs_recovery": "mined"}
     text = "\n".join(render_collab_preview_lines(pv, color=False))
     assert "1 fork surface" in text and "nothing is lost" in text
-    assert "api.py::route" in text and "sgt resolve api.py::route" in text
+    assert "api.py::route" in text and "ugh resolve api.py::route" in text
     assert "folds in 2 op · 1 fork surface to resolve · not auto-undoable" in text
 
 
@@ -952,7 +952,7 @@ def test_render_collab_preview_sync_surfaces_degraded_recovery_loudly():
           "theirs_recovery": "none"}
     text = "\n".join(render_collab_preview_lines(pv, color=False))
     assert "base recovery: none" in text
-    assert "theirs' tip has sgt ops but no witnessed trailers" in text
+    assert "theirs' tip has ugh ops but no witnessed trailers" in text
 
 
 def test_render_collab_preview_resolve_shows_the_three_step_remedy_and_oracle():
@@ -972,7 +972,7 @@ def test_render_collab_preview_resolve_shows_the_three_step_remedy_and_oracle():
 
 def test_render_collab_preview_resolve_without_a_draft_renders_the_error_alone():
     pv = {"verb": "resolve", "target": "api.py::route", "clean": False,
-          "error": "no drafted reconciliation — run `sgt resolve api.py::route` first"}
+          "error": "no drafted reconciliation — run `ugh resolve api.py::route` first"}
     text = "\n".join(render_collab_preview_lines(pv, color=False))
     assert "no drafted reconciliation" in text
     assert "fulfill" not in text          # the step list is suppressed when the plan is unclean
@@ -1029,7 +1029,7 @@ def test_resolve_focus_group_returns_none_for_a_single_feature_so_caller_uses_th
 def test_a_name_that_is_both_a_feature_and_a_theme_resolves_to_the_feature():
     """A theme is minted per save and labelled with the save message, so any feature still carrying
     its save-message label collides by construction -- on the pilot fixture, 11 of 17 feature names
-    were also theme names. The theme used to win, so `sgt log --focus "agenda export"` answered with
+    were also theme names. The theme used to win, so `ugh log --focus "agenda export"` answered with
     a save rail for whatever features that theme's commits touched, and the feature's own checkpoint
     detail -- the `@n` handles the map's chips tell you to rewind by, and the only screen that
     prints them -- was unreachable for two thirds of the map. `--focus`'s metavar is FEATURE and two
@@ -1067,7 +1067,7 @@ def _rail_grid():
 
 
 def test_rail_names_reverted_work_no_lane_can_show():
-    """The default `sgt log` is the screen a reader lands on, and it is a lane view like the map: a
+    """The default `ugh log` is the screen a reader lands on, and it is a lane view like the map: a
     reverted symbol belongs to no leaf, so its ops lose their cell and every lane on the rail draws
     whole while the code is off disk. The map header already says so; saying it on only the second
     screen means the first one still reads as a completed codebase."""
@@ -1091,28 +1091,28 @@ def test_render_rail_only_features_scopes_the_vertical_tree_to_the_group():
 
 
 def test_state_banner_renders_forks_with_symbol_and_resolve_remedy():
-    # stored remedy is left stale on purpose: the banner derives `sgt resolve <symbol>` from the
+    # stored remedy is left stale on purpose: the banner derives `ugh resolve <symbol>` from the
     # symbol, so a forks.json committed before the remedy switch still shows the working command.
     states = {"forks": [{"symbol": "room.py::apply", "tips": ["a1b2c3d4e5", "f6a7b8c9d0"],
-                         "remedy": "sgt merge-op a1b2c3d4 f6a7b8c9"}], "rewrites": {"drafts": []}}
+                         "remedy": "ugh merge-op a1b2c3d4 f6a7b8c9"}], "rewrites": {"drafts": []}}
     text = "\n".join(_state_banner(states, color=False))
     assert "1 open fork" in text and "room.py::apply" in text
-    assert "sgt resolve room.py::apply" in text
+    assert "ugh resolve room.py::apply" in text
 
 
 def test_state_banner_separates_cross_version_forks_from_divergent_edits():
     """F82: a fork whose tips come from two MINER_VERSIONs is the same commit mined twice, not two
-    people editing one symbol. `sgt resolve <symbol>` cannot close it -- only `migrate ops-v3` can --
-    so the banner must not hand the user a hand-merge for each one. Observed on sgt's own repo, where
+    people editing one symbol. `ugh resolve <symbol>` cannot close it -- only `migrate ops-v3` can --
+    so the banner must not hand the user a hand-merge for each one. Observed on ugh's own repo, where
     `status` offered 612 hand-merges for 619 cross-version pairs."""
     states = {"forks": [
         {"symbol": "room.py::apply", "tips": ["a1", "a2"], "cross_version": False},
         {"symbol": "blame.ts::render", "tips": ["b1", "b2"], "cross_version": True},
     ], "rewrites": {"drafts": []}}
     text = "\n".join(_state_banner(states, color=False))
-    assert "sgt resolve room.py::apply" in text          # the real divergence keeps its remedy
-    assert "sgt resolve blame.ts::render" not in text    # the artifact must not get one
-    assert "sgt advanced migrate ops-v3" in text
+    assert "ugh resolve room.py::apply" in text          # the real divergence keeps its remedy
+    assert "ugh resolve blame.ts::render" not in text    # the artifact must not get one
+    assert "ugh advanced migrate ops-v3" in text
     assert "1 open fork" in text                      # counted honestly: one is a real fork
 
 
@@ -1121,7 +1121,7 @@ def test_state_banner_renders_merge_op_drafts_with_repair_remedy():
         {"verb": "merge-op", "target": "room.py::apply", "draft_id": "rw-abcdef123456"}]}}
     text = "\n".join(_state_banner(states, color=False))
     assert "1 pending merge-op draft" in text and "room.py::apply" in text
-    assert "sgt advanced repair rw-abcdef123" in text  # draft_id capped at 12 chars
+    assert "ugh advanced repair rw-abcdef123" in text  # draft_id capped at 12 chars
 
 
 def test_state_banner_is_empty_for_no_state_and_ignores_non_merge_op_drafts():
@@ -1309,7 +1309,7 @@ def test_chips_spend_the_budget_on_whole_names_before_truncating_several():
 def test_the_feature_column_half_names_its_feature_rather_than_showing_a_bare_count():
     """When the column cannot fit one whole name, it still NAMES the main feature and counts the
     rest. The alternative -- a bare `+15` -- is the same cell for fifteen different states, and it is
-    what an 80-column `sgt log --saves` printed on every row of a real repo. One hint plus a count is
+    what an 80-column `ugh log --saves` printed on every row of a real repo. One hint plus a count is
     one name, so the whole-name rule ("never half-name *several*") is intact.
 
     Asserted through the renderer, not against a helper: the rule used to live in `_chips`, a second
@@ -1327,7 +1327,7 @@ def test_the_feature_column_half_names_its_feature_rather_than_showing_a_bare_co
 
 def test_gap_note_names_the_symbols_whole_and_wraps_them():
     """A qualified symbol name runs ~36 columns, so the flat `syms[:4]` this note started with measured
-    110 and wrapped wherever the terminal chose. `sgt restore` takes a name the reader has to read back
+    110 and wrapped wherever the terminal chose. `ugh restore` takes a name the reader has to read back
     off this screen exactly -- a clipped one is a command they cannot type -- so the names are never
     truncated: they move to their own wrapped lines, and a long list is capped and counted."""
     syms = [f"services/checkout.py::apply_coupon_{i}" for i in range(9)]
@@ -1471,7 +1471,7 @@ def test_checkpoints_are_a_list_and_only_the_bar_carries_time():
 def test_a_checkpoint_chip_that_only_echoes_its_lane_keeps_the_handle_and_drops_the_words():
     """`@0 Chips Filters` under `make the chips filters: pick traits…` says nothing the row above it
     did not just say, and on the demo repo that was five of thirteen rows. The `@n` handle survives
-    -- it is the token `sgt revert` takes, and the map is where a reader finds it."""
+    -- it is the token `ugh revert` takes, and the map is where a reader finds it."""
     fid = "f-aaaaaaaaaa"
     m = {"roots": [fid], "nodes": [_node(fid, None, [])], "edges": []}
     m["nodes"][0]["label"] = "make the chips filters: pick traits in the header"

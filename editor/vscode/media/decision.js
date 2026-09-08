@@ -3,7 +3,7 @@
 // feature-map projection, but two node-driven test suites still slice pure functions out of this
 // file, so the functions themselves survive here unmodified:
 //   * `tests/test_color_parity.py` slices `GOLDEN` .. `colorFor` to check OKLCH parity against
-//     `sgt/tui/color.py` and `editor/vscode/src/color.ts` (the three-impl color contract).
+//     `ugh/tui/color.py` and `editor/vscode/src/color.ts` (the three-impl color contract).
 //   * `tests/test_decision_layout.py` slices `computeLayout` .. the `end-layout` marker to check
 //     the git-log lane/row layout engine (a pure function with no DOM/webview dependency).
 // Nothing here is loaded by the extension anymore; this file is a test fixture only.

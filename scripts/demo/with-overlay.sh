@@ -19,9 +19,9 @@ set -euo pipefail
 repo="${1:-$HOME/repos/sgt-demo/seedbank-v3}"
 port="${2:-5174}"
 here="$(cd "$(dirname "$0")" && pwd)"
-SGT="${SGT:-$here/../../.venv/bin/sgt}"
-[ -x "$SGT" ] || SGT="sgt"
-[ -d "$repo/.sgt" ] || { echo "no sgt repo at $repo" >&2; exit 1; }
+UGH="${UGH:-$here/../../.venv/bin/ugh}"
+[ -x "$UGH" ] || UGH="ugh"
+[ -d "$repo/.sgt" ] || { echo "no ugh repo at $repo" >&2; exit 1; }
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -30,17 +30,17 @@ for f in index.html package.json tsconfig.json vite.config.ts src tools; do
 done
 ln -s "$repo/node_modules" "$work/node_modules"
 
-# The demo's own config already carries sgtLoc + react; this one re-declares them rather than
+# The demo's own config already carries ughLoc + react; this one re-declares them rather than
 # importing a .ts config from a .mjs one, and adds the overlay. Kept in lockstep by hand -- if the
 # demo's vite.config.ts grows a plugin, add it here too.
 cat > "$work/vite.overlay.config.mjs" <<CONFIG
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import sgtLoc from "./tools/vite-plugin-sgt-loc.mjs";
-import sgtOverlay from "$here/overlay/sgt-overlay.mjs";
+import ughLoc from "./tools/vite-plugin-ugh-loc.mjs";
+import ughOverlay from "$here/overlay/ugh-overlay.mjs";
 
 export default defineConfig({
-  plugins: [sgtLoc(), react(), sgtOverlay({ repo: "$repo", sgt: "$SGT" })],
+  plugins: [ughLoc(), react(), ughOverlay({ repo: "$repo", ugh: "$UGH" })],
 });
 CONFIG
 

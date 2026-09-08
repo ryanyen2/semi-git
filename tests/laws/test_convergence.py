@@ -16,7 +16,7 @@ against a red or green test that already exists:
 - LAW-R (resolutions travel): a resolved fork stays resolved on every replica. Red today -- forks
   abort sync and no durable shared fork record exists to hang a resolution on (xfail, U20/U21).
 - LAW-G (green-to-green): a shared tip only advances to an oracle-green op-set. GREEN as of U23 --
-  `sync` advances a branch ungated *by design*, so enforcement is land-mediated: `sgt land`'s CAS
+  `sync` advances a branch ungated *by design*, so enforcement is land-mediated: `ugh land`'s CAS
   advances `refs/heads/<branch>` only after the exact resulting op-set passes the oracle.
 - LAW-L (locality): sync never moves a replica's HEAD selection out from under it. GREEN.
 
@@ -33,21 +33,21 @@ from pathlib import Path
 
 import pytest
 
-from sgt import state
-from sgt.core import lens, oracle, sync, verbs
-from sgt.core.ideal import Ideal
-from sgt.core.lens import get
-from sgt.core.store import Store
-from sgt.lens import tree
-from sgt.lens.pins import Pins, load_pins, save_pins
-from sgt.store.gitbind import GitBinding, parse_op_ids
+from ugh import state
+from ugh.core import lens, oracle, sync, verbs
+from ugh.core.ideal import Ideal
+from ugh.core.lens import get
+from ugh.core.store import Store
+from ugh.lens import tree
+from ugh.lens.pins import Pins, load_pins, save_pins
+from ugh.store.gitbind import GitBinding, parse_op_ids
 from tests.conftest import _clone, _init_bare, _push
 from tests.laws import corpus
 
 
 # --- N-replica rig (generalizes tests/core/test_sync.py's two-clone helpers) -------------------
 # The git-plumbing primitives (`_init_bare`/`_clone`/`_push`) are the shared, state-ref-aware
-# fixtures from `tests/conftest.py` (Phase 1.2 Step 3): `_push` publishes + pushes `refs/sgt/state`
+# fixtures from `tests/conftest.py` (Phase 1.2 Step 3): `_push` publishes + pushes `refs/ugh/state`
 # alongside the branch and `_clone` fetches + materializes it, so the op store and committed tables --
 # which now live on the ref, off the branch tree -- actually travel between these replicas. The
 # higher-level `_replicas`/`_edit_and_commit` stay local (their shapes are suite-specific).
@@ -60,7 +60,7 @@ def _edit_and_commit(repo: Path, path: str, content: str, message: str) -> str:
     (repo / path).write_text(content, encoding="utf-8")
     content_sha = GitBinding(repo).commit_all(message)
     ideal = lens.get(repo)
-    put_sha = lens.put(repo, ideal, message=f"sgt: mine {message}")
+    put_sha = lens.put(repo, ideal, message=f"ugh: mine {message}")
     lens.record_ideal(repo, ideal, put_sha)
     return content_sha
 
@@ -215,7 +215,7 @@ def test_law_u_authored_feature_survives_a_two_clone_sync_roundtrip(tmp_path):
     keeping the SAME carried `af-` id. A rename made before the fork travels intact; a concurrent
     membership edit on each side converges by OR-Set union after both sync (LAW-U): both clones end
     on the same id, label, and live-member set regardless of who reconciled whom."""
-    from sgt.lens import authored
+    from ugh.lens import authored
 
     _remote, (a, b) = _replicas(tmp_path, _BASE, 2)
 
@@ -362,8 +362,8 @@ def _landed_verdict_status(repo, land_sha: str) -> str:
 
 def test_law_g_shared_tip_advances_only_on_an_oracle_green(tmp_path):
     """LAW-G: a shared branch record only ever advances to an oracle-green op-set. Enforcement is
-    land-mediated (the U20 contract note): `sgt sync` advances a branch *ungated* by design, so the
-    guarantee lives in `sgt land`, whose CAS advances `refs/heads/<branch>` only after the exact
+    land-mediated (the U20 contract note): `ugh sync` advances a branch *ungated* by design, so the
+    guarantee lives in `ugh land`, whose CAS advances `refs/heads/<branch>` only after the exact
     resulting op-set passes the oracle (LAW-G). This asserts both directions -- (a) with a passing
     oracle the shared tip advances to the green op-set, and (b) with no oracle *or* a red oracle the
     land refuses and the shared tip does not move -- so `refs/heads/main` never points at an

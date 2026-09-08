@@ -1,5 +1,5 @@
 // Activation: find the .sgt workspace, build the shared store, and wire every surface to it.
-// A file-watcher on .sgt/ invalidates the store after a checkpoint/feature-verb op (`sgt map`,
+// A file-watcher on .sgt/ invalidates the store after a checkpoint/feature-verb op (`ugh map`,
 // `merge`/`split`/`rename`/`move`/`revert`, all of which touch tree.json and/or pins.json) so the
 // feature-map webview and blame gutters refresh together.
 
@@ -13,7 +13,7 @@ import { FeatureInlayHintsProvider } from "./inlayHints";
 import { PlanCodeLensProvider, PlanDiffProvider, PlanStatusBar } from "./plan";
 import { PreviewProvider } from "./preview";
 import { RenderPanel } from "./renderPanel";
-import { findSgtRoot, Sgt } from "./sgt";
+import { findUghRoot, Ugh } from "./ugh";
 import { GitStatusBar } from "./statusBar";
 import { Store } from "./store";
 import { ChangesTreeProvider } from "./tree/changesTree";
@@ -22,28 +22,28 @@ import { NowTreeProvider } from "./tree/nowTree";
 import { WorkbenchProvider } from "./workbench";
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  const out = vscode.window.createOutputChannel("semi-git");
+  const out = vscode.window.createOutputChannel("ugh");
   context.subscriptions.push(out);
-  const root = await findSgtRoot();
-  void vscode.commands.executeCommand("setContext", "sgt.hasRoot", !!root);
+  const root = await findUghRoot();
+  void vscode.commands.executeCommand("setContext", "ugh.hasRoot", !!root);
 
   // Always available, even without a `.sgt` store yet -- it's how the welcome-view CTA in
-  // `sgtFeatures` (shown when `!sgt.hasRoot`) bootstraps a workspace.
+  // `ughFeatures` (shown when `!ugh.hasRoot`) bootstraps a workspace.
   context.subscriptions.push(
-    vscode.commands.registerCommand("sgt.init", async () => {
+    vscode.commands.registerCommand("ugh.init", async () => {
       const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
       if (!folder) {
         vscode.window.showErrorMessage("Open a folder first.");
         return;
       }
       try {
-        await new Sgt(folder, out).mutate(["init"]);
+        await new Ugh(folder, out).mutate(["init"]);
       } catch (e: any) {
-        vscode.window.showErrorMessage(`sgt init failed: ${e.message}`);
+        vscode.window.showErrorMessage(`ugh init failed: ${e.message}`);
         return;
       }
       const choice = await vscode.window.showInformationMessage(
-        "sgt initialized. Reload the window to activate semi-git.",
+        "ugh initialized. Reload the window to activate ugh.",
         "Reload Window"
       );
       if (choice === "Reload Window") {
@@ -53,7 +53,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   if (!root) {
-    return; // no `.sgt` store; only sgt.init + the welcome view are live until one exists
+    return; // no `.sgt` store; only ugh.init + the welcome view are live until one exists
   }
 
   const store = new Store(root, out);
@@ -80,7 +80,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const renderPanel = new RenderPanel(context, store, () => root);
   context.subscriptions.push(
     renderPanel,
-    vscode.commands.registerCommand("sgt.openRenderPanel", () => renderPanel.open()),
+    vscode.commands.registerCommand("ugh.openRenderPanel", () => renderPanel.open()),
   );
 
   const workbenchProvider = new WorkbenchProvider(context, store, preview, root, renderPanel);
@@ -89,13 +89,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(
     workbenchProvider,
-    vscode.window.registerWebviewViewProvider("sgtWorkbench", workbenchProvider, {
+    vscode.window.registerWebviewViewProvider("ughWorkbench", workbenchProvider, {
       webviewOptions: { retainContextWhenHidden: true },
     })
   );
 
-  // Three views, and the sidebar used to carry five. `sgtForks` was an inbox for same-symbol chain
-  // forks and `sgtCompositions` was the sessions-and-proposals switch/land/publish surface. Both
+  // Three views, and the sidebar used to carry five. `ughForks` was an inbox for same-symbol chain
+  // forks and `ughCompositions` was the sessions-and-proposals switch/land/publish surface. Both
   // are permanently empty on a repository one person is reading -- so what they contributed was two
   // more names to work out, and, in Compositions' case, a Publish-to-GitHub row sitting one click
   // deep in a panel somebody opened to look at their own history. Neither verb was removed; they
@@ -105,9 +105,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const changesTree = new ChangesTreeProvider(store);
   context.subscriptions.push(nowTree, featuresTree, changesTree);
 
-  const nowView = vscode.window.createTreeView("sgtNow", { treeDataProvider: nowTree });
-  const featuresView = vscode.window.createTreeView("sgtFeatures", { treeDataProvider: featuresTree });
-  const changesView = vscode.window.createTreeView("sgtChanges", { treeDataProvider: changesTree });
+  const nowView = vscode.window.createTreeView("ughNow", { treeDataProvider: nowTree });
+  const featuresView = vscode.window.createTreeView("ughFeatures", { treeDataProvider: featuresTree });
+  const changesView = vscode.window.createTreeView("ughChanges", { treeDataProvider: changesTree });
   context.subscriptions.push(nowView, featuresView, changesView);
 
   // Refresh only on .sgt changes -- a mined op, checkpoint, or feature verb rewrites the op store
@@ -119,26 +119,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // invalidation to `.sgt/` means the tree refreshes exactly when the op store actually changes; a
   // symbol written between checkpoints shows up in blame on the next mined op rather than
   // mid-typing.
-  const sgtWatcher = vscode.workspace.createFileSystemWatcher(
+  const ughWatcher = vscode.workspace.createFileSystemWatcher(
     new vscode.RelativePattern(root, ".sgt/**/*.json")
   );
   let pending: NodeJS.Timeout | undefined;
   const refresh = () => {
     clearTimeout(pending);
     pending = setTimeout(() => {
-      // A `sgt map`/`compose` READ rebuilds and rewrites tree.json/ideal.json/label_cache.json/...
+      // A `ugh map`/`compose` READ rebuilds and rewrites tree.json/ideal.json/label_cache.json/...
       // under `.sgt/`, which trips this very watcher. Invalidating on our own writes re-issues the
       // read -> infinite rebuild loop (the sidebar spinning forever). Skip while our subprocess is
       // active; external mutations arrive while we're idle, and our own mutations invalidate
       // explicitly, so neither is missed.
-      if (store.sgt.recentlyActive()) return;
+      if (store.ugh.recentlyActive()) return;
       store.invalidate();
     }, 250); // debounce write storms
   };
-  sgtWatcher.onDidChange(refresh);
-  sgtWatcher.onDidCreate(refresh);
-  sgtWatcher.onDidDelete(refresh);
-  context.subscriptions.push(sgtWatcher);
+  ughWatcher.onDidChange(refresh);
+  ughWatcher.onDidCreate(refresh);
+  ughWatcher.onDidDelete(refresh);
+  context.subscriptions.push(ughWatcher);
 
   // ...and a second watcher on HEAD, because the loop guard above has to drop what it cannot tell
   // apart from our own writes. An external rewrite -- a terminal, an agent, a study stage script

@@ -414,7 +414,7 @@ svg.railsvg {
 }
 
 /* A chapter a revert took out of the ideal. Its edits are still recorded and still addressable
-   (`sgt restore <feature>@<n>`) -- only the ideal dropped them -- so the car keeps its slot in time
+   (`ugh restore <feature>@<n>`) -- only the ideal dropped them -- so the car keeps its slot in time
    and its identity hue and reads as emptied. That is the SVG counterpart of the terminal map's `\u2591`,
    which is also the glyph the revert preview spends on removal: one state, one vocabulary, two
    surfaces. The hue stroke arrives inline from the lane color (see `.gcar`, which sets stroke to the
@@ -738,7 +738,7 @@ svg.railsvg {
 }
 
 /* Revert closure ghosts for hover-previewed verbs: the graph reads the same three roles as
-   `sgt revert`'s terminal preview. ghost-blast = a feature LOSING ops (collateral of the revert,
+   `ugh revert`'s terminal preview. ghost-blast = a feature LOSING ops (collateral of the revert,
    amber "affected"); ghost-foundation = a feature GAINING re-drafted hollow ops (green "will be
    re-drafted"); ghost-target = the feature being acted on (its swatch outlined). */
 .glane.ghost-blast .gbar-track {

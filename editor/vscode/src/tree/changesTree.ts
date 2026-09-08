@@ -1,6 +1,6 @@
-// `sgtChanges`: a read-only diff of what the working tree carries relative to the active plans.
+// `ughChanges`: a read-only diff of what the working tree carries relative to the active plans.
 // Two sections, both informational (nothing here is a chore to "resolve"): "Unplanned changes"
-// (ops sgt mined that no active plan predicted) and "Untracked files" (paths with no
+// (ops ugh mined that no active plan predicted) and "Untracked files" (paths with no
 // entity-granular coverage). The materialized code is the source of truth -- these rows just tell
 // you what happened outside a stated plan; you act on them by editing code, not by acknowledging a
 // queue. Sourced from one `compose_view` call.
@@ -41,7 +41,7 @@ export class ChangesTreeProvider implements vscode.TreeDataProvider<ChangesNode>
         `${node.label} (${node.count})`,
         node.count ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None
       );
-      item.contextValue = "sgtChangesSection";
+      item.contextValue = "ughChangesSection";
       return item;
     }
     if (node.kind === "drift") {
@@ -51,19 +51,19 @@ export class ChangesTreeProvider implements vscode.TreeDataProvider<ChangesNode>
       );
       item.iconPath = new vscode.ThemeIcon("diff-modified");
       item.tooltip = "Mined from the working tree, not predicted by any active plan. Read-only.";
-      item.contextValue = "sgtDrift";
+      item.contextValue = "ughDrift";
       const loc = firstSpan(node.entry);
       if (loc) {
-        item.command = { command: "sgt.jumpToLocation", title: "Open", arguments: [loc] };
+        item.command = { command: "ugh.jumpToLocation", title: "Open", arguments: [loc] };
       }
       return item;
     }
     const item = new vscode.TreeItem(node.path, vscode.TreeItemCollapsibleState.None);
     item.iconPath = new vscode.ThemeIcon("file");
     item.tooltip = "No entity-granular coverage yet. Read-only.";
-    item.contextValue = "sgtUnmanaged";
+    item.contextValue = "ughUnmanaged";
     item.command = {
-      command: "sgt.jumpToLocation", title: "Open",
+      command: "ugh.jumpToLocation", title: "Open",
       arguments: [{ path: node.path, startLine: 1, endLine: 1 }],
     };
     return item;

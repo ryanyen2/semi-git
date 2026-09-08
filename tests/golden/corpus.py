@@ -14,7 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import NamedTuple
 
-from sgt import api
+from ugh import api
 from tests.laws import corpus as _kernel_git_corpus
 
 
@@ -35,8 +35,8 @@ def capture_kernel_views(name: str, root: str) -> dict:
     (`build_map`), and capture the kernel views: the op DAG, the current ideal, -- for a diverged
     fixture -- the ideal-vs-ideal semantic diff between its two branches, and the U13 feature-lens
     projection (`map_view`/`blame_view`/`status_view`)."""
-    from sgt.core.lens import get
-    from sgt.lens.map import build_map
+    from ugh.core.lens import get
+    from ugh.lens.map import build_map
 
     case = KERNEL_CORPUS[name]
     repo = _kernel_git_corpus.CORPUS[case.laws_name].build(Path(root))

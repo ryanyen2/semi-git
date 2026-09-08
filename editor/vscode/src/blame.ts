@@ -2,7 +2,7 @@
 // the owning feature's identity (color.ts's OKLCH generator) so a feature reads the same color
 // here as it does in the feature tree. Hovering a span shows its label and feature id — the
 // "detail on demand" layer that used to live in hover.ts/codelens.ts, folded into the decoration
-// itself now that there's no per-node webview to link out to. Toggled by `sgt.blame.enabled`.
+// itself now that there's no per-node webview to link out to. Toggled by `ugh.blame.enabled`.
 
 import * as vscode from "vscode";
 import { colorForNode, colorWithAlpha } from "./color";
@@ -19,7 +19,7 @@ export class BlameController implements vscode.Disposable {
       vscode.window.onDidChangeActiveTextEditor(() => this.schedule()),
       this.store.onDidChange(() => this.schedule()),
       vscode.workspace.onDidChangeConfiguration((e) => {
-        if (e.affectsConfiguration("sgt.blame")) {
+        if (e.affectsConfiguration("ugh.blame")) {
           this.schedule();
         }
       }),
@@ -38,7 +38,7 @@ export class BlameController implements vscode.Disposable {
   }
 
   private enabled(): boolean {
-    return vscode.workspace.getConfiguration("sgt").get<boolean>("blame.enabled", true);
+    return vscode.workspace.getConfiguration("ugh").get<boolean>("blame.enabled", true);
   }
 
   private typeFor(featureId: string): vscode.TextEditorDecorationType {
@@ -75,9 +75,9 @@ export class BlameController implements vscode.Disposable {
     if (!editor) {
       return;
     }
-    // Only real workspace files have a semantic blame. Focusing the "semi-git" Output panel,
+    // Only real workspace files have a semantic blame. Focusing the "ugh" Output panel,
     // a diff view, a git:// gutter, or any other virtual document makes it the active editor;
-    // running `sgt blame` on that URI fails and appends to the output channel, which re-reveals
+    // running `ugh blame` on that URI fails and appends to the output channel, which re-reveals
     // it and re-fires this handler -- a self-sustaining loop. Gate to file scheme (matches the
     // `{ scheme: "file" }` selector every other read surface registers with).
     if (editor.document.uri.scheme !== "file") {

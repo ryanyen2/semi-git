@@ -1,18 +1,18 @@
 {
-  "name": "semi-git",
-  "displayName": "semi-git (sgt)",
+  "name": "ugh",
+  "displayName": "ugh",
   "description": "See which feature owns each line of code, and remove or restore one feature's work without touching the rest.",
   "version": "0.6.10",
-  "publisher": "semi-git",
+  "publisher": "ugh",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ryanyen2/semi-git.git",
+    "url": "https://github.com/ryanyen2/ugh.git",
     "directory": "editor/vscode"
   },
-  "homepage": "https://github.com/ryanyen2/semi-git",
+  "homepage": "https://github.com/ryanyen2/ugh",
   "bugs": {
-    "url": "https://github.com/ryanyen2/semi-git/issues"
+    "url": "https://github.com/ryanyen2/ugh/issues"
   },
   "engines": {
     "vscode": "^1.90.0"
@@ -23,47 +23,47 @@
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
-    "onCommand:sgt.init",
-    "onCommand:sgt.openRenderPanel",
-    "onCommand:sgt.openWorkbench",
-    "onView:sgtFeatures",
+    "onCommand:ugh.init",
+    "onCommand:ugh.openRenderPanel",
+    "onCommand:ugh.openWorkbench",
+    "onView:ughFeatures",
     "workspaceContains:**/.sgt/local/ideal.json"
   ],
   "contributes": {
     "configuration": {
-      "title": "semi-git",
+      "title": "ugh",
       "properties": {
-        "sgt.path": {
+        "ugh.path": {
           "type": "string",
-          "default": "sgt",
-          "description": "Path to the `sgt` executable. Defaults to `sgt` on your PATH."
+          "default": "ugh",
+          "description": "Path to the `ugh` executable. Defaults to `ugh` on your PATH."
         },
-        "sgt.blame.enabled": {
+        "ugh.blame.enabled": {
           "type": "boolean",
           "default": true,
           "description": "Tint whole files by the feature that owns each span (gutter + overview ruler)."
         },
-        "sgt.plan.enabled": {
+        "ugh.plan.enabled": {
           "type": "boolean",
           "default": true,
           "description": "Show a CodeLens above lines matched or drifted from the active plan session."
         },
-        "sgt.inlayHints.enabled": {
+        "ugh.inlayHints.enabled": {
           "type": "boolean",
           "default": false,
           "description": "Show a \u2039feature-label \u00b7N ops\u203a inlay hint at each symbol's definition line."
         },
-        "sgt.diagnostics.drift": {
+        "ugh.diagnostics.drift": {
           "type": "boolean",
           "default": true,
           "description": "Show a Hint diagnostic (with a 'Save to clear' quick-fix) on drifted spans."
         },
-        "sgt.diagnostics.forks": {
+        "ugh.diagnostics.forks": {
           "type": "boolean",
           "default": true,
           "description": "Show a Warning diagnostic on symbols with an open fork."
         },
-        "sgt.render.devCommand": {
+        "ugh.render.devCommand": {
           "type": "string",
           "default": "npx vite --host 127.0.0.1 --port ${port} --strictPort",
           "markdownDescription": "Command the render panel runs to serve the folded tree. `${port}` is substituted with a free port. Runs in a scratch copy of the fold, never in your working tree."
@@ -73,271 +73,271 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "semi-git",
-          "title": "semi-git",
-          "icon": "media/sgt-icon.svg"
+          "id": "ugh",
+          "title": "ugh",
+          "icon": "media/ugh-icon.svg"
         }
       ],
       "panel": [
         {
-          "id": "sgtWorkbenchPanel",
-          "title": "SGT Workbench",
-          "icon": "media/sgt-icon.svg"
+          "id": "ughWorkbenchPanel",
+          "title": "ugh Workbench",
+          "icon": "media/ugh-icon.svg"
         }
       ]
     },
     "views": {
-      "semi-git": [
+      "ugh": [
         {
-          "id": "sgtNow",
+          "id": "ughNow",
           "name": "Now",
-          "icon": "media/sgt-icon.svg",
-          "when": "sgt.hasRoot"
+          "icon": "media/ugh-icon.svg",
+          "when": "ugh.hasRoot"
         },
         {
-          "id": "sgtFeatures",
+          "id": "ughFeatures",
           "name": "Features",
-          "icon": "media/sgt-icon.svg"
+          "icon": "media/ugh-icon.svg"
         },
         {
-          "id": "sgtChanges",
+          "id": "ughChanges",
           "name": "Changes",
-          "icon": "media/sgt-icon.svg",
-          "when": "sgt.hasRoot"
+          "icon": "media/ugh-icon.svg",
+          "when": "ugh.hasRoot"
         }
       ],
-      "sgtWorkbenchPanel": [
+      "ughWorkbenchPanel": [
         {
           "type": "webview",
-          "id": "sgtWorkbench",
+          "id": "ughWorkbench",
           "name": "Composition Workbench",
-          "when": "sgt.hasRoot"
+          "when": "ugh.hasRoot"
         }
       ]
     },
     "viewsWelcome": [
       {
-        "view": "sgtFeatures",
-        "contents": "No `.sgt` store found in this workspace.\n[Initialize semi-git](command:sgt.init)\nReads your existing git history into the op store under `.sgt/`. Your git history and working tree are left untouched.",
-        "when": "!sgt.hasRoot"
+        "view": "ughFeatures",
+        "contents": "No `.sgt` store found in this workspace.\n[Initialize ugh](command:ugh.init)\nReads your existing git history into the op store under `.sgt/`. Your git history and working tree are left untouched.",
+        "when": "!ugh.hasRoot"
       }
     ],
     "commands": [
       {
-        "command": "sgt.refresh",
+        "command": "ugh.refresh",
         "title": "Refresh",
-        "category": "semi-git",
+        "category": "ugh",
         "icon": "$(refresh)"
       },
       {
-        "command": "sgt.runNextAction",
+        "command": "ugh.runNextAction",
         "title": "Run Next Action",
-        "category": "semi-git"
+        "category": "ugh"
       },
       {
-        "command": "sgt.toggleBlame",
+        "command": "ugh.toggleBlame",
         "title": "Toggle Feature Blame",
-        "category": "semi-git"
+        "category": "ugh"
       },
       {
-        "command": "sgt.openWorkbench",
+        "command": "ugh.openWorkbench",
         "title": "Open Composition Workbench",
-        "category": "semi-git",
+        "category": "ugh",
         "icon": "$(type-hierarchy)"
       },
       {
-        "command": "sgt.openRenderPanel",
+        "command": "ugh.openRenderPanel",
         "title": "Open Running App (render panel)",
-        "category": "sgt"
+        "category": "ugh"
       },
       {
-        "command": "sgt.revealInWorkbench",
+        "command": "ugh.revealInWorkbench",
         "title": "Reveal Feature in Workbench",
-        "category": "semi-git"
+        "category": "ugh"
       },
       {
-        "command": "sgt.previewRevert",
+        "command": "ugh.previewRevert",
         "title": "Preview Revert (plug out)",
-        "category": "semi-git",
+        "category": "ugh",
         "icon": "$(diff)"
       },
       {
-        "command": "sgt.revert",
+        "command": "ugh.revert",
         "title": "Revert (choose which dependents to keep)",
-        "category": "semi-git"
+        "category": "ugh"
       },
       {
-        "command": "sgt.revertSymbol",
+        "command": "ugh.revertSymbol",
         "title": "Revert Symbol Under Cursor (choose dependents)",
-        "category": "semi-git"
+        "category": "ugh"
       },
       {
-        "command": "sgt.restore",
+        "command": "ugh.restore",
         "title": "Restore (plug in)",
-        "category": "semi-git"
+        "category": "ugh"
       },
       {
-        "command": "sgt.edit",
+        "command": "ugh.edit",
         "title": "Edit in place",
-        "category": "semi-git"
+        "category": "ugh"
       },
       {
-        "command": "sgt.showPlanQuickPick",
+        "command": "ugh.showPlanQuickPick",
         "title": "Show Plan Steps",
-        "category": "semi-git"
+        "category": "ugh"
       },
       {
-        "command": "sgt.showPlanDiff",
+        "command": "ugh.showPlanDiff",
         "title": "Show Plan Step Diff",
-        "category": "semi-git"
+        "category": "ugh"
       },
       {
-        "command": "sgt.init",
-        "title": "Initialize (sgt init)",
-        "category": "semi-git"
+        "command": "ugh.init",
+        "title": "Initialize (ugh init)",
+        "category": "ugh"
       },
       {
-        "command": "sgt.resolveFork",
+        "command": "ugh.resolveFork",
         "title": "Resolve Fork",
-        "category": "semi-git"
+        "category": "ugh"
       },
       {
-        "command": "sgt.resolveStalledPlan",
+        "command": "ugh.resolveStalledPlan",
         "title": "Resolve Stalled Plan",
-        "category": "semi-git"
+        "category": "ugh"
       },
       {
-        "command": "sgt.proposeLand",
+        "command": "ugh.proposeLand",
         "title": "Land Proposal",
-        "category": "semi-git (advanced)"
+        "category": "ugh (advanced)"
       },
       {
-        "command": "sgt.proposePublish",
+        "command": "ugh.proposePublish",
         "title": "Publish Proposal (GitHub PR)",
-        "category": "semi-git (advanced)"
+        "category": "ugh (advanced)"
       },
       {
-        "command": "sgt.viewProposal",
+        "command": "ugh.viewProposal",
         "title": "View Proposal",
-        "category": "semi-git (advanced)"
+        "category": "ugh (advanced)"
       },
       {
-        "command": "sgt.jumpToLocation",
+        "command": "ugh.jumpToLocation",
         "title": "Jump to Location",
-        "category": "semi-git"
+        "category": "ugh"
       },
       {
-        "command": "sgt.switch",
+        "command": "ugh.switch",
         "title": "Switch Branch",
-        "category": "semi-git"
+        "category": "ugh"
       },
       {
-        "command": "sgt.save",
+        "command": "ugh.save",
         "title": "Save",
-        "category": "semi-git"
+        "category": "ugh"
       },
       {
-        "command": "sgt.undo",
+        "command": "ugh.undo",
         "title": "Undo Last Operation",
-        "category": "semi-git"
+        "category": "ugh"
       },
       {
-        "command": "sgt.sync",
+        "command": "ugh.sync",
         "title": "Sync",
-        "category": "semi-git",
+        "category": "ugh",
         "icon": "$(sync)"
       },
       {
-        "command": "sgt.push",
+        "command": "ugh.push",
         "title": "Push",
-        "category": "semi-git",
+        "category": "ugh",
         "icon": "$(repo-push)"
       },
       {
-        "command": "sgt.land",
+        "command": "ugh.land",
         "title": "Land Branch",
-        "category": "semi-git"
+        "category": "ugh"
       }
     ],
     "menus": {
       "view/title": [
         {
-          "command": "sgt.refresh",
-          "when": "view == sgtNow",
+          "command": "ugh.refresh",
+          "when": "view == ughNow",
           "group": "navigation"
         },
         {
-          "command": "sgt.refresh",
-          "when": "view == sgtFeatures",
+          "command": "ugh.refresh",
+          "when": "view == ughFeatures",
           "group": "navigation"
         },
         {
-          "command": "sgt.refresh",
-          "when": "view == sgtChanges",
+          "command": "ugh.refresh",
+          "when": "view == ughChanges",
           "group": "navigation"
         }
       ],
       "editor/context": [
         {
-          "command": "sgt.revertSymbol",
-          "when": "sgt.hasRoot && editorTextFocus",
-          "group": "sgt@1"
+          "command": "ugh.revertSymbol",
+          "when": "ugh.hasRoot && editorTextFocus",
+          "group": "ugh@1"
         },
         {
-          "command": "sgt.revealInWorkbench",
-          "when": "sgt.hasRoot && editorTextFocus",
-          "group": "sgt@2"
+          "command": "ugh.revealInWorkbench",
+          "when": "ugh.hasRoot && editorTextFocus",
+          "group": "ugh@2"
         }
       ],
       "view/item/context": [
         {
-          "command": "sgt.previewRevert",
-          "when": "view == sgtFeatures && viewItem == sgtFeature"
+          "command": "ugh.previewRevert",
+          "when": "view == ughFeatures && viewItem == ughFeature"
         },
         {
-          "command": "sgt.revert",
-          "when": "view == sgtFeatures && viewItem == sgtFeature"
+          "command": "ugh.revert",
+          "when": "view == ughFeatures && viewItem == ughFeature"
         },
         {
-          "command": "sgt.restore",
-          "when": "view == sgtFeatures && viewItem == sgtFeature"
+          "command": "ugh.restore",
+          "when": "view == ughFeatures && viewItem == ughFeature"
         },
         {
-          "command": "sgt.edit",
-          "when": "view == sgtFeatures && viewItem == sgtFeature"
+          "command": "ugh.edit",
+          "when": "view == ughFeatures && viewItem == ughFeature"
         },
         {
-          "command": "sgt.previewRevert",
-          "when": "view == sgtFeatures && viewItem == sgtChapter",
-          "group": "sgt@1"
+          "command": "ugh.previewRevert",
+          "when": "view == ughFeatures && viewItem == ughChapter",
+          "group": "ugh@1"
         },
         {
-          "command": "sgt.revert",
-          "when": "view == sgtFeatures && viewItem == sgtChapter",
-          "group": "sgt@1"
+          "command": "ugh.revert",
+          "when": "view == ughFeatures && viewItem == ughChapter",
+          "group": "ugh@1"
         },
         {
-          "command": "sgt.restore",
-          "when": "view == sgtFeatures && viewItem == sgtChapter",
-          "group": "sgt@1"
+          "command": "ugh.restore",
+          "when": "view == ughFeatures && viewItem == ughChapter",
+          "group": "ugh@1"
         }
       ]
     },
     "walkthroughs": [
       {
-        "id": "sgt.gettingStarted",
-        "title": "Get started with semi-git",
-        "description": "Set up sgt and see your codebase clustered by feature.",
+        "id": "ugh.gettingStarted",
+        "title": "Get started with ugh",
+        "description": "Set up ugh and see your codebase clustered by feature.",
         "steps": [
           {
             "id": "install",
-            "title": "Install the sgt CLI",
-            "description": "This extension shells out to the `sgt` CLI on your PATH.",
+            "title": "Install the ugh CLI",
+            "description": "This extension shells out to the `ugh` CLI on your PATH.",
             "media": {
               "markdown": "walkthroughs/getting-started/install.md"
             },
             "completionEvents": [
-              "onContext:sgt.hasRoot"
+              "onContext:ugh.hasRoot"
             ]
           },
           {
@@ -348,7 +348,7 @@
               "markdown": "walkthroughs/getting-started/init.md"
             },
             "completionEvents": [
-              "onCommand:sgt.init"
+              "onCommand:ugh.init"
             ]
           },
           {
@@ -359,7 +359,7 @@
               "markdown": "walkthroughs/getting-started/explore.md"
             },
             "completionEvents": [
-              "onView:sgtFeatures"
+              "onView:ughFeatures"
             ]
           }
         ]

@@ -33,7 +33,7 @@ esac
 
 bold=$'\033[1m'; dim=$'\033[2m'; off=$'\033[0m'
 py="$(command -v python3)"; [ -x .venv/bin/python ] && py=.venv/bin/python
-have_sgt() { [ -d .sgt ] && command -v sgt >/dev/null 2>&1; }
+have_ugh() { [ -d .sgt ] && command -v ugh >/dev/null 2>&1; }
 
 # A dashboard server left over from an earlier stage (or an earlier session --
 # closing the editor does not always take the process with it) still holds
@@ -107,8 +107,8 @@ PY
 # over the removed state is the right place to find out, because it is the only
 # place that can still fix it.
 restore_reverses() {
-    have_sgt || return 0
-    sgt restore "$1" --emit --json 2>/dev/null | "$py" -c '
+    have_ugh || return 0
+    ugh restore "$1" --emit --json 2>/dev/null | "$py" -c '
 import json, sys
 try:
     print("yes" if (json.load(sys.stdin).get("files") or {}) else "no")
@@ -148,7 +148,7 @@ removed_commits() {
 
 reset_to() {
     # `-B main`, not a plain checkout of the tag. Checking a tag out directly
-    # detaches HEAD, and sgt keys its record by the branch it is on -- so every
+    # detaches HEAD, and ugh keys its record by the branch it is on -- so every
     # command after a detached reset read and wrote a different record than the
     # one the project shipped with. It still reverted, but the restore in stage 4
     # then resolved against the wrong removal and put back two files out of five.
@@ -166,8 +166,8 @@ reset_to() {
     # things that had nothing to do with a key, and the only way anyone found
     # back was to write the file out by hand between stages.
     git clean -qfd -e /.env -e /.venv/
-    if have_sgt; then
-        # Putting the files back is not the whole reset. sgt keeps a record of
+    if have_ugh; then
+        # Putting the files back is not the whole reset. ugh keeps a record of
         # every removal, and carrying stage 3's record into stage 4 makes the
         # restore there reverse the wrong removal and put back two files out of
         # five. So its state goes back to exactly what shipped, then re-derives
@@ -175,7 +175,7 @@ reset_to() {
         if [ -f .study/sgt-pristine.tar ]; then
             rm -rf .sgt && tar -xf .study/sgt-pristine.tar -C .
         fi
-        sgt advanced resync >/dev/null 2>&1 || true
+        ugh advanced resync >/dev/null 2>&1 || true
     fi
 }
 
@@ -229,15 +229,15 @@ case "$stage" in
     echo "The project is back to its full history, with nothing of yours left in it."
     echo
     echo "${bold}The work to take out is:${off}"
-    if have_sgt; then
+    if have_ugh; then
         label="$(theme_label)"
         echo "    ${label:-Event-Day Handling}"
-        # One task's work, landed across several features. `sgt log` draws it as
+        # One task's work, landed across several features. `ugh log` draws it as
         # a ◆ row under the lanes (cells in the touched lanes' own colours) and
         # the workbench marks it with a ◆ on the time axis -- the name above is
         # IN the picture, not in a separate listing to map back by hand.
         echo "${dim}    That is one piece of work that touched several features."
-        echo "    \`sgt log\` draws it as a ◆ row under the lanes; in the workbench"
+        echo "    \`ugh log\` draws it as a ◆ row under the lanes; in the workbench"
         echo "    it is a ◆ on the time axis — click it to see it. Revert and"
         echo "    restore both take that name exactly as it is written above.${off}"
     else
@@ -249,12 +249,12 @@ case "$stage" in
 4)
     # The removed state has to be one the setup itself recorded making, not just
     # a tree that happens to look like it. Resetting straight onto a pre-built
-    # removed commit and letting sgt re-derive its record from that history left
-    # sgt with nothing marked as removed, so `sgt restore` answered "restores 0
+    # removed commit and letting ugh re-derive its record from that history left
+    # ugh with nothing marked as removed, so `ugh restore` answered "restores 0
     # edits" and this stage could not be completed at all.
     #
     # So each setup arrives here the way it would have arrived here in real
-    # work: git checks out the branch holding the three revert commits, and sgt
+    # work: git checks out the branch holding the three revert commits, and ugh
     # performs the removal it records as a removal. Both end on the same
     # dashboard (build_stages.sh refuses to ship them otherwise); what differs
     # is what each one's history says happened, which is the thing under study.
@@ -265,9 +265,9 @@ case "$stage" in
     # removed state.
     reset_to study/full
     average_2018 dashboard > .study/avg-before-removal
-    if have_sgt; then
+    if have_ugh; then
         label="$(theme_label)"
-        sgt revert "${label:-Event-Day Handling}" --yes >/dev/null 2>&1 || {
+        ugh revert "${label:-Event-Day Handling}" --yes >/dev/null 2>&1 || {
             echo "could not set this stage up; tell your facilitator" >&2; exit 1; }
         # Once, from a pristine record, if the removal it just made cannot be
         # reversed by the verb the card names. `reset_to` restores the shipped
@@ -275,17 +275,17 @@ case "$stage" in
         # rather than the same state again.
         if ! restore_reverses "${label:-Event-Day Handling}"; then
             reset_to study/full
-            sgt revert "${label:-Event-Day Handling}" --yes >/dev/null 2>&1 || {
+            ugh revert "${label:-Event-Day Handling}" --yes >/dev/null 2>&1 || {
                 echo "could not set this stage up; tell your facilitator" >&2; exit 1; }
         fi
         if ! restore_reverses "${label:-Event-Day Handling}"; then
-            # Say it here rather than let it be found by `./check 4`. `sgt undo`
+            # Say it here rather than let it be found by `./check 4`. `ugh undo`
             # reverses the removal this script just recorded making, exactly, so
             # the stage is still completable while the facilitator is told.
             echo
             echo "${bold}This stage is set up, but the tool cannot reverse the removal by name here.${off}"
-            echo "${dim}Use \`sgt undo\` to put the work back, and tell your facilitator that"
-            echo "\`sgt restore\` refused on this machine.${off}"
+            echo "${dim}Use \`ugh undo\` to put the work back, and tell your facilitator that"
+            echo "\`ugh restore\` refused on this machine.${off}"
         fi
     else
         reset_to study/removed

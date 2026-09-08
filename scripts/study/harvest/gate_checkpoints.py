@@ -1,9 +1,9 @@
 """Try every checkpoint's revert for real, the way a participant would type it.
 
-`select_target.py` measures `sgt revert --session <name>`, which is the unit the
+`select_target.py` measures `ugh revert --session <name>`, which is the unit the
 harvest lands work in. It is not the unit anyone types. The task hands people a
-feature and a chapter name read off `sgt log --map`, so the operation that has to
-work is `sgt revert "<Feature>@<Checkpoint>"`, and it is a different operation:
+feature and a chapter name read off `ugh log --map`, so the operation that has to
+work is `ugh revert "<Feature>@<Checkpoint>"`, and it is a different operation:
 a session revert removes ops, a checkpoint revert usually rewrites symbols and
 keeps later work.
 
@@ -19,15 +19,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 HERE = Path(__file__).resolve().parent
-WORK = Path("/private/tmp/claude-501/-Users-r4yen-repos-semi-git/"
+WORK = Path("/private/tmp/claude-501/-Users-r4yen-repos-ugh/"
             "98ec4b59-83fc-485f-855a-1a547335d911/scratchpad/ckpt")
 
 
 def checkpoints(repo):
     """(feature label, feature id, index, checkpoint label) for every chapter."""
-    from sgt import state
-    from sgt.intent.segment import feature_runs, overlay_persisted
-    from sgt.lens.tree import load as load_tree
+    from ugh import state
+    from ugh.intent.segment import feature_runs, overlay_persisted
+    from ugh.lens.tree import load as load_tree
 
     tree = load_tree(repo)
     runs = feature_runs(repo, tree["op_leaf"])
@@ -86,7 +86,7 @@ def main(repo):
         shutil.rmtree(copy, ignore_errors=True)
         shutil.copytree(repo, copy, symlinks=True)
 
-        rv = subprocess.run(["sgt", "revert", selector, "--yes"],
+        rv = subprocess.run(["ugh", "revert", selector, "--yes"],
                             cwd=copy, capture_output=True, text=True)
         smoke = subprocess.run([sys.executable, "check.py"], cwd=copy,
                                capture_output=True, text=True)
@@ -101,7 +101,7 @@ def main(repo):
         # work missing exits 0 over a dashboard that still renders, so the weak check passed it
         # green. Measured against the baseline instead, 12 of 18 footfall chapters that used to
         # pass did not put the pages back at all (findings 56 and 59).
-        back = subprocess.run(["sgt", "restore", selector, "--yes"],
+        back = subprocess.run(["ugh", "restore", selector, "--yes"],
                               cwd=copy, capture_output=True, text=True)
         back_dir = WORK / f"back-{idx}-{fid[2:8]}"
         back_renders = snapshot(copy, back_dir)

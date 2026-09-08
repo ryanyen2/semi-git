@@ -36,7 +36,7 @@ for i in $(seq 0 $((count - 1))); do
   if python3 - "$REPO" "$name" <<'PY'
 import sys
 sys.path.insert(0, "/Users/r4yen/repos/semi-git")
-from sgt.core.session import ops_by_session
+from ugh.core.session import ops_by_session
 sys.exit(0 if ops_by_session(sys.argv[1], sys.argv[2]) else 1)
 PY
   then

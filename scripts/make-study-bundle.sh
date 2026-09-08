@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build one participant folder, ready to hand out.
 #
-#   scripts/make-study-bundle.sh <git|sgt> <bikecount|footfall>
+#   scripts/make-study-bundle.sh <git|ugh> <bikecount|footfall>
 #
 # One bundle per condition and project, not per participant: four in total,
 # built once and reused. Everything specific to a person -- which half they are
@@ -15,15 +15,15 @@
 # travels in the file.
 set -euo pipefail
 
-SGT_SOURCE="${SGT_SOURCE:-$HOME/repos/semi-git}"
+UGH_SOURCE="${UGH_SOURCE:-$HOME/repos/semi-git}"
 STUDY_REPOS="${STUDY_REPOS:-$HOME/repos/sgt-study}"
 # Straight into the website's static files. `firebase deploy --only hosting`
 # then publishes the bundles alongside the site, and the download link on the
 # participant's setup page already points at them. Uploading a bundle somewhere
 # and pasting a URL back in is a step that can be forgotten between building a
 # bundle and handing out a link, and it fails silently when it is.
-OUT="${OUT:-$SGT_SOURCE/web/public/bundles}"
-BUNDLE_SRC="$SGT_SOURCE/scripts/study-bundle"
+OUT="${OUT:-$UGH_SOURCE/web/public/bundles}"
+BUNDLE_SRC="$UGH_SOURCE/scripts/study-bundle"
 
 # Installed into both conditions' editor profiles at setup, pinned.
 #
@@ -31,7 +31,7 @@ BUNDLE_SRC="$SGT_SOURCE/scripts/study-bundle"
 # support the first time a .py file is opened, so whether a participant got
 # Pylance came down to whether their condition led them to open a file --
 # during the first editor rehearsal the git arm ended up with 198 MB of Python
-# tooling and the sgt arm with none. On a task about reading unfamiliar Python,
+# tooling and the ugh arm with none. On a task about reading unfamiliar Python,
 # go-to-definition in one arm and not the other is not a difference between two
 # ways of recording history.
 #
@@ -40,16 +40,16 @@ BUNDLE_SRC="$SGT_SOURCE/scripts/study-bundle"
 EDITOR_EXTENSIONS='["ms-python.python@2026.4.0", "ms-python.vscode-pylance@2026.3.1", "ms-python.debugpy@2026.6.0", "ms-python.vscode-python-envs@1.36.0"]'
 
 if [ $# -ne 2 ]; then
-    echo "usage: $0 <git|sgt> <bikecount|footfall>" >&2
+    echo "usage: $0 <git|ugh> <bikecount|footfall>" >&2
     exit 2
 fi
 condition="$1"; project="$2"
 
-case "$condition" in git|sgt) ;; *) echo "condition must be git or sgt" >&2; exit 2 ;; esac
+case "$condition" in git|ugh) ;; *) echo "condition must be git or ugh" >&2; exit 2 ;; esac
 case "$project" in bikecount|footfall) ;; *) echo "project must be bikecount or footfall" >&2; exit 2 ;; esac
 
 # The participant sees this name. It says nothing about which setup is which.
-token=a; [ "$condition" = sgt ] && token=b
+token=a; [ "$condition" = ugh ] && token=b
 name="study-$project-$token"
 staging="${STAGING:-$HOME/study/_build}/$name"
 
@@ -71,22 +71,22 @@ chmod +x "$staging/install/setup.sh" "$staging"/bin/study-*
 # The two task scripts travel with the work repo. Protocol v2 opens every stage
 # with `./stage N` and closes the two operating stages with `./check N`, so
 # these are not optional extras: without them the participant cannot start.
-cp "$SGT_SOURCE/scripts/study/task-scripts/stage" "$staging/work/stage"
-cp "$SGT_SOURCE/scripts/study/task-scripts/check" "$staging/work/check"
+cp "$UGH_SOURCE/scripts/study/task-scripts/stage" "$staging/work/stage"
+cp "$UGH_SOURCE/scripts/study/task-scripts/check" "$staging/work/check"
 chmod +x "$staging/work/stage" "$staging/work/check"
 
-# The stage states -- tags, the stage-1 patch, and (in the sgt arm) a pristine
-# copy of sgt's own record -- are built into the SOURCE repos by
+# The stage states -- tags, the stage-1 patch, and (in the ugh arm) a pristine
+# copy of ugh's own record -- are built into the SOURCE repos by
 # `scripts/study/prep-stages.sh` and travel here with the `cp -R` above.
 #
 # Not built here, and the reason is ordering: the git arm's removed state is
-# checked against the sgt arm's, so the two have to be built together, in order,
+# checked against the ugh arm's, so the two have to be built together, in order,
 # against each other. A bundle is built one arm at a time and has no view of its
 # twin. Verified rather than assumed, because a bundle missing these is one a
 # participant cannot start a single stage with, and nothing else would say so.
 # The two arms need different things, because they reach stage 4 differently.
 # The git arm checks out a `study/removed` holding its three revert commits. The
-# sgt arm performs the removal live there (a restore has to reverse a removal
+# ugh arm performs the removal live there (a restore has to reverse a removal
 # this repo recorded making), so it has no such tag and must not have one -- a
 # reachable build-time revert is what made restore resolve against the wrong
 # removal.
@@ -113,11 +113,11 @@ if [ -n "$(git -C "$staging/work" status --porcelain --untracked-files=no)" ]; t
     echo "$source_repo has uncommitted changes; a bundle would ship them. Run \`./stage 2\` in it." >&2
     exit 1
 fi
-if [ "$condition" = sgt ]; then
+if [ "$condition" = ugh ]; then
     [ -f "$staging/work/.study/sgt-pristine.tar" ] || {
         echo "$source_repo has no .study/sgt-pristine.tar -- run scripts/study/prep-stages.sh first" >&2; exit 1; }
     if git -C "$staging/work" rev-parse --verify study/removed >/dev/null 2>&1; then
-        echo "$source_repo still has a study/removed tag; an sgt arm must not ship one" >&2; exit 1
+        echo "$source_repo still has a study/removed tag; an ugh arm must not ship one" >&2; exit 1
     fi
     # The rendered pages are the git arm's reference, not the participant's, and
     # they are several hundred KB of text. They do not travel.
@@ -149,8 +149,8 @@ rm -rf "$staging/work/.venv" "$staging/telemetry/state.json" \
 # Nor may anything that names this machine. The study projects are built here,
 # and an untracked `.claude/` picks up hooks pointing at an absolute path in
 # this checkout. On a participant's machine that path does not exist, so every
-# prompt in the sgt condition would fire a hook that fails, and the condition
-# would quietly lose the intent capture it depends on. The sgt bundles get this
+# prompt in the ugh condition would fire a hook that fails, and the condition
+# would quietly lose the intent capture it depends on. The ugh bundles get this
 # file written back, against their own copy of the tool, during setup.
 rm -rf "$staging/work/.claude"
 
@@ -177,8 +177,8 @@ esac
 # The tree has to be clean for a bare sha to describe the shipped code. Recording
 # one beside uncommitted changes claims a reproducibility the bundle does not
 # have, so a dirty tree is marked as such.
-tool_build="$(cd "$SGT_SOURCE" && git rev-parse --short HEAD)"
-if [ -n "$(cd "$SGT_SOURCE" && git status --porcelain -- sgt/ pyproject.toml scripts/ editor/vscode/)" ]; then
+tool_build="$(cd "$UGH_SOURCE" && git rev-parse --short HEAD)"
+if [ -n "$(cd "$UGH_SOURCE" && git status --porcelain -- ugh/ pyproject.toml scripts/ editor/vscode/)" ]; then
     tool_build="$tool_build-dirty"
     echo
     echo "  WARNING: this tree has uncommitted changes, so the bundle is not any commit."
@@ -188,22 +188,22 @@ if [ -n "$(cd "$SGT_SOURCE" && git status --porcelain -- sgt/ pyproject.toml scr
 fi
 
 tool_version=""
-if [ "$condition" = sgt ]; then
+if [ "$condition" = ugh ]; then
     echo "  Building the tool wheel."
-    (cd "$SGT_SOURCE" && uv build --wheel -o "$staging/install" -q)
+    (cd "$UGH_SOURCE" && uv build --wheel -o "$staging/install" -q)
     # The released version, beside the commit id. The sha is the precise answer
     # to "which build" and the version is the one a reader of the paper can act
     # on, so both are recorded rather than either being derived later.
-    tool_version="$(cd "$SGT_SOURCE" && python3 -c \
+    tool_version="$(cd "$UGH_SOURCE" && python3 -c \
         'import re,pathlib;print(re.search(r"^version = \"([^\"]+)\"", pathlib.Path("pyproject.toml").read_text(), re.M).group(1))')"
     echo "  Installing it here, to warm the history view."
     uv venv -q --clear "$staging/toolenv"
-    uv pip install -q -p "$staging/toolenv/bin/python" "$SGT_SOURCE"
-    cat > "$staging/bin/sgt" <<WRAPPER
+    uv pip install -q -p "$staging/toolenv/bin/python" "$UGH_SOURCE"
+    cat > "$staging/bin/ugh" <<WRAPPER
 #!/usr/bin/env bash
-exec "$staging/toolenv/bin/sgt" "\$@"
+exec "$staging/toolenv/bin/ugh" "\$@"
 WRAPPER
-    chmod +x "$staging/bin/sgt"
+    chmod +x "$staging/bin/ugh"
 
     # A fresh copy shows a provisional set of features that collapses to a
     # different, smaller set on the first refresh, with two renamed in place.
@@ -214,7 +214,7 @@ WRAPPER
     # and without a key every one of them falls back to a joined list of symbol
     # names -- `add_item apply_discount…` instead of `Shopping Cart`. That is
     # not hypothetical: it is what the practice repo shipped with, so the first
-    # thing a participant met in the sgt condition was the one thing the sgt
+    # thing a participant met in the ugh condition was the one thing the ugh
     # condition is supposed to have. The refresh prints a warning to stderr when
     # a labeling call is rejected, so the check below reads for it.
     # `--rebuild`, not `--refresh`, and the reason is provenance rather than
@@ -229,7 +229,7 @@ WRAPPER
     # A provenance-less op is working-tree state from the BUILD machine -- prep's own stage
     # flips mine the dirty tree on contact -- never part of the replayed history. Left in the
     # store it forks the committed chain, and resync's reduction then parks the fork and drops
-    # committed producers out of the recorded ideal: the participant's stage-1 `sgt save` said
+    # committed producers out of the recorded ideal: the participant's stage-1 `ugh save` said
     # "nothing to save" over eleven modified files (2026-08-31). Strip them BEFORE the rebuild,
     # so nothing downstream (tree, op_leaf, index, pristine tar) ever references one.
     echo "  Stripping leftover working-tree ops from the store."
@@ -250,7 +250,7 @@ if ops.is_dir():
             dropped += 1
 print(f"  dropped {dropped} pending op(s)")
 PY
-    (cd "$staging/work" && "$staging/bin/sgt" advanced resync) >/dev/null 2>&1 || true
+    (cd "$staging/work" && "$staging/bin/ugh" advanced resync) >/dev/null 2>&1 || true
 
     # Mining is chunked against a per-contact deadline, so ONE contact on a loaded machine can
     # leave the backfill mid-walk -- and a rebuild over an incomplete ideal ships a graph with
@@ -259,7 +259,7 @@ PY
     echo "  Syncing the history to completion."
     "$staging/toolenv/bin/python" - "$staging/work" <<'PY'
 import sys
-from sgt.core.lens import get, sync_status
+from ugh.core.lens import get, sync_status
 for i in range(24):
     get(sys.argv[1])
     if sync_status(sys.argv[1])["complete"]:
@@ -281,15 +281,15 @@ PY
     # as context (`theme_segment.label_prompt_for`), so running it first is what lets a chapter be
     # named after what was asked for rather than after the commit subject alone.
     echo "  Replaying the conversation behind the history."
-    "$staging/toolenv/bin/python" "$SGT_SOURCE/scripts/study/backfill_capture.py" \
+    "$staging/toolenv/bin/python" "$UGH_SOURCE/scripts/study/backfill_capture.py" \
         "$staging/work" "$project" || {
-        echo "  Could not replay the captured conversation. Not shipping this bundle: the sgt" >&2
+        echo "  Could not replay the captured conversation. Not shipping this bundle: the ugh" >&2
         echo "  arm would ship with no words on any chapter." >&2
         exit 1
     }
 
     # Re-cut every chapter from scratch, rather than letting the incremental path freeze the
-    # boundaries this repo was built with. `build_segments` (which `sgt log --rebuild` runs) keeps
+    # boundaries this repo was built with. `build_segments` (which `ugh log --rebuild` runs) keeps
     # all but a feature's live tail chapter by design -- the §3.4 hysteresis that makes a
     # checkpoint survive a rebuild -- and that discipline is exactly wrong here: the asks were
     # replayed a moment ago, so EVERY seam in this history is one they have never weighed on. With
@@ -307,26 +307,26 @@ PY
     (
         set -a
         # shellcheck disable=SC1091
-        [ -f "$SGT_SOURCE/.env" ] && . "$SGT_SOURCE/.env"
+        [ -f "$UGH_SOURCE/.env" ] && . "$UGH_SOURCE/.env"
         set +a
-        cd "$staging/work" && "$staging/bin/sgt" log --rebuild
+        cd "$staging/work" && "$staging/bin/ugh" log --rebuild
     ) > "$refresh_log" 2>&1 || true
     if grep -q "LLM labeling call was rejected" "$refresh_log"; then
         echo
         echo "  WARNING: feature naming fell back to terse symbol lists. Usually a missing" >&2
-        echo "  or out-of-credit OPENAI_API_KEY in $SGT_SOURCE/.env. Fix it and rebuild," >&2
-        echo "  or the sgt condition ships without the readable names it is being tested on." >&2
+        echo "  or out-of-credit OPENAI_API_KEY in $UGH_SOURCE/.env. Fix it and rebuild," >&2
+        echo "  or the ugh condition ships without the readable names it is being tested on." >&2
         echo
     fi
     rm -f "$refresh_log"
 
     # The graph the participant will actually navigate, checked rather than
     # assumed. A degenerate build is silent from every angle a builder would
-    # look at -- `sgt log` still lists every save, `sgt find` still ranks
+    # look at -- `ugh log` still lists every save, `ugh find` still ranks
     # everything -- and only shows itself when a participant asks a feature what
     # it contains and is told "0 symbols in 0 files".
     echo "  Checking the feature graph."
-    if ! "$staging/toolenv/bin/python" "$SGT_SOURCE/scripts/check_graph_integrity.py" "$staging/work"; then
+    if ! "$staging/toolenv/bin/python" "$UGH_SOURCE/scripts/check_graph_integrity.py" "$staging/work"; then
         echo >&2
         echo "  Not shipping this bundle. Re-run the build; if it happens twice on the" >&2
         echo "  same project, the repo needs looking at rather than rebuilding." >&2
@@ -339,7 +339,7 @@ PY
     # could reword it into something that no longer matches -- and the failure would appear as a
     # participant being handed a stage card naming work they cannot find.
     echo "  Checking the event-day theme still names itself."
-    if ! "$staging/toolenv/bin/python" "$SGT_SOURCE/scripts/study/check_event_theme.py" \
+    if ! "$staging/toolenv/bin/python" "$UGH_SOURCE/scripts/study/check_event_theme.py" \
             "$staging/work"; then
         echo >&2
         echo "  The cross-feature theme the stage cards name no longer says \"event day\"." >&2
@@ -361,18 +361,18 @@ PY
     embedded="$(
         set -a
         # shellcheck disable=SC1091
-        [ -f "$SGT_SOURCE/.env" ] && . "$SGT_SOURCE/.env"
+        [ -f "$UGH_SOURCE/.env" ] && . "$UGH_SOURCE/.env"
         set +a
         "$staging/toolenv/bin/python" - <<PY
-from sgt.lens.search import build_index
+from ugh.lens.search import build_index
 print("yes" if build_index("$staging/work")["embedded"] else "no")
 PY
     )"
     if [ "$embedded" != "yes" ]; then
         echo
-        echo "  WARNING: the search index has no embeddings, so \`sgt find\` in this"
+        echo "  WARNING: the search index has no embeddings, so \`ugh find\` in this"
         echo "  bundle will match on words rather than meaning. Usually a missing or"
-        echo "  out-of-credit OPENAI_API_KEY. Fix it and rebuild, or the sgt condition"
+        echo "  out-of-credit OPENAI_API_KEY. Fix it and rebuild, or the ugh condition"
         echo "  ships with half of its search."
         echo
     fi
@@ -386,7 +386,7 @@ PY
     # records no removals, so stage 4's restore inverse is untouched.
     echo "  Refreshing the pristine .sgt snapshot to the rebuilt tree."
     # Without its undo stack: the source repo's journal carries the testbed's own
-    # build-time edits, and a participant's second `sgt undo` would replay one.
+    # build-time edits, and a participant's second `ugh undo` would replay one.
     rm -f "$staging/work/.sgt/local/ideal_journal.json"
     rm -f "$staging/work/.study/sgt-pristine.tar"
     tar -cf "$staging/work/.study/sgt-pristine.tar" -C "$staging/work" .sgt
@@ -398,7 +398,7 @@ PY
     # `East-West Comparison` / `Bicycle Count Analysis` and then `Weekday Weekend Averages` /
     # `East-West Trends` / `Date-Based Analysis` (2026-09-03). Regenerated by hand it drifts, and
     # the drift is invisible: the sheet is a PNG and the map is a screen, and nobody diffs them.
-    # `sgt_workbench.png` is bikecount's map, so only that build writes it -- and only here, where
+    # `ugh_workbench.png` is bikecount's map, so only that build writes it -- and only here, where
     # the staging toolenv and its python are still standing.
     #
     # Never fatal. A missing `node` must not stop a bundle a participant is waiting for; it means
@@ -406,8 +406,8 @@ PY
     if [ "$project" = bikecount ]; then
         if command -v node >/dev/null 2>&1; then
             echo "  Recapturing the practice sheet's workbench picture."
-            node "$SGT_SOURCE/scripts/study/capture-workbench-shot.mjs" \
-                "$staging/work" "$staging/toolenv/bin/sgt" >/dev/null 2>&1 \
+            node "$UGH_SOURCE/scripts/study/capture-workbench-shot.mjs" \
+                "$staging/work" "$staging/toolenv/bin/ugh" >/dev/null 2>&1 \
                 || echo "  WARNING: could not recapture it; the sheet keeps the older picture."
         else
             echo "  WARNING: no node, so the practice sheet keeps its older workbench picture."
@@ -439,7 +439,7 @@ PY
         fi
     done
 else
-    # The assistant's guidance for the half without a history tool. The sgt half
+    # The assistant's guidance for the half without a history tool. The ugh half
     # ships three skills and an MCP server (installed at setup, above); with
     # nothing here the git half would be plain Claude Code against git, and the
     # agent-half comparison would be a guided tool against an unguided one rather
@@ -456,7 +456,7 @@ fi
 #
 # Both conditions get a graphical way to read history, or the comparison is
 # between a tool and a terminal rather than between two representations. In the
-# sgt condition that is this project's own extension, shipped inside the bundle
+# ugh condition that is this project's own extension, shipped inside the bundle
 # at a fixed version, because installing from the marketplace during a session
 # would mean participant three and participant nine ran different software with
 # nothing in the data saying so.
@@ -477,13 +477,13 @@ fi
 # section 3 of the protocol says so rather than leaving a reader to find it.
 
 echo "  Packaging the editor extension."
-if [ "$condition" = sgt ]; then
-    (cd "$SGT_SOURCE/editor/vscode" && npm run package >/dev/null 2>&1) \
+if [ "$condition" = ugh ]; then
+    (cd "$UGH_SOURCE/editor/vscode" && npm run package >/dev/null 2>&1) \
         || { echo "Could not build the extension." >&2; exit 1; }
-    (cd "$SGT_SOURCE/editor/vscode" && npx --no-install @vscode/vsce package \
-        --no-dependencies --allow-missing-repository -o "$staging/install/semi-git.vsix" >/dev/null 2>&1) \
+    (cd "$UGH_SOURCE/editor/vscode" && npx --no-install @vscode/vsce package \
+        --no-dependencies --allow-missing-repository -o "$staging/install/ugh.vsix" >/dev/null 2>&1) \
         || { echo "Could not package the extension. Is @vscode/vsce available?" >&2; exit 1; }
-    editor_ext="semi-git $(python3 -c 'import json;print(json.load(open("'"$SGT_SOURCE"'/editor/vscode/package.json"))["version"])')"
+    editor_ext="ugh $(python3 -c 'import json;print(json.load(open("'"$UGH_SOURCE"'/editor/vscode/package.json"))["version"])')"
 else
     # Nothing to package: it is already in the editor. Recorded all the same,
     # because "which history view did this participant have" is a question the
@@ -561,10 +561,10 @@ tar czf "$OUT/$name.tgz" -C "$(dirname "$staging")" \
 #
 # Stage 1 has nothing to perform since it became orientation, so what it checks
 # is what the participant is told to read: that the reset leaves a clean tree and
-# a dashboard that renders, that the map draws lanes, that `sgt find` answers by
+# a dashboard that renders, that the map draws lanes, that `ugh find` answers by
 # meaning rather than by word overlap, that a group resolves by its own label,
 # and that every file stage 1's map names is in the repository being shipped.
-if [ "$condition" = sgt ]; then
+if [ "$condition" = ugh ]; then
     echo "  Rehearsing the stages on the packed bundle."
     rehearsal="$(mktemp -d)"
     tar -xzf "$OUT/$name.tgz" -C "$rehearsal"
@@ -588,7 +588,7 @@ sha = None
 for line in subprocess.run(["git", "log", "--format=%H%x00%s", "--no-merges"],
                            capture_output=True, text=True).stdout.splitlines():
     h, _, subject = line.partition("\x00")
-    if "sgt land" in subject:
+    if "ugh land" in subject:
         continue
     sha = h
     break
@@ -626,9 +626,9 @@ NEWEST
         # The reads stage 1's tips name. A map with no lanes, or a search that
         # fell back to word overlap, is a stage nobody can do -- and both answer
         # something, so neither says so on its own.
-        map_out="$(sgt log --no-color 2>&1)"
+        map_out="$(ugh log --no-color 2>&1)"
         printf '%s\n' "$map_out" | grep -q "features" || {
-            echo "  REHEARSAL: sgt log drew no feature map:" >&2
+            echo "  REHEARSAL: ugh log drew no feature map:" >&2
             printf '%s\n' "$map_out" | head -5 >&2
             exit 1
         }
@@ -641,9 +641,9 @@ NEWEST
         # the old one turned out to rank four ways of saying "the code that computes an average"
         # above the work that changed how one is computed (F142); a rehearsal that exercises a
         # query nobody is told to run is checking the wrong thing.
-        find_out="$(sgt find "the page that lets you download a csv" 2>&1)"
+        find_out="$(ugh find "the page that lets you download a csv" 2>&1)"
         if printf '%s\n' "$find_out" | grep -q "matched on words"; then
-            echo "  REHEARSAL: sgt find fell back to word matching -- the search index has no" >&2
+            echo "  REHEARSAL: ugh find fell back to word matching -- the search index has no" >&2
             echo "  embeddings, so stages 1 and 2 both lose a command they are told to use." >&2
             exit 1
         fi
@@ -651,9 +651,9 @@ NEWEST
         # was the first attempt and it rejected bikecount, whose rounding group is
         # one edit -- and `plural()` correctly prints "1 edit". The message a
         # failed resolve prints is the thing to look for.
-        show_out="$(sgt show "$newest" 2>&1)" || true
+        show_out="$(ugh show "$newest" 2>&1)" || true
         if printf '%s\n' "$show_out" | grep -q "is not a known"; then
-            echo "  REHEARSAL: sgt show cannot resolve the newest group by name ($newest)." >&2
+            echo "  REHEARSAL: ugh show cannot resolve the newest group by name ($newest)." >&2
             echo "  Stage 1 tells the participant to run it on a name off the map." >&2
             printf '%s\n' "$show_out" | head -3 >&2
             exit 1
@@ -664,7 +664,7 @@ NEWEST
         # cannot find rather than as a mistake on the card -- and the two
         # projects' file lists genuinely differ, so neither can be checked by
         # eye against the other.
-        for f in $(node "$SGT_SOURCE/scripts/study/stage1-map-files.mjs" "$project"); do
+        for f in $(node "$UGH_SOURCE/scripts/study/stage1-map-files.mjs" "$project"); do
             [ -f "$project/$f" ] || {
                 echo "  REHEARSAL: stage 1's map names $project/$f, which this bundle does not" >&2
                 echo "  contain. Fix PROJECT_WORDS.$project.story in web/src/study/tasks.ts." >&2
@@ -673,7 +673,7 @@ NEWEST
         done
 
         ./stage 3 >/dev/null
-        revert_out="$(sgt revert "$theme" --yes 2>&1)" || {
+        revert_out="$(ugh revert "$theme" --yes 2>&1)" || {
             echo "  REHEARSAL: stage-3 revert refused:" >&2
             printf '%s\n' "$revert_out" | tail -3 >&2
             exit 1
@@ -686,7 +686,7 @@ NEWEST
         }
 
         ./stage 4 >/dev/null
-        restore_out="$(sgt restore "$theme" --yes 2>&1)" || {
+        restore_out="$(ugh restore "$theme" --yes 2>&1)" || {
             echo "  REHEARSAL: stage-4 restore refused:" >&2
             printf '%s\n' "$restore_out" | tail -3 >&2
             exit 1
@@ -710,5 +710,5 @@ echo
 echo "It will be served at /bundles/$name.tgz, which is where the participant's"
 echo "setup page already looks. Publish it with:"
 echo
-echo "    cd $SGT_SOURCE/web && npm run build && firebase deploy --only hosting"
+echo "    cd $UGH_SOURCE/web && npm run build && firebase deploy --only hosting"
 exit 0

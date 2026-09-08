@@ -1,7 +1,7 @@
 """Shared git-plumbing fixtures for the two-clone sync/migrate suites.
 
 These three helpers -- a bare remote, a working clone, a branch push -- were copy-pasted verbatim
-into every two-clone test file. They are hoisted here so the `refs/sgt/state` transport added in
+into every two-clone test file. They are hoisted here so the `refs/ugh/state` transport added in
 Phase 1.2 (a state-ref push alongside the branch push in `_push`, a state-ref fetch in `_clone`)
 lands in exactly ONE place rather than being added to a dozen copies and silently forgotten in one.
 `tests` is a package, so a test module imports these with `from tests.conftest import ...` and gets
@@ -18,8 +18,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from sgt.core.sync import state_ref as _state_ref
-from sgt.store.gitbind import GitBinding
+from ugh.core.sync import state_ref as _state_ref
+from ugh.store.gitbind import GitBinding
 
 
 def _init_bare(root: Path) -> Path:
@@ -34,7 +34,7 @@ def _init_bare(root: Path) -> Path:
 def _clone(remote: Path, dest: Path) -> Path:
     subprocess.run(["git", "clone", "-q", str(remote), str(dest)], check=True, capture_output=True)
     GitBinding(dest).init()  # repo-scope identity, matches every two-clone fixture
-    # Phase 1.2: `git clone` copies refs/heads + refs/tags but never refs/sgt/*, so pull the shared
+    # Phase 1.2: `git clone` copies refs/heads + refs/tags but never refs/ugh/*, so pull the shared
     # state ref (if the remote has one) and materialize it into the fresh clone's local mirror --
     # the fresh-clone bootstrap. Best-effort: a pre-1.2 remote has no such ref and this no-ops.
     gb = GitBinding(dest)
@@ -44,9 +44,9 @@ def _clone(remote: Path, dest: Path) -> Path:
 
 
 def _push(repo: Path, branch: str = "main") -> None:
-    # Phase 1.2: publish this clone's local mirror onto `refs/sgt/state` and push it BEFORE the
+    # Phase 1.2: publish this clone's local mirror onto `refs/ugh/state` and push it BEFORE the
     # branch, reconciling a non-fast-forward against a teammate's concurrent publish as a CRDT merge
-    # -- exactly what the CLI's `sgt push` does via `publish_and_push`. This rebuilds the ref from
+    # -- exactly what the CLI's `ugh push` does via `publish_and_push`. This rebuilds the ref from
     # local first (so table mutations made through raw `GitBinding.commit_all` -- pins/declared edges
     # seeded directly in tests, never through a verb that publishes -- travel), and a branch commit's
     # `Sgt-Op:` trailers name ops that live only on the ref, so the ref must be durable first. A plain

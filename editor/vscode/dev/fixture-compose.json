@@ -144,7 +144,7 @@
         "children": [],
         "size": 40,
         "op_count": 41,
-        "dir": "sgt/core"
+        "dir": "ugh/core"
       },
       {
         "id": "f-01821ff52aa61d652157fa839306227865b2c3389655ba783eaf455288862f04",
@@ -174,7 +174,7 @@
         "children": [],
         "size": 29,
         "op_count": 95,
-        "dir": "sgt/lifecycle"
+        "dir": "ugh/lifecycle"
       },
       {
         "id": "f-0238ae957761bfd4b6e843ba7893d5af1cc9008f8ffc4a943a9c3a62e2579c15",
@@ -184,7 +184,7 @@
         "children": [],
         "size": 32,
         "op_count": 33,
-        "dir": "sgt/core"
+        "dir": "ugh/core"
       },
       {
         "id": "f-025e8269d56af6a71c6d21111f839387c45f638bec604c960dc6e8aca2cd88b0",
@@ -204,7 +204,7 @@
         "children": [],
         "size": 22,
         "op_count": 24,
-        "dir": "sgt/core"
+        "dir": "ugh/core"
       },
       {
         "id": "f-04e717b4e3c6cb185aa25075d28a857271646a4b6c33eb3ad031d08a0188e01b",
@@ -264,7 +264,7 @@
         "children": [],
         "size": 15,
         "op_count": 15,
-        "dir": "sgt/core"
+        "dir": "ugh/core"
       },
       {
         "id": "f-118fffe0ca9b1f72acffd9757490b77ffa07e4cd211a65198854b04677b5ab3a",
@@ -274,7 +274,7 @@
         "children": [],
         "size": 29,
         "op_count": 31,
-        "dir": "sgt/lens"
+        "dir": "ugh/lens"
       },
       {
         "id": "f-230b265fd9179e1e0a1e3b86908e05420caf496fd5403f190d50e038dd160bb7",
@@ -304,7 +304,7 @@
         "children": [],
         "size": 3,
         "op_count": 3,
-        "dir": "sgt/lens"
+        "dir": "ugh/lens"
       },
       {
         "id": "f-68e764a798b5993f646ebc91a9420800b0e1d6cdd0b3a21a99bee78ee320ca38",
@@ -702,7 +702,7 @@
     "commits": [
       {
         "sha": "ba791c03879cd427ca58affa8dded494f0d20803",
-        "subject": "docs: semi-git ideation, requirements, and core plan",
+        "subject": "docs: ugh ideation, requirements, and core plan",
         "index": 0
       },
       {
@@ -792,12 +792,12 @@
       },
       {
         "sha": "5e784aa44f95c75ef1fb039e3b4b8d74738ce510",
-        "subject": "feat(cli): on-demand sgt reconcile verb",
+        "subject": "feat(cli): on-demand ugh reconcile verb",
         "index": 18
       },
       {
         "sha": "3aed558d12782f0b8a84ec6394d46a6c003f0038",
-        "subject": "feat(sgt): graph-only pivot \u2014 sgt never authors code, plus review hardening",
+        "subject": "feat(ugh): graph-only pivot \u2014 ugh never authors code, plus review hardening",
         "index": 19
       },
       {
@@ -852,7 +852,7 @@
       },
       {
         "sha": "1441d67e4923a5e39a7ed8ad052a8e41005df06f",
-        "subject": "feat(api): sgt map --json CLI verb + sgt_map MCP tool (U4)",
+        "subject": "feat(api): ugh map --json CLI verb + ugh_map MCP tool (U4)",
         "index": 30
       },
       {
@@ -872,7 +872,7 @@
       },
       {
         "sha": "fc9b3cb6b7a341875a5c56f76874a1d0ffddf12c",
-        "subject": "feat(api): timeframe_view + sgt timeframe CLI (U9 backend)",
+        "subject": "feat(api): timeframe_view + ugh timeframe CLI (U9 backend)",
         "index": 34
       },
       {
@@ -962,12 +962,12 @@
       },
       {
         "sha": "9e1958f0820fa995b65c9051e56b854cfd514827",
-        "subject": "fix semi-git decision-graph plans orphaning/flattening. Done: grounding prompt now uses multi-shot examples so additive work becomes",
+        "subject": "fix ugh decision-graph plans orphaning/flattening. Done: grounding prompt now uses multi-shot examples so additive work becomes",
         "index": 52
       },
       {
         "sha": "76cc73c96c5f1200f31f7ebdb8e87fce21f2f267",
-        "subject": "fix sgt plan logic",
+        "subject": "fix ugh plan logic",
         "index": 53
       },
       {
@@ -1047,7 +1047,7 @@
       },
       {
         "sha": "6a1557b011cf26857f9cad6d95510ad80ca0d3a9",
-        "subject": "Fix: - sgt/core/mine.py: a path renamed out of .sgt/ (git detected .sgt/frontier.json \u2192 .sgt.bak/frontier.json as a 100%-similarity rename in the user's history) now stays excluded for the rest of that mine() call, via a new excluded_paths set threaded through _mine_one. Previously only the rename touch itself was skipped, leaving the destination path unexcluded \u2014 so a later plain delete of it mined a prune op with no producing \"add\" anywhere, breaking downward-closure. - sgt/cli.py: sgt init now parses --horizon <ref> (via the existing _strip_opt helper) and passes it to lens.init(). Previously the flag was silently swallowed as the positional repo path, creating a bogus nested repo at ./--horizon/ with no error. - Updated the sgt init help line accordingly.",
+        "subject": "Fix: - ugh/core/mine.py: a path renamed out of .sgt/ (git detected .sgt/frontier.json \u2192 .sgt.bak/frontier.json as a 100%-similarity rename in the user's history) now stays excluded for the rest of that mine() call, via a new excluded_paths set threaded through _mine_one. Previously only the rename touch itself was skipped, leaving the destination path unexcluded \u2014 so a later plain delete of it mined a prune op with no producing \"add\" anywhere, breaking downward-closure. - ugh/cli.py: ugh init now parses --horizon <ref> (via the existing _strip_opt helper) and passes it to lens.init(). Previously the flag was silently swallowed as the positional repo path, creating a bogus nested repo at ./--horizon/ with no error. - Updated the ugh init help line accordingly.",
         "index": 69
       },
       {
@@ -1057,7 +1057,7 @@
       },
       {
         "sha": "fc3b2d4c44c8de87409bf8378c6ee8a44c44e389",
-        "subject": "Redesigned the sgt VS Code extension's feature map as a rail-style webview",
+        "subject": "Redesigned the ugh VS Code extension's feature map as a rail-style webview",
         "index": 71
       },
       {
@@ -1072,7 +1072,7 @@
       },
       {
         "sha": "c58b9d48b2291278d28ba186c9c520a4246072f7",
-        "subject": "U17: sgt/state.py -- layout registry + read-side schema dispatch",
+        "subject": "U17: ugh/state.py -- layout registry + read-side schema dispatch",
         "index": 74
       },
       {
@@ -1082,7 +1082,7 @@
       },
       {
         "sha": "be8251aeb2a30050c4385c73664b579c714b6271",
-        "subject": "U18: CLI restructure \u2014 argparse subcommand package + `sgt git` passthrough",
+        "subject": "U18: CLI restructure \u2014 argparse subcommand package + `ugh git` passthrough",
         "index": 76
       },
       {
@@ -1107,7 +1107,7 @@
       },
       {
         "sha": "acdb348b447607c736872046475ffe572888dda7",
-        "subject": "U20: sgt push \u2014 non-forcing, rejection routes to sync (C7)",
+        "subject": "U20: ugh push \u2014 non-forcing, rejection routes to sync (C7)",
         "index": 81
       },
       {
@@ -1167,7 +1167,7 @@
       },
       {
         "sha": "d3c1184b0d18349bd38a9b3ad6f2734cd74fc4a3",
-        "subject": "feat(land): sgt land <branch> \u2014 branch-record CAS, oracle-gated (C9/LAW-G)",
+        "subject": "feat(land): ugh land <branch> \u2014 branch-record CAS, oracle-gated (C9/LAW-G)",
         "index": 93
       },
       {
@@ -1212,7 +1212,7 @@
       },
       {
         "sha": "4530633b512cdda99857d9528f0b9140950fed8a",
-        "subject": "feat(U29): closure-explanation UX (sgt select / sgt why)",
+        "subject": "feat(U29): closure-explanation UX (ugh select / ugh why)",
         "index": 102
       },
       {
@@ -1257,7 +1257,7 @@
       },
       {
         "sha": "1c9c5b531db2802decaf7c18a618dc2e1ccebb3c",
-        "subject": "fix(U2): complete the R11 fsck contract + sgt fsck --tree",
+        "subject": "fix(U2): complete the R11 fsck contract + ugh fsck --tree",
         "index": 111
       },
       {
@@ -1312,7 +1312,7 @@
       },
       {
         "sha": "c4cac113d0d3cff3d3b0c84d006731f65c8237e8",
-        "subject": "feat(U10): sgt migrate ops-v3 \u2014 gated full-store v2\u2192v3 migration + re-measurement",
+        "subject": "feat(U10): ugh migrate ops-v3 \u2014 gated full-store v2\u2192v3 migration + re-measurement",
         "index": 122
       },
       {
@@ -1332,7 +1332,7 @@
       },
       {
         "sha": "ba40453e2a03b1158ce681a6021f1c3697159fd1",
-        "subject": "feat(vscode): Composition Workbench redesign \u2014 full sgt workbench",
+        "subject": "feat(vscode): Composition Workbench redesign \u2014 full ugh workbench",
         "index": 126
       },
       {
@@ -1342,17 +1342,17 @@
       },
       {
         "sha": "90c9ac3f77ba0ddce60694cdbb9c08d26995d3d0",
-        "subject": "compelte U7: revert_keep_dependents now drafts real hollows only for direct reference-edge dependents, while transitive dependents are recorded in draft.meta[\"carry_forward\"] and mechanically re-minted by build_candidate with identical content and cleared requires \u2014 mirroring split-op's existing tail pattern. This required zero changes to sgt/repair/ itself, since repair() only ever iterates draft.hollow_ids; the transitive tail resolves before the repair loop or backend ever sees a request, so backend.calls stays constant regardless of chain depth (verified directly by the new test_transitive_dependent_survives_without_costing_a_backend_call).",
+        "subject": "compelte U7: revert_keep_dependents now drafts real hollows only for direct reference-edge dependents, while transitive dependents are recorded in draft.meta[\"carry_forward\"] and mechanically re-minted by build_candidate with identical content and cleared requires \u2014 mirroring split-op's existing tail pattern. This required zero changes to ugh/repair/ itself, since repair() only ever iterates draft.hollow_ids; the transitive tail resolves before the repair loop or backend ever sees a request, so backend.calls stays constant regardless of chain depth (verified directly by the new test_transitive_dependent_survives_without_costing_a_backend_call).",
         "index": 128
       },
       {
         "sha": "740594d53edb5b25925a5575e10cb932d0093798",
-        "subject": "Nl to sgt commands",
+        "subject": "Nl to ugh commands",
         "index": 129
       },
       {
         "sha": "7ab30d9ed02bab136bf96b17e50a1665ce360c10",
-        "subject": "bug fixes from end to end sgt revert chceck",
+        "subject": "bug fixes from end to end ugh revert chceck",
         "index": 130
       },
       {
@@ -1417,7 +1417,7 @@
       },
       {
         "sha": "af490beb57568505af397f54675d75f0d642dca1",
-        "subject": "feat(intent): sgt intent list|show|build read verbs (U7)",
+        "subject": "feat(intent): ugh intent list|show|build read verbs (U7)",
         "index": 143
       },
       {
@@ -1427,7 +1427,7 @@
       },
       {
         "sha": "8508b95dde1cd1f26b7764d5ef45cc179ef518d8",
-        "subject": "feat(intent): sgt intent revert <group> -- deterministic, previewable, oracle-gated (U8)",
+        "subject": "feat(intent): ugh intent revert <group> -- deterministic, previewable, oracle-gated (U8)",
         "index": 145
       },
       {
@@ -1457,7 +1457,7 @@
       },
       {
         "sha": "a80f4fad6ac1d5ec8073cf89cae677421c84b564",
-        "subject": "fix(vscode): serialize sgt subprocess calls to fix lock-contention timeouts",
+        "subject": "fix(vscode): serialize ugh subprocess calls to fix lock-contention timeouts",
         "index": 151
       },
       {
@@ -1477,7 +1477,7 @@
       },
       {
         "sha": "da48b47250230e58f6b0d76485417354dd30e7d7",
-        "subject": "Merge pull request #6 from ryanyen2/fix/vscode-sgt-concurrent-timeout",
+        "subject": "Merge pull request #6 from ryanyen2/fix/vscode-ugh-concurrent-timeout",
         "index": 155
       },
       {
@@ -1552,7 +1552,7 @@
       },
       {
         "sha": "8e59ebd9f90db781ee9c9912dcb4896b36f0050e",
-        "subject": "feat(edit): sgt edit <selection> in-place change (U4)",
+        "subject": "feat(edit): ugh edit <selection> in-place change (U4)",
         "index": 170
       },
       {
@@ -1592,7 +1592,7 @@
       },
       {
         "sha": "c494d5c9fdf549a2a4c593aef8546fb6049d3b06",
-        "subject": "feat(vscode): sgt.revertSymbol \u2014 frontier revert from the editor",
+        "subject": "feat(vscode): ugh.revertSymbol \u2014 frontier revert from the editor",
         "index": 178
       },
       {
@@ -5010,7 +5010,7 @@
         "editor/vscode/media/graph.js",
         "editor/vscode/media/map.css",
         "editor/vscode/media/map.js",
-        "editor/vscode/media/sgt.svg",
+        "editor/vscode/media/ugh.svg",
         "editor/vscode/media/workbench.css",
         "editor/vscode/media/workbench.js",
         "editor/vscode/package.json",
@@ -5030,7 +5030,7 @@
         "editor/vscode/src/mapView.ts",
         "editor/vscode/src/plan.ts",
         "editor/vscode/src/preview.ts",
-        "editor/vscode/src/sgt.ts",
+        "editor/vscode/src/ugh.ts",
         "editor/vscode/src/statusBar.ts",
         "editor/vscode/src/store.ts",
         "editor/vscode/src/tree.ts",
@@ -5058,120 +5058,120 @@
         "pyproject.toml",
         "scripts/bet_c_mojofm.py",
         "scripts/graph_stress/__init__.py",
-        "sgt/agents/distill.py",
-        "sgt/agents/intent_dsl.py",
-        "sgt/agents/plan_context.py",
-        "sgt/agents/planner.py",
-        "sgt/agents/resolve.py",
-        "sgt/api.py",
-        "sgt/cli.py",
-        "sgt/cli/__init__.py",
-        "sgt/cli/_common.py",
-        "sgt/cli/edit.py",
-        "sgt/cli/feature.py",
-        "sgt/cli/ideal_edit.py",
-        "sgt/cli/init.py",
-        "sgt/cli/inspect.py",
-        "sgt/cli/intent.py",
-        "sgt/cli/loop.py",
-        "sgt/cli/migrate.py",
-        "sgt/cli/oracle.py",
-        "sgt/cli/porcelain.py",
-        "sgt/cli/propose.py",
-        "sgt/cli/review.py",
-        "sgt/cli/rewrite.py",
-        "sgt/cli/select.py",
-        "sgt/cli/session.py",
-        "sgt/cli/sync.py",
-        "sgt/cli/tiers.py",
-        "sgt/config.py",
-        "sgt/core/fold.py",
-        "sgt/core/ideal.py",
-        "sgt/core/identity.py",
-        "sgt/core/lens.py",
-        "sgt/core/migrate.py",
-        "sgt/core/mine.py",
-        "sgt/core/op.py",
-        "sgt/core/opindex.py",
-        "sgt/core/oplog.py",
-        "sgt/core/oracle.py",
-        "sgt/core/order.py",
-        "sgt/core/propose.py",
-        "sgt/core/review.py",
-        "sgt/core/rewrite.py",
-        "sgt/core/session.py",
-        "sgt/core/store.py",
-        "sgt/core/sync/__init__.py",
-        "sgt/core/sync/fetch.py",
-        "sgt/core/sync/ingest.py",
-        "sgt/core/sync/land.py",
-        "sgt/core/sync/log.py",
-        "sgt/core/sync/materialize.py",
-        "sgt/core/sync/resolve.py",
-        "sgt/core/tiers.py",
-        "sgt/core/verbs.py",
-        "sgt/decisions/__init__.py",
-        "sgt/decisions/distill.py",
-        "sgt/decisions/model.py",
-        "sgt/decisions/store.py",
-        "sgt/decisions/structure.py",
-        "sgt/effects/__init__.py",
-        "sgt/effects/attribute.py",
-        "sgt/effects/body.py",
-        "sgt/effects/diff.py",
-        "sgt/effects/invariants.py",
-        "sgt/effects/model.py",
-        "sgt/effects/stmt.py",
-        "sgt/effects/stmt_distill.py",
-        "sgt/engine/__init__.py",
-        "sgt/engine/closure.py",
-        "sgt/engine/commute.py",
-        "sgt/engine/confluence.py",
-        "sgt/entities/cluster.py",
-        "sgt/entities/extract.py",
-        "sgt/entities/graph.py",
-        "sgt/intent/_guard.py",
-        "sgt/intent/group.py",
-        "sgt/intent/prompts.py",
-        "sgt/intent/resolve.py",
-        "sgt/intent/theme.py",
-        "sgt/lens/authored.py",
-        "sgt/lens/cluster.py",
-        "sgt/lens/label.py",
-        "sgt/lens/map.py",
-        "sgt/lens/pins.py",
-        "sgt/lens/reconcile.py",
-        "sgt/lens/select.py",
-        "sgt/lens/tree.py",
-        "sgt/lens/verbs.py",
-        "sgt/lifecycle/__init__.py",
-        "sgt/lifecycle/algebra.py",
-        "sgt/loop/match.py",
-        "sgt/loop/plan.py",
-        "sgt/mcp/server.py",
-        "sgt/merge/__init__.py",
-        "sgt/merge/conflict.py",
-        "sgt/merge/engine.py",
-        "sgt/orchestrate/__init__.py",
-        "sgt/orchestrate/constraint.py",
-        "sgt/orchestrate/loop.py",
-        "sgt/orchestrate/quarantine.py",
-        "sgt/orchestrate/sync.py",
-        "sgt/project.py",
-        "sgt/repair/api_backend.py",
-        "sgt/repair/backends.py",
-        "sgt/repair/context.py",
-        "sgt/repair/loop.py",
-        "sgt/repair/verify.py",
-        "sgt/state.py",
-        "sgt/store/clock.py",
-        "sgt/store/gitbind.py",
-        "sgt/store/graph.py",
-        "sgt/store/oplog.py",
-        "sgt/store/replica.py",
-        "sgt/tui/app.py",
-        "sgt/tui/color.py",
-        "sgt/tui/mapview.py",
+        "ugh/agents/distill.py",
+        "ugh/agents/intent_dsl.py",
+        "ugh/agents/plan_context.py",
+        "ugh/agents/planner.py",
+        "ugh/agents/resolve.py",
+        "ugh/api.py",
+        "ugh/cli.py",
+        "ugh/cli/__init__.py",
+        "ugh/cli/_common.py",
+        "ugh/cli/edit.py",
+        "ugh/cli/feature.py",
+        "ugh/cli/ideal_edit.py",
+        "ugh/cli/init.py",
+        "ugh/cli/inspect.py",
+        "ugh/cli/intent.py",
+        "ugh/cli/loop.py",
+        "ugh/cli/migrate.py",
+        "ugh/cli/oracle.py",
+        "ugh/cli/porcelain.py",
+        "ugh/cli/propose.py",
+        "ugh/cli/review.py",
+        "ugh/cli/rewrite.py",
+        "ugh/cli/select.py",
+        "ugh/cli/session.py",
+        "ugh/cli/sync.py",
+        "ugh/cli/tiers.py",
+        "ugh/config.py",
+        "ugh/core/fold.py",
+        "ugh/core/ideal.py",
+        "ugh/core/identity.py",
+        "ugh/core/lens.py",
+        "ugh/core/migrate.py",
+        "ugh/core/mine.py",
+        "ugh/core/op.py",
+        "ugh/core/opindex.py",
+        "ugh/core/oplog.py",
+        "ugh/core/oracle.py",
+        "ugh/core/order.py",
+        "ugh/core/propose.py",
+        "ugh/core/review.py",
+        "ugh/core/rewrite.py",
+        "ugh/core/session.py",
+        "ugh/core/store.py",
+        "ugh/core/sync/__init__.py",
+        "ugh/core/sync/fetch.py",
+        "ugh/core/sync/ingest.py",
+        "ugh/core/sync/land.py",
+        "ugh/core/sync/log.py",
+        "ugh/core/sync/materialize.py",
+        "ugh/core/sync/resolve.py",
+        "ugh/core/tiers.py",
+        "ugh/core/verbs.py",
+        "ugh/decisions/__init__.py",
+        "ugh/decisions/distill.py",
+        "ugh/decisions/model.py",
+        "ugh/decisions/store.py",
+        "ugh/decisions/structure.py",
+        "ugh/effects/__init__.py",
+        "ugh/effects/attribute.py",
+        "ugh/effects/body.py",
+        "ugh/effects/diff.py",
+        "ugh/effects/invariants.py",
+        "ugh/effects/model.py",
+        "ugh/effects/stmt.py",
+        "ugh/effects/stmt_distill.py",
+        "ugh/engine/__init__.py",
+        "ugh/engine/closure.py",
+        "ugh/engine/commute.py",
+        "ugh/engine/confluence.py",
+        "ugh/entities/cluster.py",
+        "ugh/entities/extract.py",
+        "ugh/entities/graph.py",
+        "ugh/intent/_guard.py",
+        "ugh/intent/group.py",
+        "ugh/intent/prompts.py",
+        "ugh/intent/resolve.py",
+        "ugh/intent/theme.py",
+        "ugh/lens/authored.py",
+        "ugh/lens/cluster.py",
+        "ugh/lens/label.py",
+        "ugh/lens/map.py",
+        "ugh/lens/pins.py",
+        "ugh/lens/reconcile.py",
+        "ugh/lens/select.py",
+        "ugh/lens/tree.py",
+        "ugh/lens/verbs.py",
+        "ugh/lifecycle/__init__.py",
+        "ugh/lifecycle/algebra.py",
+        "ugh/loop/match.py",
+        "ugh/loop/plan.py",
+        "ugh/mcp/server.py",
+        "ugh/merge/__init__.py",
+        "ugh/merge/conflict.py",
+        "ugh/merge/engine.py",
+        "ugh/orchestrate/__init__.py",
+        "ugh/orchestrate/constraint.py",
+        "ugh/orchestrate/loop.py",
+        "ugh/orchestrate/quarantine.py",
+        "ugh/orchestrate/sync.py",
+        "ugh/project.py",
+        "ugh/repair/api_backend.py",
+        "ugh/repair/backends.py",
+        "ugh/repair/context.py",
+        "ugh/repair/loop.py",
+        "ugh/repair/verify.py",
+        "ugh/state.py",
+        "ugh/store/clock.py",
+        "ugh/store/gitbind.py",
+        "ugh/store/graph.py",
+        "ugh/store/oplog.py",
+        "ugh/store/replica.py",
+        "ugh/tui/app.py",
+        "ugh/tui/color.py",
+        "ugh/tui/mapview.py",
         "tests/agents/test_plan_context.py",
         "tests/agents/test_planner.py",
         "tests/cli/test_edit.py",
@@ -5293,7 +5293,7 @@
       "editor/vscode/media/decision.js",
       "experiments/patch_clustering/out/rail3-real.html",
       "experiments/patch_clustering/out/real-slim.js",
-      "sgt/lens/__init__.py",
+      "ugh/lens/__init__.py",
       "tests/core/test_identity.py",
       "tests/golden/snapshots/cli_surface.json",
       "tests/golden/snapshots/kernel_diverged_chain.json",

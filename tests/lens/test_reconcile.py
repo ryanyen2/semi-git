@@ -1,4 +1,4 @@
-"""Unit coverage for `sgt.lens.reconcile.union_pins`'s witness-topo + hash tie-break (U21/D6).
+"""Unit coverage for `ugh.lens.reconcile.union_pins`'s witness-topo + hash tie-break (U21/D6).
 
 The LAW-U convergence test (`tests/laws/test_convergence.py`) proves the end-to-end sync property;
 these tests pin the tie-break's three branches directly: causally-later (ancestry) wins, concurrent
@@ -8,8 +8,8 @@ schedule converges. The `is_ancestor` callable is a plain in-memory fake -- no g
 
 from __future__ import annotations
 
-from sgt.lens.pins import Pins
-from sgt.lens.reconcile import _assign_winner, union_pins
+from ugh.lens.pins import Pins
+from ugh.lens.reconcile import _assign_winner, union_pins
 
 
 def _ancestry(edges: set[tuple[str, str]]):
@@ -73,7 +73,7 @@ def test_authored_label_register_reuses_assign_winner_not_pins_labels():
     # has no witness input and so cannot guarantee "latest rename wins" (U6/KTD3). This pins that
     # `authored.merge_feature` reuses the *exact* `_assign_winner` decision `union_pins`'s `assign`
     # path makes for the same witness/label inputs.
-    from sgt.lens import authored
+    from ugh.lens import authored
 
     f = authored.create(["m1"], "Login")
     ours = authored.rename(f, "Login", witness="sha_old")

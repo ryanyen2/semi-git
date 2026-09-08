@@ -1,4 +1,4 @@
-"""Tests for sgt.core.oplog -- the unified operation-event log + universal undo (plan U8, R7/KTD6).
+"""Tests for ugh.core.oplog -- the unified operation-event log + universal undo (plan U8, R7/KTD6).
 
 The log **subsumes** the old per-ref `ideal_journal` (single store, one pop per undo): every
 mutating verb appends a typed event, and `undo` pops the tail and applies its inverse uniformly.
@@ -12,14 +12,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sgt.core import oplog
-from sgt.core.lens import current_ideal, get
-from sgt.core.store import Store
-from sgt.lens import authored
-from sgt.lens import map as lensmap
-from sgt.lens import tree
-from sgt.lens import verbs as fverbs
-from sgt.store.gitbind import init_store
+from ugh.core import oplog
+from ugh.core.lens import current_ideal, get
+from ugh.core.store import Store
+from ugh.lens import authored
+from ugh.lens import map as lensmap
+from ugh.lens import tree
+from ugh.lens import verbs as fverbs
+from ugh.store.gitbind import init_store
 from tests.laws import corpus
 
 
@@ -83,7 +83,7 @@ def test_drop_event_removes_the_target_and_never_clobbers_a_concurrent_append(tm
 def test_record_ideal_appends_an_ideal_edit_event_that_undo_inverts(tmp_path):
     """A revert flows through `record_ideal`, which now appends an `ideal_edit` event to the unified
     log; `oplog.undo` restores the prior ideal exactly -- the same restore `undo_ideal` did."""
-    from sgt.core import verbs
+    from ugh.core import verbs
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     original = get(repo).op_ids
@@ -106,7 +106,7 @@ def test_record_ideal_appends_an_ideal_edit_event_that_undo_inverts(tmp_path):
 
 
 def gb_head(repo) -> str:
-    from sgt.store.gitbind import GitBinding
+    from ugh.store.gitbind import GitBinding
 
     return GitBinding(Path(repo)).head()
 
@@ -115,7 +115,7 @@ def _seed_two_symbols(repo):
     """A repo with foo+bar committed and mined -- the baseline for the undo-hardening cases. `get`
     mines the commit and persists the ref's ideal table; no explicit `record_ideal` (that would add
     a spurious no-op journal entry over the ideal `get` just recorded)."""
-    from sgt.core import lens
+    from ugh.core import lens
 
     gb, _ = init_store(repo)
     (repo / "a.py").write_text("def foo():\n    return 1\n\n\ndef bar():\n    return 2\n", encoding="utf-8")
@@ -130,7 +130,7 @@ def test_undo_refuses_to_drop_work_committed_after_the_journal_entry(tmp_path):
     journal entry). Undo must detect that casualty and refuse rather than destroy it -- the manual
     commit's content stays on disk, the reverted op is NOT re-added, and the entry is left in place
     for a later `undo(force=True)`."""
-    from sgt.core import lens, verbs
+    from ugh.core import lens, verbs
 
     repo = tmp_path / "repo"
     gb = _seed_two_symbols(repo)
@@ -138,11 +138,11 @@ def test_undo_refuses_to_drop_work_committed_after_the_journal_entry(tmp_path):
     verbs.revert(repo, bar.id)  # journals the pre-revert ideal
     assert b"def bar" not in (repo / "a.py").read_bytes()
 
-    # a raw manual commit between the revert and the undo -- work sgt only mines on next contact.
+    # a raw manual commit between the revert and the undo -- work ugh only mines on next contact.
     (repo / "a.py").write_text(
         (repo / "a.py").read_text(encoding="utf-8") + "\n\ndef baz():\n    return 3\n", encoding="utf-8"
     )
-    gb.commit_all("RAW: add baz (no sgt)")
+    gb.commit_all("RAW: add baz (no ugh)")
     lens.get(repo)  # absorb the manual commit into the current ideal
 
     outcome = oplog.undo(repo)
@@ -155,9 +155,9 @@ def test_undo_refuses_to_drop_work_committed_after_the_journal_entry(tmp_path):
 
 def test_undo_force_drops_intervening_work_deliberately(tmp_path):
     """The escape hatch for 0.2(c): `undo(force=True)` proceeds despite the F3 casualty -- the user
-    has been told and chose to drop the intervening commit. This is what `sgt undo --force` wires
+    has been told and chose to drop the intervening commit. This is what `ugh undo --force` wires
     to."""
-    from sgt.core import lens, verbs
+    from ugh.core import lens, verbs
 
     repo = tmp_path / "repo"
     gb = _seed_two_symbols(repo)
@@ -180,7 +180,7 @@ def test_undo_force_drops_intervening_work_deliberately(tmp_path):
 def test_undo_skips_an_unapplied_journal_entry(tmp_path):
     """F6/0.2a: a journal entry from an edit that never landed (`applied=False`) is bogus -- undo
     must discard it and reverse the real edit beneath it, not execute the crashed one."""
-    from sgt.core import verbs
+    from ugh.core import verbs
 
     repo = tmp_path / "repo"
     _seed_two_symbols(repo)
@@ -205,7 +205,7 @@ def test_record_ideal_marks_its_journal_entry_applied_only_after_the_edit_lands(
     only after the ideal-table + witness advance succeed. A clean revert leaves an `applied=True`
     tail; a crash between the journal push and the table write leaves `applied=False`, which
     `oplog.undo` discards."""
-    from sgt.core import lens, verbs
+    from ugh.core import lens, verbs
 
     repo = tmp_path / "repo"
     _seed_two_symbols(repo)
@@ -266,21 +266,21 @@ _BASE = "def foo():\n    return 1\n"
 
 
 def _seed_checked_out(root: Path):
-    from sgt import state
-    from sgt.core import lens
+    from ugh import state
+    from ugh.core import lens
 
     gb, _ = init_store(root)
     (root / "main.py").write_text(_BASE, encoding="utf-8")
     state.save_json(root, "oracle_config", {"tiers": [{"name": "gate", "command": "exit 0"}]})
     gb.commit_all("init")
     ideal = lens.get(root)
-    put = lens.put(root, ideal, message="sgt: init")
+    put = lens.put(root, ideal, message="ugh: init")
     lens.record_ideal(root, ideal, put)
     return gb, gb.symbolic_ref()
 
 
 def _commit_op(gb, root: Path, symbol: str) -> str:
-    from sgt.core import lens
+    from ugh.core import lens
 
     (root / "main.py").write_text(
         (root / "main.py").read_text(encoding="utf-8") + f"\n\ndef {symbol}():\n    return 0\n",
@@ -288,7 +288,7 @@ def _commit_op(gb, root: Path, symbol: str) -> str:
     )
     gb.commit_all(f"add {symbol}")
     ideal = lens.get(root)
-    put = lens.put(root, ideal, message=f"sgt: add {symbol}")
+    put = lens.put(root, ideal, message=f"ugh: add {symbol}")
     lens.record_ideal(root, ideal, put)
     return put
 
@@ -297,7 +297,7 @@ def test_shared_land_is_logged_but_its_undo_is_refused(tmp_path):
     """Landing a *non-checked-out* branch is a shared-out mutation (mirrors the `journal=checked_out`
     guard, land.py:207): it is logged for provenance in the unified log, but `undo` refuses to apply
     its inverse -- undo only reverses local, not-yet-shared operations."""
-    from sgt.core import sync
+    from ugh.core import sync
 
     repo = tmp_path / "repo"
     gb, _cur = _seed_checked_out(repo)
@@ -327,10 +327,10 @@ def test_preview_names_the_edits_undo_would_bring_back(tmp_path):
     """`undo` is what a developer reaches for when something has gone wrong, which is the worst
     moment to make them run it blind and find out afterward. Everything shown is already known
     before the fact."""
-    from sgt.core import verbs
+    from ugh.core import verbs
 
-    from sgt.core import opindex
-    from sgt.core.op import is_behavioral
+    from ugh.core import opindex
+    from ugh.core.op import is_behavioral
 
     repo = tmp_path / "repo"
     _seed_two_symbols(repo)
@@ -354,7 +354,7 @@ def test_preview_names_the_edits_undo_would_bring_back(tmp_path):
 def test_preview_reports_a_refusal_before_the_user_commits_to_it(tmp_path):
     """The F3 guard already refuses an undo that would drop work committed after the edit. Learning
     that *after* asking for the undo is the same information arriving too late to be useful."""
-    from sgt.core import lens, verbs
+    from ugh.core import lens, verbs
 
     repo = tmp_path / "repo"
     gb = _seed_two_symbols(repo)
@@ -394,7 +394,7 @@ def test_preview_of_a_shared_land_reports_the_refusal(tmp_path):
 
 def test_preview_writes_nothing(tmp_path):
     """A preview that mutates is not a preview."""
-    from sgt.core import verbs
+    from ugh.core import verbs
 
     repo = tmp_path / "repo"
     _seed_two_symbols(repo)

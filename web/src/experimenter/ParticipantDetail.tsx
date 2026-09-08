@@ -408,7 +408,8 @@ function HowItWasDone({ events, req }: { events: EventDoc[]; req: RequestDoc }) 
   const commands = mine.filter((e) => e.kind === 'command')
   const tally = {
     git: commands.filter((e) => e.name === 'git').length,
-    sgt: commands.filter((e) => e.name === 'sgt').length,
+    // Sessions recorded before the rename log the binary as `sgt`, later ones as `ugh`.
+    sgt: commands.filter((e) => e.name === 'sgt' || e.name === 'ugh').length,
     editor: commands.filter((e) => e.extra?.surface === 'editor').length,
     assistant: mine.filter((e) => e.kind === 'tool' || e.extra?.surface === 'agent').length,
     prompts: mine.filter((e) => e.kind === 'prompt').length,

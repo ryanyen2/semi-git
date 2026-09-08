@@ -5,8 +5,8 @@
 You need [uv](https://docs.astral.sh/uv/) and Python 3.10 or newer.
 
 ```bash
-git clone https://github.com/ryanyen2/semi-git
-cd semi-git
+git clone https://github.com/ryanyen2/ugh
+cd ugh
 uv venv --python 3.12
 uv pip install -e ".[dev]"
 ```
@@ -22,7 +22,7 @@ one file while you work, pass its path, e.g., `uv run pytest tests/core/test_ver
 
 ## Checking the docs
 
-Every `sgt ...` command quoted in the README, in `docs/guide/`, or in the bundled agent skills has
+Every `ugh ...` command quoted in the README, in `docs/guide/`, or in the bundled agent skills has
 to dispatch against the real CLI. Prose drifts silently because nothing executes it, and an agent
 handed a command that no longer exists will try variations until it gives up. The checker catches
 that.
@@ -32,16 +32,16 @@ uv run python -m scripts.check_docs_commands
 ```
 
 Add `--fix` to rewrite the commands that have a computable replacement, e.g., a verb that moved
-under `sgt advanced`. CI runs the checker on every push, so a rename that forgets the docs fails
+under `ugh advanced`. CI runs the checker on every push, so a rename that forgets the docs fails
 there rather than reaching a user.
 
 ## Where things live
 
-- `sgt/` is the Python package. `sgt/core/` holds the kernel, `sgt/cli/` holds the commands, and
-  `sgt/mcp/` holds the MCP server.
-- `sgt/agent_assets/skills/` holds the Claude Code skills. They live inside the package, not in this
-  repo's `.claude/skills/`, so that `sgt init --agent` can install them from a plain
-  `uv tool install` with no checkout present. If you edit a skill, run `sgt init --agent` in this
+- `ugh/` is the Python package. `ugh/core/` holds the kernel, `ugh/cli/` holds the commands, and
+  `ugh/mcp/` holds the MCP server.
+- `ugh/agent_assets/skills/` holds the Claude Code skills. They live inside the package, not in this
+  repo's `.claude/skills/`, so that `ugh init --agent` can install them from a plain
+  `uv tool install` with no checkout present. If you edit a skill, run `ugh init --agent` in this
   repo to refresh your own copy.
 - `editor/vscode/` is the VS Code extension. Build it with `npm ci && npm run package` from that
   directory.
@@ -57,7 +57,7 @@ compares them against the tag and stops if they disagree.
 
 - `pyproject.toml`, the `version` field.
 - `editor/vscode/package.json`, the `version` field.
-- `sgt/__init__.py`, the `__version__` field.
+- `ugh/__init__.py`, the `__version__` field.
 - `editor/vscode/package-lock.json`, twice: the top-level `version` and the one under `packages[""]`.
 
 The lock file is the one nothing checks. It is not in `check-version`, so it drifts silently, and it
@@ -80,7 +80,7 @@ Pushing the tag starts four jobs.
    re-uploaded to PyPI once it's taken.
 2. `pypi` builds the wheel and the source distribution with `uv build`, then publishes them with
    `uv publish`.
-3. `vsix` builds the VS Code extension into `semi-git-<version>.vsix`.
+3. `vsix` builds the VS Code extension into `ugh-<version>.vsix`.
 4. `release` creates the GitHub release, writes the notes from the commits since the last tag, and
    attaches the `.vsix` file.
 
@@ -91,7 +91,7 @@ re-run after a successful PyPI upload will fail on that step. Bump to a new patc
 ### Credentials
 
 The `pypi` job reads a repository secret named `PYPI_TOKEN`. To set it, create an API token at
-[pypi.org/manage/account/token](https://pypi.org/manage/account/token/) scoped to the `semi-git`
+[pypi.org/manage/account/token](https://pypi.org/manage/account/token/) scoped to the `ugh`
 project, then add it under Settings, Secrets and variables, Actions.
 
 You can move to PyPI trusted publishing later, which removes the token entirely. It uses GitHub's

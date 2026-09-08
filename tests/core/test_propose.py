@@ -2,7 +2,7 @@
 
 A proposal is a base+Δ review object: creatable (rejecting a base∪Δ that isn't a valid ideal),
 checkable for staleness by re-union against the moved base (current / clean-reunion / fork), and
-renderable as a GitHub PR body a reviewer without sgt can act on. Like a claim (D8), it is a
+renderable as a GitHub PR body a reviewer without ugh can act on. Like a claim (D8), it is a
 committed, immutable G-Set file that travels on sync. The two-clone rig (bare remote + two working
 clones) is reused from `test_sync`; `_configure_oracle` from `test_claims`.
 """
@@ -14,12 +14,12 @@ from pathlib import Path
 
 import pytest
 
-from sgt import api, state
-from sgt.core import lens, oracle, propose, sync
-from sgt.core.mine import mine
-from sgt.core.store import Store
-from sgt.lens.map import build_map
-from sgt.store.gitbind import GitBinding
+from ugh import api, state
+from ugh.core import lens, oracle, propose, sync
+from ugh.core.mine import mine
+from ugh.core.store import Store
+from ugh.lens.map import build_map
+from ugh.store.gitbind import GitBinding
 from tests.core.test_claims import _configure_oracle
 from tests.core.test_sync import _BASE, _edit_and_commit, _push, _two_clones
 
@@ -87,7 +87,7 @@ def test_create_rejects_a_delta_whose_base_union_is_not_a_valid_ideal(tmp_path):
 def test_row6_fork_based_contributor_status_reports_fork(tmp_path):
     """Row 6: a proposal created cleanly over the base goes stale as a `fork` once the base reworks a
     symbol Δ also touches (surfaced when the contributor syncs the moved base in), and `status`
-    reports the `sgt resolve` remedy."""
+    reports the `ugh resolve` remedy."""
     a, b = _two_clones(tmp_path, _BASE)
     _branch(a, "feature")
     _edit_and_commit(a, "main.py", _BASE.replace("return 1", "return 42"), "feature: rework foo")
@@ -106,8 +106,8 @@ def test_row6_fork_based_contributor_status_reports_fork(tmp_path):
     assert st["state"] == "fork"
     assert st["base_moved"] is True
     assert st["forks"], "a same-symbol fork should be surfaced"
-    assert st["forks"][0]["remedy"].startswith("sgt resolve ")
-    assert st["remedy"].startswith("sgt resolve ")
+    assert st["forks"][0]["remedy"].startswith("ugh resolve ")
+    assert st["remedy"].startswith("ugh resolve ")
 
 
 def test_plan_land_predicts_a_proposals_advance_and_leaves_no_trace(tmp_path):
@@ -164,10 +164,10 @@ def test_status_clean_reunion_when_base_advances_disjointly(tmp_path):
     assert st["note"] == "base advanced; Δ still applies"
 
 
-def test_row7_render_github_pr_body_is_readable_without_sgt(tmp_path):
+def test_row7_render_github_pr_body_is_readable_without_ugh(tmp_path):
     """Row 7: `render_github` emits a suggested branch, a PR title, and a PR body in plain markdown
     -- a feature-delta table, the oracle claim (status + runner identity), and provenance -- that a
-    reviewer without sgt can act on."""
+    reviewer without ugh can act on."""
     a, _b = _two_clones(tmp_path, _BASE)
     _configure_oracle(a, [("build", "exit 0")])
     _branch(a, "feature")
@@ -182,7 +182,7 @@ def test_row7_render_github_pr_body_is_readable_without_sgt(tmp_path):
     rendered = propose.render_github(view)
 
     assert rendered["pr_title"] == "Add baz helper"
-    assert rendered["branch"].startswith("sgt/")
+    assert rendered["branch"].startswith("ugh/")
     body = rendered["pr_body"]
     # plain-markdown structure a bare GitHub reviewer sees
     assert "Adds a baz function." in body

@@ -9,7 +9,7 @@ conflate: drift (bytes the ideal has never seen) and a staged rewrite candidate 
 recorded ops, held out until the oracle agrees). Conflated, a candidate was titled "Working changes",
 explained as unrecorded edits, and offered a Save that the lens refuses.
 
-`onHoverIntent` gates the hover previews, which shell out -- the host runs `sgt <verb> --emit` in a
+`onHoverIntent` gates the hover previews, which shell out -- the host runs `ugh <verb> --emit` in a
 subprocess per preview. Fired straight off `mouseenter`, a sweep down the rail started one per row
 crossed. Resting on a row is the intent; crossing it is not.
 
@@ -57,9 +57,9 @@ def test_idle_loop_buttons_are_live_and_named_plainly():
 
 
 def test_the_daily_loop_does_not_offer_commit():
-    """There were three buttons here. The middle one was wrong in both directions at once: `sgt save`
+    """There were three buttons here. The middle one was wrong in both directions at once: `ugh save`
     mines *and* commits, so a Commit beside Save promised a step Save had already taken, while the
-    command it ran (`sgt advanced commit`) lands a staged rewrite candidate and otherwise refuses with
+    command it ran (`ugh advanced commit`) lands a staged rewrite candidate and otherwise refuses with
     "nothing staged". Either redundant or an error toast, drawn permanently for a state that is rare
     and oracle-gated. Landing moved to the Working-changes card, which draws it only when there is a
     candidate. Asserted by name because a button whose label describes the verb beside it is the
@@ -123,7 +123,7 @@ def test_a_passing_oracle_says_so_and_makes_land_primary():
     card = _card(_STAGED, {"staged": {"verb": "merge-op", "op_count": 6, "oracle_status": "pass"}})
     assert card["actions"][0] == {
         "verb": "land", "label": "Land", "primary": True,
-        "hint": "sgt advanced commit — replace those ops in the ideal",
+        "hint": "ugh advanced commit — replace those ops in the ideal",
     }
     assert card["gate"] == "Oracle passed — safe to land."
 
@@ -137,7 +137,7 @@ def test_abandon_is_offered_in_every_staged_state():
 
 
 def test_drift_offers_one_save_because_save_already_commits():
-    """The card drew Save *and* Commit. `sgt save` mines and commits in one verb, so the second button
+    """The card drew Save *and* Commit. `ugh save` mines and commits in one verb, so the second button
     named a step the first had already taken."""
     card = _card(_DRIFT)
     assert card["state"] == "drift"
@@ -463,7 +463,7 @@ def _scope(segs, ref):
 
 
 def test_back_to_here_is_the_live_later_chapters_newest_first():
-    """"Revert to this checkpoint" means removing what came after, and each `sgt revert <f>@<n>`
+    """"Revert to this checkpoint" means removing what came after, and each `ugh revert <f>@<n>`
     peels the current tip -- so the apply order has to be newest-first, and an already-reverted
     later chapter (present_op_count 0) must not be re-reverted on the way down."""
     scope = _scope(_SEGS, "f-a@0")
@@ -816,7 +816,7 @@ def test_the_meter_never_hides_a_side_that_happened():
 
 
 def test_the_real_projection_reaches_the_tree_at_entity_granularity(tmp_path):
-    """The seam, end to end: `sgt revert --emit --json` into `changeTree`, no hand-written payload
+    """The seam, end to end: `ugh revert --emit --json` into `changeTree`, no hand-written payload
     in between.
 
     Both halves above pass with the span keys renamed -- the JS is tested against a fixture and the
@@ -825,8 +825,8 @@ def test_the_real_projection_reaches_the_tree_at_entity_granularity(tmp_path):
     when the two stop agreeing."""
     import os
 
-    from sgt.cli import main
-    from sgt.core.lens import get
+    from ugh.cli import main
+    from ugh.core.lens import get
     from tests.laws import corpus
 
     repo = tmp_path / "demo"
@@ -901,7 +901,7 @@ def test_the_ask_that_accounts_for_most_of_the_chapter_speaks_for_it():
 def test_a_correction_wins_a_tie():
     """Both asks are kept -- supersedence is a human judgement, not a heuristic -- so when they
     account for the same amount the later one is the standing word. Same rule as
-    `sgt.intent.stint.dominant_ask`, or the CLI and the panel would quote different sentences."""
+    `ugh.intent.stint.dominant_ask`, or the CLI and the panel would quote different sentences."""
     asks = [_ask(gist="mark the event days", claimed=3, ts=100),
             _ask(gist="no, a tick under the axis", claimed=3, ts=200)]
 

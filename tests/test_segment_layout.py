@@ -65,7 +65,7 @@ def _seg(feature_id, seg_index, op_ids, first_index, last_index,
             "rationale": "", "op_ids": list(op_ids), "op_count": len(op_ids),
             "commit_shas": [], "first_index": first_index, "last_index": last_index,
             "novelty": 0.0, "tier": tier, "source": source,
-            # Excerpts plus whose words they were (`sgt.intent.stint.ask_record`), never raw
+            # Excerpts plus whose words they were (`ugh.intent.stint.ask_record`), never raw
             # prompt text: this list is carried for every chapter of every feature.
             "asks": [{"gist": a, "trimmed": False, "chars": len(a), "channel": "hook",
                       "source": "you, in a Claude Code chat", "actor": "human", "ts": None,

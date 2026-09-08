@@ -1,4 +1,4 @@
-"""Tests for sgt.intent.group -- the intent overlay's deterministic rung 0/1 partition (U1) and
+"""Tests for ugh.intent.group -- the intent overlay's deterministic rung 0/1 partition (U1) and
 dependency-graph-backed cross-feature tiering (U2). No LLM/network involved anywhere here; every
 assertion is about pure, rebuildable derivation from the mined store + git history + a hand-authored
 feature tree (same idiom as `tests/lens/test_select.py`: real mining for genuine ops/edges, feature
@@ -6,11 +6,11 @@ membership authored directly since clustering quality isn't what's under test)."
 
 from __future__ import annotations
 
-from sgt.core.lens import get
-from sgt.core.store import Store
-from sgt.intent import group
-from sgt.lens import tree
-from sgt.store.gitbind import init_store
+from ugh.core.lens import get
+from ugh.core.store import Store
+from ugh.intent import group
+from ugh.lens import tree
+from ugh.store.gitbind import init_store
 
 
 def _leaf(members: list[str], label: str) -> dict:
@@ -144,7 +144,7 @@ def test_unwitnessed_op_lands_in_synthetic_bucket_never_dropped(tmp_path):
     """An op whose *only* provenance sha never appears in `history()` (e.g. mined from a detached
     or since-rewritten commit) still lands somewhere -- the `UNWITNESSED` bucket -- rather than
     being silently dropped from the partition."""
-    from sgt.core.op import make_op
+    from ugh.core.op import make_op
 
     gb, _ = init_store(tmp_path)
     (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")

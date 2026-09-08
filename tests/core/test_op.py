@@ -1,4 +1,4 @@
-"""Tests for sgt.core.op -- structured attribution and its ACI merge (plan U22, D7).
+"""Tests for ugh.core.op -- structured attribution and its ACI merge (plan U22, D7).
 
 The load-bearing property: attribution (like provenance and intent) is excluded from the content
 address, so enriching an op with who/what produced it never mints a new id. `merge_attribution`
@@ -8,7 +8,7 @@ idempotent, and deterministic on a field conflict.
 
 from __future__ import annotations
 
-from sgt.core.op import Attribution, make_op, merge_attribution
+from ugh.core.op import Attribution, make_op, merge_attribution
 
 
 def test_attribution_is_excluded_from_the_id():

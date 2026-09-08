@@ -1,5 +1,5 @@
 // Command wiring. Read/preview commands are safe and immediate. The mutating revert command
-// always confirms first, because `sgt revert` refuses on a fork and otherwise re-materializes +
+// always confirms first, because `ugh revert` refuses on a fork and otherwise re-materializes +
 // commits — so we surface the human report and then invalidate every surface.
 
 import * as path from "node:path";
@@ -48,7 +48,7 @@ async function pickFeature(store: Store, provided?: unknown): Promise<string | u
 }
 
 function toggle(key: string): void {
-  const c = vscode.workspace.getConfiguration("sgt");
+  const c = vscode.workspace.getConfiguration("ugh");
   const cur = c.get<boolean>(key, true);
   c.update(key, !cur, vscode.ConfigurationTarget.Workspace);
 }
@@ -110,7 +110,7 @@ function cap(xs: string[], n = 6): string {
 function consequenceDetail(view: EmitView): string {
   const files = Object.keys(view.files);
   // `::__anchor__`/`::__residue__` are the miner's own bookkeeping symbols; naming one at a user
-  // reads as an internal leak, the same reason `sgt.api.so_what_for` skips them in its headline.
+  // reads as an internal leak, the same reason `ugh.api.so_what_for` skips them in its headline.
   const symbols = view.affected_symbols.filter((s) => !s.includes("::__"));
   const frontier = view.frontier ?? [];
   // `blast` is only the part of the frontier the target REFERENCES directly. Everything else
@@ -126,7 +126,7 @@ function consequenceDetail(view: EmitView): string {
     `${view.removed.length} edit(s) come out` +
       (files.length ? `, across ${files.length} file(s): ${cap(files)}` : ", changing no files"),
     symbols.length ? `Symbols affected: ${cap(symbols)}` : undefined,
-    // Absent is not the same as none. `sgt.api._frontier_rows` returns `[]` for any target it
+    // Absent is not the same as none. `ugh.api._frontier_rows` returns `[]` for any target it
     // cannot reduce to a single op -- which is every whole-feature and every checkpoint revert,
     // i.e. both ways into this dialog. Saying "nothing is left dangling" there would be asserting
     // safety from an absence of data, in the modal that gates a destructive rewrite.
@@ -194,7 +194,7 @@ async function applyIdealEdit(
 // The interactive revert frontier (U3/R4): preview the selection, then let the user pick which
 // toggleable dependents to KEEP (rescue) vs. drop with the target. `foundation` prerequisites
 // can't be dropped, so they're surfaced as a count, not offered. Applying with kept dependents
-// drafts continuation hollows (see `Sgt.revertKeep`); keeping none is a plain full revert.
+// drafts continuation hollows (see `Ugh.revertKeep`); keeping none is a plain full revert.
 // `sel` is anything the CLI's own selection ladder resolves -- a feature id/label, a `file::name`
 // symbol, or a `<feature>@<n>` checkpoint. `--emit` and a plain `revert <sel>` share that ladder;
 // `--keep` does NOT (cli/ideal_edit.py routes it to `_revert_keep_dependents`, which resolves via
@@ -211,7 +211,7 @@ async function revertWithFrontier(
   phase("checking");
   let view: EmitView;
   try {
-    view = await store.sgt.emit(sel);
+    view = await store.ugh.emit(sel);
   } catch (e: any) {
     phase("failed", e.message);
     report.error(e.message);
@@ -261,7 +261,7 @@ async function revertWithFrontier(
         return;
       }
     }
-    await applyIdealEdit(store, () => store.sgt.mutate(["revert", sel]), report);
+    await applyIdealEdit(store, () => store.ugh.mutate(["revert", sel]), report);
     return;
   }
 
@@ -301,10 +301,10 @@ async function revertWithFrontier(
       return;
     }
   }
-  await applyIdealEdit(store, () => store.sgt.revertKeep(sel, keep), report);
+  await applyIdealEdit(store, () => store.ugh.revertKeep(sel, keep), report);
 }
 
-/** `sgt restore` with the same feedforward `revert` gets: the resulting diff first, then a confirm
+/** `ugh restore` with the same feedforward `revert` gets: the resulting diff first, then a confirm
  * carrying real numbers. Restore is revert's inverse (`I ∪ ↓X`), so there is no dependent frontier
  * to choose among -- bringing an edit back also brings what it needs, and nothing is dropped -- but
  * "which files does this rewrite" is exactly as unanswerable from a prose modal here as it is for
@@ -321,7 +321,7 @@ async function restoreWithPreview(
   phase("checking");
   let view: EmitView;
   try {
-    view = await store.sgt.emit(sel, "restore");
+    view = await store.ugh.emit(sel, "restore");
   } catch (e: any) {
     phase("failed", e.message);
     report.error(e.message);
@@ -359,7 +359,7 @@ async function restoreWithPreview(
   } else if (opts.openDiff !== false) {
     await preview.openDiff(view);
   }
-  await applyIdealEdit(store, () => store.sgt.mutate(["restore", sel]), report);
+  await applyIdealEdit(store, () => store.ugh.mutate(["restore", sel]), report);
 }
 
 export function registerCommands(
@@ -374,18 +374,18 @@ export function registerCommands(
   const reg = (id: string, fn: (...a: any[]) => any) =>
     context.subscriptions.push(vscode.commands.registerCommand(id, fn));
 
-  reg("sgt.refresh", () => {
+  reg("ugh.refresh", () => {
     store.invalidate();
     refreshBlame();
   });
-  reg("sgt.toggleBlame", () => toggle("blame.enabled"));
-  reg("sgt.openWorkbench", () => vscode.commands.executeCommand("sgtWorkbench.focus"));
+  reg("ugh.toggleBlame", () => toggle("blame.enabled"));
+  reg("ugh.openWorkbench", () => vscode.commands.executeCommand("ughWorkbench.focus"));
 
   // Reveal a symbol's owning feature in the workbench graph. Called with a feature id from the
   // symbol hover's "Open Workbench" link, or with no argument from the editor context menu / palette
   // -- in which case the feature is resolved from the blame span under the cursor (same path as
-  // sgt.revertSymbol). The workbench selects + spotlights + scrolls to that feature's lane.
-  reg("sgt.revealInWorkbench", async (featureId?: string) => {
+  // ugh.revertSymbol). The workbench selects + spotlights + scrolls to that feature's lane.
+  reg("ugh.revealInWorkbench", async (featureId?: string) => {
     let feature = featureId;
     if (!feature) {
       const editor = vscode.window.activeTextEditor;
@@ -412,7 +412,7 @@ export function registerCommands(
     await workbench.revealFeature(feature);
   });
 
-  reg("sgt.previewRevert", async (id?: unknown) => {
+  reg("ugh.previewRevert", async (id?: unknown) => {
     const feature = await pickFeature(store, id);
     if (feature) {
       void preview.preview(feature);
@@ -423,7 +423,7 @@ export function registerCommands(
   // `confirmed: true` (skip the modal), `openDiff: false` (diff on demand instead of focus-steal),
   // and an `onPhase` that paints real progress in the confirm bar. Same-extension executeCommand
   // passes these through in-process, callbacks included.
-  reg("sgt.revert", async (id?: unknown, opts?: IdealEditFlowOpts) => {
+  reg("ugh.revert", async (id?: unknown, opts?: IdealEditFlowOpts) => {
     const feature = await pickFeature(store, id);
     if (feature) {
       await revertWithFrontier(store, feature, preview, opts ?? {});
@@ -431,7 +431,7 @@ export function registerCommands(
       opts?.onPhase?.("cancelled");
     }
   });
-  reg("sgt.restore", async (id?: unknown, opts?: IdealEditFlowOpts) => {
+  reg("ugh.restore", async (id?: unknown, opts?: IdealEditFlowOpts) => {
     const feature = await pickFeature(store, id);
     if (feature) {
       await restoreWithPreview(store, feature, preview, opts ?? {});
@@ -440,10 +440,10 @@ export function registerCommands(
     }
   });
 
-  // `sgt edit <sel>` (U4/KTD5): draft an in-place change. This drafts a continuation hollow and
+  // `ugh edit <sel>` (U4/KTD5): draft an in-place change. This drafts a continuation hollow and
   // mechanically repoints dependents; the user then edits the working tree and Saves to fulfill.
-  // (No preview/frontier yet -- `sgt edit` has no `--emit`; that's a flagged CLI follow-up.)
-  reg("sgt.edit", async (id?: unknown) => {
+  // (No preview/frontier yet -- `ugh edit` has no `--emit`; that's a flagged CLI follow-up.)
+  reg("ugh.edit", async (id?: unknown) => {
     const sel = await pickFeature(store, id);
     if (!sel) {
       return;
@@ -456,7 +456,7 @@ export function registerCommands(
       return; // cancelled
     }
     try {
-      const draft = await store.sgt.edit(sel, intent || undefined);
+      const draft = await store.ugh.edit(sel, intent || undefined);
       store.invalidate();
       if (!draft.ok) {
         vscode.window.showWarningMessage(draft.message || `Cannot edit ${sel}.`);
@@ -472,11 +472,11 @@ export function registerCommands(
     }
   });
 
-  // `sgt.revertSymbol`: revert the symbol under the cursor. This is the op/symbol-level entry
+  // `ugh.revertSymbol`: revert the symbol under the cursor. This is the op/symbol-level entry
   // point that actually surfaces the interactive frontier -- a feature-level revert removes a
-  // whole op-set and has no single-op dependent frontier (sgt.api._frontier_rows resolves the
+  // whole op-set and has no single-op dependent frontier (ugh.api._frontier_rows resolves the
   // target to one op). The symbol ref (`file::name`) comes from the blame span over the cursor.
-  reg("sgt.revertSymbol", async () => {
+  reg("ugh.revertSymbol", async () => {
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
       vscode.window.showWarningMessage("Open a file and put the cursor on a symbol to revert.");
@@ -499,55 +499,55 @@ export function registerCommands(
     await revertWithFrontier(store, span.symbol, preview);
   });
 
-  reg("sgt.showPlanQuickPick", () => showPlanQuickPick(store, planDiff));
-  reg("sgt.showPlanDiff", (target) => planDiff.showDiff(target));
+  reg("ugh.showPlanQuickPick", () => showPlanQuickPick(store, planDiff));
+  reg("ugh.showPlanDiff", (target) => planDiff.showDiff(target));
 
   // Hand a stalled plan back to Claude Code: relaunch the interrupted session in a terminal.
-  // sgt never authors code itself -- resuming the real agent conversation is the correct on-ramp.
+  // ugh never authors code itself -- resuming the real agent conversation is the correct on-ramp.
   // Tradeoff: `claude` must be on PATH; if not, the terminal shows command-not-found -- which is
   // exactly the "relaunch that session in their terminal" behavior the user asked for.
-  reg("sgt.resumePlan", async (sessionId?: string) => {
+  reg("ugh.resumePlan", async (sessionId?: string) => {
     if (!sessionId) {
       return;
     }
     const view = await store.planView();
     const session = view.sessions.find((s) => s.session_id === sessionId);
     // With a captured Claude session id we resume that exact conversation (its plan context is
-    // already restored); otherwise the bare picker lets the user pick -- sgt has already shown
+    // already restored); otherwise the bare picker lets the user pick -- ugh has already shown
     // which plan stalled and its remaining steps.
     const cmd = session?.claude_session_id
       ? `claude --resume ${session.claude_session_id}`
       : "claude --resume";
     // Run the resume (it launches the interactive session and restores context); we deliberately
     // do NOT append a `-p` prompt -- the user continues the restored conversation by typing.
-    const term = vscode.window.createTerminal({ name: "sgt resume" });
+    const term = vscode.window.createTerminal({ name: "ugh resume" });
     term.sendText(cmd, true);
     term.show();
   });
 
   // The "Now" tree's next-action row. A fork routes to its resolution wizard; anything else with a
-  // recommended command runs it in a terminal (a `claude --resume`, `sgt save`, `sgt intent review`
+  // recommended command runs it in a terminal (a `claude --resume`, `ugh save`, `ugh intent review`
   // -- all interactive or worth watching, so a terminal, not a silent shell-out). `clean` (no
   // command) is a no-op; the row is informational.
-  reg("sgt.runNextAction", (action?: NextAction) => {
+  reg("ugh.runNextAction", (action?: NextAction) => {
     if (!action) {
       return;
     }
     if (action.kind === "resolve_fork" && action.target) {
-      void vscode.commands.executeCommand("sgt.resolveFork", action.target);
+      void vscode.commands.executeCommand("ugh.resolveFork", action.target);
       return;
     }
     // A stalled plan isn't a command to fire blindly -- the whole confusion is "what plan, and why
     // is it stuck?" So route it to the resolution panel, which explains the stall (which steps did
     // land, under what name, whether a conversation is even linked) before offering resume/close.
     if (action.kind === "resume_plan" && action.target) {
-      void vscode.commands.executeCommand("sgt.resolveStalledPlan", action.target);
+      void vscode.commands.executeCommand("ugh.resolveStalledPlan", action.target);
       return;
     }
     if (!action.command) {
       return;
     }
-    const term = vscode.window.createTerminal({ name: "sgt next" });
+    const term = vscode.window.createTerminal({ name: "ugh next" });
     term.sendText(action.command, true);
     term.show();
   });
@@ -557,13 +557,13 @@ export function registerCommands(
   // name than predicted, which the name-exact matcher will never confirm) or truly got no edits,
   // plus whether a Claude conversation is even linked for resume -- then offer the three real exits:
   // resume the thread, mark it done (work landed, keep the record), or abandon it.
-  reg("sgt.resolveStalledPlan", async (sessionId?: string) => {
+  reg("ugh.resolveStalledPlan", async (sessionId?: string) => {
     if (!sessionId) {
       return;
     }
     let view: PlanView;
     try {
-      view = await store.sgt.planStatus();
+      view = await store.ugh.planStatus();
     } catch (e: any) {
       vscode.window.showErrorMessage(e.message);
       return;
@@ -587,7 +587,7 @@ export function registerCommands(
       : "No conversation is linked to this plan -- Resume falls back to Claude Code's session picker.";
     const detail = [
       `${pending.length} step(s) still open; ${built.length} already landed under a different name ` +
-        `than the plan predicted, so sgt's name-exact matcher never linked them.`,
+        `than the plan predicted, so ugh's name-exact matcher never linked them.`,
       "",
       ...stepLines,
       "",
@@ -607,17 +607,17 @@ export function registerCommands(
       return;
     }
     if (choice === "Resume in Claude") {
-      const term = vscode.window.createTerminal({ name: "sgt resume plan" });
+      const term = vscode.window.createTerminal({ name: "ugh resume plan" });
       term.sendText(csid ? `claude --resume ${csid}` : "claude --resume", true);
       term.show();
       return;
     }
     try {
       if (choice.startsWith("Mark done")) {
-        await store.sgt.planDone(sessionId);
+        await store.ugh.planDone(sessionId);
         vscode.window.showInformationMessage("Plan marked done -- kept as history for revert/attribution.");
       } else {
-        await store.sgt.planAbandon(sessionId);
+        await store.ugh.planAbandon(sessionId);
         vscode.window.showInformationMessage("Plan abandoned -- its unfinished steps recorded as open intents.");
       }
     } catch (e: any) {
@@ -628,24 +628,24 @@ export function registerCommands(
   });
 
   // The N-column tip diff + merge-op/fulfill/land wizard (Phase 6).
-  reg("sgt.resolveFork", (symbol?: string) => {
+  reg("ugh.resolveFork", (symbol?: string) => {
     if (!symbol) {
       return;
     }
     ForkResolutionPanel.createOrShow(context, store, root, symbol);
   });
 
-  // Partial-accept review + the U23 CAS advance (`sgtCompositions`'s proposal context menu).
+  // Partial-accept review + the U23 CAS advance (`ughCompositions`'s proposal context menu).
   // Refuses a subset that omits a feature another chosen feature `requires`, naming it -- that
   // validation lives server-side (`propose.py::_resolve_subset`), surfaced here via `report.error`.
-  reg("sgt.proposeLand", async (node?: { kind?: string; proposal?: { id: string; title?: string } }) => {
+  reg("ugh.proposeLand", async (node?: { kind?: string; proposal?: { id: string; title?: string } }) => {
     const id = node?.proposal?.id;
     if (!id) {
       return;
     }
     let checklist: ProposalChecklistEntry[] = [];
     try {
-      checklist = (await store.sgt.proposalReviewView(id)).feature_checklist || [];
+      checklist = (await store.ugh.proposalReviewView(id)).feature_checklist || [];
     } catch (e: any) {
       vscode.window.showErrorMessage(e.message);
       return;
@@ -673,7 +673,7 @@ export function registerCommands(
       return;
     }
     try {
-      const report = await store.sgt.proposeLand(id, subset);
+      const report = await store.ugh.proposeLand(id, subset);
       store.invalidate();
       if (report.error) {
         vscode.window.showErrorMessage(`Land blocked: ${report.error}`);
@@ -690,7 +690,7 @@ export function registerCommands(
   });
 
   // Pushes the proposal's rendered PR branch and creates/updates a GitHub PR via `gh`.
-  reg("sgt.proposePublish", async (node?: { kind?: string; proposal?: { id: string; title?: string } }) => {
+  reg("ugh.proposePublish", async (node?: { kind?: string; proposal?: { id: string; title?: string } }) => {
     const id = node?.proposal?.id;
     if (!id) {
       return;
@@ -701,10 +701,10 @@ export function registerCommands(
       return;
     }
     await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: "sgt propose publish…" },
+      { location: vscode.ProgressLocation.Notification, title: "ugh propose publish…" },
       async () => {
         try {
-          const result = await store.sgt.proposePublish(id);
+          const result = await store.ugh.proposePublish(id);
           vscode.window.showInformationMessage(
             result.ok ? `✓ PR ${result.action} on ${result.branch}` : result.error || "publish failed"
           );
@@ -715,7 +715,7 @@ export function registerCommands(
     );
   });
 
-  reg("sgt.viewProposal", async (id?: string) => {
+  reg("ugh.viewProposal", async (id?: string) => {
     if (!id) {
       return;
     }
@@ -734,8 +734,8 @@ export function registerCommands(
     }
   });
 
-  // Shared by the drift/unmanaged rows in `sgtChanges` -- jump to a file, optionally to a span.
-  reg("sgt.jumpToLocation", async (loc: { path: string; startLine: number; endLine: number }) => {
+  // Shared by the drift/unmanaged rows in `ughChanges` -- jump to a file, optionally to a span.
+  reg("ugh.jumpToLocation", async (loc: { path: string; startLine: number; endLine: number }) => {
     const uri = vscode.Uri.file(path.isAbsolute(loc.path) ? loc.path : path.join(root, loc.path));
     const doc = await vscode.workspace.openTextDocument(uri);
     const editor = await vscode.window.showTextDocument(doc);

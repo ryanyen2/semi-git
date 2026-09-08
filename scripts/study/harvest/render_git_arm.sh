@@ -3,9 +3,9 @@
 #
 #   render_git_arm.sh <harvested-repo> <out-repo>
 #
-# Two things have to come out, both recorded as finding 40 in sgt-findings.md.
-# Landing a session writes a merge commit subjected "sgt land: main", and every
-# commit carries one `Sgt-Op:` trailer per op, dozens of lines of them. sgt's own
+# Two things have to come out, both recorded as finding 40 in ugh-findings.md.
+# Landing a session writes a merge commit subjected "ugh land: main", and every
+# commit carries one `Sgt-Op:` trailer per op, dozens of lines of them. ugh's own
 # views hide both, so leaving them in would only ever cost the git arm, and a
 # study that hands one side a worse version of its own tool is not measuring what
 # it says it is.
@@ -22,16 +22,16 @@ mkdir -p "$OUT"
 cd "$OUT"
 git init -q
 
-# Oldest first, skipping sgt's own plumbing commits. A merge subjected "sgt land"
+# Oldest first, skipping ugh's own plumbing commits. A merge subjected "ugh land"
 # carries no work of its own: the work is on the commit it merged in. Written as a
 # plain word list rather than `mapfile` so this runs on the bash macOS ships.
 COMMITS=$(git -C "$SRC" log --format="%H %s" --reverse --no-merges \
-  | grep -v " sgt land: " | grep -v " sgt save$" | cut -d' ' -f1)
+  | grep -v " ugh land: " | grep -v " ugh save$" | cut -d' ' -f1)
 
 echo "$(echo "$COMMITS" | wc -l | tr -d ' ') work commit(s) to replay"
 
 for sha in $COMMITS; do
-  # Take that commit's tree wholesale, minus sgt's own state directory.
+  # Take that commit's tree wholesale, minus ugh's own state directory.
   rm -rf "${OUT:?}"/* 2>/dev/null || true
   git -C "$SRC" archive "$sha" | tar -x -C "$OUT"
   rm -rf "$OUT/.sgt"
@@ -51,5 +51,5 @@ done
 echo
 git log --oneline
 echo
-echo "trailers left behind: $(git log --format=%b | grep -c '^Sgt-' || true)"
-echo "sgt state left behind: $(git ls-files | grep -c '^\.sgt/' || true)"
+echo "trailers left behind: $(git log --format=%b | grep -c '^Ugh-' || true)"
+echo "ugh state left behind: $(git ls-files | grep -c '^\.sgt/' || true)"

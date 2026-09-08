@@ -3,7 +3,7 @@
 The 6 integration tests in `test_sync.py` are the pre-hardening contract; these cover the five
 behaviors U20 adds, each mapped to its acceptance example: mine-on-contact (C3/AE8), the
 miner-version handshake (C6, row 10), committed-ideal recovery after a squash (C5/AE10, row 4),
-`sgt push` rejection routing (C7), and divergence-as-state (C4/AE9). Same hermetic two-clone rig
+`ugh push` rejection routing (C7), and divergence-as-state (C4/AE9). Same hermetic two-clone rig
 as `test_sync.py`: real `git`, no network, no wall-clock/LLM dependency.
 """
 
@@ -14,17 +14,17 @@ from pathlib import Path
 
 import pytest
 
-from sgt.api import forks_view, status_view
-from sgt.cli.sync import _push as cli_push
-from sgt.core import lens, order, sync
-from sgt.core.ideal import Ideal
-from sgt.core.op import make_op
-from sgt.core.store import Store, _serialize
-from sgt.core.sync import MinerVersionMismatch
-from sgt.core.sync.ingest import Ingested
-from sgt.core.sync.resolve import resolve
-from sgt.lens.pins import Pins
-from sgt.store.gitbind import GitBinding, PushRejected
+from ugh.api import forks_view, status_view
+from ugh.cli.sync import _push as cli_push
+from ugh.core import lens, order, sync
+from ugh.core.ideal import Ideal
+from ugh.core.op import make_op
+from ugh.core.store import Store, _serialize
+from ugh.core.sync import MinerVersionMismatch
+from ugh.core.sync.ingest import Ingested
+from ugh.core.sync.resolve import resolve
+from ugh.lens.pins import Pins
+from ugh.store.gitbind import GitBinding, PushRejected
 
 from tests.core.test_sync import (
     _BASE,
@@ -47,13 +47,13 @@ def _ops_bytes(repo: Path) -> dict[str, bytes]:
 
 
 def test_c3_plain_git_teammate_work_unions_then_self_dedups_on_adoption(tmp_path):
-    """AE8: a plain-git teammate (no sgt) commits to the shared branch; `sgt sync` mines their
-    foreign commits into the union. When that teammate later adopts sgt over their *own* identical
+    """AE8: a plain-git teammate (no ugh) commits to the shared branch; `ugh sync` mines their
+    foreign commits into the union. When that teammate later adopts ugh over their *own* identical
     history, LAW-0 makes the mined ids byte-identical -- the op stores match and nothing
     double-mints."""
     remote = _init_bare(tmp_path)
     a = _clone(remote, tmp_path / "a")  # the plain-git teammate
-    b = _clone(remote, tmp_path / "b")  # the sgt-native teammate
+    b = _clone(remote, tmp_path / "b")  # the ugh-native teammate
 
     (a / "main.py").write_text(_BASE, encoding="utf-8")
     GitBinding(a).commit_all("base (plain git)")
@@ -61,7 +61,7 @@ def test_c3_plain_git_teammate_work_unions_then_self_dedups_on_adoption(tmp_path
 
     subprocess.run(["git", "-C", str(b), "pull", "-q", "origin", "main"], check=True, capture_output=True)
     lens.init(b)
-    GitBinding(b).commit_all("B: adopt sgt")  # commit the mined store so the tree is clean for sync
+    GitBinding(b).commit_all("B: adopt ugh")  # commit the mined store so the tree is clean for sync
 
     a_baz = _BASE + "\n\ndef baz():\n    return 42\n"
     (a / "main.py").write_text(a_baz, encoding="utf-8")
@@ -76,16 +76,16 @@ def test_c3_plain_git_teammate_work_unions_then_self_dedups_on_adoption(tmp_path
     assert len(baz_ids) == 1  # mined exactly once
     assert baz_sha.encode() in b_ops[baz_ids[0]]  # provenance points at A's real commit
 
-    lens.init(a)  # A finally adopts sgt over its own history
+    lens.init(a)  # A finally adopts ugh over its own history
     assert _ops_bytes(a) == b_ops  # byte-identical stores, zero duplicates (LAW-0)
 
 
-def test_c3_hotfix_committed_on_top_of_an_sgt_branch_is_mined(tmp_path):
-    """Row 5: a foreign hotfix lands directly at the tip (e.g. a GitHub web-UI edit) over an sgt
+def test_c3_hotfix_committed_on_top_of_an_ugh_branch_is_mined(tmp_path):
+    """Row 5: a foreign hotfix lands directly at the tip (e.g. a GitHub web-UI edit) over an ugh
     history. The tip has no trailers, so sync mines `merge_base..theirs` -- picking up both the
-    absorbed sgt ops and the new hotfix -- rather than reading a stale trailer set."""
+    absorbed ugh ops and the new hotfix -- rather than reading a stale trailer set."""
     a, b = _two_clones(tmp_path, _BASE)
-    # A adds a foreign hotfix at the tip with plain git (no sgt).
+    # A adds a foreign hotfix at the tip with plain git (no ugh).
     (a / "main.py").write_text(_BASE + "\n\ndef hotfix():\n    return 7\n", encoding="utf-8")
     GitBinding(a).commit_all("A: hotfix (plain git, at the tip)")
     _push(a)
@@ -100,7 +100,7 @@ def test_c3_hotfix_committed_on_top_of_an_sgt_branch_is_mined(tmp_path):
 
 
 def test_c6_sync_refuses_to_union_across_miner_versions(tmp_path):
-    """Row 10 / §5.1.5: a teammate on a different sgt miner version mints different ids for the
+    """Row 10 / §5.1.5: a teammate on a different ugh miner version mints different ids for the
     same edit, so uniting the stores would alias incompatible semantics. Sync refuses the whole
     union with an instruction naming which side is behind, before any merge is attempted."""
     a, b = _two_clones(tmp_path, _BASE)  # B's op store arrives committed via clone -- tree is clean
@@ -136,7 +136,7 @@ def _squash_commit(repo: Path, tip_sha: str, parent_sha: str, message: str) -> s
 
 
 def test_c5_squash_merge_ideal_is_recovered_from_the_committed_file(tmp_path):
-    """AE10 / row 4: GitHub squash-merges an sgt branch -- the `Sgt-Op:` trailers are destroyed but
+    """AE10 / row 4: GitHub squash-merges an ugh branch -- the `Sgt-Op:` trailers are destroyed but
     the tree (including `.sgt/ideal.json` and the fine-grained `.sgt/ops/` blobs) survives. Sync
     recovers the exact ideal from the committed file and identifies rather than re-mining the
     coarse squash (which would fork against the fine ops)."""
@@ -165,7 +165,7 @@ def test_c5_squash_merge_ideal_is_recovered_from_the_committed_file(tmp_path):
     assert "def baz" in (b / "main.py").read_text(encoding="utf-8")
 
 
-# --- C7: sgt push (never forces; rejection routes to sync) --------------------------------------
+# --- C7: ugh push (never forces; rejection routes to sync) --------------------------------------
 
 
 def test_c7_push_succeeds_and_reports_the_pushed_sha(tmp_path):
@@ -189,7 +189,7 @@ def test_c7_push_rejected_on_non_fast_forward_routes_to_sync(tmp_path):
         gb.push("origin", "main")  # never forces -- the remote moved
 
     rc = cli_push(str(b), "origin", "main", as_json=False)
-    assert rc == 1  # the CLI reports the rejection and routes to `sgt sync`
+    assert rc == 1  # the CLI reports the rejection and routes to `ugh sync`
     assert gb.head() != gb.rev_parse("origin/main")  # nothing was forced over the remote
 
 
@@ -203,8 +203,8 @@ def _six(overrides: dict[int, int]) -> str:
 def test_c4_fork_free_five_land_while_one_symbol_forks(tmp_path):
     """AE9: five ops sync cleanly while one symbol forks. The branch advances by the clean five
     (their effects are in the post-sync tree), the forked symbol's content stays at the pre-fork
-    common ancestor (never either tip), `.sgt/forks.json` records the fork, and `sgt status`/
-    `sgt forks` report exactly one open fork."""
+    common ancestor (never either tip), `.sgt/forks.json` records the fork, and `ugh status`/
+    `ugh forks` report exactly one open fork."""
     a, b = _two_clones(tmp_path, _six({}))
 
     # A advances five disjoint symbols (f1..f5) *and* reworks f0.

@@ -7,7 +7,7 @@
 set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 out=${1:-/tmp/sketchpad-v3-check}
-SGT=${SGT:-$(cd "$here/../../.." && pwd)/.venv/bin/sgt}
+UGH=${UGH:-$(cd "$here/../../.." && pwd)/.venv/bin/ugh}
 PORT=${PORT:-5511}
 DRIVE=$here/../drive-page.mjs
 export DRIVE_PORT=${DRIVE_PORT:-9455}
@@ -29,19 +29,19 @@ take=$(PORT=$PORT bash "$here/stage.sh" "$out/take" | head -1)
 cd "$take"
 
 # step 1 and 2: the history reads, and the fastening is findable and costed
-res=$("$SGT" show "fastened at the corners" </dev/null 2>&1 | strip)
+res=$("$UGH" show "fastened at the corners" </dev/null 2>&1 | strip)
 echo "$res" | grep -q '11 edits' && ok 'fastened at the corners: 11 edits before the agent' || bad "fastened at the corners: expected 11 edits: $(echo "$res" | sed -n 2p)"
-res=$("$SGT" find "hexagon groups held together at their corners" </dev/null 2>&1 | strip)
+res=$("$UGH" find "hexagon groups held together at their corners" </dev/null 2>&1 | strip)
 echo "$res" | grep -o '[0-9a-f]\{7\}' | head -5 | grep -q c69fc3e && ok 'find puts c69fc3e in the top five' || bad 'find: c69fc3e not in the top five'
 footer=$(shot "$out/1-lattice.png")
 echo "$footer" | grep -q 'ONE PASS' && ok "the lattice photographs, one pass" || bad "base shot: $footer"
 
-# step 3: the agent plans, edits, saves; sgt files the work into the feature the plan named
+# step 3: the agent plans, edits, saves; ugh files the work into the feature the plan named
 res=$(bash "$here/agent.sh" "$take" 2>&1 | strip); echo "$res" > "$out/agent.txt"
 echo "$res" | grep -q 'intake: session' && ok 'plan intake recorded' || bad 'plan intake failed'
 echo "$res" | grep -q 'fastened at the corners' && echo "$res" | grep -q 'plan step .* fulfilled' \
   && ok 'save filed into "fastened at the corners" and fulfilled the plan step' || bad "save echo: $(echo "$res" | tail -6)"
-res=$("$SGT" show "fastened at the corners" </dev/null 2>&1 | strip)
+res=$("$UGH" show "fastened at the corners" </dev/null 2>&1 | strip)
 echo "$res" | grep -q '13 edits' && ok 'fastened at the corners: 13 edits after the agent' || bad "expected 13 edits: $(echo "$res" | sed -n 2p)"
 cp -r src "$out/src-after-save"
 footer=$(shot "$out/2-seam.png")
@@ -49,10 +49,10 @@ cmp -s "$out/1-lattice.png" "$out/2-seam.png" && bad 'the seam did not move the 
 echo "$footer" | grep -q 'ONE PASS' && ok 'still one pass with the seam' || bad "seam shot: $footer"
 
 # step 4: preview, apply, see, undo
-res=$("$SGT" revert "fastened at the corners" </dev/null 2>&1 | strip); echo "$res" > "$out/preview.txt"
+res=$("$UGH" revert "fastened at the corners" </dev/null 2>&1 | strip); echo "$res" > "$out/preview.txt"
 echo "$res" | grep -q 'removes 13 edits' && echo "$res" | grep -q 'not applied' && ok 'preview: removes 13 edits, nothing applied' || bad "preview: $(echo "$res" | tail -3)"
 diff -rq src "$out/src-after-save" >/dev/null && ok 'preview left the tree untouched' || bad 'preview changed the tree'
-res=$("$SGT" revert "fastened at the corners" --yes </dev/null 2>&1 | strip)
+res=$("$UGH" revert "fastened at the corners" --yes </dev/null 2>&1 | strip)
 echo "$res" | grep -q 'revert applied' && ok 'revert applied' || bad "revert: $(echo "$res" | tail -2)"
 rm -f tsconfig.tsbuildinfo
 errs=$(npx tsc --noEmit 2>&1 | grep -c 'error TS')
@@ -60,7 +60,7 @@ errs=$(npx tsc --noEmit 2>&1 | grep -c 'error TS')
 footer=$(shot "$out/3-unfastened.png")
 cmp -s "$out/2-seam.png" "$out/3-unfastened.png" && bad 'removing the fastening did not move the picture' || ok 'removing the fastening moves the picture'
 echo "$footer" | grep -q 'RELAXATION' && ok "solver falls back to relaxation: $footer" || bad "unfastened shot: $footer"
-res=$("$SGT" undo </dev/null 2>&1 | strip)
+res=$("$UGH" undo </dev/null 2>&1 | strip)
 echo "$res" | grep -q 'restored' && ok 'undo restored the record' || bad "undo: $res"
 diff -r src "$out/src-after-save" >/dev/null && ok 'undo restores src byte for byte (seam present, fastening back)' || bad 'undo did not restore src exactly'
 

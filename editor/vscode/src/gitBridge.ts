@@ -1,5 +1,5 @@
 // Git-bridge commands: the palette/status-bar surface for the daily-loop verbs (`switch`/`save`/
-// `undo`, D3) and the network verbs (`sync`/`push`/`land`). Each calls the typed `sgt.ts` method
+// `undo`, D3) and the network verbs (`sync`/`push`/`land`). Each calls the typed `ugh.ts` method
 // directly (not the generic `mutate()`) because the structured JSON result drives the
 // confirmation/result message, then `store.invalidate()` -- same convention as every other
 // mutating command in commands.ts. Confirm before anything outward-facing or working-tree-moving
@@ -44,7 +44,7 @@ export function registerGitBridgeCommands(context: vscode.ExtensionContext, stor
   const reg = (id: string, fn: (...a: any[]) => any) =>
     context.subscriptions.push(vscode.commands.registerCommand(id, fn));
 
-  reg("sgt.switch", async () => {
+  reg("ugh.switch", async () => {
     const branch = await pickBranch(store, "Switch to branch");
     if (!branch) {
       return;
@@ -58,7 +58,7 @@ export function registerGitBridgeCommands(context: vscode.ExtensionContext, stor
       return;
     }
     try {
-      const result = await store.sgt.switchBranch(branch);
+      const result = await store.ugh.switchBranch(branch);
       store.invalidate();
       vscode.window.showInformationMessage(
         result.ok ? `✓ switch ${result.branch}: ${result.ops} op(s) in the ideal` : result.error || "switch failed"
@@ -68,7 +68,7 @@ export function registerGitBridgeCommands(context: vscode.ExtensionContext, stor
     }
   });
 
-  reg("sgt.save", async () => {
+  reg("ugh.save", async () => {
     const message = await vscode.window.showInputBox({ prompt: "Commit message (optional)" });
     // Esc aborts, the way it does at every other "(optional)" prompt in this file. It used to save
     // anyway, which made this the one dialog where backing out of it still mutated the repo. Enter on
@@ -77,7 +77,7 @@ export function registerGitBridgeCommands(context: vscode.ExtensionContext, stor
       return;
     }
     try {
-      const result = await store.sgt.save(message || undefined);
+      const result = await store.ugh.save(message || undefined);
       store.invalidate();
       if (!result.saved) {
         vscode.window.showInformationMessage(result.message || "nothing to save");
@@ -95,7 +95,7 @@ export function registerGitBridgeCommands(context: vscode.ExtensionContext, stor
       }
       const newFeat = features.find((f) => f.new);
       // Offer to name a just-minted lane (unless the save already named one via --as) -- one toast,
-      // one button, resolved through the same `sgt feature rename` any rename uses.
+      // one button, resolved through the same `ugh feature rename` any rename uses.
       const actions = newFeat && !result.renamed?.ok ? ["Name it…"] : [];
       const choice = await vscode.window.showInformationMessage(text, ...actions);
       if (choice === "Name it…" && newFeat) {
@@ -105,7 +105,7 @@ export function registerGitBridgeCommands(context: vscode.ExtensionContext, stor
         });
         if (label) {
           try {
-            await store.sgt.mutate(["feature", "rename", newFeat.handle, label]);
+            await store.ugh.mutate(["feature", "rename", newFeat.handle, label]);
             store.invalidate();
             vscode.window.showInformationMessage(`Named "${label}".`);
           } catch (e: any) {
@@ -118,16 +118,16 @@ export function registerGitBridgeCommands(context: vscode.ExtensionContext, stor
     }
   });
 
-  reg("sgt.undo", async () => {
+  reg("ugh.undo", async () => {
     // "Undo the last operation?" was the whole of this dialog: it asked for consent to reverse an
     // operation without saying which one, so the answer was a guess about what the user last did.
     // Undo is what you reach for when something has already gone wrong, which is the worst moment
-    // to be asked blind -- and everything the question needs is known in advance. `sgt undo --emit`
+    // to be asked blind -- and everything the question needs is known in advance. `ugh undo --emit`
     // reports it: the kind of operation being reversed, the edits coming back, the edits going away,
-    // and the symbols by name. Same report `sgt undo` prints at a terminal before its own [y/N].
+    // and the symbols by name. Same report `ugh undo` prints at a terminal before its own [y/N].
     let pv: UndoPreview;
     try {
-      pv = await store.sgt.undoPreview();
+      pv = await store.ugh.undoPreview();
     } catch (e: any) {
       vscode.window.showErrorMessage(e.message);
       return;
@@ -147,7 +147,7 @@ export function registerGitBridgeCommands(context: vscode.ExtensionContext, stor
       return;
     }
     try {
-      const result = await store.sgt.undo();
+      const result = await store.ugh.undo();
       store.invalidate();
       if (!result.undone) {
         vscode.window.showInformationMessage(result.message || "nothing to undo");
@@ -166,7 +166,7 @@ export function registerGitBridgeCommands(context: vscode.ExtensionContext, stor
     }
   });
 
-  reg("sgt.sync", async () => {
+  reg("ugh.sync", async () => {
     const remote = await vscode.window.showInputBox({ prompt: "Remote (optional, default: origin)" });
     if (remote === undefined) {
       return;
@@ -175,17 +175,17 @@ export function registerGitBridgeCommands(context: vscode.ExtensionContext, stor
     if (branch === undefined) {
       return;
     }
-    await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "sgt sync…" }, async () => {
+    await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "ugh sync…" }, async () => {
       try {
-        const report = await store.sgt.sync(remote || undefined, branch || undefined);
+        const report = await store.ugh.sync(remote || undefined, branch || undefined);
         store.invalidate();
         if (report.open_fork_count > 0) {
           const choice = await vscode.window.showWarningMessage(
-            `sgt sync: ${report.message} — ${report.open_fork_count} open fork(s).`,
+            `ugh sync: ${report.message} — ${report.open_fork_count} open fork(s).`,
             "Open Forks"
           );
           if (choice === "Open Forks") {
-            void vscode.commands.executeCommand("sgtForks.focus");
+            void vscode.commands.executeCommand("ughForks.focus");
           }
         } else {
           vscode.window.showInformationMessage(`✓ sync: ${report.message} (${report.ops_added} op(s) added)`);
@@ -196,7 +196,7 @@ export function registerGitBridgeCommands(context: vscode.ExtensionContext, stor
     });
   });
 
-  reg("sgt.push", async () => {
+  reg("ugh.push", async () => {
     const remote = await vscode.window.showInputBox({ prompt: "Remote (optional, default: origin)" });
     if (remote === undefined) {
       return;
@@ -209,9 +209,9 @@ export function registerGitBridgeCommands(context: vscode.ExtensionContext, stor
     if (ok !== "Push") {
       return;
     }
-    await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "sgt push…" }, async () => {
+    await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "ugh push…" }, async () => {
       try {
-        const result = await store.sgt.push(remote || undefined, branch || undefined);
+        const result = await store.ugh.push(remote || undefined, branch || undefined);
         vscode.window.showInformationMessage(result.ok ? "✓ push succeeded" : "push failed");
       } catch (e: any) {
         vscode.window.showErrorMessage(e.message);
@@ -219,7 +219,7 @@ export function registerGitBridgeCommands(context: vscode.ExtensionContext, stor
     });
   });
 
-  reg("sgt.land", async () => {
+  reg("ugh.land", async () => {
     let status;
     try {
       status = await store.status(true);
@@ -233,7 +233,7 @@ export function registerGitBridgeCommands(context: vscode.ExtensionContext, stor
         "Open Forks"
       );
       if (choice === "Open Forks") {
-        void vscode.commands.executeCommand("sgtForks.focus");
+        void vscode.commands.executeCommand("ughForks.focus");
       }
       return;
     }
@@ -250,10 +250,10 @@ export function registerGitBridgeCommands(context: vscode.ExtensionContext, stor
       return;
     }
     await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: `sgt land ${branch}…` },
+      { location: vscode.ProgressLocation.Notification, title: `ugh land ${branch}…` },
       async () => {
         try {
-          const report = await store.sgt.land(branch);
+          const report = await store.ugh.land(branch);
           store.invalidate();
           if (!report.landed) {
             vscode.window.showWarningMessage(`Land blocked: ${report.blocked_reason || "unknown reason"}`);
@@ -263,7 +263,7 @@ export function registerGitBridgeCommands(context: vscode.ExtensionContext, stor
           if (report.open_fork_count > 0) {
             const choice = await vscode.window.showWarningMessage(`${msg} — ${report.open_fork_count} new open fork(s).`, "Open Forks");
             if (choice === "Open Forks") {
-              void vscode.commands.executeCommand("sgtForks.focus");
+              void vscode.commands.executeCommand("ughForks.focus");
             }
           } else {
             vscode.window.showInformationMessage(msg);

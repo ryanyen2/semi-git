@@ -8,12 +8,12 @@
 #
 # Order matters twice here, and both orderings were learned the hard way.
 #
-# `sgt init` has to run before the first commit, because a session worktree is a
-# checkout of the base commit: anything sgt keeps in `.sgt/` that is missing from
-# that commit shows up as an untracked file in the worktree, and `sgt session land`
+# `ugh init` has to run before the first commit, because a session worktree is a
+# checkout of the base commit: anything ugh keeps in `.sgt/` that is missing from
+# that commit shows up as an untracked file in the worktree, and `ugh session land`
 # refuses to land out of a dirty tree.
 #
-# The seed then has to be *mined* before any session starts. `sgt session start`
+# The seed then has to be *mined* before any session starts. `ugh session start`
 # records the base op-ids with `lens.ideal_for_ref` and does not mine first, so a
 # base commit nobody has read comes back with an empty op set and the first session
 # is credited with every symbol in the repository. Reverting one afternoon's work
@@ -42,7 +42,7 @@ EOF
 
 cd "$REPO"
 git init -q
-sgt init >/dev/null
+ugh init >/dev/null
 cat > .sgt/oracle.json <<'EOF'
 {
   "tiers": [
@@ -56,11 +56,11 @@ python3 check.py
 git add -A
 git "${AUTHOR[@]}" commit -q -F "$SEED_DIR/.seed-commit-message"
 
-sgt log --summary >/dev/null
+ugh log --summary >/dev/null
 python3 - <<'PY'
 import sys
 sys.path.insert(0, "/Users/r4yen/repos/semi-git")
-from sgt.core.store import Store
+from ugh.core.store import Store
 n = len(Store(".").all_ops())
 print(f"seed mined: {n} ops")
 if n == 0:

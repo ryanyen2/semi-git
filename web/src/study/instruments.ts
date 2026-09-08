@@ -653,8 +653,8 @@ export const HLAC: Instrument = {
 // anchors on it and leaves disagreement ambiguous between "the other one won"
 // and "no difference". Neither setup is named first here.
 //
-// Analysed by recoding to -2..+2 in the sgt-positive direction, whichever
-// letter sgt was for that participant, and reporting per item with its own n.
+// Analysed by recoding to -2..+2 in the ugh-positive direction, whichever
+// letter ugh was for that participant, and reporting per item with its own n.
 // The midpoint is a substantive category, never dropped as missing -- deciding
 // that after seeing the data would be a forking path.
 const prefOptions: Option[] = [
@@ -750,7 +750,7 @@ export const PREFERENCE: Instrument = {
     // pref(
     //   'scenarioOwn',
     //   'A codebase you will own for the next year',
-    //   'discriminant — sgt expected',
+    //   'discriminant — ugh expected',
     // ),
     // section('secOverall', 'Overall'),
     // pref('overall', 'Which setup would you rather work in?'),

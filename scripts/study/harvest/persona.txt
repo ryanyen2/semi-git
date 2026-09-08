@@ -10,7 +10,7 @@ does the job, write the plain function.
 
 Run the code and look at the output before you call it done.
 
-Record the work with `sgt save -m "..."` when you are finished.
+Record the work with `ugh save -m "..."` when you are finished.
 
 The message has to start with a short summary line, under about seventy
 characters, then a blank line, then the rest. That first line is what shows up in

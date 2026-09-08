@@ -1,4 +1,4 @@
-"""The U10 op-store migration: `sgt migrate ops-v3` crosses an existing v2 store to v3 (U9's
+"""The U10 op-store migration: `ugh migrate ops-v3` crosses an existing v2 store to v3 (U9's
 rebirth/flip identity), re-keying every op and every op-id-bearing artifact under one resumable
 manifest and recovering the ~20% closure the v2 rebirth pseudo-fork dropped.
 
@@ -23,12 +23,12 @@ from pathlib import Path
 
 import pytest
 
-from sgt import state
-from sgt.core import lens, migrate, order, sync
-from sgt.core.fold import code
-from sgt.core.op import BOTTOM, MINER_VERSION, compute_id, is_bottom, make_op
-from sgt.core.store import Store, _serialize, fsck
-from sgt.store.gitbind import GitBinding, init_store
+from ugh import state
+from ugh.core import lens, migrate, order, sync
+from ugh.core.fold import code
+from ugh.core.op import BOTTOM, MINER_VERSION, compute_id, is_bottom, make_op
+from ugh.core.store import Store, _serialize, fsck
+from ugh.store.gitbind import GitBinding, init_store
 from tests.conftest import _clone, _init_bare, _push
 
 
@@ -185,7 +185,7 @@ def _edit_and_commit(repo: Path, path: str, content: str, message: str) -> None:
     (repo / path).write_text(content, encoding="utf-8")
     GitBinding(repo).commit_all(message)
     ideal = lens.get(repo)
-    put_sha = lens.put(repo, ideal, message=f"sgt: {message}")
+    put_sha = lens.put(repo, ideal, message=f"ugh: {message}")
     lens.record_ideal(repo, ideal, put_sha)
 
 
@@ -212,7 +212,7 @@ def _two_clones(tmp_path: Path) -> tuple[Path, Path, Path]:
 
 def test_sync_refused_when_theirs_carries_a_v2_op(tmp_path):
     """v3-local + v2-remote: B (v3) syncs a remote tip carrying a v2 op -> refused, remedy names
-    `sgt migrate ops-v3`."""
+    `ugh migrate ops-v3`."""
     remote, a, b = _two_clones(tmp_path)
     _mint_v2_op_file(a, "legacy.py::old")
     subprocess.run(["git", "-C", str(a), "add", ".sgt"], check=True, capture_output=True)
@@ -221,13 +221,13 @@ def test_sync_refused_when_theirs_carries_a_v2_op(tmp_path):
 
     with pytest.raises(sync.MinerVersionMismatch) as ei:
         sync.sync(b, remote="origin", branch="main")
-    assert "sgt migrate ops-v3" in str(ei.value)
+    assert "ugh migrate ops-v3" in str(ei.value)
     assert "landing clone first" in str(ei.value)  # the team ordering rule rides the same message
 
 
 def test_sync_refused_when_ours_carries_a_v2_op(tmp_path):
     """v2-local + v3-remote: B carries a v2 op locally and syncs a pure-v3 remote that is ahead ->
-    refused, remedy names `sgt migrate ops-v3` and points at our (behind) side."""
+    refused, remedy names `ugh migrate ops-v3` and points at our (behind) side."""
     remote, a, b = _two_clones(tmp_path)
     _edit_and_commit(a, "main.py", "def foo():\n    return 2\n", "a: advance")  # remote moves ahead
     _push(a)
@@ -237,7 +237,7 @@ def test_sync_refused_when_ours_carries_a_v2_op(tmp_path):
 
     with pytest.raises(sync.MinerVersionMismatch) as ei:
         sync.sync(b, remote="origin", branch="main")
-    assert "sgt migrate ops-v3" in str(ei.value)
+    assert "ugh migrate ops-v3" in str(ei.value)
     assert "ours" in str(ei.value)  # our side is the one behind
 
 
@@ -248,7 +248,7 @@ def test_old_proposal_referencing_pre_migration_ids_survives(tmp_path):
     """A proposal naming v2 op ids is re-keyed by the migration (its ids remapped through the map)
     and stays readable -- `api.proposal_view`/`state.load_proposal` never crash on a pre-migration
     id."""
-    from sgt import api
+    from ugh import api
 
     repo = tmp_path / "repo"
     _build_rebirth_v2(repo)

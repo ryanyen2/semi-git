@@ -22,11 +22,11 @@ from __future__ import annotations
 
 import pytest
 
-from sgt.cli import _common, feature
-from sgt.core.lens import get
-from sgt.lens import map as lensmap
-from sgt.lens import tree
-from sgt.lens import verbs as lens_verbs
+from ugh.cli import _common, feature
+from ugh.core.lens import get
+from ugh.lens import map as lensmap
+from ugh.lens import tree
+from ugh.lens import verbs as lens_verbs
 from tests.laws import corpus
 
 

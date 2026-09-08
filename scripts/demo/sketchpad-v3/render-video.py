@@ -6,7 +6,7 @@
 Stages a throwaway take (stage.sh), runs the four shots of RUNBOOK.md against it, and turns
 every step into a frame: a title card, the terminal as it printed (left), the app as it
 looked (right). Frames are written as PNGs and assembled into demo.gif with PIL, so the
-only tools it needs are the ones the preflight already uses (Chrome, node, vite, sgt).
+only tools it needs are the ones the preflight already uses (Chrome, node, vite, ugh).
 The narrated recording follows RUNBOOK.md; this is the version that needs no camera.
 """
 import html
@@ -22,7 +22,7 @@ from PIL import Image
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
-SGT = os.environ.get("SGT", str(ROOT / ".venv" / "bin" / "sgt"))
+UGH = os.environ.get("UGH", str(ROOT / ".venv" / "bin" / "ugh"))
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 DRIVE = HERE.parent / "drive-page.mjs"
 PORT = int(os.environ.get("PORT", "5521"))
@@ -108,42 +108,42 @@ def main():
     # stage.sh leaves vite running, and a pipe to it would wait for vite; a file does not.
     with open(OUT / "stage.log", "w") as log:
         subprocess.run(["bash", str(HERE / "stage.sh"), str(OUT / "take")], check=True,
-                       stdout=log, stderr=log, env={**os.environ, "PORT": str(PORT), "SGT": SGT})
+                       stdout=log, stderr=log, env={**os.environ, "PORT": str(PORT), "UGH": UGH})
     take = (OUT / "stage.log").read_text().splitlines()[0]
     try:
         base = app_shot(OUT / "app-base.png")
-        title(0, "sketchpad · sgt", "A program an agent wrote, and one idea in it",
+        title(0, "sketchpad · ugh", "A program an agent wrote, and one idea in it",
               "Twenty commits, one per request. Mira wants to change how the hexagon groups are fastened.")
-        title(1, "step 1", "How sgt presents the history",
-              "Git prints the requests in order. sgt reads the same history as features, one row per concern, grouped into subsystems.")
+        title(1, "step 1", "How ugh presents the history",
+              "Git prints the requests in order. ugh reads the same history as features, one row per concern, grouped into subsystems.")
         frame(2, "git log --oneline | head -20", sh("git log --oneline | head -20", take), base)
-        frame(3, "sgt log --map", sh(f"{SGT} log --map", take), base, 8.0)
+        frame(3, "ugh log --map", sh(f"{UGH} log --map", take), base, 8.0)
         title(4, "step 2", "Finding the feature that needs the edit",
               "Mira describes what they see. The third hit is the request that fastened the groups by their corners.")
-        frame(5, 'sgt find "hexagon groups held together at their corners"',
-              sh(f'{SGT} find "hexagon groups held together at their corners"', take), base, 7.0)
-        frame(6, "sgt show c69fc3e", sh(f"{SGT} show c69fc3e", take), base, 6.0)
-        frame(7, 'sgt show "fastened at the corners"', sh(f'{SGT} show "fastened at the corners"', take), base, 6.0)
+        frame(5, 'ugh find "hexagon groups held together at their corners"',
+              sh(f'{UGH} find "hexagon groups held together at their corners"', take), base, 7.0)
+        frame(6, "ugh show c69fc3e", sh(f"{UGH} show c69fc3e", take), base, 6.0)
+        frame(7, 'ugh show "fastened at the corners"', sh(f'{UGH} show "fastened at the corners"', take), base, 6.0)
         title(8, "step 3", "Asking the agent to make the change, and watching it land",
               (HERE / "request.txt").read_text().strip())
-        frame(9, 'sgt plan intake "…"', sh(f'{SGT} plan intake "$(cat {HERE}/plan.txt)"', take), base, 5.0)
+        frame(9, 'ugh plan intake "…"', sh(f'{UGH} plan intake "$(cat {HERE}/plan.txt)"', take), base, 5.0)
         sh(f"git apply {HERE}/agent-seam.patch && rm -f tsconfig.tsbuildinfo && npx tsc --noEmit", take)
         diff = sh("git diff --stat", take)
-        echo = sh(f'{SGT} save -m "set the fastened hexagon groups apart by a seam"', take)
+        echo = sh(f'{UGH} save -m "set the fastened hexagon groups apart by a seam"', take)
         seam = app_shot(OUT / "app-seam.png")
-        frame(10, 'sgt save -m "set the fastened hexagon groups apart by a seam"',
+        frame(10, 'ugh save -m "set the fastened hexagon groups apart by a seam"',
               diff + "\n" + echo, seam, 8.0)
-        frame(11, 'sgt show "fastened at the corners"', sh(f'{SGT} show "fastened at the corners"', take), seam, 6.0)
+        frame(11, 'ugh show "fastened at the corners"', sh(f'{UGH} show "fastened at the corners"', take), seam, 6.0)
         title(12, "step 4", "Taking the fastening out and seeing the program without it",
               "The cost is stated before anything changes: thirteen edits in two files, twenty-four features untouched.")
-        frame(13, 'sgt revert "fastened at the corners"', sh(f'{SGT} revert "fastened at the corners"', take), seam, 7.0)
-        applied = sh(f'{SGT} revert "fastened at the corners" --yes', take)
+        frame(13, 'ugh revert "fastened at the corners"', sh(f'{UGH} revert "fastened at the corners"', take), seam, 7.0)
+        applied = sh(f'{UGH} revert "fastened at the corners" --yes', take)
         out = app_shot(OUT / "app-unfastened.png")
-        frame(14, 'sgt revert "fastened at the corners" --yes', applied, out, 8.0)
-        undone = sh(f"{SGT} undo", take)
+        frame(14, 'ugh revert "fastened at the corners" --yes', applied, out, 8.0)
+        undone = sh(f"{UGH} undo", take)
         back = app_shot(OUT / "app-restored.png")
-        frame(15, "sgt undo", undone, back, 6.0)
-        title(16, "sketchpad · sgt", "Restored, byte for byte",
+        frame(15, "ugh undo", undone, back, 6.0)
+        title(16, "sketchpad · ugh", "Restored, byte for byte",
               "One repository, one branch. Three versions of the program, one of them held by no commit.", 4.0)
     finally:
         subprocess.run(["pkill", "-f", f"vite --port {PORT}"], capture_output=True)

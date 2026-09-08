@@ -1,4 +1,4 @@
-"""Every third-party module `sgt/` imports must be declared in pyproject.toml.
+"""Every third-party module `ugh/` imports must be declared in pyproject.toml.
 
 This has now broken a release twice. `tree_sitter` and `igraph` were declared as optional extras
 while being imported at module scope, so a stock install died on the first command. Then `rich` and
@@ -20,8 +20,8 @@ from importlib.metadata import packages_distributions
 import pytest
 
 _REPO = pathlib.Path(__file__).resolve().parent.parent
-_PACKAGE = _REPO / "sgt"
-_LOCAL = {"sgt", "tests", "scripts", "experiments"}
+_PACKAGE = _REPO / "ugh"
+_LOCAL = {"ugh", "tests", "scripts", "experiments"}
 
 
 def _imported_modules() -> dict[str, str]:

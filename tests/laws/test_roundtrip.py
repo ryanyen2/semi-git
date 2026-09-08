@@ -8,19 +8,19 @@ pass -- land the kernel code that makes it true.
 Minimal kernel contract these laws assume. Individual units may expose a richer API; these
 entry points must exist with this behavior (owning unit in parens):
 
-    sgt.core.mine.mine(repo_path, since=None) -> list[Op]          (U2) newly mined ops since
+    ugh.core.mine.mine(repo_path, since=None) -> list[Op]          (U2) newly mined ops since
         witness commit `since` (or full history if None); Op.id content-addressed, deterministic.
-    sgt.core.op.Op                                                  (U3) frozen; .id, .footprint
+    ugh.core.op.Op                                                  (U3) frozen; .id, .footprint
         (dict[str, tuple[str, str]], symbol -> (before_version, after_version)).
-    sgt.core.order.is_valid_ideal(ops, op_ids) -> bool              (U4) downward-closure +
+    ugh.core.order.is_valid_ideal(ops, op_ids) -> bool              (U4) downward-closure +
         unique-maximal-per-chain over `ops` for the subset `op_ids`.
-    sgt.core.ideal.Ideal.from_ops(op_ids, ops) -> Ideal             (U4) raises ValueError if
+    ugh.core.ideal.Ideal.from_ops(op_ids, ops) -> Ideal             (U4) raises ValueError if
         `op_ids` is not a valid ideal; exposes `.op_ids` and `.covered_paths()`.
-    sgt.core.fold.code(ideal) -> dict[str, bytes]                   (U5) total, deterministic;
+    ugh.core.fold.code(ideal) -> dict[str, bytes]                   (U5) total, deterministic;
         path -> materialized bytes.
-    sgt.core.lens.get(repo_path) -> Ideal                           (U6) mine + advance the ideal
+    ugh.core.lens.get(repo_path) -> Ideal                           (U6) mine + advance the ideal
         tracked for `repo_path`'s current ref.
-    sgt.core.lens.put(repo_path, ideal) -> str                      (U6) materialize + witness
+    ugh.core.lens.put(repo_path, ideal) -> str                      (U6) materialize + witness
         commit; returns the new commit sha.
 """
 
@@ -39,23 +39,23 @@ def _has(*names: str) -> bool:
         try:
             return importlib.util.find_spec(name) is not None
         except ModuleNotFoundError:
-            return False  # a missing parent package (e.g. `sgt.core`) also means "not found"
+            return False  # a missing parent package (e.g. `ugh.core`) also means "not found"
 
     return all(_found(name) for name in names)
 
 
-_HAS_LENS = _has("sgt.core.lens", "sgt.core.fold", "sgt.core.mine")
-_LENS_SKIP = "sgt.core.{lens,fold,mine} not implemented yet (U2, U5, U6)"
+_HAS_LENS = _has("ugh.core.lens", "ugh.core.fold", "ugh.core.mine")
+_LENS_SKIP = "ugh.core.{lens,fold,mine} not implemented yet (U2, U5, U6)"
 
-_HAS_ORDER = _has("sgt.core.mine", "sgt.core.order", "sgt.core.ideal")
-_ORDER_SKIP = "sgt.core.{mine,order,ideal} not implemented yet (U2, U4)"
+_HAS_ORDER = _has("ugh.core.mine", "ugh.core.order", "ugh.core.ideal")
+_ORDER_SKIP = "ugh.core.{mine,order,ideal} not implemented yet (U2, U4)"
 
 
 @pytest.mark.skipif(not _HAS_LENS, reason=_LENS_SKIP)
 def test_put_get_fixed_point(tmp_path):
     """put-get: materializing an ideal and re-mining the witness commit it just wrote yields
     zero new ops -- the commit is fully explained by ops already in the ideal."""
-    from sgt.core.lens import get, put
+    from ugh.core.lens import get, put
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     ideal = get(repo)
@@ -74,9 +74,9 @@ def test_get_put_byte_fidelity(tmp_path, case_name):
     original mining-edge-case corpus: decorators, duplicate-name groups, classes, mixed
     module-level/entity files, CRLF, non-UTF-8, and TypeScript export/decorator shapes must all
     round-trip exactly, not just bare top-level Python functions."""
-    from sgt.core.fold import code
-    from sgt.core.lens import get
-    from sgt.core.store import Store
+    from ugh.core.fold import code
+    from ugh.core.lens import get
+    from ugh.core.store import Store
 
     repo = corpus.CORPUS[case_name].build(tmp_path / "repo")
     before = {p: (repo / p).read_bytes() for p in corpus.tracked_paths(repo)}
@@ -95,7 +95,7 @@ def test_no_duplicate_entity_ids_per_file(tmp_path, case_name):
     with the same id in one file -- the join key every downstream consumer (footprints,
     identity, the fold) relies on being unique. `@overload` groups and property getter/setter
     pairs must coalesce or ordinal-disambiguate rather than collide."""
-    from sgt.entities.extract import extract_file
+    from ugh.entities.extract import extract_file
 
     repo = corpus.CORPUS[case_name].build(tmp_path / "repo")
     for path in corpus.tracked_paths(repo):
@@ -109,9 +109,9 @@ def test_decorator_lines_never_strand_in_residue(tmp_path):
     """Invariant (kernel byte-fidelity audit, 2026-07-08): a decorator is part of its entity's
     span, never left behind in residue -- the defect that let two decorated top-level functions
     materialize with both decorators piled onto one of them and none on the other."""
-    from sgt.core.lens import get
-    from sgt.core.store import Store
-    from sgt.core.op import _symbol_kind
+    from ugh.core.lens import get
+    from ugh.core.store import Store
+    from ugh.core.op import _symbol_kind
 
     repo = corpus.CORPUS["decorated_routes"].build(tmp_path / "repo")
     ideal = get(repo)
@@ -135,10 +135,10 @@ def test_anchor_disjoint_additions_compose():
     import tempfile
     from pathlib import Path
 
-    from sgt.core.fold import code
-    from sgt.core.ideal import Ideal
-    from sgt.core.mine import mine
-    from sgt.core.order import is_valid_ideal
+    from ugh.core.fold import code
+    from ugh.core.ideal import Ideal
+    from ugh.core.mine import mine
+    from ugh.core.order import is_valid_ideal
 
     with tempfile.TemporaryDirectory() as tmp:
         repo = corpus.CORPUS["commuting_features"].build(Path(tmp) / "repo")
@@ -171,8 +171,8 @@ def test_same_residue_segment_edited_on_both_branches_is_a_genuine_fork():
     import tempfile
     from pathlib import Path
 
-    from sgt.core.mine import mine
-    from sgt.core.order import is_fork_free
+    from ugh.core.mine import mine
+    from ugh.core.order import is_fork_free
 
     with tempfile.TemporaryDirectory() as tmp:
         repo = corpus.CORPUS["residue_fork"].build(Path(tmp) / "repo")
@@ -194,8 +194,8 @@ def test_same_residue_segment_edited_on_both_branches_is_a_genuine_fork():
 def test_coverage_every_path_has_an_image(tmp_path):
     """Coverage (R7): every tracked path -- parseable or not -- is in exactly one symbol's image
     set. Whole-file pseudo-symbols make config/binary paths first-class, never silently dropped."""
-    from sgt.core.lens import get
-    from sgt.core.store import Store
+    from ugh.core.lens import get
+    from ugh.core.store import Store
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     tracked = set(corpus.tracked_paths(repo))
@@ -212,9 +212,9 @@ def test_fully_removed_file_leaves_no_phantom(tmp_path):
     anchor produces no bytes, so it must not keep the path alive as an empty ``b''``. A sibling
     that keeps >=1 entity after losing another (positive control) stays covered, materializing
     only the survivor's exact bytes. `code(I)` and `covered_paths` must agree exactly."""
-    from sgt.core.fold import code
-    from sgt.core.lens import get
-    from sgt.core.store import Store
+    from ugh.core.fold import code
+    from ugh.core.lens import get
+    from ugh.core.store import Store
 
     repo = corpus.CORPUS["removed_paths"].build(tmp_path / "repo")
     ideal = get(repo)
@@ -242,11 +242,11 @@ def test_representation_flip_roundtrips_at_every_commit(tmp_path):
     chaining onto them, so there is never a second, competing live image of the same path (which is
     what let the pre-U9 whole-file symbol win a later commit's fold and materialize foreign bytes).
     The non-empty leading residue (an import line) stresses the residue-chain bridge specifically."""
-    from sgt.core.fold import code
-    from sgt.core.ideal import Ideal
-    from sgt.core.mine import mine
-    from sgt.core.order import reduce_to_ideal
-    from sgt.store.gitbind import GitBinding, init_store
+    from ugh.core.fold import code
+    from ugh.core.ideal import Ideal
+    from ugh.core.mine import mine
+    from ugh.core.order import reduce_to_ideal
+    from ugh.store.gitbind import GitBinding, init_store
 
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
@@ -271,9 +271,9 @@ def test_revert_to_original_bytes_survives_the_fold(tmp_path):
     """Regression (order.py's frontier/is_valid_ideal value-collision fix, U7.5): a symbol whose
     content reverts to an earlier byte-identical version must still materialize that content --
     not vanish because two ops share an after-value."""
-    from sgt.core.fold import code
-    from sgt.core.lens import get
-    from sgt.core.store import Store
+    from ugh.core.fold import code
+    from ugh.core.lens import get
+    from ugh.core.store import Store
 
     repo = corpus.CORPUS["revert_to_original"].build(tmp_path / "repo")
     ideal = get(repo)
@@ -296,7 +296,7 @@ def test_locality(tmp_path):
     not the path the removing commit's diff actually touched. That's a stale canonical name,
     not an unrelated part of the tree being touched.
     """
-    from sgt.core.mine import mine
+    from ugh.core.mine import mine
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     shas = corpus.commit_shas(repo)
@@ -324,7 +324,7 @@ def test_squash_remine_identification(tmp_path):
     """AE1 / R8, the identification law: a squash-merged copy of already-mined work mints zero
     new ops -- the existing ops gain the squash commit as an additional witness instead of
     forking. This is also what makes rebase and re-mining converge."""
-    from sgt.core.lens import get
+    from ugh.core.lens import get
 
     repo = corpus.CORPUS["squash_merge"].build(tmp_path / "repo")
 
@@ -350,9 +350,9 @@ def test_verb_output_is_valid_ideal(tmp_path_factory, data):
     ill-formed ideal. (U4's own test_order.py/test_ideal.py additionally check the frontier
     representation against a naive-set reference on synthetic DAGs; this law is the black-box
     acceptance version, run against real mined ops.)"""
-    from sgt.core.ideal import Ideal
-    from sgt.core.mine import mine
-    from sgt.core.order import is_valid_ideal
+    from ugh.core.ideal import Ideal
+    from ugh.core.mine import mine
+    from ugh.core.order import is_valid_ideal
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path_factory.mktemp("repo"))
     ops, _last_sha = mine(repo)

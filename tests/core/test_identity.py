@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import dataclasses
 
-from sgt.core.identity import detect_splits_merges, link_residual, match_pair, snapshot
-from sgt.entities.extract import extract_file
+from ugh.core.identity import detect_splits_merges, link_residual, match_pair, snapshot
+from ugh.entities.extract import extract_file
 
 _BODY = """def {name}(nodes):
     total = 0
@@ -135,7 +135,7 @@ def test_same_import_in_two_files_is_not_a_move():
     Extracting a module and importing it where the old import used to be produced exactly this
     shape: `./run` leaves one file while a new file that imports `./run` arrives in the same
     commit. Linking them minted a `move` op that reduction dropped, taking the rest of the
-    commit's ops for both files with it, and `sgt save` refused the edit outright.
+    commit's ops for both files with it, and `ugh save` refused the edit outright.
     """
     body = _BODY.format(name="layout")
     removed = [_snap("__import__::./run", "OutputPane.tsx", "import", body)]

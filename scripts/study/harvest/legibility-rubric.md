@@ -14,10 +14,10 @@ one surface, without opening a file.
 ## 1. Where is the problem
 
 They open the dashboard, compare it against the published report, and see a
-number that does not match. That part is not sgt's job and should not need to be.
+number that does not match. That part is not ugh's job and should not need to be.
 
-What sgt has to add: having seen a wrong number on a page, can they get from that
-page to the work that changed it? The surfaces in play are `sgt find`, the
+What ugh has to add: having seen a wrong number on a page, can they get from that
+page to the work that changed it? The surfaces in play are `ugh find`, the
 workbench search box, and feature blame.
 
   pass    a plain-English description of the symptom lands on the right work in
@@ -61,10 +61,10 @@ clock, and it is the consequence pane's whole job.
 ## Two standing rules
 
 **Noise counts against the surface.** A panel that answers the question and also
-prints three lines of sgt's own plumbing has not passed. The participant cannot
+prints three lines of ugh's own plumbing has not passed. The participant cannot
 tell which lines are theirs.
 
 **Both arms get read the same way.** Every complaint above gets asked of
 `git log`, the Source Control Graph, and the Timeline too. If a surface in the git
-arm answers a question that sgt's does not, that is the finding, and it goes in
+arm answers a question that ugh's does not, that is the finding, and it goes in
 the ledger the same as any other.

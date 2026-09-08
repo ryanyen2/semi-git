@@ -5,7 +5,7 @@ any kernel-dependent law built on top of ``tests/laws/corpus.py`` can be trusted
 
 Kernel-dependent laws below are real test logic, ``skipif``-guarded on the modules they need
 (see ``tests/laws/test_roundtrip.py`` for the full minimal-contract docstring). They un-skip the
-moment U2 (``sgt.core.mine``) lands -- do not soften a law to make it pass; land the kernel code.
+moment U2 (``ugh.core.mine``) lands -- do not soften a law to make it pass; land the kernel code.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ def _has(*names: str) -> bool:
         try:
             return importlib.util.find_spec(name) is not None
         except ModuleNotFoundError:
-            return False  # a missing parent package (e.g. `sgt.core`) also means "not found"
+            return False  # a missing parent package (e.g. `ugh.core`) also means "not found"
 
     return all(_found(name) for name in names)
 
@@ -48,19 +48,19 @@ def test_large_corpus_budgets_are_encoded_numerically():
 def test_large_corpus_repo_is_opt_in_never_fetched(monkeypatch):
     """The suite must never clone or fetch a large repo on its own -- only read an
     already-local path from an explicit env var, and skip cleanly when unset."""
-    monkeypatch.delenv("SGT_LARGE_CORPUS_REPO", raising=False)
+    monkeypatch.delenv("UGH_LARGE_CORPUS_REPO", raising=False)
     assert corpus.large_corpus_repo() is None
 
 
-_HAS_MINE = _has("sgt.core.mine")
-_MINE_SKIP = "sgt.core.mine not implemented yet (U2)"
+_HAS_MINE = _has("ugh.core.mine")
+_MINE_SKIP = "ugh.core.mine not implemented yet (U2)"
 
 
 @pytest.mark.skipif(not _HAS_MINE, reason=_MINE_SKIP)
 def test_mining_idempotence(tmp_path):
     """R20 'idempotence': mining a fixed, unchanged history twice in the same process yields
     byte-identical op ids in the same order -- no op minted twice, no nondeterministic id."""
-    from sgt.core.mine import mine
+    from ugh.core.mine import mine
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     first, _last_sha = mine(repo)
@@ -73,7 +73,7 @@ def test_double_machine_mining_determinism(tmp_path):
     """R12/R20: mining two independently-built copies of the same history (simulating two
     machines / two clones) yields byte-identical op ids given a fixed (parser version, matcher
     thresholds) -- the honest form of the determinism claim."""
-    from sgt.core.mine import mine
+    from ugh.core.mine import mine
 
     repo_a = corpus.CORPUS["linear_history"].build(tmp_path / "machine_a")
     repo_b = corpus.CORPUS["linear_history"].build(tmp_path / "machine_b")
@@ -90,8 +90,8 @@ def test_rebirth_cycle_op_ids_deterministic_across_clones(tmp_path):
     wall-clock, so the distinct-bottom-per-deletion chaining reproduces exactly."""
     import subprocess
 
-    from sgt.store.gitbind import init_store
-    from sgt.core.mine import mine
+    from ugh.store.gitbind import init_store
+    from ugh.core.mine import mine
 
     origin = tmp_path / "origin"
     gb, _ = init_store(origin)

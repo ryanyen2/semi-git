@@ -4,7 +4,7 @@
     scripts/study/backfill_capture.py <repo> <bikecount|footfall> [--check]
 
 The testbeds are built by replaying commits (`scripts/study/build_stages.sh`), so no prompt hook was
-running while they were made and their capture stores are empty. A participant in the sgt arm would
+running while they were made and their capture stores are empty. A participant in the ugh arm would
 then meet a tool whose most human attribute -- what each piece of work was asked for, in the words
 somebody typed -- is blank on every chapter, which is the one thing the arm is being evaluated on.
 
@@ -12,7 +12,7 @@ So the words are put back: for each commit, the turns of the conversation that p
 events that conversation caused, and the per-save manifest that closes the window between the
 previous save and this one. Nothing here fakes a *derived* fact. The stints, the rationale records,
 the chapter names and the `asked` attribute are all computed afterwards by the ordinary code paths
-(`sgt.intent.stint.reflect_save`) from this evidence, exactly as they would have been computed live
+(`ugh.intent.stint.reflect_save`) from this evidence, exactly as they would have been computed live
 -- which is also what makes this a real test of those paths rather than a fixture of their output.
 
 Three details are load-bearing:
@@ -62,8 +62,8 @@ def _episodes(repo: Path):
     intersects against (`_op_files`), not `git show --name-only`. They have to be the same paths or
     the replayed events ground nothing: an event on a file no op in this save touched is an event
     the derivation correctly ignores."""
-    from sgt.core import opindex
-    from sgt.store.gitbind import GitBinding
+    from ugh.core import opindex
+    from ugh.store.gitbind import GitBinding
 
     gb = GitBinding(str(repo))
     rows = gb.history()  # oldest-first
@@ -130,10 +130,10 @@ def _schedule(prev_end: float | None, end: float, shares: list[list[str]], n_que
 
 def backfill(repo: Path, project: str, verbose: bool = True) -> dict:
     """Write the capture stores for `project`'s testbed at `repo`. Returns a small report."""
-    from sgt.intent.activity import record_activity
-    from sgt.intent.manifest import record_manifest
-    from sgt.intent.stint import reflect_save
-    from sgt.intent.turns import record_turn
+    from ugh.intent.activity import record_activity
+    from ugh.intent.manifest import record_manifest
+    from ugh.intent.stint import reflect_save
+    from ugh.intent.turns import record_turn
 
     fixture = json.loads(FIXTURE.read_text(encoding="utf-8")).get(project)
     if not fixture:
@@ -141,7 +141,7 @@ def backfill(repo: Path, project: str, verbose: bool = True) -> dict:
 
     episodes = _episodes(repo)
     if not episodes:
-        sys.exit(f"{repo} has no committed ops -- mine it first (`sgt log`)")
+        sys.exit(f"{repo} has no committed ops -- mine it first (`ugh log`)")
 
     unmatched = set(fixture) - {subject for _s, subject, _t, _f, _o in episodes}
     if unmatched:
@@ -198,9 +198,9 @@ def check(repo: Path) -> int:
     The exit code is what a bundle build wants -- a repo where the backfill silently grounded
     nothing looks identical to one where it worked, until a participant asks a chapter what it was
     for."""
-    from sgt.intent.manifest import load_manifests
-    from sgt.intent.stint import derive_stints
-    from sgt.intent.gist import ask_gist
+    from ugh.intent.manifest import load_manifests
+    from ugh.intent.stint import derive_stints
+    from ugh.intent.gist import ask_gist
 
     manifests = load_manifests(repo)
     if not manifests:
@@ -230,7 +230,7 @@ def main() -> int:
 
     repo = Path(args.repo).resolve()
     if not (repo / ".sgt").is_dir():
-        sys.exit(f"{repo} is not an sgt repo")
+        sys.exit(f"{repo} is not an ugh repo")
     if args.check:
         return check(repo)
     if not args.project:

@@ -1,11 +1,11 @@
-"""Tests for sgt.intent.activity -- the local agent-action feed a `PostToolUse` hook appends to (one
+"""Tests for ugh.intent.activity -- the local agent-action feed a `PostToolUse` hook appends to (one
 row per Edit/Write). Contract is the *inverse* of turns: NO dedupe (two edits to one file are two
 rows), and a fixed ring-buffer cap so the transient feed never grows unbounded."""
 
 from __future__ import annotations
 
-from sgt.intent import activity
-from sgt.store.gitbind import init_store
+from ugh.intent import activity
+from ugh.store.gitbind import init_store
 
 
 def test_record_then_retrieve_round_trips(tmp_path):

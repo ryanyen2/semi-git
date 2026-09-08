@@ -1,21 +1,21 @@
 // Fork resolution: a native side-by-side diff of a same-symbol chain fork's two tip images
 // (`ForkDetailView` already carries full file content per tip -- no extra fold call needed) opened
 // through VS Code's built-in `vscode.diff` editor, plus a small compose-and-fulfill action strip
-// that used to be a copy-tip-ids-to-clipboard placeholder in commands.ts: `sgt merge-op <a> <b>`
-// drafts a reconciling hollow -> the user hand-edits the working tree to match -> `sgt fulfill
-// <draft-id> --from-tree` stages it -> `sgt commit` commits it. Every step but the hand-edit is a
+// that used to be a copy-tip-ids-to-clipboard placeholder in commands.ts: `ugh merge-op <a> <b>`
+// drafts a reconciling hollow -> the user hand-edits the working tree to match -> `ugh fulfill
+// <draft-id> --from-tree` stages it -> `ugh commit` commits it. Every step but the hand-edit is a
 // real, unmodified kernel verb; the panel just keeps the draft id in view state between steps and
-// serves the two tips' content through a virtual `sgt-fork:` scheme. One panel per fork symbol.
+// serves the two tips' content through a virtual `ugh-fork:` scheme. One panel per fork symbol.
 
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { Store } from "./store";
 import { ForkDetailView } from "./types";
 
-const TIP_SCHEME = "sgt-fork";
+const TIP_SCHEME = "ugh-fork";
 
 // A read-only content provider for the two fork tips' images, mirroring PreviewProvider (preview.ts):
-// contents are keyed by a virtual `sgt-fork:` uri so `vscode.diff` can render them side by side.
+// contents are keyed by a virtual `ugh-fork:` uri so `vscode.diff` can render them side by side.
 // Registered once, lazily, and disposed with the extension.
 class ForkTipProvider implements vscode.TextDocumentContentProvider {
   private static instance: ForkTipProvider | undefined;
@@ -81,7 +81,7 @@ export class ForkResolutionPanel {
       return;
     }
     const panel = vscode.window.createWebviewPanel(
-      "sgtForkResolution",
+      "ughForkResolution",
       `Fork: ${symbol}`,
       vscode.ViewColumn.Beside,
       { enableScripts: true, retainContextWhenHidden: true }
@@ -117,11 +117,11 @@ export class ForkResolutionPanel {
   private async onMessage(msg: { type: string; intent?: string; message?: string }): Promise<void> {
     try {
       if (msg.type === "mergeOp") {
-        const detail = await this.store.sgt.forkDetail(this.symbol);
+        const detail = await this.store.ugh.forkDetail(this.symbol);
         if (detail.tips.length < 2) {
           this.statusLine = "✗ this fork no longer has two open tips";
         } else {
-          const draft = await this.store.sgt.mergeOp(detail.tips[0].op_id, detail.tips[1].op_id, msg.intent);
+          const draft = await this.store.ugh.mergeOp(detail.tips[0].op_id, detail.tips[1].op_id, msg.intent);
           if (!draft.ok || !draft.draft_id) {
             this.statusLine = `✗ ${draft.message || "merge-op failed"}`;
           } else {
@@ -135,12 +135,12 @@ export class ForkResolutionPanel {
         await this.openAffectedFiles();
         return; // no re-render needed
       } else if (msg.type === "fulfill" && this.draft) {
-        const result = await this.store.sgt.fulfillDraft(this.draft.draftId);
+        const result = await this.store.ugh.fulfillDraft(this.draft.draftId);
         this.stage = "fulfilled";
         this.statusLine = `✓ staged ${result.op_ids?.length ?? 0} op(s) — run the oracle, then Land`;
         this.store.invalidate();
       } else if (msg.type === "land") {
-        const result = await this.store.sgt.landCandidate(msg.message);
+        const result = await this.store.ugh.landCandidate(msg.message);
         this.stage = "landed";
         this.statusLine = `✓ landed ${(result.sha || "").slice(0, 12)}`;
         this.store.invalidate();
@@ -154,7 +154,7 @@ export class ForkResolutionPanel {
   private async openAffectedFiles(): Promise<void> {
     let detail: ForkDetailView;
     try {
-      detail = await this.store.sgt.forkDetail(this.symbol);
+      detail = await this.store.ugh.forkDetail(this.symbol);
     } catch {
       return;
     }
@@ -176,7 +176,7 @@ export class ForkResolutionPanel {
   private async render(): Promise<void> {
     let detail: ForkDetailView;
     try {
-      detail = await this.store.sgt.forkDetail(this.symbol);
+      detail = await this.store.ugh.forkDetail(this.symbol);
     } catch (e: any) {
       this.panel.webview.html = errorHtml(e.message);
       return;
@@ -248,7 +248,7 @@ export class ForkResolutionPanel {
     if (this.stage === "tips") {
       return `
         <input type="text" id="intent" placeholder="intent (optional)" />
-        <button data-action="mergeOp">Draft merge (sgt merge-op)</button>
+        <button data-action="mergeOp">Draft merge (ugh merge-op)</button>
         ${status}`;
     }
     if (this.stage === "drafted") {

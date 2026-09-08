@@ -3,7 +3,7 @@
 // Dragging the playhead already folds an arbitrary frontier (`scrubPlayhead` -> `store.foldAt`);
 // this makes that fold *run*. The mechanism is one CLI flag and one dev server:
 //
-//   sgt advanced fold --at <spec> --out <dir>     materialize the frontier onto a scratch tree
+//   ugh advanced fold --at <spec> --out <dir>     materialize the frontier onto a scratch tree
 //   vite <dir>                                    serve it, and hot-replace what changed
 //
 // `--out` is a sync rather than a wipe, so the `node_modules` symlink and the dev server's own
@@ -23,7 +23,7 @@
 // Rendering a past frontier executes that frontier's code. That is acceptable pointed at your own
 // repo and is not acceptable as a general feature pointed at someone else's history without a
 // sandbox. It is also not free: a fold is ~0.3s at demo scale and 15s on a repo the size of
-// semi-git, so the panel debounces and always shows which frontier it is actually displaying
+// ugh, so the panel debounces and always shows which frontier it is actually displaying
 // rather than pretending to be live.
 
 import { spawn, ChildProcess } from "node:child_process";
@@ -33,7 +33,7 @@ import * as net from "node:net";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { bootHtml, devCommand, errorHtml, frameHtml } from "./renderSeam";
-import { FoldFrontier, foldAtSpec, StaleRequestError } from "./sgt";
+import { FoldFrontier, foldAtSpec, StaleRequestError } from "./ugh";
 import { Store } from "./store";
 
 /** How long to wait for the dev server to answer before giving up and saying so. */
@@ -99,12 +99,12 @@ export class RenderPanel implements vscode.Disposable {
     }
     const workspace = this.root();
     if (!workspace) {
-      void vscode.window.showWarningMessage("sgt: open a folder with an sgt repo first.");
+      void vscode.window.showWarningMessage("ugh: open a folder with an ugh repo first.");
       return;
     }
 
     this.panel = vscode.window.createWebviewPanel(
-      "sgtRender", "sgt — running app", { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
+      "ughRender", "ugh — running app", { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
       { enableScripts: true, retainContextWhenHidden: true },
     );
     this.panel.onDidDispose(() => this.teardown(), null, this.context.subscriptions);
@@ -158,7 +158,7 @@ export class RenderPanel implements vscode.Disposable {
 
     this.port = await freePort();
     const command = devCommand(
-      vscode.workspace.getConfiguration("sgt").get<string>(
+      vscode.workspace.getConfiguration("ugh").get<string>(
         "render.devCommand", "npx vite --host 127.0.0.1 --port ${port} --strictPort",
       ),
       this.port,

@@ -8,7 +8,7 @@ import * as vscode from "vscode";
 import { Store } from "./store";
 import { PlanView } from "./types";
 
-const SCHEME = "sgt-plan";
+const SCHEME = "ugh-plan";
 const STATUS_ICON: Record<string, string> = { pending: "○", matched: "●" };
 
 export interface PlanLensTarget {
@@ -32,7 +32,7 @@ export class PlanCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
     this.disposables.push(
       this.store.onDidChange(() => this._onDidChangeCodeLenses.fire()),
       vscode.workspace.onDidChangeConfiguration((e) => {
-        if (e.affectsConfiguration("sgt.plan")) {
+        if (e.affectsConfiguration("ugh.plan")) {
           this._onDidChangeCodeLenses.fire();
         }
       })
@@ -40,7 +40,7 @@ export class PlanCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
   }
 
   private enabled(): boolean {
-    return vscode.workspace.getConfiguration("sgt").get<boolean>("plan.enabled", true);
+    return vscode.workspace.getConfiguration("ugh").get<boolean>("plan.enabled", true);
   }
 
   async provideCodeLenses(document: vscode.TextDocument): Promise<vscode.CodeLens[]> {
@@ -103,7 +103,7 @@ export class PlanCodeLensProvider implements vscode.CodeLensProvider, vscode.Dis
 
   private lens(startLine: number, title: string, target: PlanLensTarget): vscode.CodeLens {
     const range = new vscode.Range(startLine - 1, 0, startLine - 1, 0);
-    return new vscode.CodeLens(range, { title, command: "sgt.showPlanDiff", arguments: [target] });
+    return new vscode.CodeLens(range, { title, command: "ugh.showPlanDiff", arguments: [target] });
   }
 
   dispose(): void {
@@ -120,7 +120,7 @@ export class PlanStatusBar implements vscode.Disposable {
 
   constructor(private store: Store) {
     this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-    this.item.command = "sgt.showPlanQuickPick";
+    this.item.command = "ugh.showPlanQuickPick";
     this.disposables.push(this.item, this.store.onDidChange(() => void this.refresh()));
   }
 
@@ -260,7 +260,7 @@ export async function showPlanQuickPick(store: Store, diff: PlanDiffProvider): P
   }
   const pick = await vscode.window.showQuickPick(items, { placeHolder: "Plan steps" });
   if (pick?.resumeSessionId) {
-    await vscode.commands.executeCommand("sgt.resumePlan", pick.resumeSessionId);
+    await vscode.commands.executeCommand("ugh.resumePlan", pick.resumeSessionId);
   } else if (pick?.target) {
     await diff.showDiff(pick.target);
   }

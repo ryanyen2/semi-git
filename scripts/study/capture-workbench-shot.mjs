@@ -1,6 +1,6 @@
-// Capture the workbench screenshot the sgt practice sheet shows.
+// Capture the workbench screenshot the ugh practice sheet shows.
 //
-//   node scripts/study/capture-workbench-shot.mjs <bundle-work-dir> <path-to-sgt> [out.png]
+//   node scripts/study/capture-workbench-shot.mjs <bundle-work-dir> <path-to-ugh> [out.png]
 //
 // The sheet's picture is the first thing a participant sees of the tool, so it has to be the
 // tool. The previous one was taken by hand and went stale silently: it still showed a Timeline /
@@ -8,7 +8,7 @@
 // shipped workbench has any more, so the sheet and the screen disagreed on the first page.
 //
 // Headless Chrome over the DevTools protocol, against `editor/vscode/dev/preview.html`, fed the
-// views of a real unpacked bundle. Identity hues come from `sgt.tui.color.color_for`, the same
+// views of a real unpacked bundle. Identity hues come from `ugh.tui.color.color_for`, the same
 // function the extension mirrors, so the lanes are the colours the participant will see.
 import { spawn, execFileSync } from 'node:child_process'
 import { writeFileSync, mkdtempSync, unlinkSync } from 'node:fs'
@@ -20,22 +20,22 @@ const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const DEV = join(ROOT, 'editor/vscode/dev')
 
-const [WORK, SGT, OUT = join(ROOT, 'web/public/materials/sgt_workbench.png')] = process.argv.slice(2)
-if (!WORK || !SGT) {
-  console.error('usage: capture-workbench-shot.mjs <bundle-work-dir> <path-to-sgt> [out.png]')
+const [WORK, UGH, OUT = join(ROOT, 'web/public/materials/ugh_workbench.png')] = process.argv.slice(2)
+if (!WORK || !UGH) {
+  console.error('usage: capture-workbench-shot.mjs <bundle-work-dir> <path-to-ugh> [out.png]')
   process.exit(2)
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-const sgt = (args) => JSON.parse(execFileSync(SGT, args, { cwd: WORK, maxBuffer: 1 << 28 }))
+const ugh = (args) => JSON.parse(execFileSync(UGH, args, { cwd: WORK, maxBuffer: 1 << 28 }))
 
-const compose = sgt(['advanced', 'compose', '--json', '--full'])
-compose.grid = sgt(['log', '--json'])
-// The real identity hue per node, read out of sgt itself rather than invented here.
+const compose = ugh(['advanced', 'compose', '--json', '--full'])
+compose.grid = ugh(['log', '--json'])
+// The real identity hue per node, read out of ugh itself rather than invented here.
 const ids = compose.map.nodes.map((n) => n.id)
-const python = join(dirname(SGT), 'python')
+const python = join(dirname(UGH), 'python')
 const hues = JSON.parse(execFileSync(python, ['-c',
-  'import json,sys;from sgt.tui.color import color_for;print(json.dumps([color_for(i) for i in json.load(sys.stdin)]))',
+  'import json,sys;from ugh.tui.color import color_for;print(json.dumps([color_for(i) for i in json.load(sys.stdin)]))',
 ], { input: JSON.stringify(ids) }))
 compose.map = { ...compose.map, nodes: compose.map.nodes.map((n, i) => ({ ...n, color: hues[i] })) }
 

@@ -1,4 +1,4 @@
-"""`sgt find`: the corpus, the two rungs, and the promise not to touch anything.
+"""`ugh find`: the corpus, the two rungs, and the promise not to touch anything.
 
 The semantic rung's ranking is tested against injected vectors rather than a
 live endpoint. Embedding calls cost money and need a key, so a test that made
@@ -13,8 +13,8 @@ import json
 
 import pytest
 
-from sgt.core.lens import init as kernel_init
-from sgt.lens import search
+from ugh.core.lens import init as kernel_init
+from ugh.lens import search
 
 
 @pytest.fixture()
@@ -49,7 +49,7 @@ def test_corpus_covers_features_and_their_symbols(repo, monkeypatch):
     """A feature carries its label, the sentence about it, and its symbols; each
     symbol is findable on its own and knows which feature to take you to."""
     monkeypatch.setattr(
-        "sgt.api.map_view",
+        "ugh.api.map_view",
         lambda *_a, **_k: {"nodes": [
             {
                 "id": "f-abc", "kind": "feature", "label": "Time Slots",
@@ -142,11 +142,11 @@ def test_search_changes_nothing(repo, monkeypatch):
 
 
 def test_cross_feature_work_is_indexed_under_the_label_a_verb_accepts(repo, monkeypatch):
-    """The ◆ row: the one unit `sgt revert`/`sgt restore` take by name, and the one thing find
+    """The ◆ row: the one unit `ugh revert`/`ugh restore` take by name, and the one thing find
     could not return. Indexed under the label, not the theme id, because the hit's own next-step
-    is `sgt show "<label>"` and that has to be a command that runs."""
+    is `ugh show "<label>"` and that has to be a command that runs."""
     monkeypatch.setattr(
-        "sgt.api.intent_view",
+        "ugh.api.intent_view",
         lambda *_a, **_k: {"themes": [
             {
                 "label": "Event Day Handling", "rationale": "Tracks exceptional days and keeps "
@@ -174,14 +174,14 @@ def test_a_save_says_which_piece_of_work_it_belongs_to(repo, monkeypatch):
     """A save hit used to print its own sha twice (`<sha>  save <sha>`) -- the one kind of hit
     with no context, where a feature gives its description and a symbol names its lane."""
     monkeypatch.setattr(
-        "sgt.api.intent_view",
+        "ugh.api.intent_view",
         lambda *_a, **_k: {"themes": [{
             "label": "Event Day Handling", "rationale": "why",
             "feature_span": ["f-a", "f-b"], "atom_shas": ["sha1", "sha2"],
         }]},
     )
     monkeypatch.setattr(
-        "sgt.api.history_view",
+        "ugh.api.history_view",
         lambda *_a, **_k: {"commits": [
             {"sha": "sha1" + "0" * 36, "subject": "keep event days out of the averages"},
             {"sha": "sha1", "subject": "mark event days on the charts"},

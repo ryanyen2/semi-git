@@ -12,12 +12,12 @@ without a map rebuild, and -- the crux -- survives a full recluster in that same
 
 from __future__ import annotations
 
-from sgt.core.lens import get
-from sgt.core.store import Store
-from sgt.lens import authored, ledger, tree
-from sgt.lens import map as lensmap
-from sgt.lens.pins import load_pins
-from sgt.store.gitbind import init_store
+from ugh.core.lens import get
+from ugh.core.store import Store
+from ugh.lens import authored, ledger, tree
+from ugh.lens import map as lensmap
+from ugh.lens.pins import load_pins
+from ugh.store.gitbind import init_store
 
 def _FS(pair):  # canonical (sorted-tuple) edge key -- see cluster.edge_key
     return tuple(sorted(pair))
@@ -193,14 +193,14 @@ def test_assign_at_save_seeds_a_new_lane_for_a_disconnected_symbol(tmp_path):
     # computes (`tree.label_tree` only lets a non-empty authored label override). The provisional name
     # is only the node's display label for the pre-rebuild grid window, and it names the *symbol*:
     # labelling the lane "island.py" made two lanes from one save indistinguishable in `log` and made
-    # `sgt show` answer "what is this feature" with a file path.
+    # `ugh show` answer "what is this feature" with a file path.
     assert authored.load_authored(tmp_path)[lane].label == ""
     assert persisted["nodes"][lane]["label"] == "omega"
 
 
 def test_two_new_lanes_from_one_save_get_distinguishable_provisional_labels(tmp_path):
     """One save that seeds two lanes must not label them the same thing. Labelling a lane after its
-    file did exactly that whenever the new symbols shared a file, and `sgt log` then printed two rows
+    file did exactly that whenever the new symbols shared a file, and `ugh log` then printed two rows
     a participant could not tell apart -- the observed shape of it was a save reporting two `new
     feature` lanes, one shown as "coursecraft/cli.py" and the other as "coursecraft/enrollment.py",
     neither carrying the words the user had just typed."""
@@ -223,7 +223,7 @@ def test_assign_at_save_leaves_the_joined_lanes_authored_label_empty(tmp_path):
     provisional node label (an LLM/fallback name, or a guessed file path for a provisional lane)
     would permanently shadow every future rebuild's label -- `tree.label_tree` lets any non-empty
     authored label override the clustered proposal. So a first-time cross-lane assign must leave the
-    register EMPTY; only a deliberate `sgt rename` fills it."""
+    register EMPTY; only a deliberate `ugh rename` fills it."""
     gb, result = _build_and_map(tmp_path)
     ideal, ops = _add_delta(tmp_path)
 
@@ -291,7 +291,7 @@ def test_new_lane_fallback_reuses_a_surviving_authored_record(tmp_path):
     the content-addressed id collides with the surviving register record BY DESIGN, so the mint
     must reuse that record -- mirroring the attach path's `if aid not in af` guard. Overwriting
     instead resets the CRDT clock and silently drops the label and every member added since (a
-    peer's `sgt move`, a `rename`), and sync then sees a rewrite, not a mergeable update."""
+    peer's `ugh move`, a `rename`), and sync then sees a rewrite, not a mergeable update."""
     from dataclasses import replace
 
     _build_and_map(tmp_path)
@@ -314,13 +314,13 @@ def test_new_lane_fallback_reuses_a_surviving_authored_record(tmp_path):
 def test_assign_at_save_ignores_a_symbol_the_history_deleted(tmp_path):
     """A tombstoned symbol still sits at the frontier -- its maximal in-ideal op is the removal --
     and it belongs to no leaf, so it passed the "genuinely new" filter and the cascade minted it a
-    lane. `tree.build`'s clusterer drops dead symbols (`sgt/lens/cluster.py`), so the two layers
+    lane. `tree.build`'s clusterer drops dead symbols (`ugh/lens/cluster.py`), so the two layers
     disagreed about the same symbol: every save made after a deletion added a permanent,
     empty-labelled root feature holding one dead symbol, and an authored lane is protected from
     rebuild, so it never went away again.
 
     Found on the study's practice repo, where three symbols are added and then dropped on purpose.
-    Its tree read four features until the participant's first `sgt save` and seven immediately
+    Its tree read four features until the participant's first `ugh save` and seven immediately
     after -- against a practice sheet that names the four and tells the reader that a tree showing
     anything else means they are in the wrong repository."""
     gb, _ = _build_and_map(tmp_path)

@@ -1,13 +1,13 @@
-"""Tests for sgt.core.fold -- code(I) materialization (plan U5, R3/R6/R7)."""
+"""Tests for ugh.core.fold -- code(I) materialization (plan U5, R3/R6/R7)."""
 
 from __future__ import annotations
 
 import pytest
 
-from sgt.core.fold import code
-from sgt.core.ideal import Ideal
-from sgt.core.mine import _ANCHOR_FIRST, _RESIDUE_HEAD, mine
-from sgt.core.op import BOTTOM, make_op
+from ugh.core.fold import code
+from ugh.core.ideal import Ideal
+from ugh.core.mine import _ANCHOR_FIRST, _RESIDUE_HEAD, mine
+from ugh.core.op import BOTTOM, make_op
 from tests.laws import corpus
 
 
@@ -144,7 +144,7 @@ def test_removed_entity_vanishes_but_sibling_survives():
 @pytest.mark.parametrize("case_name", ["linear_history", *corpus.GENERAL_CODE_CASES])
 def test_get_put_roundtrip_on_real_mined_corpus(tmp_path, case_name):
     """Verification (U5): the get-put law at entity granularity, exercised through the real
-    mining pipeline (ahead of U6's sgt.core.lens, which will run this as the actual law).
+    mining pipeline (ahead of U6's ugh.core.lens, which will run this as the actual law).
     Parametrized over the general-code-robustness fixtures (2026-07-08) as well as the original
     mining-edge-case corpus."""
     repo = corpus.CORPUS[case_name].build(tmp_path / "repo")

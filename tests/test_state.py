@@ -1,4 +1,4 @@
-"""Tests for `sgt.state` -- the `.sgt/` layout registry and schema envelope (plan U17, D3/C2).
+"""Tests for `ugh.state` -- the `.sgt/` layout registry and schema envelope (plan U17, D3/C2).
 
 Covers: the registry/codec round-trips both the pre-U17 (v0, no envelope) and the post-U17 (v1,
 `{"schema": 1, "data": ...}`) shape; the historical-blob dispatch (`load_blob_json`) that `sync`
@@ -13,16 +13,16 @@ from __future__ import annotations
 import json
 import subprocess
 
-from sgt import state
-from sgt.lens.pins import Pins, load_pins, save_pins
-from sgt.lens import tree
-from sgt.store.gitbind import GitBinding
+from ugh import state
+from ugh.lens.pins import Pins, load_pins, save_pins
+from ugh.lens import tree
+from ugh.store.gitbind import GitBinding
 
 
 def _init_repo(root):
     subprocess.run(["git", "init", "-q", "-b", "main", str(root)], check=True, capture_output=True)
-    subprocess.run(["git", "-C", str(root), "config", "user.name", "sgt-test"], check=True, capture_output=True)
-    subprocess.run(["git", "-C", str(root), "config", "user.email", "test@semi-git.local"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(root), "config", "user.name", "ugh-test"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(root), "config", "user.email", "test@ugh.local"], check=True, capture_output=True)
     subprocess.run(["git", "-C", str(root), "config", "commit.gpgsign", "false"], check=True, capture_output=True)
 
 
@@ -238,7 +238,7 @@ def test_concurrent_locked_section_writers_lose_no_update(tmp_path):
     write appending to a shared local table. Under the store flock both appends survive; without
     it the last writer would clobber the other's."""
     import threading
-    from sgt.core.store import Store, locked_section
+    from ugh.core.store import Store, locked_section
     Store(tmp_path).init()
     state.save_json(tmp_path, "drafts", {"items": []})
     barrier = threading.Barrier(2)

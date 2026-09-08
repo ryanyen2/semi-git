@@ -1,12 +1,12 @@
-"""Tests for sgt.loop.match -- checkpoint matching + confirm (plan U14, R18/R21)."""
+"""Tests for ugh.loop.match -- checkpoint matching + confirm (plan U14, R18/R21)."""
 
 from __future__ import annotations
 
-from sgt.core.op import Attribution, make_op
-from sgt.core.order import is_valid_ideal
-from sgt.core.store import Store
-from sgt.loop import match as match_mod
-from sgt.loop import plan as plan_mod
+from ugh.core.op import Attribution, make_op
+from ugh.core.order import is_valid_ideal
+from ugh.core.store import Store
+from ugh.loop import match as match_mod
+from ugh.loop import plan as plan_mod
 
 
 def _hollow_step(store, session_id, i, title, predicted_footprint):
@@ -352,7 +352,7 @@ def test_confirm_match_reflects_a_local_rationale_record(tmp_path):
     record -- reason from the fulfilled step, the matched op as subject, actor human, inferred
     (unconfirmed). The evidence turn only exists if the plan came through `intake`; a directly
     seeded session has none, and the record is still valid (its reason came from the step)."""
-    from sgt.intent import rationale as rationale_mod
+    from ugh.intent import rationale as rationale_mod
 
     store = Store(tmp_path)
     steps = _seed_session(tmp_path, "s1", set(), [("add the login guard", ["a.py::foo"])])

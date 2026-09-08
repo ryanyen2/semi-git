@@ -1,5 +1,5 @@
 """The color contract: the OKLCH identity generator must be byte-identical across all three
-mirrors — Python (`sgt/tui/color.py`), the webview JS (`editor/vscode/media/decision.js`), and
+mirrors — Python (`ugh/tui/color.py`), the webview JS (`editor/vscode/media/decision.js`), and
 the extension-host TypeScript (`editor/vscode/src/color.ts`).
 
 Each JS/TS side is driven straight from its own source (the math functions are sliced out and
@@ -18,7 +18,7 @@ import tempfile
 
 import pytest
 
-from sgt.tui.color import color_for
+from ugh.tui.color import color_for
 
 _ROOT = pathlib.Path(__file__).resolve().parents[1]
 _GRAPH_JS = _ROOT / "editor/vscode/media/decision.js"

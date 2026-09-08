@@ -6,8 +6,8 @@ from __future__ import annotations
 
 import json
 
-from sgt.mcp import handle_request
-from sgt.store.gitbind import init_store
+from ugh.mcp import handle_request
+from ugh.store.gitbind import init_store
 
 
 def _seed(tmp_path, n: int = 2) -> str:
@@ -33,7 +33,7 @@ def test_initialize_advertises_tools_capability(tmp_path):
     resp = handle_request(repo, {"jsonrpc": "2.0", "id": 0, "method": "initialize",
                                  "params": {"protocolVersion": "2024-11-05"}})
     assert resp["result"]["capabilities"]["tools"] == {}
-    assert resp["result"]["serverInfo"]["name"] == "semi-git"
+    assert resp["result"]["serverInfo"]["name"] == "ugh"
 
 
 def test_initialized_notification_has_no_response(tmp_path):
@@ -54,24 +54,24 @@ def test_tools_list_advertises_kernel_surface(tmp_path):
     #     supervised caller.
     #   * the feature verbs (merge/split/move/rename) set authored labels and re-cut groupings,
     #     which permanently override generated ones -- a human call made while looking at the graph.
-    #   * `sgt_grid` returns a *complete* projection (right for a TUI/webview that draws it, wrong
+    #   * `ugh_grid` returns a *complete* projection (right for a TUI/webview that draws it, wrong
     #     for a model that never does): ~129,000 tokens on a 290-commit repo, growing with history.
-    assert names == {"sgt_init", "sgt_log", "sgt_status", "sgt_diff", "sgt_advanced_fsck",
-                      "sgt_revert", "sgt_restore", "sgt_advanced_oracle_run",
-                      "sgt_plan_intake", "sgt_checkpoint", "sgt_drift", "sgt_plan_done",
-                      "sgt_plan_adopt", "sgt_recall", "sgt_now", "sgt_show",
+    assert names == {"ugh_init", "ugh_log", "ugh_status", "ugh_diff", "ugh_advanced_fsck",
+                      "ugh_revert", "ugh_restore", "ugh_advanced_oracle_run",
+                      "ugh_plan_intake", "ugh_checkpoint", "ugh_drift", "ugh_plan_done",
+                      "ugh_plan_adopt", "ugh_recall", "ugh_now", "ugh_show",
                       # An agent could read the graph and edit code but record neither, so a human
                       # relayed every save by hand -- the back-and-forth between editor, terminal
                       # and agent that the graph exists to remove.
-                      "sgt_save",
+                      "ugh_save",
                       # Every other tool here needs an id the caller already holds. Without a way
                       # in from a description, an agent asked to remove "the waitlist" had to
                       # guess at symbols or read the whole graph to find one.
-                      "sgt_find",
+                      "ugh_find",
                       # Read-only context pack for one checkpoint (weave P4): the asks, the
                       # recorded why, the blast radius, the resume handles -- what an agent reads
                       # before editing from a chapter, instead of inferring intent from a diff.
-                      "sgt_checkpoint_context"}
+                      "ugh_checkpoint_context"}
 
 
 def test_unknown_method_is_method_not_found(tmp_path):
@@ -82,7 +82,7 @@ def test_unknown_method_is_method_not_found(tmp_path):
 
 def test_unknown_tool_is_reported_as_tool_error(tmp_path):
     repo = _seed(tmp_path, 1)
-    resp, payload = _call(repo, "sgt_nope")
+    resp, payload = _call(repo, "ugh_nope")
     assert resp["result"]["isError"] is True and "unknown tool" in payload["error"]
 
 
@@ -92,7 +92,7 @@ def test_tool_call_response_text_has_no_indent_whitespace(tmp_path):
     whitespace, whatever the tool's own shape."""
     repo = _seed(tmp_path, 1)
     msg = {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
-           "params": {"name": "sgt_log", "arguments": {}}}
+           "params": {"name": "ugh_log", "arguments": {}}}
     resp = handle_request(repo, msg)
     text = resp["result"]["content"][0]["text"]
     assert "\n" not in text and ": " not in text
@@ -101,14 +101,14 @@ def test_tool_call_response_text_has_no_indent_whitespace(tmp_path):
 # -- read tools -------------------------------------------------------------
 def test_log_lists_mined_ops(tmp_path):
     repo = _seed(tmp_path, 1)
-    _, payload = _call(repo, "sgt_log")
+    _, payload = _call(repo, "ugh_log")
     assert payload["count"] >= 1
     assert any("a.py::foo" in op["symbols"] for op in payload["ops"])  # compact by default
 
 
 def test_log_full_carries_footprint(tmp_path):
     repo = _seed(tmp_path, 1)
-    _, payload = _call(repo, "sgt_log", {"full": True})
+    _, payload = _call(repo, "ugh_log", {"full": True})
     assert any("a.py::foo" in [f["symbol"] for f in op["footprint"]] for op in payload["ops"])
 
 
@@ -118,82 +118,82 @@ def test_the_grid_is_not_an_mcp_tool_and_log_stays_bounded(tmp_path):
     `grid_view` is a *complete* projection on purpose -- a TUI or webview needs every cell to draw
     one -- but a language model never draws it, so over MCP that completeness is pure cost. Measured
     on a 290-commit repo it was ~515 KB, about 129,000 tokens in one tool result, and it grows with
-    history (1.5k tokens at 10 commits, 4.6k at 30, 6.5k at 60). `sgt_log` answers the same "what
+    history (1.5k tokens at 10 commits, 4.6k at 30, 6.5k at 60). `ugh_log` answers the same "what
     happened" question at a flat ~1.1k tokens because it is windowed.
 
     The projection itself is untouched and still tested in `tests/test_api.py`; only the MCP exposure
     is gone. This test exists so re-adding it requires deleting an explanation rather than just
     appending a registry entry."""
-    from sgt.lens.map import build_map
+    from ugh.lens.map import build_map
 
     repo = _seed(tmp_path, 2)
     build_map(repo)
     # `grid_view`'s own shape (including `save_count`/`bookkeeping_count`) is asserted in
     # `tests/test_api.py`, which is where it belongs now that the projection has no MCP surface.
 
-    resp, payload = _call(repo, "sgt_grid")
+    resp, payload = _call(repo, "ugh_grid")
     assert resp["result"]["isError"] is True
     assert "unknown tool" in payload["error"]
 
-    # `sgt_log` still returns the op DAG (the KTD9 schema-stable contract) and carries the
+    # `ugh_log` still returns the op DAG (the KTD9 schema-stable contract) and carries the
     # `truncated` flag that tells a caller a window was applied rather than hiding it.
-    _, log = _call(repo, "sgt_log")
+    _, log = _call(repo, "ugh_log")
     assert set(log) == {"count", "kinds", "truncated", "ops"}
 
 
 def test_state_shows_frontier(tmp_path):
     repo = _seed(tmp_path, 1)
-    _, payload = _call(repo, "sgt_status")
+    _, payload = _call(repo, "ugh_status")
     assert payload["oracle_configured"] is False
     assert "frontier" not in payload  # compact by default
 
 
 def test_state_full_carries_frontier(tmp_path):
     repo = _seed(tmp_path, 1)
-    _, payload = _call(repo, "sgt_status", {"full": True})
+    _, payload = _call(repo, "ugh_status", {"full": True})
     assert "a.py::foo" in payload["frontier"]
 
 
 def test_diff_requires_both_refs(tmp_path):
     repo = _seed(tmp_path, 1)
-    _, payload = _call(repo, "sgt_diff", {"ref_a": "HEAD"})
+    _, payload = _call(repo, "ugh_diff", {"ref_a": "HEAD"})
     assert "error" in payload
 
 
 def test_fsck_reports_clean_store(tmp_path):
     repo = _seed(tmp_path, 1)
-    _call(repo, "sgt_log")  # mine, so the store isn't empty
-    _, payload = _call(repo, "sgt_advanced_fsck")
+    _call(repo, "ugh_log")  # mine, so the store isn't empty
+    _, payload = _call(repo, "ugh_advanced_fsck")
     assert payload["ok"] is True and payload["checked"] >= 1
 
 
 # -- write tools --------------------------------------------------------------
 def test_revert_tool_removes_the_upset(tmp_path):
     repo = _seed(tmp_path, 2)
-    _, payload = _call(repo, "sgt_revert", {"ref": "a.py::foo"})
+    _, payload = _call(repo, "ugh_revert", {"ref": "a.py::foo"})
     assert payload["ok"] and payload["removed"]
     assert (tmp_path / "a.py").read_text() == "def foo():\n    return 1\n"
 
 
 def test_revert_emit_previews_without_writing(tmp_path):
     repo = _seed(tmp_path, 2)
-    _, payload = _call(repo, "sgt_revert", {"ref": "a.py::foo", "emit": True})
+    _, payload = _call(repo, "ugh_revert", {"ref": "a.py::foo", "emit": True})
     assert payload["ok"]
     assert (tmp_path / "a.py").read_text() == "def foo():\n    return 2\n"  # untouched
 
 
 def test_restore_tool_is_reverts_inverse(tmp_path):
     repo = _seed(tmp_path, 2)
-    _call(repo, "sgt_revert", {"ref": "a.py::foo"})
+    _call(repo, "ugh_revert", {"ref": "a.py::foo"})
     assert (tmp_path / "a.py").read_text() == "def foo():\n    return 1\n"
-    _, payload = _call(repo, "sgt_restore", {"ref": "a.py::foo"})
+    _, payload = _call(repo, "ugh_restore", {"ref": "a.py::foo"})
     assert payload["ok"] and payload["added"]
     assert (tmp_path / "a.py").read_text() == "def foo():\n    return 2\n"
 
 
 def test_revert_missing_ref_is_an_error(tmp_path):
     repo = _seed(tmp_path, 1)
-    _, payload = _call(repo, "sgt_revert", {})
+    _, payload = _call(repo, "ugh_revert", {})
     assert "error" in payload
 
 
@@ -208,13 +208,13 @@ def test_init_tool_bootstraps_workspace(tmp_path):
     subprocess.run(["git", "add", "a.py"], cwd=fresh, check=True)
     subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=fresh, check=True)
 
-    _, payload = _call(str(fresh), "sgt_init")
+    _, payload = _call(str(fresh), "ugh_init")
     assert payload["ok"] and (fresh / ".sgt").exists()
 
 
 def test_oracle_run_tool_with_no_config(tmp_path):
     repo = _seed(tmp_path, 1)
-    _, payload = _call(repo, "sgt_advanced_oracle_run")
+    _, payload = _call(repo, "ugh_advanced_oracle_run")
     assert payload["configured"] is False
 
 
@@ -224,12 +224,12 @@ def _no_client(*args, **kwargs):
 
 
 def test_plan_intake_tool_mints_steps_from_a_numbered_list(tmp_path, monkeypatch):
-    from sgt.loop import plan as plan_mod
+    from ugh.loop import plan as plan_mod
 
     monkeypatch.setattr(plan_mod, "get_client", _no_client)
     repo = _seed(tmp_path, 1)
     _, payload = _call(
-        repo, "sgt_plan_intake", {"plan_text": "1. step one\n2. step two\n", "session_id": "s1"}
+        repo, "ugh_plan_intake", {"plan_text": "1. step one\n2. step two\n", "session_id": "s1"}
     )
     assert payload["session_id"] == "s1"
     assert payload["step_count"] == 2
@@ -238,17 +238,17 @@ def test_plan_intake_tool_mints_steps_from_a_numbered_list(tmp_path, monkeypatch
 
 def test_plan_intake_tool_requires_plan_text(tmp_path):
     repo = _seed(tmp_path, 1)
-    _, payload = _call(repo, "sgt_plan_intake", {})
+    _, payload = _call(repo, "ugh_plan_intake", {})
     assert "error" in payload
 
 
 def test_checkpoint_tool_previews_then_confirms(tmp_path, monkeypatch):
     from pathlib import Path
 
-    from sgt.core.op import make_op
-    from sgt.core.store import Store
-    from sgt.loop import plan as plan_mod
-    from sgt.store.gitbind import GitBinding
+    from ugh.core.op import make_op
+    from ugh.core.store import Store
+    from ugh.loop import plan as plan_mod
+    from ugh.store.gitbind import GitBinding
 
     monkeypatch.setattr(plan_mod, "get_client", _no_client)
     repo = _seed(tmp_path, 1)  # a.py::foo == "return 1"
@@ -273,18 +273,18 @@ def test_checkpoint_tool_previews_then_confirms(tmp_path, monkeypatch):
     (repo_path / "a.py").write_text("def foo():\n    return 99\n", encoding="utf-8")
     GitBinding(repo).commit_all("touch foo")
 
-    _, preview = _call(repo, "sgt_checkpoint")
+    _, preview = _call(repo, "ugh_checkpoint")
     assert len(preview["matches"]) == 1
     group = preview["matches"][0]
     assert group["session_id"] == "s1"
 
     _, confirmed = _call(
-        repo, "sgt_checkpoint",
+        repo, "ugh_checkpoint",
         {"confirm": [{"hollow_ids": group["hollow_ids"], "op_ids": group["op_ids"]}]},
     )
     assert confirmed["matches"] == []  # the step is no longer pending
 
-    from sgt.api import plan_view
+    from ugh.api import plan_view
 
     # Confirming the only step completes the session, so it leaves the active review surface
     # (`plan_view`); its matched step is recorded in the full table for provenance.
@@ -295,13 +295,13 @@ def test_checkpoint_tool_previews_then_confirms(tmp_path, monkeypatch):
 
 def test_drift_tool_reports_nothing_with_no_active_session(tmp_path):
     repo = _seed(tmp_path, 2)  # two commits, but no plan session at all
-    _, payload = _call(repo, "sgt_drift")
+    _, payload = _call(repo, "ugh_drift")
     assert payload["op_ids"] == []  # compact by default
 
 
 def test_drift_full_carries_entries(tmp_path):
     repo = _seed(tmp_path, 2)
-    _, payload = _call(repo, "sgt_drift", {"full": True})
+    _, payload = _call(repo, "ugh_drift", {"full": True})
     assert payload["entries"] == []
 
 
@@ -309,12 +309,12 @@ def test_drift_full_carries_entries(tmp_path):
 
 def _skill_text() -> str | None:
     from pathlib import Path
-    p = Path(__file__).resolve().parents[2] / ".claude" / "skills" / "sgt-plan" / "SKILL.md"
+    p = Path(__file__).resolve().parents[2] / ".claude" / "skills" / "ugh-plan" / "SKILL.md"
     return p.read_text(encoding="utf-8") if p.is_file() else None
 
 
 def test_plan_skill_and_mcp_tool_name_the_same_session_id_variable():
-    """The `sgt-plan` skill told agents to store `$CLAUDE_CODE_BRIDGE_SESSION_ID` while the
+    """The `ugh-plan` skill told agents to store `$CLAUDE_CODE_BRIDGE_SESSION_ID` while the
     `UserPromptSubmit` hook keys captured prompts by `$CLAUDE_CODE_SESSION_ID`. The two never
     matched, so an agent that followed the skill silently lost both the prompt-to-commit join and
     the `claude --resume` handle -- with nothing failing loudly enough to notice.
@@ -325,9 +325,9 @@ def test_plan_skill_and_mcp_tool_name_the_same_session_id_variable():
         import pytest
         pytest.skip("skill file not present in this checkout")
 
-    from sgt.mcp.server import TOOLS
+    from ugh.mcp.server import TOOLS
 
-    intake_schema = TOOLS["sgt_plan_intake"][1]
+    intake_schema = TOOLS["ugh_plan_intake"][1]
     tool_desc = intake_schema["properties"]["claude_session_id"]["description"]
 
     assert "CLAUDE_CODE_SESSION_ID" in tool_desc
@@ -347,12 +347,12 @@ def test_plan_skill_and_mcp_tool_name_the_same_session_id_variable():
 def test_plan_done_refuses_to_close_another_agents_plan(tmp_path):
     """Ownership was stated in the skill ("only confirm your own") and enforced by nothing: any
     agent holding another's session id could close its plan out from under it, mid-build."""
-    from sgt.loop import plan as plan_mod
+    from ugh.loop import plan as plan_mod
 
     repo = _seed(tmp_path, 1)
     plan_mod.intake(repo, "1. do the thing\n", session_id="theirs", claude_session_id="chat-A")
 
-    _, refused = _call(repo, "sgt_plan_done", {"session_id": "theirs", "claude_session_id": "chat-B"})
+    _, refused = _call(repo, "ugh_plan_done", {"session_id": "theirs", "claude_session_id": "chat-B"})
     # Assert what makes a refusal actionable rather than one phrasing of it: who owns the plan, and
     # what to do about it. A substring match on a sentence goes red on any rewording of the same
     # message, which teaches the next person to weaken the message rather than keep it useful.
@@ -362,19 +362,19 @@ def test_plan_done_refuses_to_close_another_agents_plan(tmp_path):
     assert refused.get("owner") == "chat-A"
     assert plan_mod.active_sessions(repo).get("theirs") is not None  # still open
 
-    _, ok = _call(repo, "sgt_plan_done", {"session_id": "theirs", "claude_session_id": "chat-A"})
+    _, ok = _call(repo, "ugh_plan_done", {"session_id": "theirs", "claude_session_id": "chat-A"})
     assert ok.get("ok") is True
 
 
 def test_plan_done_without_a_caller_id_still_closes(tmp_path):
     """Identifying yourself is what buys the check; a caller that cannot (a human on the CLI, an
     older agent) keeps the previous behavior rather than being locked out."""
-    from sgt.loop import plan as plan_mod
+    from ugh.loop import plan as plan_mod
 
     repo = _seed(tmp_path, 1)
     plan_mod.intake(repo, "1. do the thing\n", session_id="theirs", claude_session_id="chat-A")
 
-    _, ok = _call(repo, "sgt_plan_done", {"session_id": "theirs"})
+    _, ok = _call(repo, "ugh_plan_done", {"session_id": "theirs"})
     assert ok.get("ok") is True
 
 
@@ -387,7 +387,7 @@ def test_save_records_the_agents_edits(tmp_path):
     repo = _seed(tmp_path, 1)
     (tmp_path / "a.py").write_text("def foo():\n    return 99\n", encoding="utf-8")
 
-    _, payload = _call(repo, "sgt_save", {"message": "bump foo"})
+    _, payload = _call(repo, "ugh_save", {"message": "bump foo"})
 
     assert payload["ok"] is True and payload["saved"] is True
     assert payload["commit"]
@@ -400,13 +400,13 @@ def test_save_carries_the_driving_prompt_into_the_closing_manifest(tmp_path):
     the door the user's ask arrives through. With a chat key the turn is recorded *before* the
     save, so the capture window this save closes carries it -- channel `agent`, the trust tier for
     a relayed claim of the user's verbatim words."""
-    from sgt.intent.manifest import load_manifests
-    from sgt.intent.turns import turns_for
+    from ugh.intent.manifest import load_manifests
+    from ugh.intent.turns import turns_for
 
     repo = _seed(tmp_path, 1)
     (tmp_path / "a.py").write_text("def foo():\n    return 99\n", encoding="utf-8")
 
-    _, payload = _call(repo, "sgt_save", {"message": "bump foo", "prompt": "make foo return 99",
+    _, payload = _call(repo, "ugh_save", {"message": "bump foo", "prompt": "make foo return 99",
                                           "claude_session_id": "cs-42"})
 
     assert payload["saved"] is True
@@ -417,8 +417,8 @@ def test_save_carries_the_driving_prompt_into_the_closing_manifest(tmp_path):
     assert "make foo return 99" in [t["text"] for t in rec["turns"]]
     # An MCP client without hooks produces no activity events, so nothing grounds file-by-file --
     # but the deliberate carry is a whole-save claim, and the save's reflection records it (P2):
-    # `sgt why <sha>` answers with the user's words from the very next read.
-    from sgt.api import why_view
+    # `ugh why <sha>` answers with the user's words from the very next read.
+    from ugh.api import why_view
     reasons = [r["reason"] for r in why_view(repo, payload["commit"])["rationale"]]
     assert "make foo return 99" in reasons
 
@@ -427,12 +427,12 @@ def test_save_without_a_chat_key_keys_the_prompt_by_the_new_commit(tmp_path):
     """No session id, no pre-save key -- so the prompt is recorded after the save, keyed by the
     commit sha it produced (the direct key `_atom_prompt` joins first). The words still reach
     every read surface; they just don't ride the manifest."""
-    from sgt.intent.turns import turns_for
+    from ugh.intent.turns import turns_for
 
     repo = _seed(tmp_path, 1)
     (tmp_path / "a.py").write_text("def foo():\n    return 99\n", encoding="utf-8")
 
-    _, payload = _call(repo, "sgt_save", {"prompt": "make foo return 99"})
+    _, payload = _call(repo, "ugh_save", {"prompt": "make foo return 99"})
 
     assert payload["saved"] is True
     hits = turns_for(repo, payload["commit"], key_kind="sha")
@@ -440,21 +440,21 @@ def test_save_without_a_chat_key_keys_the_prompt_by_the_new_commit(tmp_path):
     assert hits[0]["channel"] == "agent"
     # The carry landed after the save's own reflection, so tool_save re-reflects: the sha-keyed
     # prompt still becomes a save-wide recorded why.
-    from sgt.api import why_view
+    from ugh.api import why_view
     reasons = [r["reason"] for r in why_view(repo, payload["commit"])["rationale"]]
     assert "make foo return 99" in reasons
 
 
 def test_checkpoint_context_prepares_an_agent_to_edit_from_a_chapter(tmp_path):
-    """Weave P4, the hookless-MCP path end to end: the carry on `sgt_save` is the only capture
+    """Weave P4, the hookless-MCP path end to end: the carry on `ugh_save` is the only capture
     channel, and the pack still answers with the user's ask (`whole_save_turns` -- the same
     whole-save rule the rationale emission applies), the recorded why, and the resume handle."""
-    from sgt.core.store import Store
-    from sgt.lens import tree
+    from ugh.core.store import Store
+    from ugh.lens import tree
 
     repo = _seed(tmp_path, 1)
     (tmp_path / "a.py").write_text("def foo():\n    return 99\n", encoding="utf-8")
-    _, saved = _call(repo, "sgt_save", {"prompt": "make foo return 99",
+    _, saved = _call(repo, "ugh_save", {"prompt": "make foo return 99",
                                         "claude_session_id": "cs-42"})
     assert saved["saved"] is True
 
@@ -464,7 +464,7 @@ def test_checkpoint_context_prepares_an_agent_to_edit_from_a_chapter(tmp_path):
                          "op_leaf": tree.assign_ops_to_leaves(nodes, Store(tmp_path).all_ops()),
                          "max_depth": 0, "cannot_link_moves": [], "identity_events": []})
 
-    _, pack = _call(repo, "sgt_checkpoint_context", {"checkpoint": "F-A@0"})
+    _, pack = _call(repo, "ugh_checkpoint_context", {"checkpoint": "F-A@0"})
 
     assert pack["ok"] is True
     assert "make foo return 99" in [a["text"] for a in pack["asked"]]
@@ -479,15 +479,15 @@ def test_checkpoint_context_prepares_an_agent_to_edit_from_a_chapter(tmp_path):
 
 def test_checkpoint_context_requires_a_checkpoint_arg(tmp_path):
     repo = _seed(tmp_path, 1)
-    _, payload = _call(repo, "sgt_checkpoint_context", {})
+    _, payload = _call(repo, "ugh_checkpoint_context", {})
     assert payload["error"] == "missing 'checkpoint'"
 
 
 def test_save_on_a_clean_tree_says_so_rather_than_committing_nothing(tmp_path):
     repo = _seed(tmp_path, 1)
-    _call(repo, "sgt_log")  # mine, so the ideal is current
+    _call(repo, "ugh_log")  # mine, so the ideal is current
 
-    _, payload = _call(repo, "sgt_save", {})
+    _, payload = _call(repo, "ugh_save", {})
 
     assert payload["ok"] is True and payload["saved"] is False
 
@@ -495,14 +495,14 @@ def test_save_on_a_clean_tree_says_so_rather_than_committing_nothing(tmp_path):
 def test_now_gives_an_agent_the_users_own_ask(tmp_path):
     """`working_on` is as useful to the agent as to the human: picking work back up, it says what
     was actually asked instead of leaving the agent to infer it from a diff."""
-    from sgt.intent.turns import record_turn
+    from ugh.intent.turns import record_turn
 
     repo = _seed(tmp_path, 1)
     record_turn(repo, key="chat-1", key_kind="chat", actor="human", channel="hook",
                 text="Add rate limiting to the API")
     (tmp_path / "a.py").write_text("def foo():\n    return 99\n", encoding="utf-8")
 
-    _, payload = _call(repo, "sgt_now")
+    _, payload = _call(repo, "ugh_now")
 
     assert payload["working_on"]["title"] == "Add rate limiting to the API"
     assert payload["working_on"]["source"] == "prompt"
@@ -512,8 +512,8 @@ def test_show_reads_a_past_file_without_touching_the_tree(tmp_path):
     repo = _seed(tmp_path, 3)
     before = (tmp_path / "a.py").read_text(encoding="utf-8")
 
-    _, listing = _call(repo, "sgt_show", {"at": "0"})
-    _, content = _call(repo, "sgt_show", {"at": "0", "path": "a.py"})
+    _, listing = _call(repo, "ugh_show", {"at": "0"})
+    _, content = _call(repo, "ugh_show", {"at": "0", "path": "a.py"})
 
     assert listing["files"] == ["a.py"]
     assert "return 1" in content["content"]
@@ -525,7 +525,7 @@ def test_a_failing_verb_is_a_tool_error_not_a_dead_server(tmp_path):
     must come back as an error payload, never as stray output mid-transport."""
     repo = _seed(tmp_path, 1)
 
-    resp, payload = _call(repo, "sgt_show", {"at": "op:not-a-real-op-id"})
+    resp, payload = _call(repo, "ugh_show", {"at": "op:not-a-real-op-id"})
 
     assert "error" in payload
     assert resp["result"]["isError"] is True
@@ -539,12 +539,12 @@ def test_a_cross_feature_label_resolves_the_way_it_does_in_the_terminal(tmp_path
     unit goes back to editing files by hand -- the same reason the feature rung was added."""
     import subprocess
 
-    from sgt import state
+    from ugh import state
 
     repo = _seed(tmp_path, 2)
     shas = subprocess.run(["git", "log", "--format=%H"], cwd=repo, capture_output=True,
                           text=True, check=True).stdout.split()
-    # What `sgt intent build` persists, and what `sgt log`'s footer draws as a ◆ row.
+    # What `ugh intent build` persists, and what `ugh log`'s footer draws as a ◆ row.
     state.save_json_if_changed(repo, "intent_themes", {"theme-abc123456789": {
         "label": "Event Day Handling",
         "rationale": "Tracks exceptional days and keeps them out of the averages.",
@@ -552,7 +552,7 @@ def test_a_cross_feature_label_resolves_the_way_it_does_in_the_terminal(tmp_path
         "source": "llm",
     }})
 
-    _, payload = _call(repo, "sgt_revert", {"ref": "Event Day Handling", "emit": True})
+    _, payload = _call(repo, "ugh_revert", {"ref": "Event Day Handling", "emit": True})
     assert payload["ok"], payload["message"]
     assert payload["target"] == "Event Day Handling"
     assert payload["removed"], "resolved the name but planned no removal"
@@ -561,15 +561,15 @@ def test_a_cross_feature_label_resolves_the_way_it_does_in_the_terminal(tmp_path
 
 def test_restore_answers_to_the_name_a_revert_was_recorded_under(tmp_path):
     """F141 through MCP: the handle outlives the op ids it resolved to. A re-mine renames the ◆,
-    so the name the person holds stops resolving -- and `sgt undo` could still reverse the edit,
+    so the name the person holds stops resolving -- and `ugh undo` could still reverse the edit,
     because it replays the journal instead of re-resolving a name. So does this."""
     repo = _seed(tmp_path, 2)
-    _, rev = _call(repo, "sgt_revert", {"ref": "a.py::foo"})
+    _, rev = _call(repo, "ugh_revert", {"ref": "a.py::foo"})
     assert rev["ok"]
     assert (tmp_path / "a.py").read_text() == "def foo():\n    return 1\n"
 
     # The name it was recorded under is the op id here; what matters is that resolution goes
     # through the journal rung rather than through anything that has to still resolve.
-    _, back = _call(repo, "sgt_restore", {"ref": rev["target"]})
+    _, back = _call(repo, "ugh_restore", {"ref": rev["target"]})
     assert back["ok"], back["message"]
     assert (tmp_path / "a.py").read_text() == "def foo():\n    return 2\n"

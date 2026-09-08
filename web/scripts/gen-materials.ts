@@ -21,10 +21,10 @@ export const SHEETS: Record<string, string> = {
   // "the git sheet" is not one document any more.
   '../docs/study/materials/02-tutorial-git-bikecount.md': sheetTutorialMd('git', 'bikecount'),
   '../docs/study/materials/02-tutorial-git-footfall.md': sheetTutorialMd('git', 'footfall'),
-  '../docs/study/materials/02-tutorial-sgt-bikecount.md': sheetTutorialMd('sgt', 'bikecount'),
-  '../docs/study/materials/02-tutorial-sgt-footfall.md': sheetTutorialMd('sgt', 'footfall'),
+  '../docs/study/materials/02-tutorial-ugh-bikecount.md': sheetTutorialMd('sgt', 'bikecount'),
+  '../docs/study/materials/02-tutorial-ugh-footfall.md': sheetTutorialMd('sgt', 'footfall'),
   '../docs/study/materials/03-tasks-bikecount-git.md': sheetTasksMd('bikecount', 'git'),
-  '../docs/study/materials/03-tasks-bikecount-sgt.md': sheetTasksMd('bikecount', 'sgt'),
+  '../docs/study/materials/03-tasks-bikecount-ugh.md': sheetTasksMd('bikecount', 'sgt'),
   '../docs/study/materials/03-tasks-footfall-git.md': sheetTasksMd('footfall', 'git'),
-  '../docs/study/materials/03-tasks-footfall-sgt.md': sheetTasksMd('footfall', 'sgt'),
+  '../docs/study/materials/03-tasks-footfall-ugh.md': sheetTasksMd('footfall', 'sgt'),
 }

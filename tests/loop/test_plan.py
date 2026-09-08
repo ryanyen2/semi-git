@@ -1,4 +1,4 @@
-"""Tests for sgt.loop.plan -- plan intake, abandonment, staleness sweep (plan U14, R18/R21)."""
+"""Tests for ugh.loop.plan -- plan intake, abandonment, staleness sweep (plan U14, R18/R21)."""
 
 from __future__ import annotations
 
@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from sgt.core.op import make_op
-from sgt.core.order import is_valid_ideal
-from sgt.core.store import Store
-from sgt.loop import plan as plan_mod
+from ugh.core.op import make_op
+from ugh.core.order import is_valid_ideal
+from ugh.core.store import Store
+from ugh.loop import plan as plan_mod
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -177,23 +177,23 @@ def test_intake_reaps_stale_sessions_before_creating_a_new_one(tmp_path, monkeyp
 
 def test_intake_grounds_predicted_feature_in_a_real_feature_id_via_live_llm(tmp_path):
     """Not mocked -- exercised for real against a real fixture repo's own feature tree, so
-    `predicted_feature` names an id `sgt map` actually produced, never a hallucinated one.
+    `predicted_feature` names an id `ugh map` actually produced, never a hallucinated one.
 
-    OPT-IN ONLY (`SGT_LIVE_LLM_TESTS=1`): this used to load the project's own `.env`, which made
+    OPT-IN ONLY (`UGH_LIVE_LLM_TESTS=1`): this used to load the project's own `.env`, which made
     the one live call run inside every default suite -- nondeterministic (it flaked on an answer
     shape), slow, and billable, in a suite whose whole discipline is "creds unset, deterministic
     fallbacks". The default suite verifies the deterministic machinery; the live grounding check
     runs when someone deliberately asks for it."""
     import os
 
-    from sgt.api import map_view
-    from sgt.config import load_env
-    from sgt.core.lens import get
-    from sgt.lens.map import build_map
+    from ugh.api import map_view
+    from ugh.config import load_env
+    from ugh.core.lens import get
+    from ugh.lens.map import build_map
     from tests.laws import corpus
 
-    if not os.environ.get("SGT_LIVE_LLM_TESTS"):
-        pytest.skip("live-LLM test: set SGT_LIVE_LLM_TESTS=1 to run it deliberately")
+    if not os.environ.get("UGH_LIVE_LLM_TESTS"):
+        pytest.skip("live-LLM test: set UGH_LIVE_LLM_TESTS=1 to run it deliberately")
     load_env(_REPO_ROOT)  # populate OPENAI_API_KEY from this project's own .env, once
     if not os.environ.get("OPENAI_API_KEY"):
         pytest.skip("requires a live OPENAI_API_KEY (.env or environment); LLM path cannot run")
@@ -278,7 +278,7 @@ def test_a_fresh_session_id_still_takes_a_current_baseline(tmp_path, monkeypatch
 
 
 def test_sweep_never_closes_a_session_the_save_just_asked_to_resolve(tmp_path, monkeypatch):
-    """`sgt save` printed "run `sgt save --resolve-plan` to settle this" and, in the same beat,
+    """`ugh save` printed "run `ugh save --resolve-plan` to settle this" and, in the same beat,
     auto-closed the session as walked-away -- so the advertised next command answered "not a known
     pending hollow id". The user has not walked away from a plan they were invited to finish one
     line earlier, however long it has been quiet."""
@@ -307,8 +307,8 @@ def test_ground_footprints_coerces_a_qualname_to_the_file_when_that_file_has_no_
     qualname in a file the repo knows to hold no named entities is the file, predicted at file scope.
     A file that does hold named entities keeps the qualname, and a file the repo has never seen is
     new work and keeps it too."""
-    from sgt.core.op import make_op
-    from sgt.core.store import Store
+    from ugh.core.op import make_op
+    from ugh.core.store import Store
 
     store = Store(tmp_path)
     store.add(make_op({"src/kinds/T.ts::__import__::./registry": (None, "v1"),

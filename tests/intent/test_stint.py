@@ -1,11 +1,11 @@
-"""Tests for `sgt.intent.stint` (capture weave P2, design doc 2026-09-01 §4c): the deterministic
+"""Tests for `ugh.intent.stint` (capture weave P2, design doc 2026-09-01 §4c): the deterministic
 prompt→op join over capture manifests. Each derivation test carries one of the design's numbered
 cases; `reflect_save`'s emission is covered here on constructed stores, and end-to-end through a
 real save in tests/test_porcelain.py / tests/mcp/test_server.py."""
 
 from __future__ import annotations
 
-from sgt.intent.stint import derive_stints, reflect_save
+from ugh.intent.stint import derive_stints, reflect_save
 
 
 def _turn(tid, session, ts, text, *, seq=0, kind="chat", channel="hook"):
@@ -152,19 +152,19 @@ def test_absolute_event_paths_ground_repo_relative_footprints(tmp_path):
 
 # ── asks_for_ops: what a *selection* was asked for ──────────────────────────────────────────────
 #
-# The join behind the `asked` attribute on `sgt show`, the checkpoint context pack, and the
+# The join behind the `asked` attribute on `ugh show`, the checkpoint context pack, and the
 # editor's checkpoint card. It answers for an op SET rather than for a save, because that is what
 # a reader points at -- a chapter, a feature, a symbol's history, a ◆ row of work spread across
 # features -- and all four have to be answered by one function or two of them will quote different
 # words back for the same code.
 
 def _store(tmp_path, manifests):
-    from sgt import state
+    from ugh import state
     state.save_json_if_changed(tmp_path, "intent_manifests", manifests)
 
 
 def test_the_asks_of_a_selection_carry_an_excerpt_and_whose_words_they_were(tmp_path):
-    from sgt.intent.stint import asks_for_ops
+    from ugh.intent.stint import asks_for_ops
 
     _store(tmp_path, {"c1": _manifest(
         "c1", 0.0, 100.0,
@@ -188,7 +188,7 @@ def test_the_asks_of_a_selection_carry_an_excerpt_and_whose_words_they_were(tmp_
 def test_only_the_asks_that_ground_the_selection_answer_for_it(tmp_path):
     """A save's other work is not this chapter's why. Without this the attribute would quote the
     prompt for the logging that happened to land in the same commit."""
-    from sgt.intent.stint import asks_for_ops
+    from ugh.intent.stint import asks_for_ops
 
     _store(tmp_path, {"c1": _manifest(
         "c1", 0.0, 100.0,
@@ -203,7 +203,7 @@ def test_only_the_asks_that_ground_the_selection_answer_for_it(tmp_path):
 def test_one_prompt_across_two_saves_is_one_ask_with_both_claims(tmp_path):
     """Case 4 (one prompt, many saves): the same words must not appear twice on a card because the
     session kept working, and the claim they account for is the sum."""
-    from sgt.intent.stint import asks_for_ops
+    from ugh.intent.stint import asks_for_ops
 
     _store(tmp_path, {
         "c1": _manifest("c1", 0.0, 100.0,
@@ -227,7 +227,7 @@ def test_the_dominant_ask_is_the_one_a_single_line_quotes(tmp_path):
     """A correction chain keeps both asks -- supersedence is a human judgement, not a heuristic --
     so a surface with one line to spend has to choose, and it chooses by how much of the selection
     each accounts for, latest first on a tie (the correction is the standing word)."""
-    from sgt.intent.stint import asks_for_ops, dominant_ask
+    from ugh.intent.stint import asks_for_ops, dominant_ask
 
     _store(tmp_path, {"c1": _manifest(
         "c1", 0.0, 100.0,
@@ -247,7 +247,7 @@ def test_the_dominant_ask_is_the_one_a_single_line_quotes(tmp_path):
 def test_a_save_with_no_manifest_says_nothing_rather_than_guessing(tmp_path):
     """Every commit made before the prompt hook existed is this case, which is most of the history
     in most repositories. Silence is the honest answer and the renderers show nothing."""
-    from sgt.intent.stint import asks_for_ops, dominant_ask
+    from ugh.intent.stint import asks_for_ops, dominant_ask
 
     assert asks_for_ops(tmp_path, {"op-a"}, ["c1"]) == []
     assert dominant_ask([]) is None

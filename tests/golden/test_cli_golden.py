@@ -1,7 +1,7 @@
-"""Characterization golden master for the `sgt` **CLI surface** (plan C11, U16).
+"""Characterization golden master for the `ugh` **CLI surface** (plan C11, U16).
 
-`tests/golden/test_golden.py` freezes the `sgt.api` projection (the kernel read views). This file
-freezes the porcelain one layer up: for every `sgt` verb it captures the exit code, the
+`tests/golden/test_golden.py` freezes the `ugh.api` projection (the kernel read views). This file
+freezes the porcelain one layer up: for every `ugh` verb it captures the exit code, the
 human-readable text, and the `--json` output (where the verb emits it) against pinned-SHA fixtures.
 Two things are being locked:
 
@@ -16,11 +16,11 @@ Two things are being locked:
 
 Regenerate after an intentional, reviewed CLI change:
 
-    SGT_UPDATE_GOLDEN=1 uv run pytest tests/golden/test_cli_golden.py -q
+    UGH_UPDATE_GOLDEN=1 uv run pytest tests/golden/test_cli_golden.py -q
 
 then review the snapshot diff before committing. Same hermetic discipline as the rest of the
 golden/laws suites: real ``git``, no network, no wall-clock, deterministic offline feature labels
-(no API key). `sgt mcp` is the one verb deliberately not captured -- it is a long-lived stdio
+(no API key). `ugh mcp` is the one verb deliberately not captured -- it is a long-lived stdio
 server, not a request/response command.
 """
 
@@ -36,23 +36,23 @@ import re
 
 import pytest
 
-from sgt import cli
-from sgt.api import map_view
-from sgt.core.lens import get
-from sgt.core.store import Store
+from ugh import cli
+from ugh.api import map_view
+from ugh.core.lens import get
+from ugh.core.store import Store
 from tests.laws import corpus
 
 _SNAPSHOTS = pathlib.Path(__file__).resolve().parent / "snapshots"
 
 
 def _capture(repo: pathlib.Path, argv: list[str]) -> dict:
-    """Run `sgt <argv>` with `repo` as cwd (the CLI operates on the working directory, like every
+    """Run `ugh <argv>` with `repo` as cwd (the CLI operates on the working directory, like every
     real invocation), capturing exit code and stdout. Determinism: op ids are content-addressed,
     feature labels use the offline fallback, so the captured bytes are stable across runs.
 
     The colour environment is pinned for the same reason. `theme.console` builds its rich Console
     with `force_terminal`, so it emits ANSI into this StringIO -- but *which* ANSI is detected from
-    the environment, and that is not a property of sgt. A developer terminal advertising
+    the environment, and that is not a property of ugh. A developer terminal advertising
     `COLORTERM=truecolor` captured `\x1b[38;2;201;136;214m` where CI, which sets neither COLORTERM
     nor TERM, produced `\x1b[37m`, so a snapshot regenerated on a laptop failed on every runner and
     read as a real CLI drift. Pinned to truecolor rather than to the runner's 8 colours because the
@@ -104,7 +104,7 @@ def _slugify_tips(repo: pathlib.Path) -> tuple[str, str]:
 
 
 def capture_cli_surface(root: str) -> dict:
-    """Build fresh fixtures and capture every `sgt` verb. A verb that mutates committed/staged
+    """Build fresh fixtures and capture every `ugh` verb. A verb that mutates committed/staged
     state captures its text and its `--json` form on two *separate* fresh fixtures (running it
     twice on one repo would see already-applied state); read verbs share one mined+mapped repo,
     since re-running a read verb is idempotent."""
@@ -117,7 +117,7 @@ def capture_cli_surface(root: str) -> dict:
         repo = corpus.CORPUS[case].build(root / f"f{seq[0]}")
         get(repo)
         if mapped:
-            _capture(repo, ["log", "--tree", "--refresh"])  # U14: `sgt map` is now a `log` mode
+            _capture(repo, ["log", "--tree", "--refresh"])  # U14: `ugh map` is now a `log` mode
         if prep:
             _capture(repo, prep)
         return repo
@@ -132,8 +132,8 @@ def capture_cli_surface(root: str) -> dict:
     rf = fresh(mapped=True)
     feat = _feature_ids(rf)[0]
     views["help"] = _capture(rf, ["help"])
-    # U14: the grid (`sgt log`) is the only inspection surface -- `status`/`map` collapsed onto
-    # `sgt log --summary`/`--tree`, `blame` demoted under `advanced`; state/history/fsck stay rare
+    # U14: the grid (`ugh log`) is the only inspection surface -- `status`/`map` collapsed onto
+    # `ugh log --summary`/`--tree`, `blame` demoted under `advanced`; state/history/fsck stay rare
     # under `advanced` (U2/KTD2). `checkpoint`/`drift` folded into `save` (U12).
     for key, argv in (
         ("log", ["log"]), ("now", ["now"]), ("state", ["advanced", "state"]),
@@ -273,10 +273,10 @@ def _dump(views: dict) -> str:
 
 def _assert_matches_golden(snapshot_name: str, actual: str) -> None:
     snapshot = _SNAPSHOTS / snapshot_name
-    if os.environ.get("SGT_UPDATE_GOLDEN"):
+    if os.environ.get("UGH_UPDATE_GOLDEN"):
         snapshot.write_text(actual, encoding="utf-8")
         pytest.skip(f"updated golden snapshot {snapshot.name}")
-    assert snapshot.exists(), f"missing golden {snapshot} -- regenerate with SGT_UPDATE_GOLDEN=1"
+    assert snapshot.exists(), f"missing golden {snapshot} -- regenerate with UGH_UPDATE_GOLDEN=1"
     expected = snapshot.read_text(encoding="utf-8")
     if actual != expected:
         diff = "\n".join(
@@ -285,9 +285,9 @@ def _assert_matches_golden(snapshot_name: str, actual: str) -> None:
                 fromfile=f"{snapshot_name} (golden)", tofile=f"{snapshot_name} (actual)", lineterm="",
             )
         )
-        pytest.fail(f"sgt CLI surface drifted for {snapshot_name!r}:\n{diff}")
+        pytest.fail(f"ugh CLI surface drifted for {snapshot_name!r}:\n{diff}")
 
 
 def test_cli_surface_matches_golden(tmp_path):
-    """Every `sgt` verb's text + `--json` output, captured against pinned fixtures (C11)."""
+    """Every `ugh` verb's text + `--json` output, captured against pinned fixtures (C11)."""
     _assert_matches_golden("cli_surface.json", _dump(capture_cli_surface(str(tmp_path))))

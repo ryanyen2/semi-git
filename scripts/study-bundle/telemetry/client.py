@@ -121,7 +121,7 @@ def study_meta() -> dict[str, Any]:
 
     The bundle knows its condition and project, because those are baked in when
     it is built. It does not know which half it is, because that depends on the
-    participant: the same sgt/coursecraft bundle is somebody's first half and
+    participant: the same ugh/coursecraft bundle is somebody's first half and
     somebody else's second. Provisioning looks up the assignment and records the
     half here, which is why the two sources are merged rather than one file
     holding everything.

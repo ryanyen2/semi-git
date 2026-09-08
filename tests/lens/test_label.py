@@ -1,10 +1,10 @@
-"""Tests for sgt.lens.label -- LLM labeling with a deterministic offline fallback (plan U12 D6)."""
+"""Tests for ugh.lens.label -- LLM labeling with a deterministic offline fallback (plan U12 D6)."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sgt.lens import label as label_mod
+from ugh.lens import label as label_mod
 
 
 @dataclass
@@ -49,11 +49,11 @@ def test_label_falls_back_deterministically_with_no_client(tmp_path, monkeypatch
     monkeypatch.setattr(label_mod, "get_client", _no_client)
     labeler = label_mod.Labeler(tmp_path)
 
-    out = labeler.label(["sgt/core/op.py::Op", "sgt/core/ideal.py::Ideal"])
+    out = labeler.label(["ugh/core/op.py::Op", "ugh/core/ideal.py::Ideal"])
 
     assert isinstance(out, label_mod.FeatureLabel)
     assert labeler.calls == 0
-    key = label_mod._key(["sgt/core/op.py::Op", "sgt/core/ideal.py::Ideal"])
+    key = label_mod._key(["ugh/core/op.py::Op", "ugh/core/ideal.py::Ideal"])
     assert labeler.cache[key]["source"] == "fallback"
 
 
@@ -62,12 +62,12 @@ def test_label_calls_llm_and_caches_as_llm_sourced(tmp_path, monkeypatch):
     monkeypatch.setattr(label_mod, "get_client", lambda repo: _FakeClient(fake_out))
     labeler = label_mod.Labeler(tmp_path)
 
-    out = labeler.label(["sgt/core/op.py::Op"])
+    out = labeler.label(["ugh/core/op.py::Op"])
 
     assert out == fake_out
     assert labeler.calls == 1
     assert labeler.tokens_in == 10 and labeler.tokens_out == 5
-    key = label_mod._key(["sgt/core/op.py::Op"])
+    key = label_mod._key(["ugh/core/op.py::Op"])
     assert labeler.cache[key]["source"] == "llm"
 
 
@@ -76,7 +76,7 @@ def test_llm_sourced_cache_hit_never_calls_client_again(tmp_path, monkeypatch):
     client = _FakeClient(fake_out)
     monkeypatch.setattr(label_mod, "get_client", lambda repo: client)
     labeler = label_mod.Labeler(tmp_path)
-    members = ["sgt/core/op.py::Op"]
+    members = ["ugh/core/op.py::Op"]
 
     labeler.label(members)
     labeler.label(members)  # second call, same members -- must hit cache, not the client again
@@ -88,7 +88,7 @@ def test_llm_sourced_cache_hit_never_calls_client_again(tmp_path, monkeypatch):
 def test_fallback_sourced_entry_is_retried_once_its_backoff_window_expires(tmp_path, monkeypatch):
     monkeypatch.setattr(label_mod, "get_client", _no_client)
     labeler = label_mod.Labeler(tmp_path)
-    members = ["sgt/core/op.py::Op"]
+    members = ["ugh/core/op.py::Op"]
     labeler.label(members)  # no client -> cached as fallback, with a retry window
     labeler.save()
     key = label_mod._key(members)
@@ -122,7 +122,7 @@ def test_fallback_entry_is_not_retried_on_every_read(tmp_path, monkeypatch):
         raise RuntimeError("No LLM credential found: set OPENAI_API_KEY")
 
     monkeypatch.setattr(label_mod, "get_client", _counting_no_client)
-    members = ["sgt/core/op.py::Op"]
+    members = ["ugh/core/op.py::Op"]
 
     first = label_mod.Labeler(tmp_path)
     first.label(members)
@@ -166,10 +166,10 @@ def test_missing_credential_costs_one_attempt_for_a_whole_batch(tmp_path, monkey
 
 
 def test_relabel_ignores_both_the_cache_and_the_backoff(tmp_path, monkeypatch):
-    """`sgt log --rebuild` is the user's "name everything again" escape hatch, so it must not wait
+    """`ugh log --rebuild` is the user's "name everything again" escape hatch, so it must not wait
     out a backoff window nor reuse an existing LLM label."""
     monkeypatch.setattr(label_mod, "get_client", _no_client)
-    members = ["sgt/core/op.py::Op"]
+    members = ["ugh/core/op.py::Op"]
     cold = label_mod.Labeler(tmp_path)
     cold.label(members)
     cold.save()
@@ -187,7 +187,7 @@ def test_relabel_ignores_both_the_cache_and_the_backoff(tmp_path, monkeypatch):
 
 def test_backoff_grows_with_consecutive_failures(tmp_path, monkeypatch):
     monkeypatch.setattr(label_mod, "get_client", _no_client)
-    members = ["sgt/core/op.py::Op"]
+    members = ["ugh/core/op.py::Op"]
     key = label_mod._key(members)
 
     first = label_mod.Labeler(tmp_path)
@@ -208,7 +208,7 @@ def test_save_and_reload_preserves_cache(tmp_path, monkeypatch):
     fake_out = label_mod.FeatureLabel(label="Op Model", rationale="Defines the op type.")
     monkeypatch.setattr(label_mod, "get_client", lambda repo: _FakeClient(fake_out))
     labeler = label_mod.Labeler(tmp_path)
-    labeler.label(["sgt/core/op.py::Op"])
+    labeler.label(["ugh/core/op.py::Op"])
     labeler.save()
 
     reloaded = label_mod.Labeler(tmp_path)
@@ -221,7 +221,7 @@ def test_label_super_names_a_subsystem_from_child_labels(tmp_path, monkeypatch):
     monkeypatch.setattr(label_mod, "get_client", lambda repo: _FakeClient(fake_out))
     labeler = label_mod.Labeler(tmp_path)
 
-    out = labeler.label_super(["Op Model", "Ideal Algebra"], ["sgt/core"])
+    out = labeler.label_super(["Op Model", "Ideal Algebra"], ["ugh/core"])
 
     assert out == fake_out
     assert labeler.calls == 1
@@ -257,11 +257,11 @@ def test_the_first_and_last_word_of_a_title_keep_their_capital():
 
 
 def testfallback_label_is_deterministic_and_derived_from_dominant_dir():
-    members = ["sgt/core/op.py::Op", "sgt/core/ideal.py::Ideal"]
+    members = ["ugh/core/op.py::Op", "ugh/core/ideal.py::Ideal"]
     first = label_mod.fallback_label(members)
     second = label_mod.fallback_label(members)
     assert first == second
-    assert "sgt/core" in first.rationale
+    assert "ugh/core" in first.rationale
 
 
 def testfallback_label_never_leaks_residue_ids_or_null_bytes():
@@ -269,12 +269,12 @@ def testfallback_label_never_leaks_residue_ids_or_null_bytes():
     cluster of pure fold artifacts (residue/anchor, embedded NULs from byte-native addressing) must
     never surface as a raw `__residue__::\\x00HEAD\\x00` id -- it reads as `(structural)` glue,
     tagged by where it lives."""
-    members = ["sgt/intent/__init__.py::__residue__::\x00HEAD\x00",
-               "sgt/intent/resolve.py::__residue__::Candidate",
-               "sgt/intent/x.py::__anchor__::a"]
+    members = ["ugh/intent/__init__.py::__residue__::\x00HEAD\x00",
+               "ugh/intent/resolve.py::__residue__::Candidate",
+               "ugh/intent/x.py::__anchor__::a"]
     lbl = label_mod.fallback_label(members).label
     assert "__residue__" not in lbl and "__anchor__" not in lbl and "\x00" not in lbl
-    assert "structural" in lbl and "sgt/intent" in lbl
+    assert "structural" in lbl and "ugh/intent" in lbl
 
 
 def testfallback_label_names_kind_not_first_file():
@@ -289,7 +289,7 @@ def testfallback_label_names_kind_not_first_file():
 
 
 def test_clean_symbol_name_distinguishes_names_from_artifacts():
-    assert label_mod._clean_symbol_name("sgt/a.py::foo") == "foo"
+    assert label_mod._clean_symbol_name("ugh/a.py::foo") == "foo"
     assert label_mod._clean_symbol_name("README.md") == "README.md"
     assert label_mod._clean_symbol_name("a.py::__residue__::\x00HEAD\x00") is None
     assert label_mod._clean_symbol_name("a.py::__anchor__::x") is None
@@ -369,7 +369,7 @@ def test_graded_reuse_lazily_adopts_legacy_member_hash_entry(tmp_path, monkeypat
     """A pre-graded build keyed leaf labels by member hash. The first graded lookup for that
     feature id finds no id-keyed entry, adopts the legacy member-hash entry as the generation
     point (no LLM call), and re-keys it -- "first hit under the new rule re-keys them" (§3.2)."""
-    members = ["sgt/a.py::foo", "sgt/a.py::bar"]
+    members = ["ugh/a.py::foo", "ugh/a.py::bar"]
     legacy_key = label_mod._key(members)
     # simulate a cache written by the old member-hash scheme (no gen_members)
     labeler = label_mod.Labeler(tmp_path)
@@ -388,7 +388,7 @@ def test_graded_reuse_lazily_adopts_legacy_member_hash_entry(tmp_path, monkeypat
 def test_a_subsystem_keeps_its_name_when_a_save_adds_a_feature_to_it(tmp_path, monkeypatch):
     """A subsystem has no stable id to key on -- its node id is a positional DFS counter -- so its
     cache key is content (child labels + files) and ANY membership change lands on a new key. That
-    made every ordinary `sgt save` rename the subsystem it touched: the pilot's five subsystems all
+    made every ordinary `ugh save` rename the subsystem it touched: the pilot's five subsystems all
     changed names between two reads of one repo. The entry is re-found by member drift instead, the
     same graded reuse leaves get, with the member-set match standing in for the id."""
     calls: list[int] = []
@@ -513,7 +513,7 @@ def test_a_spent_credential_says_so_instead_of_renaming_the_graph_in_silence(tmp
 
     monkeypatch.setattr(label_mod, "get_client", lambda repo: _Dry())
     labeler = label_mod.Labeler(tmp_path)
-    labeler.label_many([labeler.leaf_request("f-0004", ["sgt/a.py::foo"])])
+    labeler.label_many([labeler.leaf_request("f-0004", ["ugh/a.py::foo"])])
 
     err = capsys.readouterr().err
     assert "insufficient_quota" in err and "out of credit" in err
@@ -521,12 +521,12 @@ def test_a_spent_credential_says_so_instead_of_renaming_the_graph_in_silence(tmp
 
 def test_build_map_persists_label_cache_so_reruns_dont_re_call_the_llm(tmp_path, monkeypatch):
     """Regression: `build_map` used to label the tree but never `save()` the labeler, so the
-    member-hash cache was rebuilt cold on every run -- a second `sgt map` re-called the (non-
+    member-hash cache was rebuilt cold on every run -- a second `ugh map` re-called the (non-
     deterministic) LLM for unchanged clusters and relabeled stable features. With the cache
     persisted, an unchanged cluster hits the cache on the next build and makes zero new calls."""
-    from sgt.core.lens import get
-    from sgt.lens.map import build_map
-    from sgt.store.gitbind import init_store
+    from ugh.core.lens import get
+    from ugh.lens.map import build_map
+    from ugh.store.gitbind import init_store
 
     fake_out = label_mod.FeatureLabel(label="Retrieval Pipeline", rationale="Embeds and retrieves.")
     client = _FakeClient(fake_out)
@@ -552,13 +552,13 @@ def test_build_map_persists_label_cache_so_reruns_dont_re_call_the_llm(tmp_path,
 
 
 def test_build_map_rerun_with_no_changes_does_not_touch_label_cache_mtime(tmp_path, monkeypatch):
-    """A `sgt map` rerun with nothing new must not bump `label_cache.json`'s mtime -- it's a
+    """A `ugh map` rerun with nothing new must not bump `label_cache.json`'s mtime -- it's a
     `.sgt/**/*.json` path a client's file watcher invalidates its cache on, so an unconditional
     rewrite on every no-op read makes a client's own refresh retrigger another refresh, forever."""
-    from sgt import state
-    from sgt.core.lens import get
-    from sgt.lens.map import build_map
-    from sgt.store.gitbind import init_store
+    from ugh import state
+    from ugh.core.lens import get
+    from ugh.lens.map import build_map
+    from ugh.store.gitbind import init_store
 
     fake_out = label_mod.FeatureLabel(label="Retrieval Pipeline", rationale="Embeds and retrieves.")
     monkeypatch.setattr(label_mod, "get_client", lambda repo: _FakeClient(fake_out))
@@ -582,9 +582,9 @@ def test_both_tree_build_paths_name_a_feature_the_same_way(tmp_path, monkeypatch
     `lens/reconcile.py` called `label_tree` without it and silently named the same feature from
     different evidence -- surfaces disagreeing, which is the failure the naming work exists to end.
     `label_tree` derives the context itself now, so a caller cannot forget it."""
-    from sgt.core.lens import get
-    from sgt.lens import tree as tree_mod
-    from sgt.store.gitbind import init_store
+    from ugh.core.lens import get
+    from ugh.lens import tree as tree_mod
+    from ugh.store.gitbind import init_store
 
     monkeypatch.setattr(label_mod, "get_client", _no_client)
     gb, _ = init_store(tmp_path)
@@ -592,7 +592,7 @@ def test_both_tree_build_paths_name_a_feature_the_same_way(tmp_path, monkeypatch
     gb.commit_all("Add the alpha helper")
     ideal = get(tmp_path)
 
-    from sgt.core import opindex
+    from ugh.core import opindex
     ops = opindex.index_ops(tmp_path)
 
     # The `map.py` shape (context derived) and the `reconcile.py` shape (ops passed, nothing else).

@@ -7,7 +7,7 @@
 // bikecount's two averages -- the number the whole removal story is about was
 // wrong in half the sessions, and nothing checked it.
 //
-// Nothing in a stage BODY names a git or an sgt verb: a stage states what
+// Nothing in a stage BODY names a git or an ugh verb: a stage states what
 // happened and what to do in product terms, and the participant chooses the
 // mechanism inside the tool they were given. The TIPS are the one exception,
 // and they are deliberate: pilots lost minutes of a four-minute stage to
@@ -43,7 +43,7 @@ import type { Condition, Project, RequestId } from '../lib/types'
  * The page is named on purpose. Without it, "the busiest hour" and "the
  * weekday chart" are two descriptions a participant has to guess the boundary
  * between; with it there is exactly one thing each option means. It is still
- * product language. No git or sgt verb appears anywhere in this list.
+ * product language. No git or ugh verb appears anywhere in this list.
  *
  * Ids are the stored answer, so this wording can change between pilots without
  * orphaning what has already been collected. They are also the ids the key
@@ -70,7 +70,7 @@ export interface Behaviour {
  * off a description of it. The date window is the one row of that map the
  * checklist had no option for, so a participant reading the map found work the
  * checklist could not express; it is the last option below. Nothing here names
- * a git or an sgt verb, and the labels stay in product language, so the two
+ * a git or an ugh verb, and the labels stay in product language, so the two
  * arms read the same eleven things.
  */
 export const BEHAVIOURS: Behaviour[] = [
@@ -266,7 +266,7 @@ export interface RequestSpec {
   run: PrescribedRun
   /**
    * A box holding one identifier -- a commit hash under git, a named piece of
-   * work under sgt -- shown during the WORK phase, because finding it is the
+   * work under ugh -- shown during the WORK phase, because finding it is the
    * work. Free text, compared against the key after the session rather than
    * in the browser (see protocol v2 section 4).
    */
@@ -345,8 +345,8 @@ export interface StageShots {
  * One piece of work in a project's history, as stage 1's map reads it.
  *
  * `work` is what it did in product terms -- never the commit subject and never
- * an sgt label. Commit subjects are the git arm's own words for these rows and
- * the sgt labels are the sgt arm's, and one card that both arms read cannot use
+ * an ugh label. Commit subjects are the git arm's own words for these rows and
+ * the ugh labels are the ugh arm's, and one card that both arms read cannot use
  * either without handing one arm its answers. Naming the work in neither
  * vocabulary is also what leaves the participant something to do: put the map
  * beside their own view and match them up.
@@ -354,7 +354,7 @@ export interface StageShots {
  * Both vocabularies are stable, so this is a choice and not a workaround. The
  * bundle ships its mined graph frozen in `work/.study/sgt-pristine.tar` and
  * every `./stage N` restores it, so all participants see identical feature and
- * checkpoint labels -- `sgt log --rebuild` runs once at BUILD time (and its LLM
+ * checkpoint labels -- `ugh log --rebuild` runs once at BUILD time (and its LLM
  * caches are copied back to the source repo so the next build re-rolls nothing).
  *
  * `code` is the row's files, straight out of `git log --name-only` in the built
@@ -656,17 +656,17 @@ ${storyTable(w)}
         'In the editor, the Graph shows the same history, and the Timeline at the bottom of the Explorer shows the commits that touched the open file.',
       ],
       sgt: [
-        '`sgt log` is the feature map: one row per feature, its checkpoints as blocks along it. `sgt log --rail` lists what happened, newest first.',
-        '`sgt show "<name>"` says what one part covers — the files and the code inside it. `sgt show <file>::<name>` answers the other direction, for one function.',
+        '`ugh log` is the feature map: one row per feature, its checkpoints as blocks along it. `ugh log --rail` lists what happened, newest first.',
+        '`ugh show "<name>"` says what one part covers — the files and the code inside it. `ugh show <file>::<name>` answers the other direction, for one function.',
         // The example is deliberately NOT the thing this stage asks for. It used to be
-        // `sgt find "the bit that works out the averages"`, which on bikecount returns five ways
+        // `ugh find "the bit that works out the averages"`, which on bikecount returns five ways
         // of saying "the code that computes an average" and not the work that changed how one is
         // computed -- so the one worked example a participant is given demonstrated the feature
         // pointing away from the answer. An off-target phrase teaches the same thing (prose works)
-        // without handing the sgt arm a query that lands the stage's answer at rank one, which the
+        // without handing the ugh arm a query that lands the stage's answer at rank one, which the
         // git arm's `-S "<text>"` template does not do either.
-        '`sgt find "the page that lets you download a csv"` searches by description. Any wording will do, and each hit says what kind of thing it is.',
-        '`sgt log --focus "<name>"` opens one row, or one ◆ piece of work that spans several rows.',
+        '`ugh find "the page that lets you download a csv"` searches by description. Any wording will do, and each hit says what kind of thing it is.',
+        '`ugh log --focus "<name>"` opens one row, or one ◆ piece of work that spans several rows.',
       ],
     },
     run: {
@@ -745,12 +745,12 @@ The pages open on the most recent year. Set the date window at the top to cover 
         '`git log --oneline -- <file>` narrows the list to one file, `git blame <file>` says which commit last touched each line, and `git log -S "<text>"` finds commits where that text arrived or went away.',
       ],
       sgt: [
-        '`sgt log` shows the history grouped by feature; `sgt log --rail` lists what happened, newest first.',
+        '`ugh log` shows the history grouped by feature; `ugh log --rail` lists what happened, newest first.',
         // Off-target on purpose; see the same tip on stage 1 for why. On this stage it matters
         // more, because here there IS an answer to point away from.
-        '`sgt find "the page that lets you download a csv"` searches by description — any wording will do, and each hit says what kind of thing it is.',
-        '`sgt log --focus "<name>"` opens one feature — or one ◆ piece of cross-feature work: the map stays, its checkpoints are listed underneath.',
-        'To answer "which parts of the dashboard": `sgt show "<name>"` lists the files a feature — or a ◆ piece of cross-feature work — touches, and what taking it out would remove. `pages/<name>.py` is the page of the same name, and the workbench shows the same card.',
+        '`ugh find "the page that lets you download a csv"` searches by description — any wording will do, and each hit says what kind of thing it is.',
+        '`ugh log --focus "<name>"` opens one feature — or one ◆ piece of cross-feature work: the map stays, its checkpoints are listed underneath.',
+        'To answer "which parts of the dashboard": `ugh show "<name>"` lists the files a feature — or a ◆ piece of cross-feature work — touches, and what taking it out would remove. `pages/<name>.py` is the page of the same name, and the workbench shows the same card.',
       ],
     },
     run: {
@@ -858,10 +858,10 @@ Set the date window to 2018 while you check the pages — the marks only show wh
         '`git log --oneline` and `git status` say where you are at any point.',
       ],
       sgt: [
-        '`sgt revert "<name>"` shows you what the removal would do and changes nothing.',
-        'Add `--yes` to actually do it: `sgt revert "<name>" --yes`.',
-        'The name is the one `./stage 3` printed. `sgt log` names it under the map too, with the other work that spans features, and `sgt log --focus "<name>"` shows exactly what is in it.',
-        '`sgt undo` reverses whatever you last did, and `sgt now` says where things stand.',
+        '`ugh revert "<name>"` shows you what the removal would do and changes nothing.',
+        'Add `--yes` to actually do it: `ugh revert "<name>" --yes`.',
+        'The name is the one `./stage 3` printed. `ugh log` names it under the map too, with the other work that spans features, and `ugh log --focus "<name>"` shows exactly what is in it.',
+        '`ugh undo` reverses whatever you last did, and `ugh now` says where things stand.',
       ],
     },
     run: {
@@ -937,10 +937,10 @@ Run the command below first. It puts the project into the state where the work h
         '`git show <hash>` reads any one of them if you want to see what it did.',
       ],
       sgt: [
-        '`sgt restore "<name>" --yes` puts back what `sgt revert` took out. It takes the same name.',
+        '`ugh restore "<name>" --yes` puts back what `ugh revert` took out. It takes the same name.',
         'Without `--yes` you get a preview and nothing happens.',
-        '`sgt log` and `sgt now` say what the history records so far.',
-        '`sgt undo` reverses whatever you last did.',
+        '`ugh log` and `ugh now` say what the history records so far.',
+        '`ugh undo` reverses whatever you last did.',
       ],
     },
     run: {

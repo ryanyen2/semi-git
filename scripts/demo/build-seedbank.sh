@@ -9,7 +9,7 @@
 #
 # WHAT THIS IS FOR, AND WHY IT IS A SCRIPT AND NOT A TARBALL
 #
-# The demo's whole job is that its *history* is designed. Twelve `sgt save`s,
+# The demo's whole job is that its *history* is designed. Twelve `ugh save`s,
 # each one a beat, and two of them deliberately silent -- the search engine
 # lands at episodes 2 and 3 and renders nothing at all until episode 4 gives it
 # a box to type in. A tarball of the finished tree would carry the app and lose
@@ -19,11 +19,11 @@
 # THE ORDER OF THE FIRST FOUR STEPS IS NOT ARBITRARY
 #
 # `.gitignore` has to name `node_modules/` and `dist/` BEFORE the first save.
-# sgt reads gitignored paths as `ignored` tier (sgt/core/tiers.py) and skips
+# ugh reads gitignored paths as `ignored` tier (ugh/core/tiers.py) and skips
 # them; without the entry it mines a few thousand dependency files, the fold
 # stops being something you can render in under a second, and the demo is over.
 # `npm ci` therefore runs against a scaffold that already carries the right
-# ignore file, and `sgt init` runs after the root commit so the kernel binds to
+# ignore file, and `ugh init` runs after the root commit so the kernel binds to
 # a repo that has one.
 #
 # WHAT THIS SCRIPT CANNOT PROMISE
@@ -33,7 +33,7 @@
 # moves whenever the entity graph changes -- teaching it to read JSX elements as
 # references took this repo from eleven features to seven in one step. Feature
 # ids from a previous build are therefore dead, and a dead one is worse than
-# useless: `sgt revert <id>` falls back to matching it as an OP-ID PREFIX and
+# useless: `ugh revert <id>` falls back to matching it as an OP-ID PREFIX and
 # reverts something unrelated while reporting success. Resolve by label or
 # re-derive; never paste an id from an old run into a script.
 #
@@ -46,12 +46,12 @@ script_dir="$(cd "$(dirname "$0")" && pwd)"
 payload="$script_dir/seedbank"
 target="${1:-$HOME/repos/sgt-demo/seedbank}"
 
-# `sgt` from PATH by default. Point SGT at another install to build against a
+# `ugh` from PATH by default. Point UGH at another install to build against a
 # frozen or a development copy -- which is what you want when the tree you are
 # building from is also the tree you are editing.
 # Exported, because the silent-gap check below shells out to render-frontiers.sh
-# and that script has to fold with the same sgt this one built with.
-export SGT="${SGT:-sgt}"
+# and that script has to fold with the same ugh this one built with.
+export UGH="${UGH:-ugh}"
 # The npm cache is overridable because a shared one that has been written by
 # another user's install throws EACCES on rename, and the failure looks like a
 # network problem rather than a permissions one.
@@ -60,19 +60,19 @@ npm_cache="${NPM_CACHE:-}"
 say() { printf '  %s\n' "$*"; }
 
 [ -d "$payload/scaffold/tree" ] || { echo "no episode payload at $payload" >&2; exit 1; }
-command -v "$SGT" >/dev/null 2>&1 || { echo "no sgt on PATH; set SGT=<path>" >&2; exit 1; }
+command -v "$UGH" >/dev/null 2>&1 || { echo "no ugh on PATH; set UGH=<path>" >&2; exit 1; }
 
-# Which sgt built the store is a property OF the store, and it is invisible afterwards. An sgt
+# Which ugh built the store is a property OF the store, and it is invisible afterwards. An ugh
 # that does not own imports mines a store in which nothing owns an import line, and beat 6 then
 # deletes `Tray.tsx` while leaving `import { TrayButton } from './Tray'` behind -- with every
 # check in this script passing. So say out loud which install is about to do the mining.
-say "sgt: $(command -v "$SGT")"
-sgt_py="$(sed -n '1s/^#!//p' "$(command -v "$SGT")" 2>/dev/null)"
-if [ -x "${sgt_py:-}" ] && ! "$sgt_py" -c "
-import sgt.core.op as op, sys
+say "ugh: $(command -v "$UGH")"
+ugh_py="$(sed -n '1s/^#!//p' "$(command -v "$UGH")" 2>/dev/null)"
+if [ -x "${ugh_py:-}" ] && ! "$ugh_py" -c "
+import ugh.core.op as op, sys
 sys.exit(0 if op._symbol_kind('a.ts::__import__::./b') == 'import' else 1)
 " 2>/dev/null; then
-    say "NOTE: this sgt does not own imports -- a revert will leave dangling import lines."
+    say "NOTE: this ugh does not own imports -- a revert will leave dangling import lines."
     say "      For the seedbank demo, build with the install that does."
 fi
 
@@ -96,8 +96,8 @@ git add -A
 git commit -q -m "$(cat "$payload/scaffold/message")"
 say "root commit $(git rev-parse --short HEAD)"
 
-"$SGT" init >/dev/null
-say "sgt init"
+"$UGH" init >/dev/null
+say "ugh init"
 
 # --- the twelve episodes, one save each --------------------------------------
 #
@@ -110,7 +110,7 @@ for dir in "$payload"/e[0-9][0-9]; do
     ep="$(basename "$dir")"
     cp -R "$dir/tree/." "$target/"
     npx tsc --noEmit -p tsconfig.json
-    "$SGT" save -m "$(cat "$dir/message")" --no-color >/dev/null
+    "$UGH" save -m "$(cat "$dir/message")" --no-color >/dev/null
     say "$ep  $(git rev-parse --short HEAD)  $(cat "$dir/message")"
 done
 
@@ -133,10 +133,10 @@ done
 # So the count is kept only as a floor against total degeneracy, and the checks
 # that can actually refuse a build are the two properties the demo rests on:
 # the engine is separable from the box, and the silent gap is still silent.
-# Read off sgt's own trailer line rather than counted from the indented rows --
+# Read off ugh's own trailer line rather than counted from the indented rows --
 # those include subsystem headers, which are groupings and not features, so
 # counting them overstates by one per subsystem.
-features="$("$SGT" log --tree 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' \
+features="$("$UGH" log --tree 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' \
     | sed -n 's/^\([0-9][0-9]*\) features*$/\1/p' | tail -1)"
 features="${features:-0}"
 say "$features features"
@@ -149,12 +149,12 @@ say "$features features"
 # ids. Labels are LLM-generated and differ run to run, and a stale feature id is
 # worse than useless: it resolves as an op-id PREFIX and reverts something
 # unrelated while reporting success.
-python3 - "$SGT" <<'PY'
+python3 - "$UGH" <<'PY'
 import json, subprocess, sys
-sgt = sys.argv[1]
+ugh = sys.argv[1]
 
 def features_of(path):
-    out = subprocess.run([sgt, "advanced", "blame", path, "--json"],
+    out = subprocess.run([ugh, "advanced", "blame", path, "--json"],
                          capture_output=True, text=True).stdout
     if not out.strip().startswith("{"):
         sys.exit(f"could not blame {path}")
@@ -181,11 +181,11 @@ PY
 # excluded: they are `ignored` tier and correctly absent from a fold.
 #
 # Folded by COMMIT INDEX, not by `--at main`. A branch name resolves through the
-# branch record, which `sgt save` does not advance -- in a freshly built repo it
-# still points at the commit `sgt init` bound to, so `--at main` here returns the
+# branch record, which `ugh save` does not advance -- in a freshly built repo it
+# still points at the commit `ugh init` bound to, so `--at main` here returns the
 # six-file scaffold and calls it HEAD. It is a quiet wrong answer rather than an
 # error, which is exactly the kind this check exists to catch.
-"$SGT" advanced fold --at "$(($(git rev-list --count HEAD) - 1))" --json \
+"$UGH" advanced fold --at "$(($(git rev-list --count HEAD) - 1))" --json \
     > "$target/.fold.json" 2>/dev/null
 python3 - "$target" <<'PY'
 import json, pathlib, subprocess, sys

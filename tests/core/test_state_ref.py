@@ -1,12 +1,12 @@
-"""Phase 1.2 Step 2: the `refs/sgt/state` transport layer, tested in isolation (nothing wires it in
+"""Phase 1.2 Step 2: the `refs/ugh/state` transport layer, tested in isolation (nothing wires it in
 yet). Covers the local-mirror <-> ref round trip, the no-op/advance behavior of the CAS boundary,
 and the conflict-free content-addressed union the Step-6 push merge builds on."""
 
 import pytest
 
-from sgt import state
-from sgt.core.sync import state_ref
-from sgt.store.gitbind import GitBinding, init_store
+from ugh import state
+from ugh.core.sync import state_ref
+from ugh.store.gitbind import GitBinding, init_store
 from tests.conftest import _clone, _init_bare
 
 

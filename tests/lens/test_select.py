@@ -1,4 +1,4 @@
-"""Tests for sgt.lens.select -- U29's closure-explanation UX (`sgt select` / `sgt why`).
+"""Tests for ugh.lens.select -- U29's closure-explanation UX (`ugh select` / `ugh why`).
 
 The feature tree is hand-crafted rather than clustered (`tree.save` directly, bypassing
 `lens.map.build_map`'s Leiden clusterer): U25's own BET-C measurement showed this repo's real
@@ -10,10 +10,10 @@ feature-membership partition is authored directly.
 
 from __future__ import annotations
 
-from sgt.core.lens import get
-from sgt.core.store import Store
-from sgt.lens import authored, select, tree
-from sgt.store.gitbind import init_store
+from ugh.core.lens import get
+from ugh.core.store import Store
+from ugh.lens import authored, select, tree
+from ugh.store.gitbind import init_store
 
 
 def _leaf(members: list[str], label: str) -> dict:
@@ -205,7 +205,7 @@ def _two_feature_repo(tmp_path):
 
 def test_resolve_exact_symbol_to_frontier_tip(tmp_path):
     """`file::symbol` (no glob metachar) resolves to that symbol's frontier tip op -- exactly what
-    `resolve_target` does, so `sgt select a.py::base` and a single-op revert see the same op."""
+    `resolve_target` does, so `ugh select a.py::base` and a single-op revert see the same op."""
     base_op, _caller_op = _two_feature_repo(tmp_path)
 
     result = select.resolve(tmp_path, "a.py::base")
@@ -247,7 +247,7 @@ def test_resolve_empty_glob_returns_not_ok_not_exception(tmp_path):
 
 def test_resolve_named_authored_feature_by_label_and_id(tmp_path):
     """An authored feature resolves both by its exact label and by its `af-` id; its live members
-    become the direct op set (constructed directly via `sgt.lens.authored`, since no verb mints
+    become the direct op set (constructed directly via `ugh.lens.authored`, since no verb mints
     authored features yet)."""
     base_op, _caller_op = _two_feature_repo(tmp_path)
     feat = authored.create(["a.py::base"], "payments")

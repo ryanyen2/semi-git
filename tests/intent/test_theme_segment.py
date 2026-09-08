@@ -1,4 +1,4 @@
-"""Tests for sgt.intent.theme_segment -- the LLM segmentation rung. The LLM itself is stubbed
+"""Tests for ugh.intent.theme_segment -- the LLM segmentation rung. The LLM itself is stubbed
 (a fake client returning a canned SegmentPlan, or a raising one for the fallback path), so these
 assertions are about the *discipline* around the call: contiguity coalescing, shown-sha
 validation, total coverage, and the op-membership safety invariant -- none of which depend on a
@@ -6,13 +6,13 @@ real network. Mirrors the stubbing idiom in tests/intent/test_intent_view.py."""
 
 from __future__ import annotations
 
-from sgt.core.lens import get
-from sgt.core.store import Store
-from sgt.intent import segment, theme_segment
-from sgt.intent.segment import feature_runs, overlay_persisted
-from sgt.intent.theme_segment import SegmentGroup, SegmentPlan, SegmentThemer
-from sgt.lens import tree
-from sgt.store.gitbind import init_store
+from ugh.core.lens import get
+from ugh.core.store import Store
+from ugh.intent import segment, theme_segment
+from ugh.intent.segment import feature_runs, overlay_persisted
+from ugh.intent.theme_segment import SegmentGroup, SegmentPlan, SegmentThemer
+from ugh.lens import tree
+from ugh.store.gitbind import init_store
 
 
 def _leaf(members, label):
@@ -50,8 +50,8 @@ def test_segments_view_carries_a_chapters_captured_asks(tmp_path):
     excerpts with their provenance rather than raw prompt text, because this read carries every
     chapter of every feature. A chapter whose commits captured nothing carries an empty list,
     never a guess."""
-    from sgt.api import segments_view
-    from sgt.intent import turns
+    from ugh.api import segments_view
+    from ugh.intent import turns
 
     _four_commit_feature(tmp_path)
     segs = segments_view(tmp_path)

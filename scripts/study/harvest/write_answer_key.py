@@ -8,8 +8,8 @@ exists.
 
     python3 scripts/study/harvest/write_answer_key.py <bikecount-repo> <footfall-repo> <out.json>
 
-Point it at the two SGT BUNDLES' `work/` directories, not at the source testbeds: the bundle build
-finishes with `sgt log --rebuild`, so the graph a participant navigates is not necessarily the one
+Point it at the two UGH BUNDLES' `work/` directories, not at the source testbeds: the bundle build
+finishes with `ugh log --rebuild`, so the graph a participant navigates is not necessarily the one
 the source repo carries, and the key has to name the one they will see. `ANSWER_KEY_BASELINES` says
 where the two `baseline-<project>` git-arm repos live (default: beside the first argument), and
 `ANSWER_KEY_WORK` where to do the reverting (default: a fresh temp directory).
@@ -45,9 +45,9 @@ WANTED = (
 
 
 def _all_chapters(repo):
-    from sgt import state
-    from sgt.intent.segment import feature_runs, overlay_persisted
-    from sgt.lens.tree import load as load_tree
+    from ugh import state
+    from ugh.intent.segment import feature_runs, overlay_persisted
+    from ugh.lens.tree import load as load_tree
 
     tree = load_tree(repo)
     runs = feature_runs(repo, tree["op_leaf"])
@@ -63,11 +63,11 @@ def event_theme(repo):
     """The cross-feature theme covering the event-day work, if the overlay found one.
 
     Preferred over any single chapter. The card asks about a job that was done over three
-    afternoons with unrelated work in between, and a theme is the only grouping sgt builds that
+    afternoons with unrelated work in between, and a theme is the only grouping ugh builds that
     holds all three. Both testbeds produced one unaided, which is also the evidence that the two
     are isomorphic at the level the task is stated at.
     """
-    from sgt import state
+    from ugh import state
 
     themes = state.load_json(repo, "intent_themes", default={}) or {}
     best = None
@@ -85,11 +85,11 @@ def event_theme(repo):
 
 
 def theme_vocabulary(repo, theme_id):
-    """Every name the sgt arm can read off the screen for one group.
+    """Every name the ugh arm can read off the screen for one group.
 
-    The group's own label and id are what `sgt log` prints on the ◆ row, and the saves' shas and
+    The group's own label and id are what `ugh log` prints on the ◆ row, and the saves' shas and
     subjects are what `--rail` and `git log` print. Neither is the whole vocabulary: a participant
-    who runs `sgt log --focus "<group>"` is shown the group's CHECKPOINTS, listed under the map with
+    who runs `ugh log --focus "<group>"` is shown the group's CHECKPOINTS, listed under the map with
     the feature each one sits on, and naming one of those is naming the work. A key without them
     marks that answer wrong -- which is what the shipped key did until it was patched by hand, and
     a hand-patched key goes stale at the next rebuild.
@@ -104,7 +104,7 @@ def theme_vocabulary(repo, theme_id):
     The feature labels those checkpoints sit on are deliberately NOT accepted, for the same reason:
     a lane the work touches is a different granularity from the work.
     """
-    from sgt.core.store import Store
+    from ugh.core.store import Store
 
     themes = state_of(repo).load_json(repo, "intent_themes", default={}) or {}
     entry = themes.get(theme_id) or {}
@@ -127,10 +127,10 @@ def theme_vocabulary(repo, theme_id):
 
 
 def state_of(repo):
-    """`sgt.state`, imported late like every other sgt import in this file: the module is imported
+    """`ugh.state`, imported late like every other ugh import in this file: the module is imported
     against whichever checkout is on the path, and importing at module scope made this script
     unusable from a bundle's own interpreter."""
-    from sgt import state
+    from ugh import state
 
     return state
 
@@ -145,7 +145,7 @@ def try_selector(repo, selector, work):
     shutil.rmtree(after, ignore_errors=True)
     if not snapshot(copy, before):
         return None
-    rv = subprocess.run(["sgt", "revert", selector, "--yes"], cwd=copy, capture_output=True)
+    rv = subprocess.run(["ugh", "revert", selector, "--yes"], cwd=copy, capture_output=True)
     smoke = subprocess.run([sys.executable, "check.py"], cwd=copy, capture_output=True)
     ok_after = snapshot(copy, after)
     # Card 4 asks for the work back "exactly as it was", so that is what gets checked: not that
@@ -170,15 +170,15 @@ def try_selector(repo, selector, work):
                 return False
         return True
 
-    back = subprocess.run(["sgt", "restore", selector, "--yes"], cwd=copy, capture_output=True)
+    back = subprocess.run(["ugh", "restore", selector, "--yes"], cwd=copy, capture_output=True)
     back_ok = back.returncode == 0 and subprocess.run(
         [sys.executable, "check.py"], cwd=copy, capture_output=True).returncode == 0
     back_ok = back_ok and _pages_match_before()
     if not back_ok:
         # Put the restore attempt back before trying the other route, so `undo` is undoing the
         # revert and not the failed restore.
-        subprocess.run(["sgt", "undo"], cwd=copy, capture_output=True)
-        undo = subprocess.run(["sgt", "undo"], cwd=copy, capture_output=True)
+        subprocess.run(["ugh", "undo"], cwd=copy, capture_output=True)
+        undo = subprocess.run(["ugh", "undo"], cwd=copy, capture_output=True)
         back_ok = undo.returncode == 0 and subprocess.run(
             [sys.executable, "check.py"], cwd=copy, capture_output=True).returncode == 0
         back_ok = back_ok and _pages_match_before()
@@ -241,9 +241,9 @@ def usable_target(repo, work):
 
 
 def target_chapter(repo):
-    from sgt import state
-    from sgt.intent.segment import feature_runs, overlay_persisted
-    from sgt.lens.tree import load as load_tree
+    from ugh import state
+    from ugh.intent.segment import feature_runs, overlay_persisted
+    from ugh.lens.tree import load as load_tree
 
     tree = load_tree(repo)
     runs = feature_runs(repo, tree["op_leaf"])
@@ -267,9 +267,9 @@ def target_chapter(repo):
 def matching_shas(baseline_repo, subjects):
     """The git arm's shas for the same commits, found by subject.
 
-    The two arms are separate builds: the git one is rendered from the sgt one with sgt's trailers
+    The two arms are separate builds: the git one is rendered from the ugh one with ugh's trailers
     and plumbing commits stripped, which rewrites every sha. So the sha a git participant reads off
-    `git log` is not the sha the sgt repo carries, and a key holding only one arm's shas marks the
+    `git log` is not the sha the ugh repo carries, and a key holding only one arm's shas marks the
     other arm wrong for typing exactly what its own tool showed it. Subjects survive the rewrite,
     so they are what the two are matched on.
     """
@@ -287,7 +287,7 @@ def matching_shas(baseline_repo, subjects):
 
 def _theme_saves(repo, theme_id):
     """The commits a theme groups, with their subjects: what a git participant would type."""
-    from sgt import state
+    from ugh import state
 
     themes = state.load_json(repo, "intent_themes", default={}) or {}
     shas = (themes.get(theme_id) or {}).get("atom_shas") or []
@@ -297,14 +297,14 @@ def _theme_saves(repo, theme_id):
                            cwd=repo, capture_output=True, text=True)
         if r.returncode == 0 and r.stdout.strip():
             short, _, subject = r.stdout.strip().partition("\x00")
-            if "sgt land" not in subject:
+            if "ugh land" not in subject:
                 out.append({"sha": short, "subject": subject})
     return out
 
 
 def saves_for(repo, op_ids):
     """The commits that built those ops, with their subjects: what a git participant would type."""
-    from sgt.core.store import Store
+    from ugh.core.store import Store
 
     shas = set()
     for op in Store(repo).all_ops():
@@ -316,7 +316,7 @@ def saves_for(repo, op_ids):
                            cwd=repo, capture_output=True, text=True)
         if r.returncode == 0 and r.stdout.strip():
             short, _, subject = r.stdout.strip().partition("\x00")
-            if "sgt land" not in subject:
+            if "ugh land" not in subject:
                 out.append({"sha": short, "subject": subject})
     return out
 
@@ -328,7 +328,7 @@ def episodes_of(repo):
     from a spec. This history was harvested instead, so the equivalent is what the sessions did,
     read back off the repository. Nobody has to keep it in step with anything.
     """
-    from sgt.core.store import Store
+    from ugh.core.store import Store
 
     order = subprocess.run(["git", "log", "--format=%H%x00%s", "--reverse", "--no-merges"],
                            cwd=repo, capture_output=True, text=True).stdout.splitlines()
@@ -340,7 +340,7 @@ def episodes_of(repo):
     out = []
     for line in order:
         sha, _, subject = line.partition("\x00")
-        if "sgt land" in subject:
+        if "ugh land" in subject:
             continue
         sessions = sorted(by_sha.get(sha, ()))
         out.append({"sha": sha[:7], "subject": subject,
@@ -362,7 +362,7 @@ def measured_reach(repo, selector, work):
     shutil.copytree(repo, copy, symlinks=True)
     if not snapshot(copy, before):
         return None
-    subprocess.run(["sgt", "revert", selector, "--yes"], cwd=copy, capture_output=True)
+    subprocess.run(["ugh", "revert", selector, "--yes"], cwd=copy, capture_output=True)
     if not snapshot(copy, after):
         return None
     moved = []
@@ -404,8 +404,8 @@ def main(bike, foot, out_path):
     # The git arm of each project, rendered by render_git_arm.sh. Optional: if it is not built yet
     # the key still generates, without that arm's shas, and says so.
     #
-    # Sibling of the sgt repo by default, overridable because the repo this runs against is now an
-    # UNPACKED BUNDLE rather than the source testbed. The bundle build ends with `sgt log --rebuild`,
+    # Sibling of the ugh repo by default, overridable because the repo this runs against is now an
+    # UNPACKED BUNDLE rather than the source testbed. The bundle build ends with `ugh log --rebuild`,
     # which can renumber features and rename groups, so a key generated from the source repo can
     # name work by an id the shipped bundle does not use. The bundle is what a participant runs, so
     # the bundle is what the key is measured against -- and an unpacked bundle has no `baseline-*`
@@ -417,7 +417,7 @@ def main(bike, foot, out_path):
     }
     # A scratch directory, not a session-scoped one: this used to be hardcoded to one agent
     # session's scratchpad, which no longer exists, so the script could not be re-run by anybody.
-    work = Path(os.environ.get("ANSWER_KEY_WORK") or tempfile.mkdtemp(prefix="sgt-answer-key-"))
+    work = Path(os.environ.get("ANSWER_KEY_WORK") or tempfile.mkdtemp(prefix="ugh-answer-key-"))
     work.mkdir(parents=True, exist_ok=True)
     print(f"working in {work}", file=sys.stderr)
 

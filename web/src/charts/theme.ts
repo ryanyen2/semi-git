@@ -47,7 +47,7 @@ export const CATEGORY_COLOR: Record<Category, string> = {
  */
 export const CONDITION_LABEL: Record<Condition, string> = {
   git: 'Git',
-  sgt: 'sgt',
+  sgt: 'ugh',
 }
 
 export const CONDITION_COLOR: Record<Condition, string> = {

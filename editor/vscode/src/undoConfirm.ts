@@ -1,4 +1,4 @@
-// What the undo confirm dialog says, derived from `sgt undo --emit`.
+// What the undo confirm dialog says, derived from `ugh undo --emit`.
 //
 // "Undo the last operation?" was the whole of the dialog: it asked for consent to reverse an
 // operation without naming it, so the answer was a guess about what you last did. Undo is what you
@@ -26,14 +26,14 @@ export function undoConfirmText(pv: UndoPreview): UndoConfirm {
   if (!pv.ok) {
     // The F3 guard's refusal, surfaced instead of a button that would hit it. Getting past it
     // destroys the work it names, and the deliberate act that opts into that is typing
-    // `sgt undo --force` -- not a second click on a dialog you were already unsure about.
+    // `ugh undo --force` -- not a second click on a dialog you were already unsure about.
     return { kind: "refused", message: `Cannot undo: ${pv.message}`, detail: "" };
   }
   const detail = [
     pv.restored.length ? `Brings back ${count(pv.restored.length)}.` : "",
     pv.dropped.length ? `Drops ${count(pv.dropped.length)} made since.` : "",
     // `symbols` arrives capped upstream, so the tail is "…" rather than a remainder count this
-    // payload has no way to be right about -- the same tail `sgt undo` prints, for the same reason.
+    // payload has no way to be right about -- the same tail `ugh undo` prints, for the same reason.
     pv.symbols.length
       ? `Touches ${pv.symbols.slice(0, 6).join(", ")}${pv.symbols.length > 6 ? " …" : ""}`
       : "",

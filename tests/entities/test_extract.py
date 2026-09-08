@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sgt.entities import Entity, extract_codebase, extract_file
+from ugh.entities import Entity, extract_codebase, extract_file
 
 
 def _by_name(ents: list[Entity]) -> dict[str, Entity]:
@@ -162,7 +162,7 @@ def test_extraction_cache_reuses_identical_content_and_is_content_addressed():
     the cached list (the same object, since Entities are frozen and callers treat it read-only),
     while a content change re-parses. The cache is content-addressed, so it never returns a stale
     entity list for changed bytes, and never crosses paths."""
-    from sgt.entities import extract as extract_mod
+    from ugh.entities import extract as extract_mod
 
     extract_mod._EXTRACT_CACHE.clear()
     src = "def a():\n    return 1\n"
@@ -181,7 +181,7 @@ def test_extraction_cache_reuses_identical_content_and_is_content_addressed():
 
 def test_extraction_cache_is_bounded():
     """The LRU cap keeps a full-history init from growing the cache without bound."""
-    from sgt.entities import extract as extract_mod
+    from ugh.entities import extract as extract_mod
 
     extract_mod._EXTRACT_CACHE.clear()
     for i in range(extract_mod._EXTRACT_CACHE_MAX + 50):

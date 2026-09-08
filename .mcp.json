@@ -1,7 +1,7 @@
 {
   "mcpServers": {
-    "sgt": {
-      "command": "/Users/r4yen/repos/semi-git/.venv/bin/sgt",
+    "ugh": {
+      "command": "/Users/r4yen/repos/semi-git/.venv/bin/ugh",
       "args": [
         "mcp"
       ]

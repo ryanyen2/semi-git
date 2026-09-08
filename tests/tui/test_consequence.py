@@ -1,4 +1,4 @@
-"""The consequence focus pane (`sgt.tui.consequence.ConsequenceApp`): the interactive confirm step
+"""The consequence focus pane (`ugh.tui.consequence.ConsequenceApp`): the interactive confirm step
 a mutating verb shows on a tty in place of `[y/N]`. Driven through a real pilot (the
 `app.run_test()` pattern). We verify the pane is wired to the
 pure so-what layer -- `space` toggles a blast dependent into the kept-set and the so-what line
@@ -11,13 +11,13 @@ import pytest
 
 pytest.importorskip("textual")
 
-from sgt.api import _project_verb_preview, grid_view, map_view, segments_view  # noqa: E402
-from sgt.core import verbs  # noqa: E402
-from sgt.core.lens import get  # noqa: E402
-from sgt.core.store import Store  # noqa: E402
-from sgt.lens.map import build_map  # noqa: E402
-from sgt.store.gitbind import init_store  # noqa: E402
-from sgt.tui.consequence import ConsequenceApp, Decision, frontier_counts  # noqa: E402
+from ugh.api import _project_verb_preview, grid_view, map_view, segments_view  # noqa: E402
+from ugh.core import verbs  # noqa: E402
+from ugh.core.lens import get  # noqa: E402
+from ugh.core.store import Store  # noqa: E402
+from ugh.lens.map import build_map  # noqa: E402
+from ugh.store.gitbind import init_store  # noqa: E402
+from ugh.tui.consequence import ConsequenceApp, Decision, frontier_counts  # noqa: E402
 
 
 def _chain_repo(tmp_path):

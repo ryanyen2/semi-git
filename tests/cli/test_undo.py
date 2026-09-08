@@ -1,4 +1,4 @@
-"""`sgt undo` over the unified operation log (plan U8, R7).
+"""`ugh undo` over the unified operation log (plan U8, R7).
 
 `tests/test_porcelain.py` covers `undo` over the ideal-edit journal alone; this file proves the
 *unified* walk-back: a mixed sequence of mutating verbs (save, revert, feature rename, edit) each
@@ -11,13 +11,13 @@ from __future__ import annotations
 import json
 import os
 
-import sgt.cli as cli
-from sgt.core import lens, verbs
-from sgt.core.store import Store
-from sgt.lens import map as lensmap
-from sgt.lens import tree
-from sgt.lens import verbs as fverbs
-from sgt.store.gitbind import init_store
+import ugh.cli as cli
+from ugh.core import lens, verbs
+from ugh.core.store import Store
+from ugh.lens import map as lensmap
+from ugh.lens import tree
+from ugh.lens import verbs as fverbs
+from ugh.store.gitbind import init_store
 
 
 def _in(repo, argv):
@@ -112,9 +112,9 @@ def test_four_undos_walk_back_through_save_revert_rename_edit(tmp_path, capsys):
 
 
 def test_undo_refuses_when_it_would_clobber_a_raw_commit_and_force_overrides(tmp_path, capsys):
-    """0.2c/F3 through the CLI: after a revert, a raw `git commit` lands work sgt mines on next
-    contact. Plain `sgt undo` would restore the pre-revert snapshot and silently drop that work, so
-    it refuses (nonzero, naming the casualty); `sgt undo --force` is the opt-in that proceeds."""
+    """0.2c/F3 through the CLI: after a revert, a raw `git commit` lands work ugh mines on next
+    contact. Plain `ugh undo` would restore the pre-revert snapshot and silently drop that work, so
+    it refuses (nonzero, naming the casualty); `ugh undo --force` is the opt-in that proceeds."""
     repo = tmp_path / "repo"
     gb = _seed(repo)
     bar = next(o for o in Store(repo).all_ops() if "a.py::bar" in o.footprint)
@@ -124,7 +124,7 @@ def test_undo_refuses_when_it_would_clobber_a_raw_commit_and_force_overrides(tmp
     (repo / "a.py").write_text(
         (repo / "a.py").read_text(encoding="utf-8") + "\n\ndef baz():\n    return 3\n", encoding="utf-8"
     )
-    gb.commit_all("RAW: add baz (no sgt)")
+    gb.commit_all("RAW: add baz (no ugh)")
     lens.get(repo)  # absorb it into the current ideal
 
     capsys.readouterr()
@@ -139,7 +139,7 @@ def test_undo_refuses_when_it_would_clobber_a_raw_commit_and_force_overrides(tmp
 
 
 def test_emit_says_what_undo_would_reverse_without_reversing_it(tmp_path, capsys):
-    """`sgt undo --emit`: the dry run every other ideal-edit verb already has.
+    """`ugh undo --emit`: the dry run every other ideal-edit verb already has.
 
     `oplog.preview` has always known what the next undo would do, but the only thing that read it
     was `undo`'s own tty confirm -- so a non-tty caller (the VS Code extension, MCP) could not ask
@@ -173,7 +173,7 @@ def test_emit_reports_the_refusal_before_the_undo_is_attempted(tmp_path, capsys)
     (repo / "a.py").write_text(
         (repo / "a.py").read_text(encoding="utf-8") + "\n\ndef baz():\n    return 3\n", encoding="utf-8"
     )
-    gb.commit_all("RAW: add baz (no sgt)")
+    gb.commit_all("RAW: add baz (no ugh)")
     lens.get(repo)
 
     capsys.readouterr()

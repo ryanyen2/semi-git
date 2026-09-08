@@ -1,15 +1,15 @@
-"""Tests for sgt.core.tiers -- the three-tier file boundary (plan U27, D4): entity/opaque/
+"""Tests for ugh.core.tiers -- the three-tier file boundary (plan U27, D4): entity/opaque/
 ignored resolution, LAW-0 mining determinism, the `derived` flag, and the two named safety
 guards (opaque->entity promotion is a content no-op; tier->ignored refuses on live coverage)."""
 
 from __future__ import annotations
 
-from sgt import state
-from sgt.core.fold import code
-from sgt.core.lens import get
-from sgt.core.mine import mine
-from sgt.core.store import Store
-from sgt.store.gitbind import init_store
+from ugh import state
+from ugh.core.fold import code
+from ugh.core.lens import get
+from ugh.core.mine import mine
+from ugh.core.store import Store
+from ugh.store.gitbind import init_store
 
 
 def _ops_for_commit(ops, sha):
@@ -73,13 +73,13 @@ def test_entity_override_on_ungrammared_path_is_a_content_noop(tmp_path):
 
 
 def test_ignoring_a_live_path_refuses_and_names_revert(tmp_path):
-    """D4's second safety guard: `sgt tiers set` refuses to mark a currently-covered path
-    `ignored` -- that would silently stop tracking live content -- and names `sgt revert` as
+    """D4's second safety guard: `ugh tiers set` refuses to mark a currently-covered path
+    `ignored` -- that would silently stop tracking live content -- and names `ugh revert` as
     the remedy. Once the path's ops are reverted out of the ideal, the same call succeeds."""
-    from sgt.cli.tiers import _tiers_set
-    from sgt.core import verbs
-    from sgt.core.lens import get as get_ideal
-    from sgt.core.op import is_content_bearing
+    from ugh.cli.tiers import _tiers_set
+    from ugh.core import verbs
+    from ugh.core.lens import get as get_ideal
+    from ugh.core.op import is_content_bearing
 
     gb, _ = init_store(tmp_path)
     (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
@@ -137,9 +137,9 @@ def test_divergent_working_tier_maps_mine_to_byte_identical_ops(tmp_path):
 
 def test_dot_paths_are_ignored_by_default(tmp_path):
     """Default exclusion #1 (launch): any path with a leading-dot component -- tooling and config
-    that sgt should never mint one-file features for -- resolves to `ignored` with no config at
+    that ugh should never mint one-file features for -- resolves to `ignored` with no config at
     all, while ordinary source keeps its grammar-based default."""
-    from sgt.core.tiers import EMPTY, resolve_tier
+    from ugh.core.tiers import EMPTY, resolve_tier
 
     for p in (".gitignore", ".github/workflows/ci.yml", ".vscode/settings.json",
               ".claude/commands/plan.md", ".mcp.json", ".sgt/tiers.json", "src/.cache/x.py"):
@@ -167,7 +167,7 @@ def test_gitignored_tracked_files_are_ignored_but_overridable(tmp_path):
     """Default exclusion #2: a non-dot path the repo `.gitignore` matches resolves to `ignored`
     even though it's tracked (the committed-before-ignored case) -- unless a `.sgt/tiers.json`
     override force-includes it, since overrides are checked first."""
-    from sgt.core.tiers import TierConfig, resolve_tier
+    from ugh.core.tiers import TierConfig, resolve_tier
 
     cfg = TierConfig(gitignore=("build/", "*.log"))
     assert resolve_tier("build/out.js", cfg) == "ignored"  # gitignored beats the grammar default
@@ -184,7 +184,7 @@ def test_gitignored_tracked_files_are_ignored_but_overridable(tmp_path):
 def test_gitignore_matcher_semantics():
     """The compact gitignore engine: anchoring, `*` not crossing `/`, `**` crossing it, dir-only,
     and ordered `!` negation (last match wins)."""
-    from sgt.core.tiers import _gitignore_ignored as ig
+    from ugh.core.tiers import _gitignore_ignored as ig
 
     # unanchored basename matches at any depth
     assert ig("a/b/x.log", ("*.log",))

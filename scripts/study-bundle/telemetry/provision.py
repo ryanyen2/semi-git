@@ -50,7 +50,7 @@ DEFAULT_MODEL = "claude-sonnet-5"
 
 # What the history tool names features with. Cheap on purpose: it fires once per
 # feature on every refresh, and the study rebuilds the graph for every bundle.
-SGT_MODEL = "gpt-5.6-luna"
+UGH_MODEL = "gpt-5.6-luna"
 
 
 def build_settings(study_home: Path, python: str, model: str = DEFAULT_MODEL) -> dict:
@@ -181,16 +181,16 @@ def main() -> int:
     existing.update({"hasCompletedOnboarding": True, "theme": "light"})
     claude_json.write_text(json.dumps(existing, indent=2) + "\n")
 
-    # --- the key sgt needs --------------------------------------------------
+    # --- the key ugh needs --------------------------------------------------
     #
     # The model is pinned here for the same reason the assistant's is: it names
     # every feature the participant reads, and two halves labelled by two
     # different models are not two runs of one study. Written next to the key so
     # the tool cannot pick up whatever a machine happens to default to.
-    if expected_condition == "sgt" and openai_key:
+    if expected_condition == "ugh" and openai_key:
         env_file = study_home / "work" / ".env"
         env_file.write_text(
-            f"OPENAI_API_KEY={openai_key}\nSGT_MODEL={SGT_MODEL}\n"
+            f"OPENAI_API_KEY={openai_key}\nUGH_MODEL={UGH_MODEL}\n"
         )
         env_file.chmod(stat.S_IRUSR | stat.S_IWUSR)
 
@@ -219,7 +219,7 @@ def main() -> int:
     print(f"  Set up for {label}, half {expected_half}.")
     if not anthropic_key:
         print("  No assistant key was issued yet. Tell your facilitator before you start.")
-    if expected_condition == "sgt" and not openai_key:
+    if expected_condition == "ugh" and not openai_key:
         print("  No key for the history tool yet. Tell your facilitator before you start.")
     return 0
 

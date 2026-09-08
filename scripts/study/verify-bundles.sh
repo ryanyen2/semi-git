@@ -58,7 +58,7 @@ for tgz in "$BUNDLES"/study-*.tgz; do
     w="$dest/work"
 
     # The record every stage resets to must have nothing to undo: a journal entry
-    # in here is a build-time edit `sgt undo` would replay onto a participant.
+    # in here is a build-time edit `ugh undo` would replay onto a participant.
     if [ -f "$w/.study/sgt-pristine.tar" ]; then
         if tar tf "$w/.study/sgt-pristine.tar" | grep -q 'local/ideal_journal.json$'; then
             bad "pristine .sgt ships an undo journal"
@@ -85,7 +85,7 @@ for tgz in "$BUNDLES"/study-*.tgz; do
     # What must be true is narrower and is the thing the stamp exists for: nothing INSIDE the
     # bundle has changed since it was built. So compare the paths a bundle carries -- the tool, the
     # extension, the participant's own scripts -- between the stamped commit and HEAD.
-    inside=(sgt/ pyproject.toml editor/vscode/ scripts/study-bundle/ scripts/study/task-scripts/
+    inside=(ugh/ pyproject.toml editor/vscode/ scripts/study-bundle/ scripts/study/task-scripts/
             scripts/make-study-bundle.sh)
     if [ "${built%-dirty}" != "$built" ]; then
         bad "built from a dirty tree ($built) — commit, rebuild, then publish"
@@ -107,13 +107,13 @@ for tgz in "$BUNDLES"/study-*.tgz; do
     ( cd "$w" && uv venv -q --clear -p 3.12 && uv pip install -q -p .venv/bin/python pytest ) \
         >/dev/null 2>&1 || { bad "could not build the project environment"; continue; }
     ( cd "$dest" && uv venv -q --clear -p 3.12 toolenv \
-        && uv pip install -q -p toolenv/bin/python install/semi_git-*.whl ) >/dev/null 2>&1
-    sgt_bin="$dest/toolenv/bin/sgt"
-    arm=git; [ -x "$sgt_bin" ] && [ -d "$w/.sgt" ] && arm=sgt
+        && uv pip install -q -p toolenv/bin/python install/ugh-*.whl ) >/dev/null 2>&1
+    ugh_bin="$dest/toolenv/bin/ugh"
+    arm=git; [ -x "$ugh_bin" ] && [ -d "$w/.sgt" ] && arm=ugh
 
     # F134: the key setup writes here, and the interpreter every command runs
     # through, must both survive a reset -- and every stage begins with one.
-    printf 'OPENAI_API_KEY=verify-bundles-placeholder\nSGT_MODEL=gpt-5.6-luna\n' > "$w/.env"
+    printf 'OPENAI_API_KEY=verify-bundles-placeholder\nUGH_MODEL=gpt-5.6-luna\n' > "$w/.env"
     export PATH="$dest/toolenv/bin:$PATH"
 
     # Every trial below starts from the work dir a participant downloads, never the one the
@@ -122,9 +122,9 @@ for tgz in "$BUNDLES"/study-*.tgz; do
     # This walk used to run all of them in one directory: the 0-4 stage walk, then stage 3 again,
     # a probe, a revert, stage 4, a restore, and two more stage-4 trials -- around eight
     # `reset_to`s where a participant does five, once each. Each one re-derives the record
-    # (`reset_to` -> `sgt advanced resync`), and re-derivation is lossy: measured on this bundle,
+    # (`reset_to` -> `ugh advanced resync`), and re-derivation is lossy: measured on this bundle,
     # 206 live ops became 191, a strict subset, and the ops it drops are the ones that let the
-    # record reproduce the committed tree. Far enough down that road and `sgt revert` refuses with
+    # record reproduce the committed tree. Far enough down that road and `ugh revert` refuses with
     # `put() would roll back files outside this edit's scope`, on a bundle a participant completes
     # without trouble.
     #
@@ -148,7 +148,7 @@ for tgz in "$BUNDLES"/study-*.tgz; do
     [ -f "$w/.env" ] && ok ".env survives every stage"
     [ -d "$w/.venv" ] && ok ".venv survives every stage"
 
-    if [ "$arm" != sgt ]; then
+    if [ "$arm" != ugh ]; then
         ( cd "$w" && ./stage 3 ) >/dev/null 2>&1
         ( cd "$w" && ./check 3 ) >/dev/null 2>&1
         check $? "check 3 runs"
@@ -164,9 +164,9 @@ for tgz in "$BUNDLES"/study-*.tgz; do
     # asked for, and the testbeds are built by replaying commits with no prompt hook running -- so
     # "the capture stores shipped empty" is a failure that is invisible from every other angle:
     # every stage still passes, every verb still works, and the attribute the arm is judged on is
-    # simply blank. Read through `sgt show` rather than off the store, because what matters is not
+    # simply blank. Read through `ugh show` rather than off the store, because what matters is not
     # that the words are on disk but that a participant pointing at the work sees them.
-    asked="$( cd "$w" && "$sgt_bin" show "$label" 2>&1 | sed -n 's/^  asked *//p' )"
+    asked="$( cd "$w" && "$ugh_bin" show "$label" 2>&1 | sed -n 's/^  asked *//p' )"
     [ -n "$asked" ] && ok "the work carries what it was asked for: ${asked:0:60}" \
                     || bad "no asked attribute on '$label' — this bundle's capture stores are empty"
     # ...and as an EXCERPT. Real prompts are 400-900 characters; the whole point of the attribute
@@ -178,16 +178,16 @@ for tgz in "$BUNDLES"/study-*.tgz; do
     fi
     # The full text has to be reachable, or the excerpt is the only version a participant can ever
     # see and the attribute is a summary with nothing behind it.
-    full="$( cd "$w" && "$sgt_bin" show "$label" --asked 2>&1 )"
+    full="$( cd "$w" && "$ugh_bin" show "$label" --asked 2>&1 )"
     case "$full" in
         *"ask"*"behind this"*) ok "the conversation behind it reads back in full" ;;
-        *) bad "sgt show --asked did not read back the conversation: ${full%%$'\n'*}" ;;
+        *) bad "ugh show --asked did not read back the conversation: ${full%%$'\n'*}" ;;
     esac
 
     # F135: the wrong verb for this stage is where a tool says what it is for.
     fresh
     ( cd "$w" && ./stage 3 ) >/dev/null 2>&1
-    out="$( cd "$w" && "$sgt_bin" restore "$label" 2>&1 )"
+    out="$( cd "$w" && "$ugh_bin" restore "$label" 2>&1 )"
     rc=$?
     case "$out" in
         *"nothing to restore"*) [ "$rc" = 0 ] && ok "restore before a removal says there is nothing to restore" \
@@ -197,7 +197,7 @@ for tgz in "$BUNDLES"/study-*.tgz; do
     esac
 
     # The stage-3 task itself, and its verdict.
-    ( cd "$w" && "$sgt_bin" revert "$label" --yes ) >/dev/null 2>&1
+    ( cd "$w" && "$ugh_bin" revert "$label" --yes ) >/dev/null 2>&1
     check $? "revert '$label' applies"
     checks_match "$w" 3 && ok "check 3: the averages count every day again" \
                         || bad "check 3 does not match after the revert"
@@ -206,7 +206,7 @@ for tgz in "$BUNDLES"/study-*.tgz; do
     fresh
     ( cd "$w" && ./stage 4 ) >/dev/null 2>&1
     check $? "stage 4 sets up the removed state"
-    ( cd "$w" && "$sgt_bin" restore "$label" --yes ) >/dev/null 2>&1
+    ( cd "$w" && "$ugh_bin" restore "$label" --yes ) >/dev/null 2>&1
     check $? "restore '$label' applies"
     checks_match "$w" 4 && ok "check 4: the page reads what it read before" \
                         || bad "check 4 does not match after the restore"
@@ -216,7 +216,7 @@ for tgz in "$BUNDLES"/study-*.tgz; do
     # A participant did stage 3 in the terminal, ran `./stage 4`, clicked the ◆ in the workbench,
     # and got a restore that printed ✓ and changed no files. The sequence above cannot see it:
     # nothing reads between the revert and the restore, and every read the extension performs is
-    # a read, so it looks like it could not matter. It matters. `sgt log --refresh` re-mines
+    # a read, so it looks like it could not matter. It matters. `ugh log --refresh` re-mines
     # (`_map_for_view` -> `get(repo)`, mine-on-contact) and a mine absorbs HEAD's bytes as newly
     # authored work -- so one landing in that gap leaves the removal with nothing to invert. Every
     # read below used to go through `store.map()`, which passed `--refresh`; opening a file or
@@ -228,27 +228,27 @@ for tgz in "$BUNDLES"/study-*.tgz; do
     # extension belongs on this list.
     fresh
     ( cd "$w" && ./stage 4 ) >/dev/null 2>&1
-    ( cd "$w" && "$sgt_bin" advanced compose --json --full ) >/dev/null 2>&1   # the primary poll
-    ( cd "$w" && "$sgt_bin" log --tree --json ) >/dev/null 2>&1                # tree/hover/inlay/fold
-    ( cd "$w" && "$sgt_bin" now --json ) >/dev/null 2>&1
-    ( cd "$w" && "$sgt_bin" restore "$label" --yes ) >/dev/null 2>&1
+    ( cd "$w" && "$ugh_bin" advanced compose --json --full ) >/dev/null 2>&1   # the primary poll
+    ( cd "$w" && "$ugh_bin" log --tree --json ) >/dev/null 2>&1                # tree/hover/inlay/fold
+    ( cd "$w" && "$ugh_bin" now --json ) >/dev/null 2>&1
+    ( cd "$w" && "$ugh_bin" restore "$label" --yes ) >/dev/null 2>&1
     checks_match "$w" 4 && ok "check 4: the workbench's own reads leave the restore intact" \
                         || bad "a workbench read between the revert and the restore breaks it"
 
     # The other half of the same defect, which used to be reported here as a known-open warning:
     # a re-mine between the revert and the restore. Nothing reaches it automatically since the
-    # extension stopped re-mining on reads, but `sgt log`'s own help offers `--refresh` as the way
+    # extension stopped re-mining on reads, but `ugh log`'s own help offers `--refresh` as the way
     # to reflect new edits, so a participant can type their way in.
     #
     # It is a gate now, not a warning: `_matching_revert_event` resolves the recorded revert by the
     # handle the person typed when a re-derivation has moved the op ids underneath it, which is
-    # what `sgt undo` was doing correctly the whole time. Two shapes to catch if it ever comes
+    # what `ugh undo` was doing correctly the whole time. Two shapes to catch if it ever comes
     # back -- a refusal naming an anchor symbol, and a ✓ over a commit that changes no files -- so
     # the failure says which one it is rather than just that the number is wrong.
     fresh
     ( cd "$w" && ./stage 4 ) >/dev/null 2>&1
-    ( cd "$w" && "$sgt_bin" log --tree --refresh --json ) >/dev/null 2>&1
-    out="$( cd "$w" && "$sgt_bin" restore "$label" --yes 2>&1 )"
+    ( cd "$w" && "$ugh_bin" log --tree --refresh --json ) >/dev/null 2>&1
+    out="$( cd "$w" && "$ugh_bin" restore "$label" --yes 2>&1 )"
     if checks_match "$w" 4; then
         ok "check 4: the restore survives a hand-typed re-mine before it"
     else
@@ -268,14 +268,14 @@ for tgz in "$BUNDLES"/study-*.tgz; do
     # file right up until somebody edits it after a build, and that is exactly the state where a
     # gate reading the repo would call the artefact fine.
     shipped=""
-    if [ -f "$dest/install/semi-git.vsix" ] && command -v unzip >/dev/null 2>&1; then
-        unzip -o -q "$dest/install/semi-git.vsix" "extension/media/workbench.js" -d "$dest/vsx" \
+    if [ -f "$dest/install/ugh.vsix" ] && command -v unzip >/dev/null 2>&1; then
+        unzip -o -q "$dest/install/ugh.vsix" "extension/media/workbench.js" -d "$dest/vsx" \
             && shipped="$dest/vsx/extension/media/workbench.js"
     fi
     [ -n "$shipped" ] && ok "the bundle ships its own workbench.js" \
                       || bad "no workbench.js in the bundle's .vsix — rendering the repo's copy"
     if command -v node >/dev/null 2>&1; then
-        node "$ROOT/editor/vscode/dev/render-bundle.js" "$w" "$sgt_bin" "$shipped" 2>&1 | sed 's/^/  /'
+        node "$ROOT/editor/vscode/dev/render-bundle.js" "$w" "$ugh_bin" "$shipped" 2>&1 | sed 's/^/  /'
         [ "${PIPESTATUS[0]}" = 0 ] || fails=$((fails + 1))
     else
         bad "node is not available, so the workbench was not rendered"

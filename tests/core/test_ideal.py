@@ -1,11 +1,11 @@
-"""Tests for sgt.core.ideal -- the validated Ideal wrapper (plan U4, R3)."""
+"""Tests for ugh.core.ideal -- the validated Ideal wrapper (plan U4, R3)."""
 
 from __future__ import annotations
 
 import pytest
 
-from sgt.core.ideal import Ideal
-from sgt.core.op import BOTTOM, make_op
+from ugh.core.ideal import Ideal
+from ugh.core.op import BOTTOM, make_op
 
 
 def _chain(sym: str, n: int):

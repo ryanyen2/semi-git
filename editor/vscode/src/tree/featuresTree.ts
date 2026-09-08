@@ -1,4 +1,4 @@
-// `sgtFeatures`: the feature/subsystem tree from `map_view`, mirrored in the activity bar.
+// `ughFeatures`: the feature/subsystem tree from `map_view`, mirrored in the activity bar.
 // Native tree virtualization + type-to-filter handle huge trees for free; the workbench (Phase 3)
 // mirrors the same data with a windowed custom renderer for the timeline pane.
 
@@ -12,7 +12,7 @@ import { IntentSegment, MapNode } from "../types";
 //
 // A feature can be months of work; a chapter is normally one afternoon's job, and it is the unit
 // people actually want to remove or put back. The terminal has shown chapters for a while
-// (`sgt log --map`, `sgt intent list`), and this panel did not, so the two surfaces disagreed
+// (`ugh log --map`, `ugh intent list`), and this panel did not, so the two surfaces disagreed
 // about what the repository contains and only one of them could answer "which piece of work was
 // that". The segments arrive with the intent view the store already fetches.
 type TreeNode = MapNode | ChapterNode;
@@ -55,7 +55,7 @@ export class FeatureItem extends vscode.TreeItem {
         (node.split_reason ? `\n\n_split: ${node.split_reason}_` : "")
     );
     this.iconPath = colorIcon(colorForNode(node.id));
-    this.contextValue = node.kind === "feature" ? "sgtFeature" : "sgtSubsystem";
+    this.contextValue = node.kind === "feature" ? "ughFeature" : "ughSubsystem";
   }
 }
 
@@ -71,11 +71,11 @@ export class ChapterItem extends vscode.TreeItem {
       `**${seg.intent || `@${seg.seg_index}`}**\n\n` +
         `${seg.rationale || "(no rationale recorded)"}\n\n` +
         "```\n" +
-        `sgt revert "${seg.feature_label}@${seg.intent}"\n` +
+        `ugh revert "${seg.feature_label}@${seg.intent}"\n` +
         "```"
     );
     this.iconPath = new vscode.ThemeIcon("git-commit");
-    this.contextValue = "sgtChapter";
+    this.contextValue = "ughChapter";
   }
 }
 
@@ -116,7 +116,7 @@ export class FeaturesTreeProvider implements vscode.TreeDataProvider<TreeNode>, 
     const ids = node ? node.children : map.roots;
     // Same drop rule the terminal map and the workbench timeline apply: a husk leaf (no symbols of
     // its own) and any subsystem left holding only husks are not listed. Without it this tree was the
-    // one surface still showing features `sgt log --map` did not, which is most of why the sidebar,
+    // one surface still showing features `ugh log --map` did not, which is most of why the sidebar,
     // the workbench and the terminal could not be read against each other.
     const nodeOf = (id: string) => this.store.node(id);
     return ids

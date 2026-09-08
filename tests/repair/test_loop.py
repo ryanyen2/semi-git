@@ -1,4 +1,4 @@
-"""Tests for sgt.repair.loop -- the semantic repair loop (plan U5/U6).
+"""Tests for ugh.repair.loop -- the semantic repair loop (plan U5/U6).
 
 `FakeBackend` scripts one image per call, indexed by total calls so far (not
 `RepairRequest.attempt`, which restarts at 1 every oracle round) -- it stands in for a real LLM
@@ -16,14 +16,14 @@ import json
 import sys
 from pathlib import Path
 
-from sgt.core import mine, order, rewrite
-from sgt.core.lens import get
-from sgt.core.op import make_op
-from sgt.core.rewrite import RewriteDraft
-from sgt.core.store import Store
-from sgt.repair.backends import RepairBackend, RepairProposal
-from sgt.repair.loop import repair
-from sgt.store.gitbind import init_store
+from ugh.core import mine, order, rewrite
+from ugh.core.lens import get
+from ugh.core.op import make_op
+from ugh.core.rewrite import RewriteDraft
+from ugh.core.store import Store
+from ugh.repair.backends import RepairBackend, RepairProposal
+from ugh.repair.loop import repair
+from ugh.store.gitbind import init_store
 
 
 def _configure_oracle(repo: Path, tiers: list[tuple[str, str]]) -> None:

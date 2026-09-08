@@ -1,11 +1,11 @@
-"""Tests for sgt.core.order -- the <= relation and ideal validity (plan U4, R3/R4/R10)."""
+"""Tests for ugh.core.order -- the <= relation and ideal validity (plan U4, R3/R4/R10)."""
 
 from __future__ import annotations
 
 from hypothesis import given, settings, strategies as st
 
-from sgt.core.op import make_op
-from sgt.core.order import (
+from ugh.core.op import make_op
+from ugh.core.order import (
     chain_edges,
     components_in,
     downset,
@@ -159,7 +159,7 @@ def test_downset_includes_declared_edge_ancestors():
     a = make_op({"a.py::a": (None, "v0")}, {"a.py::a": b"a"})
     b = make_op({"b.py::b": (None, "v0")}, {"b.py::b": b"b"})  # unrelated by chain/reference
     ops = [a, b]
-    declared = frozenset({(a.id, b.id)})  # `sgt after b a` -- a must precede b
+    declared = frozenset({(a.id, b.id)})  # `ugh after b a` -- a must precede b
     assert downset(b.id, ops) == frozenset({b.id})  # unrelated without the declared edge
     assert downset(b.id, ops, declared) == frozenset({a.id, b.id})
     assert is_valid_ideal(ops, {b.id})  # valid on its own
@@ -361,7 +361,7 @@ def test_reduce_to_ideal_is_memoized_correct_and_bounded():
     of those over content-addressed ops). The memo returns the identical result, agrees with a
     fresh computation, and is size-bounded so a long-running process over an append-only store never
     accumulates one entry per save."""
-    from sgt.core import order
+    from ugh.core import order
 
     root = make_op({"a.py::x": (None, "v0")}, {"a.py::x": b"r"})
     tip_a = make_op({"a.py::x": ("v0", "v1")}, {"a.py::x": b"a"}, provenance=("branch-a",))
@@ -389,8 +389,8 @@ def test_reduce_to_ideal_memo_is_sound_when_the_op_universe_shrinks():
     remove committed `.sgt/ops` while a gitignored ideal table survives, referencing ops the new ref
     no longer has. Reducing the same id set first against the full universe then against the shrunk
     one must return only the surviving ops -- never the stale full-universe result, which would then
-    fail `Ideal.from_ops` against the smaller universe (the `sgt switch` invalid-ideal crash)."""
-    from sgt.core import order
+    fail `Ideal.from_ops` against the smaller universe (the `ugh switch` invalid-ideal crash)."""
+    from ugh.core import order
 
     sym = "a.py::foo"
     add = make_op({sym: (None, "v0")}, {sym: b"b0"}, provenance=("c0",))
@@ -412,9 +412,9 @@ def test_ordered_chains_walks_a_slice_that_starts_mid_chain():
     is downward-closed and so carries the symbol's birth. `plan_restore` breaks that on purpose:
     when the reduced source has parked a symbol's chain it widens resolution to the whole store,
     and that slice can start mid-chain -- a ghost whose birth an earlier revert excluded. That
-    raised a bare `KeyError: None` out of `sgt restore`, one of the daily-spine verbs.
+    raised a bare `KeyError: None` out of `ugh restore`, one of the daily-spine verbs.
     """
-    from sgt.core.order import _ordered_chains
+    from ugh.core.order import _ordered_chains
 
     sym = "a.py::foo"
     ops = _chain(sym, 4)
@@ -428,6 +428,6 @@ def test_ordered_chains_walks_a_slice_that_starts_mid_chain():
 def test_ordered_chains_is_unchanged_for_a_proper_downward_closed_ideal():
     sym = "a.py::foo"
     ops = _chain(sym, 4)
-    from sgt.core.order import _ordered_chains
+    from ugh.core.order import _ordered_chains
 
     assert _ordered_chains([op.id for op in ops], ops)[sym] == [op.id for op in ops]

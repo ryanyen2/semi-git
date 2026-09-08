@@ -1,12 +1,12 @@
-"""Tests for sgt.lens.pins -- must-link/cannot-link/assign constraints (plan U12 D3/D4)."""
+"""Tests for ugh.lens.pins -- must-link/cannot-link/assign constraints (plan U12 D3/D4)."""
 
 from __future__ import annotations
 
-from sgt.core.lens import get
-from sgt.core.store import Store
-from sgt.lens import pins as pins_mod
-from sgt.lens import tree
-from sgt.store.gitbind import init_store
+from ugh.core.lens import get
+from ugh.core.store import Store
+from ugh.lens import pins as pins_mod
+from ugh.lens import tree
+from ugh.store.gitbind import init_store
 
 
 def test_load_pins_on_missing_file_is_empty_not_none(tmp_path):

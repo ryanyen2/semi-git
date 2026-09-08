@@ -1,8 +1,8 @@
 // Which `map_view` nodes a listing surface should show.
 //
-// A feature whose ops touch only the residue/anchor sentinels has nothing anyone can act on: `sgt
+// A feature whose ops touch only the residue/anchor sentinels has nothing anyone can act on: `ugh
 // show` answers it with "0 symbols in 0 files" and reverting it removes nothing. The terminal has
-// dropped those rows for a while (`sgt/tui/graph.py`'s lane filter and `_print_map_tree`'s
+// dropped those rows for a while (`ugh/tui/graph.py`'s lane filter and `_print_map_tree`'s
 // `is_visible`) while the sidebar tree and the feature quick-pick showed every node the projection
 // carried, so the three surfaces listed different features for one and the same repo -- and the
 // pick offered husks as revert targets. Pure, and in its own module rather than inline in the tree

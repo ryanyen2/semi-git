@@ -1,21 +1,21 @@
-"""Tests for sgt.intent.align_session -- the orchestrator that runs the pure A--F stages of
-`sgt.intent.align` over real captured turns + real mined ops and writes ALIGN-region rationale
+"""Tests for ugh.intent.align_session -- the orchestrator that runs the pure A--F stages of
+`ugh.intent.align` over real captured turns + real mined ops and writes ALIGN-region rationale
 records. No LLM/network: mining + git history + the deterministic scorer only, same fixture idiom
 as tests/intent/test_segment.py.
 """
 
 from __future__ import annotations
 
-from sgt.core.op import make_op
-from sgt.core.store import Store
-from sgt.intent import align, align_session, rationale, turns
-from sgt.store.gitbind import GitBinding, init_store
+from ugh.core.op import make_op
+from ugh.core.store import Store
+from ugh.intent import align, align_session, rationale, turns
+from ugh.store.gitbind import GitBinding, init_store
 
 
 def _mine_fully(repo) -> None:
     """Loop `get()` until the backward walk reaches genesis, so a fixture's op set is never gated by
     a single deadline-bounded backfill chunk (test-machine-speed artifact; see test_segment)."""
-    from sgt.core.lens import _load_backfill_state, _ref_key, get
+    from ugh.core.lens import _load_backfill_state, _ref_key, get
 
     gb = GitBinding(repo)
     key = _ref_key(gb) or gb.head()

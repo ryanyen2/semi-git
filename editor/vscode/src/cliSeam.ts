@@ -1,7 +1,7 @@
 // The two decisions this extension makes about the CLI that are pure functions of their inputs:
-// which argv a mutation needs, and what a failed run actually said. Both lived inline in `Sgt` and
+// which argv a mutation needs, and what a failed run actually said. Both lived inline in `Ugh` and
 // both were wrong for eight months (F125, F126) with nothing that could have caught it, because
-// `sgt.ts` imports `vscode` and so cannot be loaded outside the extension host. They live here so
+// `ugh.ts` imports `vscode` and so cannot be loaded outside the extension host. They live here so
 // `cliSeam.test.ts` can exercise them under plain `node --test`.
 
 /** A rejected `promisify(execFile)` call. Only the fields we read. */
@@ -71,7 +71,7 @@ export function failureDetail(err: ExecFailure, bin: string, timeout: number): s
   if (err.killed) {
     return `timed out after ${timeout}ms (mining/rebuild likely still in progress -- try again once it finishes)`;
   }
-  if (isSpawnFailure(err)) return `could not run the sgt CLI at '${bin}' (${err.code})`;
+  if (isSpawnFailure(err)) return `could not run the ugh CLI at '${bin}' (${err.code})`;
   return (
     tail(err.stderr || "") ||
     fromJson(err.stdout || "") ||

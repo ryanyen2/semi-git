@@ -1,24 +1,24 @@
-"""The canonical JSON projection (sgt.api) consumed by the CLI --json mode and MCP.
+"""The canonical JSON projection (ugh.api) consumed by the CLI --json mode and MCP.
 
 The operation-ideal kernel's read surface: the op DAG, the current ideal, and ideal-vs-ideal
 semantic diffs. Fixtures are deterministic git repos (tests/laws/corpus.py, pinned SHAs) mined by
-`sgt.core.lens.get`.
+`ugh.core.lens.get`.
 """
 
 import json
 
-from sgt.api import (
+from ugh.api import (
     compose_view, drift_view, fold_view, history_view, ideal_diff_view, map_view, now_view,
     oplog_view, plan_view, resolve_selection, save_preview_view, state_view, status_view,
     trust_view,
 )
-from sgt.core.lens import get
-from sgt.core.op import make_op
-from sgt.core.store import Store
-from sgt.lens import authored
-from sgt.loop import match as match_mod
-from sgt.loop import plan as plan_mod
-from sgt.store.gitbind import init_store
+from ugh.core.lens import get
+from ugh.core.op import make_op
+from ugh.core.store import Store
+from ugh.lens import authored
+from ugh.loop import match as match_mod
+from ugh.loop import plan as plan_mod
+from ugh.store.gitbind import init_store
 from tests.laws import corpus
 
 
@@ -65,7 +65,7 @@ def test_ideal_diff_view_lists_symmetric_difference_grouped_by_symbol(tmp_path):
 def test_resolve_selection_view_projects_op_set_label_and_counts(tmp_path):
     """`resolve_selection` is the thin projection over `select.resolve`: it exposes the resolved
     direct/closure op sets, the closure counts, and the display label for any spec form."""
-    from sgt.store.gitbind import init_store
+    from ugh.store.gitbind import init_store
 
     gb, _ = init_store(tmp_path)
     (tmp_path / "a.py").write_text("def base():\n    return 1\n", encoding="utf-8")
@@ -85,7 +85,7 @@ def test_resolve_selection_view_projects_op_set_label_and_counts(tmp_path):
 
 def test_resolve_selection_view_reports_ambiguous_candidates(tmp_path):
     """An ambiguous NL phrase projects `ok=False` with the ranked candidates, never raising."""
-    from sgt.store.gitbind import init_store
+    from ugh.store.gitbind import init_store
 
     gb, _ = init_store(tmp_path)
     (tmp_path / "a.py").write_text("def base():\n    return 1\n", encoding="utf-8")
@@ -127,14 +127,14 @@ def test_kernel_views_are_pure(tmp_path):
 
 def test_log_and_state_cli_json_match_views_byte_for_byte(tmp_path, capsys, monkeypatch):
     """R21: the CLI `--json` surface is byte-identical to the api views -- one projection, no drift.
-    `sgt log` defaults to the grid (`grid_view`, KTD9); the raw op DAG moved to `sgt log --ops`
+    `ugh log` defaults to the grid (`grid_view`, KTD9); the raw op DAG moved to `ugh log --ops`
     (`oplog_view`); `state` is re-homed under the `advanced` grouping (KTD2)."""
-    from sgt.api import grid_view
-    from sgt.cli import main
-    from sgt.lens.map import build_map
+    from ugh.api import grid_view
+    from ugh.cli import main
+    from ugh.lens.map import build_map
 
     repo = _mined(tmp_path, "mixed_coverage")
-    build_map(repo)  # a stable built map so `sgt log`'s grid doesn't auto-build mid-test
+    build_map(repo)  # a stable built map so `ugh log`'s grid doesn't auto-build mid-test
     expected = {
         ("log",): json.dumps(grid_view(repo), indent=2),
         ("log", "--ops"): json.dumps(oplog_view(repo), indent=2),
@@ -148,8 +148,8 @@ def test_log_and_state_cli_json_match_views_byte_for_byte(tmp_path, capsys, monk
 
 
 def test_diff_cli_json_matches_view_byte_for_byte(tmp_path, capsys, monkeypatch):
-    """R21: `sgt diff --json <a> <b>` output is byte-identical to `sgt.api.ideal_diff_view`."""
-    from sgt.cli import main
+    """R21: `ugh diff --json <a> <b>` output is byte-identical to `ugh.api.ideal_diff_view`."""
+    from ugh.cli import main
 
     repo = corpus.CORPUS["diverged_chain"].build(tmp_path / "repo")
     corpus.checkout(repo, "release")
@@ -179,15 +179,15 @@ def test_history_view_orders_commits_chronologically_and_places_every_op_on_the_
     for op in v["ops"]:
         assert set(op) == {"id", "kind", "feature_id", "commit_index"}
         assert op["commit_index"] in valid_indices
-        assert op["feature_id"] is None  # no `sgt map` has run in this fixture
+        assert op["feature_id"] is None  # no `ugh map` has run in this fixture
     assert [(o["commit_index"], o["id"]) for o in v["ops"]] == sorted(
         (o["commit_index"], o["id"]) for o in v["ops"]
     )
 
 
 def test_history_view_reports_feature_id_once_a_tree_is_built(tmp_path):
-    """After `sgt map`, `op_leaf` is populated -- every op with a feature assignment reports it."""
-    from sgt.lens.map import build_map
+    """After `ugh map`, `op_leaf` is populated -- every op with a feature assignment reports it."""
+    from ugh.lens.map import build_map
 
     repo = _mined(tmp_path, "mixed_coverage")
     build_map(repo)
@@ -202,8 +202,8 @@ def _shared_feature_dag(tmp_path):
     single-node, so we reshape a freshly built `tree.json` by hand: a LEAF listed under *both* N1
     and N2 (a DAG) but canonically parented to N1 -- N2 only borrows it. Returns
     (repo, leaf_id, real_op_id); the caller reads `map_view(repo)`."""
-    from sgt.lens import tree
-    from sgt.lens.map import build_map
+    from ugh.lens import tree
+    from ugh.lens.map import build_map
 
     repo = _mined(tmp_path, "mixed_coverage")
     build_map(repo)
@@ -233,8 +233,8 @@ def test_map_view_never_emits_a_node_id_as_its_label(tmp_path):
     (or a node minted after it) can arrive label-less or with the id copied into `label`; `map_view`
     must derive a readable name from the node's members instead of leaking the raw hash to the graph
     / grid, which is what made the workbench show `f-<hash>` rows ("unreadable")."""
-    from sgt.lens import tree
-    from sgt.lens.map import build_map
+    from ugh.lens import tree
+    from ugh.lens.map import build_map
 
     repo = _mined(tmp_path, "mixed_coverage")
     build_map(repo)
@@ -310,8 +310,8 @@ def test_map_view_rolls_sessions_up_through_the_canonical_parent_only(tmp_path, 
     raw children would leak the session onto N2 -- this asserts it does not."""
     import dataclasses
 
-    from sgt.core import opindex
-    from sgt.core.op import Attribution
+    from ugh.core import opindex
+    from ugh.core.op import Attribution
 
     repo, leaf, real_op = _shared_feature_dag(tmp_path)
 
@@ -340,8 +340,8 @@ def test_grid_view_joins_ops_into_feature_commit_cells(tmp_path):
     share one (feature_id, commit_index), and that join is faithful to `history_view` -- each
     cell's ops carry that cell's feature and commit-index, and every attributed op lands in exactly
     one cell."""
-    from sgt.api import grid_view
-    from sgt.lens.map import build_map
+    from ugh.api import grid_view
+    from ugh.lens.map import build_map
 
     repo = _mined(tmp_path, "mixed_coverage")
     build_map(repo)
@@ -371,8 +371,8 @@ def test_grid_view_joins_ops_into_feature_commit_cells(tmp_path):
 
 def test_grid_view_is_deterministic_across_calls(tmp_path):
     """A grid surface polls; the join must be byte-stable so a re-render never reshuffles."""
-    from sgt.api import grid_view
-    from sgt.lens.map import build_map
+    from ugh.api import grid_view
+    from ugh.lens.map import build_map
 
     repo = _mined(tmp_path, "mixed_coverage")
     build_map(repo)
@@ -380,9 +380,9 @@ def test_grid_view_is_deterministic_across_calls(tmp_path):
 
 
 def test_grid_view_omits_unattributed_ops_before_a_tree_is_built(tmp_path):
-    """An op with no feature (no `sgt map` yet) has no lane, so it produces no cell -- the same
+    """An op with no feature (no `ugh map` yet) has no lane, so it produces no cell -- the same
     drop `graph_layout`/`episodes` already apply. The commit axis is still present."""
-    from sgt.api import grid_view
+    from ugh.api import grid_view
 
     repo = _mined(tmp_path, "mixed_coverage")  # mined, but no build_map
     v = grid_view(repo)
@@ -394,7 +394,7 @@ def test_grid_view_omits_unattributed_ops_before_a_tree_is_built(tmp_path):
 
 
 def test_segments_view_reports_which_chapters_are_still_in_head(tmp_path):
-    """A reverted checkpoint stays in the history -- that is what makes `sgt restore` possible -- so
+    """A reverted checkpoint stays in the history -- that is what makes `ugh restore` possible -- so
     the chapter list must keep it and say it is gone, not drop it and not show it as live. Before
     this field the only screen that prints the `@n` handles rewound the ops and then redrew the
     chapter exactly as before: same solid bar, same `N checkpoint(s)`, nothing to distinguish the
@@ -402,8 +402,8 @@ def test_segments_view_reports_which_chapters_are_still_in_head(tmp_path):
     `present_op_count` is the count of the chapter's ops still in HEAD's ideal, so a client can draw
     the removal the revert preview already draws; `None` means the ideal could not be read (an unborn
     or unmined ref), which a renderer must read as "no claim", never as "removed"."""
-    from sgt.api import segments_view
-    from sgt.core import verbs
+    from ugh.api import segments_view
+    from ugh.core import verbs
 
     gb, _ = init_store(tmp_path)
     for i in range(3):
@@ -411,7 +411,7 @@ def test_segments_view_reports_which_chapters_are_still_in_head(tmp_path):
         (tmp_path / "a.py").write_text(body, encoding="utf-8")
         gb.commit_all(f"feat(s{i}): step {i}")  # a fresh scope each time -> a fresh chapter
     get(tmp_path)
-    from sgt.lens import tree
+    from ugh.lens import tree
     ops = Store(tmp_path).all_ops()
     nodes = {"F-A": {"parent": None, "children": [], "members": [f"a.py::f{j}" for j in range(3)],
                      "size": 3, "dir": "", "label": "Steps"}}
@@ -424,7 +424,7 @@ def test_segments_view_reports_which_chapters_are_still_in_head(tmp_path):
     assert all(s["present_op_count"] == s["op_count"] for s in before)  # nothing reverted yet
 
     last = before[-1]
-    # The same op-set revert `sgt revert <feature>@<n>` runs (sgt.intent.segment's docstring).
+    # The same op-set revert `ugh revert <feature>@<n>` runs (ugh.intent.segment's docstring).
     verbs.apply(tmp_path, verbs.plan_revert_op_set(tmp_path, last["checkpoint"],
                                                   frozenset(last["op_ids"])))
 
@@ -438,8 +438,8 @@ def test_segments_view_reports_which_chapters_are_still_in_head(tmp_path):
 def test_grid_view_marks_no_partial_commits_until_a_reduction_is_recorded(tmp_path):
     """U1's fidelity field reads "full" for every cell until U2's producer records a real drop --
     forward-compatible, not a stub: `partial_commits` is empty and no cell is "partial"."""
-    from sgt.api import grid_view
-    from sgt.lens.map import build_map
+    from ugh.api import grid_view
+    from ugh.lens.map import build_map
 
     repo = _mined(tmp_path, "mixed_coverage")
     build_map(repo)
@@ -460,9 +460,9 @@ def test_grid_view_names_reverted_work_no_lane_can_show(tmp_path):
     grid then draws each chapter solid and each lane whole while the code is still missing from disk
     -- a read layer asserting a state the working tree contradicts. Ops the ideal excludes that no
     cell accounts for are reported instead of dropped, so a surface can say what it cannot draw."""
-    from sgt.api import grid_view
-    from sgt.core import verbs
-    from sgt.lens.map import build_map
+    from ugh.api import grid_view
+    from ugh.core import verbs
+    from ugh.lens.map import build_map
 
     repo = _mined(tmp_path, "linear_history")
     build_map(repo)
@@ -490,11 +490,11 @@ def test_a_stale_ideal_table_is_not_read_as_a_revert(tmp_path):
     own history. A warning that fires when nothing happened teaches a reader to ignore the warning,
     which costs more than the case it was built for. The claim is only ever about work a *user edit*
     removed, so the ops come from the applied `ideal_edit` events in the operation log."""
-    from sgt import api
-    from sgt.api import grid_view
-    from sgt.core import lens
-    from sgt.lens.map import build_map
-    from sgt.store.gitbind import GitBinding
+    from ugh import api
+    from ugh.api import grid_view
+    from ugh.core import lens
+    from ugh.lens.map import build_map
+    from ugh.store.gitbind import GitBinding
 
     repo = _mined(tmp_path, "linear_history")
     build_map(repo)
@@ -517,7 +517,7 @@ def test_coupling_flags_a_shared_residue_removal():
     surviving feature still occupies -- the shared whitespace the U32 corruption cuts through --
     so a preview shows which feature it reaches into. No flag when the shared file has no surviving
     other-feature entity, or when no residue is dropped."""
-    from sgt.api import _coupling_rows
+    from ugh.api import _coupling_rows
 
     foo = make_op({"a.py::foo": (None, "v1")}, {"a.py::foo": b"1"})
     bar = make_op({"a.py::bar": (None, "v1")}, {"a.py::bar": b"1"})
@@ -539,9 +539,9 @@ def test_grid_view_marks_partial_commits_over_a_fork(tmp_path):
     """U2/R6 end to end: once `_record_fidelity` records a fork's dropped commits, `grid_view`
     reports them in `partial_commits` and marks every cell at those commit-indices "partial" --
     the commit couldn't be fully reconstructed, so its whole column is flagged."""
-    from sgt.api import grid_view
-    from sgt.core import sync
-    from sgt.lens.map import build_map
+    from ugh.api import grid_view
+    from ugh.core import sync
+    from ugh.lens.map import build_map
     from tests.core.test_sync import _BASE, _edit_and_commit, _push, _two_clones
 
     a, b = _two_clones(tmp_path, _BASE)
@@ -563,8 +563,8 @@ def test_grid_view_surfaces_a_pending_plan_prediction_as_a_ghost(tmp_path):
     """A pending plan step predicting a feature is a ghost cell -- the only place a prediction
     reaches the grid (off-chain hollows never enter the ideal). `known_feature` flags whether the
     predicted lane still exists."""
-    from sgt.api import grid_view
-    from sgt.lens.map import build_map
+    from ugh.api import grid_view
+    from ugh.lens.map import build_map
 
     repo = _mined(tmp_path, "mixed_coverage")
     build_map(repo)
@@ -592,11 +592,11 @@ def test_grid_view_surfaces_a_pending_plan_prediction_as_a_ghost(tmp_path):
 
 
 def test_grid_view_feature_roster_labels_match_the_map(tmp_path):
-    """The label a lane shows on the grid is the same one `sgt map` shows -- `grid_view` resolves
+    """The label a lane shows on the grid is the same one `ugh map` shows -- `grid_view` resolves
     labels the same way `map_view` does (tree labels + authored overrides), just without the
     expensive `fused_graph` recompute."""
-    from sgt.api import grid_view
-    from sgt.lens.map import build_map
+    from ugh.api import grid_view
+    from ugh.lens.map import build_map
 
     repo = _mined(tmp_path, "mixed_coverage")
     build_map(repo)
@@ -609,11 +609,11 @@ def test_compose_view_bundles_every_sub_view_with_no_reshaping(tmp_path):
     """`compose_view` is purely additive glue: each key is exactly what calling the underlying
     view function directly would return, plus the current ideal's oracle verdict and an
     open-proposal list -- a workbench refresh in one call instead of ~9 shell-outs."""
-    from sgt.api import (
+    from ugh.api import (
         drift_view as _drift, forks_view, intent_view, rewrite_view, sessions_view, status_view,
     )
-    from sgt.core.lens import current_ideal
-    from sgt.core.oracle import verdict_for
+    from ugh.core.lens import current_ideal
+    from ugh.core.oracle import verdict_for
 
     repo = _mined(tmp_path, "mixed_coverage")
     v = compose_view(repo)
@@ -642,8 +642,8 @@ def test_save_preview_view_splits_affected_features_from_new_work(tmp_path):
     nothing pending; uncommitted work that reworks an existing feature's symbol lands in `affected`
     (attributed to that feature's leaf), while a brand-new symbol -- a member of no built leaf --
     falls into the `new_work` bucket. `total_op_count` accounts for both."""
-    from sgt.lens.map import build_map
-    from sgt.lens.tree import load as load_tree
+    from ugh.lens.map import build_map
+    from ugh.lens.tree import load as load_tree
 
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
@@ -684,9 +684,9 @@ def test_fold_view_at_commit_index_matches_that_frontiers_code(tmp_path):
     """`--at <commit-index>` folds every op at or before that position on `history_view`'s axis --
     an earlier index yields fewer files/ops than a later one, and the returned bytes match a
     direct `code()` fold of the same op-set."""
-    from sgt.core.fold import code
-    from sgt.core.ideal import Ideal
-    from sgt.core.store import Store
+    from ugh.core.fold import code
+    from ugh.core.ideal import Ideal
+    from ugh.core.store import Store
 
     repo = _mined(tmp_path, "linear_history")
     hist = history_view(repo, full=True)
@@ -709,9 +709,9 @@ def test_fold_view_at_commit_index_matches_that_frontiers_code(tmp_path):
 def test_fold_view_ref_matches_ideal_for_ref(tmp_path):
     """`--at <ref>` folds a ref's own committed ideal (`lens.ideal_for_ref`), matching `state`'s
     own notion of a ref -- HEAD here, since the fixture never branches."""
-    from sgt.core.fold import code
-    from sgt.core.lens import ideal_for_ref
-    from sgt.core.store import Store
+    from ugh.core.fold import code
+    from ugh.core.lens import ideal_for_ref
+    from ugh.core.store import Store
 
     repo = _mined(tmp_path, "mixed_coverage")
     v = fold_view(repo, ref="HEAD")
@@ -729,7 +729,7 @@ def test_fold_view_requires_exactly_one_frontier_kwarg(tmp_path):
 def test_fold_view_rejects_an_ungrounded_op_id_set_without_raising(tmp_path):
     """An explicit `op_ids` set that isn't downward-closed (here: a single non-root op missing
     its own chain prerequisites) is refused as `{"forked": True, "message": ...}` -- the same
-    `Ideal.from_ops` refusal `sgt.core.verbs._validated` turns into a preview outcome elsewhere,
+    `Ideal.from_ops` refusal `ugh.core.verbs._validated` turns into a preview outcome elsewhere,
     never a raised `ValueError` through the API."""
     repo = _mined(tmp_path, "linear_history")
     hist = history_view(repo, full=True)
@@ -741,7 +741,7 @@ def test_fold_view_rejects_an_ungrounded_op_id_set_without_raising(tmp_path):
 
 
 def test_plan_view_and_drift_view_are_empty_with_no_active_sessions(tmp_path):
-    """A repo that's never seen `sgt plan intake` reports no sessions, no checkpoint groups, and
+    """A repo that's never seen `ugh plan intake` reports no sessions, no checkpoint groups, and
     no drift -- drift is only meaningful relative to a plan session's own predictions."""
     repo = _mined(tmp_path, "mixed_coverage")
     assert plan_view(repo) == {"sessions": [], "checkpoint": {"matches": [], "drift_op_ids": []}}
@@ -811,9 +811,9 @@ def test_plan_view_reports_matched_step_spans_and_drift_view_reports_the_unpredi
 
 
 def test_map_view_reports_no_sessions_for_a_plain_mined_tree(tmp_path):
-    """No `sgt session` has ever landed against this repo, so every node's rollup is empty --
+    """No `ugh session` has ever landed against this repo, so every node's rollup is empty --
     additive to `map_view` (plan U31, S7), never a required field elsewhere."""
-    from sgt.lens.map import build_map
+    from ugh.lens.map import build_map
 
     repo = _mined(tmp_path, "mixed_coverage")
     build_map(repo)
@@ -828,8 +828,8 @@ def test_map_view_rolls_up_a_landed_session_onto_its_feature_node(tmp_path):
     session."""
     from pathlib import Path
 
-    from sgt.core import session as session_mod
-    from sgt.lens.map import build_map
+    from ugh.core import session as session_mod
+    from ugh.lens.map import build_map
     from tests.core.test_session import _seed_repo, _write_and_commit
 
     _seed_repo(tmp_path)
@@ -859,7 +859,7 @@ def test_sync_status_reports_incomplete_from_both_views_and_neither_view_mines(t
     """U6 scenario (2): a ref whose first-contact `_sync()` chunk is cut short by a deadline (same
     fixture technique as U4's tests) reports `complete == False` from both views, and reading
     either view alone triggers no additional mining."""
-    import sgt.core.lens as lens_mod
+    import ugh.core.lens as lens_mod
 
     repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
     monkeypatch.setattr(lens_mod, "_CHUNK_BUDGET_SECONDS", -1.0)
@@ -880,7 +880,7 @@ def test_trust_view_is_empty_with_nothing_attributed_or_drifting(tmp_path):
 def test_trust_view_groups_a_landed_sessions_ops_under_its_session_name(tmp_path):
     from pathlib import Path
 
-    from sgt.core import session as session_mod
+    from ugh.core import session as session_mod
     from tests.core.test_session import _seed_repo, _write_and_commit
 
     _seed_repo(tmp_path)
@@ -900,7 +900,7 @@ def test_trust_view_groups_a_landed_sessions_ops_under_its_session_name(tmp_path
 def test_trust_view_dequeues_ops_covered_by_a_review_record(tmp_path):
     from pathlib import Path
 
-    from sgt.core import review, session as session_mod
+    from ugh.core import review, session as session_mod
     from tests.core.test_session import _seed_repo, _write_and_commit
 
     _seed_repo(tmp_path)
@@ -952,7 +952,7 @@ def test_trust_view_includes_an_unattributed_drift_op_under_the_drift_key(tmp_pa
     assert any(op["footprint"] == ["a.py::bar"] for op in drift_ops)
 
 
-# -- compact-by-default view contracts (plan: optimize the sgt agent surface for context +
+# -- compact-by-default view contracts (plan: optimize the ugh agent surface for context +
 # retrieval speed, Part B) -----------------------------------------------------------------------
 
 
@@ -1026,7 +1026,7 @@ def test_history_view_default_is_compact_with_latest_commits_most_recent_first(t
     assert compact["commit_count"] == len(full["commits"])
     assert compact["op_count"] == len(full["ops"])
     # `linear_history` is all real work, so the two counts coincide here; the split is exercised
-    # by `test_history_view_folds_sgt_s_own_materialization_commits` below.
+    # by `test_history_view_folds_ugh_s_own_materialization_commits` below.
     assert compact["save_count"] == compact["commit_count"]
     assert compact["bookkeeping_count"] == 0
     assert [c["index"] for c in compact["latest_commits"]] == sorted(
@@ -1058,7 +1058,7 @@ def test_drift_view_default_is_compact(tmp_path):
 
 def test_plan_view_default_reports_step_counts_not_steps(tmp_path):
     """Compact `plan_view` drops the per-step list (and its spans) in favor of counts, but keeps
-    the checkpoint's small op-id lists intact -- `sgt checkpoint --confirm-...` needs them."""
+    the checkpoint's small op-id lists intact -- `ugh checkpoint --confirm-...` needs them."""
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
     (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
@@ -1130,7 +1130,7 @@ def test_plan_view_derives_building_and_stalled_from_activity_and_candidates(tmp
     hand-off, and `pending_count`/`remaining_titles` come along without a `full` fetch."""
     import time
 
-    from sgt.loop.plan import STALLED_SECONDS
+    from ugh.loop.plan import STALLED_SECONDS
 
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
@@ -1181,7 +1181,7 @@ def test_now_view_clean_repo_reports_clean_next_action(tmp_path):
 
 
 def test_now_view_dirty_tree_recommends_save(tmp_path):
-    """Uncommitted work puts ops in flight and makes `sgt save` the next action. The offer is
+    """Uncommitted work puts ops in flight and makes `ugh save` the next action. The offer is
     phrased by what it records ("your N unsaved edits"), not by the store's unit of accounting --
     "pending ops" is a fact about the kernel, and the developer is asking about their work."""
     repo = tmp_path / "repo"
@@ -1193,7 +1193,7 @@ def test_now_view_dirty_tree_recommends_save(tmp_path):
 
     v = now_view(repo)
     assert v["in_flight"]["total_op_count"] == 1   # one edited symbol, so the label is singular
-    assert v["next_action"] == {"kind": "save", "command": "sgt save", "target": None,
+    assert v["next_action"] == {"kind": "save", "command": "ugh save", "target": None,
                                 "label": "save your 1 unsaved edit"}
 
 
@@ -1212,15 +1212,15 @@ def test_now_view_include_preview_false_skips_the_mine(tmp_path):
     assert v["next_action"]["kind"] == "clean"  # save rung never fires without the preview
 
 
-def test_now_view_stalled_plan_recommends_sgt_plan_resume(tmp_path):
-    """A stalled plan session outranks a clean tree. The recommended command is `sgt plan resume
+def test_now_view_stalled_plan_recommends_ugh_plan_resume(tmp_path):
+    """A stalled plan session outranks a clean tree. The recommended command is `ugh plan resume
     <session>`, which reads out which steps remain (flagging any that already look built under other
     names) *and* prints the `claude --resume <uuid>` handle. It used to recommend `claude --resume`
     directly, which dropped the user back into a conversation without telling them where it had got
     to -- the orientation is the part they were missing."""
     import time
 
-    from sgt.loop.plan import STALLED_SECONDS
+    from ugh.loop.plan import STALLED_SECONDS
 
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
@@ -1235,7 +1235,7 @@ def test_now_view_stalled_plan_recommends_sgt_plan_resume(tmp_path):
     assert len(v["needs_you"]["stalled_plans"]) == 1
     assert v["needs_you"]["stalled_plans"][0]["session_id"] == "s1"
     assert v["next_action"]["kind"] == "resume_plan"
-    assert v["next_action"]["command"] == "sgt plan resume s1"
+    assert v["next_action"]["command"] == "ugh plan resume s1"
     assert v["next_action"]["target"] == "s1"
     # The chat handle is still reachable -- `plan resume` prints it -- so nothing was lost.
     assert v["needs_you"]["stalled_plans"][0]["claude_session_id"] == "sess-xyz"
@@ -1243,12 +1243,12 @@ def test_now_view_stalled_plan_recommends_sgt_plan_resume(tmp_path):
 
 def test_now_view_open_fork_outranks_everything_and_recommends_resolve(tmp_path):
     """An open fork is the top rung: it blocks even a dirty tree, and the recommended command is the
-    high-level `sgt resolve <symbol>` derived from the fork's symbol -- NOT the stored remedy, so a
+    high-level `ugh resolve <symbol>` derived from the fork's symbol -- NOT the stored remedy, so a
     forks.json committed before the remedy switch (here a stale low-level `merge-op`) still surfaces
     the working command."""
-    from sgt import state
-    from sgt.core.op import make_op
-    from sgt.core.store import Store
+    from ugh import state
+    from ugh.core.op import make_op
+    from ugh.core.store import Store
 
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
@@ -1263,12 +1263,12 @@ def test_now_view_open_fork_outranks_everything_and_recommends_resolve(tmp_path)
     tip_b = store.add(make_op({"a.py::foo": ("v0", "v2")}, {"a.py::foo": b"b"}, kind="rebirth"))
     state.save_json(repo, "forks", [
         # stale low-level remedy on purpose -- the surfaced command must derive from the symbol instead
-        {"symbol": "a.py::foo", "tips": [tip_a.id, tip_b.id], "remedy": f"sgt merge-op {tip_a.id} {tip_b.id}"},
+        {"symbol": "a.py::foo", "tips": [tip_a.id, tip_b.id], "remedy": f"ugh merge-op {tip_a.id} {tip_b.id}"},
     ])
 
     v = now_view(repo)
     assert len(v["needs_you"]["forks"]) == 1
-    assert v["next_action"] == {"kind": "resolve_fork", "command": "sgt resolve a.py::foo",
+    assert v["next_action"] == {"kind": "resolve_fork", "command": "ugh resolve a.py::foo",
                                 "target": "a.py::foo", "label": "resolve fork on a.py::foo"}
 
 
@@ -1276,10 +1276,10 @@ def test_open_forks_surface_only_resolvable_divergent_forks(tmp_path):
     """A committed forks.json can carry sentinel-symbol and same-after pseudo-forks (neutralized by
     `fork_free`, no user remedy) alongside a genuinely divergent one. Every fork read surface --
     `forks_view`, `status_view`, `now_view` -- must filter to the resolvable, divergent fork only."""
-    from sgt import state
-    from sgt.api import forks_view, status_view
-    from sgt.core.op import make_op
-    from sgt.core.store import Store
+    from ugh import state
+    from ugh.api import forks_view, status_view
+    from ugh.core.op import make_op
+    from ugh.core.store import Store
 
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
@@ -1292,7 +1292,7 @@ def test_open_forks_surface_only_resolvable_divergent_forks(tmp_path):
     def _fork(symbol, after_a, after_b):
         a = store.add(make_op({symbol: ("v0", after_a)}, {symbol: after_a.encode()}, kind="touched"))
         b = store.add(make_op({symbol: ("v0", after_b)}, {symbol: after_b.encode()}, kind="rebirth"))
-        return {"symbol": symbol, "tips": [a.id, b.id], "remedy": f"sgt merge-op {a.id} {b.id}"}
+        return {"symbol": symbol, "tips": [a.id, b.id], "remedy": f"ugh merge-op {a.id} {b.id}"}
 
     state.save_json(repo, "forks", [
         _fork("a.py::__anchor__::m", "z1", "z2"),  # sentinel symbol -- unactionable
@@ -1310,7 +1310,7 @@ def test_open_forks_surface_only_resolvable_divergent_forks(tmp_path):
 def test_now_view_context_carries_recent_activity_newest_first(tmp_path):
     """The context block surfaces the live agent-action feed, newest first -- the "what just
     happened" signal the `PostToolUse` hook writes."""
-    from sgt.intent import activity
+    from ugh.intent import activity
 
     repo = _mined(tmp_path, "mixed_coverage")
     activity.record_activity(repo, tool="Edit", file="a.py", ts=1.0)
@@ -1324,7 +1324,7 @@ def test_now_view_context_carries_recent_activity_newest_first(tmp_path):
 def test_trust_view_default_reports_op_count_not_op_detail(tmp_path):
     from pathlib import Path
 
-    from sgt.core import session as session_mod
+    from ugh.core import session as session_mod
     from tests.core.test_session import _seed_repo, _write_and_commit
 
     _seed_repo(tmp_path)
@@ -1342,7 +1342,7 @@ def test_trust_view_default_reports_op_count_not_op_detail(tmp_path):
 
 
 def test_compose_view_full_threads_into_children(tmp_path):
-    from sgt.api import status_view
+    from ugh.api import status_view
 
     repo = _mined(tmp_path, "mixed_coverage")
     v = compose_view(repo, full=True)
@@ -1377,7 +1377,7 @@ def _chain_repo(tmp_path):
 
 
 def test_verb_preview_frontier_classifies_blast_carry_and_foundation(tmp_path):
-    from sgt.api import verb_preview_view
+    from ugh.api import verb_preview_view
 
     repo = _chain_repo(tmp_path)
     ops = Store(repo).all_ops()
@@ -1394,12 +1394,12 @@ def test_verb_preview_frontier_classifies_blast_carry_and_foundation(tmp_path):
 
 
 def test_blame_view_on_an_uncovered_working_file_is_not_an_error(tmp_path):
-    """A working-tree file sgt has no op for (a doc like JOURNAL.md, an untracked config) has no
+    """A working-tree file ugh has no op for (a doc like JOURNAL.md, an untracked config) has no
     semantic blame -- a valid empty answer, not a failure. `blame_view` must not stamp an `error`
     key for it: that key flips the CLI `--json` exit code to 1, which the editor's per-file blame
     surfaces as a repeated "Command failed" for every non-code tab the user focuses. It reports
     `covered: False` with empty spans instead. A genuinely absent path still gets an `error`."""
-    from sgt.api import blame_view
+    from ugh.api import blame_view
 
     repo = _mined(tmp_path, "mixed_coverage")
     (repo / "JOURNAL.md").write_text("# notes\n")  # exists on disk, but no op produces it
@@ -1418,7 +1418,7 @@ def test_verb_preview_frontier_populates_for_a_symbol_ref_not_only_an_op_id(tmp_
     plan does -- otherwise a symbol-targeted revert (the editor/blame entry point) gets an empty
     frontier and silently degrades to a plain revert. Regression: `_frontier_rows` used the raw
     unresolved `preview.target`."""
-    from sgt.api import verb_preview_view
+    from ugh.api import verb_preview_view
 
     repo = _chain_repo(tmp_path)
     ops = Store(repo).all_ops()
@@ -1436,8 +1436,8 @@ def test_verb_preview_frontier_populates_for_a_symbol_ref_not_only_an_op_id(tmp_
 def test_verb_preview_frontier_matches_what_revert_keep_dependents_applies(tmp_path):
     """The contract the TUI checklist (U9) and CLI `--keep` rely on: the projection's blast/carry
     buckets and toggleability line up with the hollows drafted and symbols carried by apply."""
-    from sgt.api import verb_preview_view
-    from sgt.core import rewrite
+    from ugh.api import verb_preview_view
+    from ugh.core import rewrite
 
     repo = _chain_repo(tmp_path)
     ops = Store(repo).all_ops()
@@ -1462,7 +1462,7 @@ def test_verb_preview_frontier_matches_what_revert_keep_dependents_applies(tmp_p
 
 
 def test_verb_preview_frontier_is_empty_for_non_revert_verbs(tmp_path):
-    from sgt.api import verb_preview_view
+    from ugh.api import verb_preview_view
 
     repo = _chain_repo(tmp_path)
     ops = Store(repo).all_ops()
@@ -1476,7 +1476,7 @@ def test_so_what_layer_fallout_is_act_required_only_and_carry_is_a_hidden_count(
     (never carry, never foundation), `carry_count` counts the hidden mechanical repoints, and
     `reversible` is True for an ideal edit -- so the pane can lead with "so what" and footnote the
     carries without ever listing them."""
-    from sgt.api import verb_preview_view
+    from ugh.api import verb_preview_view
 
     repo = _chain_repo(tmp_path)
     ops = Store(repo).all_ops()
@@ -1504,8 +1504,8 @@ def _per_file_leaf_tree(tmp_path):
     `_shared_feature_dag`): a.py→f-a, b.py→f-b, ... . Reverting `user` (b.py) then removes ops from
     the user/caller/deep leaves (blast/target) and leaves the helper leaf they build on (foundation).
     Returns (repo, ops)."""
-    from sgt.lens import tree as tree_mod
-    from sgt.lens.map import build_map
+    from ugh.lens import tree as tree_mod
+    from ugh.lens.map import build_map
 
     repo = _chain_repo(tmp_path)
     build_map(repo)
@@ -1543,7 +1543,7 @@ def test_focus_subgraph_revert_splits_target_blast_and_foundation_with_before_af
     the emptied-path pass then mints one prune, which is two ops out and one in for this leaf. The
     dependents that used to appear as shrinking `blast` leaves survive untouched and never enter the
     subgraph. The pane still has to name the leaf that changed, which is what this pins."""
-    from sgt.api import map_view, verb_preview_view
+    from ugh.api import map_view, verb_preview_view
 
     repo, ops = _per_file_leaf_tree(tmp_path)
     user_op = next(o for o in ops if "b.py::user" in o.footprint)
@@ -1581,8 +1581,8 @@ def test_focus_subgraph_restore_grows_the_restored_features_lane(tmp_path):
     """The reverse morph: a `restore` adds ops back, so the touched leaf's `ops_after` exceeds its
     `ops_before` and it grows against the dim field -- nothing shrinks. Built from a preview whose
     `after_ids` re-adds a removed op, so the direction flips without a full apply round-trip."""
-    from sgt.api import focus_subgraph
-    from sgt.core import verbs
+    from ugh.api import focus_subgraph
+    from ugh.core import verbs
 
     repo, ops = _per_file_leaf_tree(tmp_path)
     deep_op = next(o for o in ops if "d.py::deep" in o.footprint)
@@ -1600,11 +1600,11 @@ def test_focus_subgraph_restore_grows_the_restored_features_lane(tmp_path):
 
 
 def test_focus_subgraph_is_empty_when_no_feature_tree_is_built(tmp_path):
-    """Degrade cleanly: before `sgt map` builds the tree there is no `op_leaf` to roll ops up
+    """Degrade cleanly: before `ugh map` builds the tree there is no `op_leaf` to roll ops up
     through, so the subgraph is empty (`nodes: []`) and the renderer falls back to the `so_what`
     headline alone -- never an error."""
-    from sgt.api import focus_subgraph
-    from sgt.core import verbs
+    from ugh.api import focus_subgraph
+    from ugh.core import verbs
 
     repo = _chain_repo(tmp_path)  # mined, but no `build_map` -> no op_leaf
     ops = Store(repo).all_ops()
@@ -1618,10 +1618,10 @@ def test_focus_subgraph_is_empty_when_no_feature_tree_is_built(tmp_path):
 
 def test_headline_for_falls_back_to_the_feature_label_on_a_low_signal_subject():
     """`headline_for` is the one definition of "what to call this commit", shared by the rail, the
-    save list, `sgt now`'s recently-done, and the extension's Now tree. It used to be TUI-only, so
-    the terminal's history views read as feature work while `sgt now` -- the surface a user reads
+    save list, `ugh now`'s recently-done, and the extension's Now tree. It used to be TUI-only, so
+    the terminal's history views read as feature work while `ugh now` -- the surface a user reads
     first -- still listed the raw `sss`/`wip` subjects for those same commits."""
-    from sgt.api import headline_for
+    from ugh.api import headline_for
 
     labels = {"f-1": "retry backoff on the fetch path"}
 
@@ -1640,7 +1640,7 @@ def test_headline_for_falls_back_to_the_feature_label_on_a_low_signal_subject():
 def test_history_view_latest_commits_carry_a_headline(tmp_path):
     """The projection, not just the helper: each recent commit gets `headline` beside its raw
     `subject`, so every surface can lead with what the work was without re-deriving the rule."""
-    from sgt.api import history_view
+    from ugh.api import history_view
 
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
@@ -1650,7 +1650,7 @@ def test_history_view_latest_commits_carry_a_headline(tmp_path):
         "def login(u, p):\n    return True\n\n\ndef logout():\n    pass\n", encoding="utf-8")
     gb.commit_all("add a logout path")
     get(repo)
-    from sgt.lens import map as lensmap
+    from ugh.lens import map as lensmap
     lensmap.build_map(repo)
 
     rows = history_view(repo)["latest_commits"]
@@ -1663,13 +1663,13 @@ def test_history_view_latest_commits_carry_a_headline(tmp_path):
     assert junk["feature_id"]
 
 
-# -- bookkeeping folding: sgt's own commits are not the developer's work ---------------------------
+# -- bookkeeping folding: ugh's own commits are not the developer's work ---------------------------
 
-def test_history_view_folds_sgt_s_own_materialization_commits(tmp_path):
+def test_history_view_folds_ugh_s_own_materialization_commits(tmp_path):
     """History is append-only, so a revert is itself a forward commit. Unmarked, it is
-    indistinguishable from real work, and `sgt now` reported `sgt revert <hex>` back to the
+    indistinguishable from real work, and `ugh now` reported `ugh revert <hex>` back to the
     developer as something they had done."""
-    from sgt.core import verbs
+    from ugh.core import verbs
 
     repo = _mined(tmp_path, "linear_history")
     before = history_view(repo)
@@ -1682,13 +1682,13 @@ def test_history_view_folds_sgt_s_own_materialization_commits(tmp_path):
     assert after["save_count"] == before["save_count"]  # the developer did no new work
     assert after["bookkeeping_count"] == before["bookkeeping_count"] + 1
     subjects = [c["subject"] for c in after["latest_commits"]]
-    assert not any(s.startswith("sgt revert") for s in subjects)
+    assert not any(s.startswith("ugh revert") for s in subjects)
 
 
 def test_bookkeeping_commits_keep_their_place_on_the_time_axis(tmp_path):
     """Folding is display-only. Every op's `commit_index` refers to the full axis, so dropping a
     commit from the axis (rather than from a list) would silently move every later op."""
-    from sgt.core import verbs
+    from ugh.core import verbs
 
     repo = _mined(tmp_path, "linear_history")
     op_id = sorted(get(repo).op_ids)[-1]
@@ -1701,9 +1701,9 @@ def test_bookkeeping_commits_keep_their_place_on_the_time_axis(tmp_path):
 
 
 def test_a_user_save_is_never_marked_as_bookkeeping(tmp_path):
-    """The mark must follow sgt's own mechanics only -- a save carrying the user's message is the
+    """The mark must follow ugh's own mechanics only -- a save carrying the user's message is the
     work itself, and folding it would hide exactly what the developer wants to see."""
-    from sgt.core.lens import put
+    from ugh.core.lens import put
 
     repo = _mined(tmp_path, "linear_history")
     put(repo, get(repo), message="add the thing I meant to add")
@@ -1755,12 +1755,12 @@ def test_now_view_keeps_a_stalled_plan_in_needs_you_not_in_progress(tmp_path):
 
 def test_land_preview_says_what_undo_will_do_afterward(tmp_path):
     """"Not reversible" tells a developer the land is one-way but not what their next move can be.
-    Landing the branch you are standing on journals an ordinary ideal_edit, so `sgt undo` works;
+    Landing the branch you are standing on journals an ordinary ideal_edit, so `ugh undo` works;
     landing any other branch only moved a ref other people read, so undo refuses. Same verb,
     opposite answer -- so the preview has to say which case this is."""
-    from sgt.api import _project_land_preview
-    from sgt.core.sync.land import LandPlan
-    from sgt.store.gitbind import GitBinding
+    from ugh.api import _project_land_preview
+    from ugh.core.sync.land import LandPlan
+    from ugh.store.gitbind import GitBinding
 
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
@@ -1778,10 +1778,10 @@ def test_land_preview_says_what_undo_will_do_afterward(tmp_path):
 
 
 def test_now_view_leads_with_the_developers_own_words(tmp_path):
-    """`sgt now` answered "what am I working on" with op counts. The prompt hook had recorded the
+    """`ugh now` answered "what am I working on" with op counts. The prompt hook had recorded the
     real answer verbatim all along -- and the common way to work (Claude Code plan mode, a planning
-    plugin) never calls `sgt plan intake`, so nothing else was ever going to supply it."""
-    from sgt.intent.turns import record_turn
+    plugin) never calls `ugh plan intake`, so nothing else was ever going to supply it."""
+    from ugh.intent.turns import record_turn
 
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
@@ -1797,12 +1797,12 @@ def test_now_view_leads_with_the_developers_own_words(tmp_path):
     assert v["working_on"]["title"] == "Add rate limiting to the API"
     assert v["working_on"]["source"] == "prompt"
     # The suggested save carries those same words, and must paste verbatim.
-    assert v["next_action"]["command"] == 'sgt save -m "Add rate limiting to the API"'
+    assert v["next_action"]["command"] == 'ugh save -m "Add rate limiting to the API"'
 
 
 def test_now_view_suggests_a_plain_save_when_the_words_would_not_paste(tmp_path):
     """A suggestion the developer has to repair is worse than none."""
-    from sgt.intent.turns import record_turn
+    from ugh.intent.turns import record_turn
 
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
@@ -1813,20 +1813,20 @@ def test_now_view_suggests_a_plain_save_when_the_words_would_not_paste(tmp_path)
                 text='Rename the "old" flag to --legacy')
     (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
 
-    assert now_view(repo)["next_action"]["command"] == "sgt save"
+    assert now_view(repo)["next_action"]["command"] == "ugh save"
 
 
 def test_forks_across_miner_versions_are_marked_as_store_generations_not_divergent_edits(tmp_path):
     """F82: a MINER_VERSION bump re-mines history but nothing evicts the previous generation, so the
     same commit can sit in the store twice with different ids. The two generations disagree about a
     symbol's after-state and collide on its `before_version`, which reads as a fork -- 619 of the 642
-    on sgt's own repo. Nobody made those edits, and no hand-merge closes them (the remedy is
-    `sgt advanced migrate ops-v3`), so a fork whose tips carry different miner_versions must be
+    on ugh's own repo. Nobody made those edits, and no hand-merge closes them (the remedy is
+    `ugh advanced migrate ops-v3`), so a fork whose tips carry different miner_versions must be
     flagged as such rather than presented as a divergence the user is expected to resolve."""
-    from sgt import state
-    from sgt.api import forks_view
-    from sgt.core.op import MINER_VERSION, make_op
-    from sgt.core.store import Store
+    from ugh import state
+    from ugh.api import forks_view
+    from ugh.core.op import MINER_VERSION, make_op
+    from ugh.core.store import Store
 
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
@@ -1840,7 +1840,7 @@ def test_forks_across_miner_versions_are_marked_as_store_generations_not_diverge
     def _fork(symbol, mv_a, mv_b):
         a = store.add(make_op({symbol: ("v0", "left")}, {symbol: b"left"}, miner_version=mv_a))
         b = store.add(make_op({symbol: ("v0", "right")}, {symbol: b"right"}, miner_version=mv_b))
-        return {"symbol": symbol, "tips": [a.id, b.id], "remedy": f"sgt merge-op {a.id} {b.id}"}
+        return {"symbol": symbol, "tips": [a.id, b.id], "remedy": f"ugh merge-op {a.id} {b.id}"}
 
     state.save_json(repo, "forks", [
         _fork("c.py::baz", MINER_VERSION, MINER_VERSION),  # a real divergence

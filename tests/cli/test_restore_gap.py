@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 
 import pytest
 
-from sgt.cli import ideal_edit
+from ugh.cli import ideal_edit
 
 
 @dataclass
@@ -34,7 +34,7 @@ def fake_graph(monkeypatch):
     """A journal, an op index, and a frontier the test controls."""
     state = {"events": [], "ops": [], "tips": {}}
 
-    from sgt.core import oplog, opindex, order
+    from ugh.core import oplog, opindex, order
 
     monkeypatch.setattr(oplog, "_ref_key", lambda repo: "main")
     monkeypatch.setattr(oplog, "load", lambda repo: {"main": state["events"]})
@@ -107,7 +107,7 @@ def test_an_empty_journal_reports_nothing(fake_graph):
 def test_the_gap_is_computed_against_the_revert_being_reversed(fake_graph):
     """Two reverts, then a restore of the first one. The newest event carrying a delta is the
     *other* revert, so walking to it reports work this restore never claimed and sends the reader
-    to `sgt undo`, which would throw away the restore that just worked. The entry now says which
+    to `ugh undo`, which would throw away the restore that just worked. The entry now says which
     verb wrote it and what was named, so the warning can resolve the same event the edit did."""
     fake_graph["events"] = [
         {"kind": "ideal_edit", "applied": True, "verb": "revert", "target_ops": ["bar"],
@@ -180,4 +180,4 @@ def test_the_refusal_names_the_verb_that_does_work_here(capsys):
     assert rc == 1, "a refusal must not exit 0"
     assert "restore refused" in out
     assert "2 edit(s)" in out and "change no file" in out
-    assert "sgt undo" in out, "a refusal that names no way out is a dead end"
+    assert "ugh undo" in out, "a refusal that names no way out is a dead end"

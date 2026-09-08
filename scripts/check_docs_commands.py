@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Check every `sgt ...` command quoted in the skills and docs against the live CLI surface.
+"""Check every `ugh ...` command quoted in the skills and docs against the live CLI surface.
 
 Skills are instructions we ship to agents, and an agent follows them literally. When a verb gets
 re-homed (`fsck` -> `advanced fsck`) or renamed to a `log` mode (`status` -> `log --summary`), the
 prose that names the old spelling becomes a trap: the agent runs it, gets an error, and either
 retries variations or reports the task blocked. At the time this script was written, 11 of the 23
-commands in `sgt-workflow/SKILL.md` no longer existed.
+commands in `ugh-workflow/SKILL.md` no longer existed.
 
 Prose drifts silently because nothing executes it. This does: it reads the argparse tree that
 actually dispatches and reports any quoted command that would not run, with the replacement path
@@ -32,17 +32,17 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 # them verbatim, with a facilitator watching, and has no way to tell a renamed verb from a tool that
 # cannot do the thing. `web/src/study/content.ts` is the same two sheets served as a web page, so it
 # drifts the same way and independently.
-DEFAULT_TARGETS = ("sgt/agent_assets/skills", "docs/guide", "README.md", "CONTRIBUTING.md",
+DEFAULT_TARGETS = ("ugh/agent_assets/skills", "docs/guide", "README.md", "CONTRIBUTING.md",
                    "CLAUDE.md", "docs/study/materials", "web/src/study/content.ts")
 
-# A backticked sgt command: `sgt log --map`, `sgt feature regroup merge <a> <b>`. Stops at the first
+# A backticked ugh command: `ugh log --map`, `ugh feature regroup merge <a> <b>`. Stops at the first
 # token that isn't a plain word/flag, so placeholders (`<ref>`, `"text"`) end the verb path cleanly.
-_CMD = re.compile(r"`sgt((?:\s+[a-z][a-z0-9-]*)+)")
+_CMD = re.compile(r"`ugh((?:\s+[a-z][a-z0-9-]*)+)")
 
 # The same command *including* its long flags, so they can be checked against the verb's own parser.
 # `--no-color` on a verb that doesn't take it fails exactly as loudly as a renamed verb, and is
 # easier to get wrong: the flag exists on sibling verbs, so it reads as universal when it isn't.
-_CMD_WITH_FLAGS = re.compile(r"`sgt((?:\s+(?:[a-z][a-z0-9-]*|--[a-z][a-z0-9-]*))+)")
+_CMD_WITH_FLAGS = re.compile(r"`ugh((?:\s+(?:[a-z][a-z0-9-]*|--[a-z][a-z0-9-]*))+)")
 
 # Spellings that are intentionally *about* the old name rather than an instruction to run it: a
 # migration note, or this script's own docstring. A line containing one of these is skipped.
@@ -57,7 +57,7 @@ _EXEMPT_LINE_MARKERS = (
     "->",
     # Prose that names an internal operation while stating it has no CLI entry point. That is
     # honest documentation of an absence, not an instruction to run something -- the guide's note
-    # about `sgt pin` is the case this exists for.
+    # about `ugh pin` is the case this exists for.
     "no command-line entry point",
     "has no cli entry point",
 )
@@ -66,10 +66,10 @@ _EXEMPT_LINE_MARKERS = (
 def _surface():
     """(top-level verbs, {verb: grouping}, {verb: replacement command}) from the live CLI."""
     sys.path.insert(0, str(REPO))
-    import sgt.cli as cli
+    import ugh.cli as cli
 
     # `help` and `git` dispatch in `main()` *before* the `_VERBS` gate, so they are real entry
-    # points that simply aren't in that set. Without them here, every `sgt help` in the README
+    # points that simply aren't in that set. Without them here, every `ugh help` in the README
     # reads as stale.
     return cli._VERBS | {"help", "git"}, cli._ROUTING, cli._RENAMED
 
@@ -79,9 +79,9 @@ def _replacement(verb: str, routing: dict, renamed: dict) -> str | None:
         return renamed[verb]
     group = routing.get(verb)
     if group == "regroup":
-        return f"sgt feature regroup {verb}"
+        return f"ugh feature regroup {verb}"
     if group is not None:
-        return f"sgt {group} {verb}"
+        return f"ugh {group} {verb}"
     return None
 
 
@@ -97,10 +97,10 @@ def _display(path: pathlib.Path) -> pathlib.Path:
 def _flag_index():
     """{(verb path tuple): {allowed long flags}} for every registered subparser.
 
-    Built from the real parser tree, so it stays correct through re-homing: `sgt advanced fsck`'s
+    Built from the real parser tree, so it stays correct through re-homing: `ugh advanced fsck`'s
     flags are looked up under `("advanced", "fsck")` without this file knowing that fsck moved."""
     sys.path.insert(0, str(REPO))
-    import sgt.cli as cli
+    import ugh.cli as cli
 
     index: dict[tuple[str, ...], set[str]] = {}
     # A subparser can be reachable by more than one path (the families share a `parents=[parent]`
@@ -135,8 +135,8 @@ def _bad_subcommand(tokens, flag_index) -> str | None:
     """A message when `tokens` names a *grouping* plus a subcommand that grouping does not have.
 
     Only reported for a verb that actually hosts subparsers (`feature`, `advanced`, `feature
-    regroup`, `tiers`). A verb whose second token is an ordinary argument -- `sgt show f-abc`,
-    `sgt revert auth.py::login` -- has no subparsers, so nothing is checked and a placeholder is
+    regroup`, `tiers`). A verb whose second token is an ordinary argument -- `ugh show f-abc`,
+    `ugh revert auth.py::login` -- has no subparsers, so nothing is checked and a placeholder is
     never mistaken for a missing subcommand."""
     verbs = [t for t in tokens if not t.startswith("--")]
     if len(verbs) < 2:
@@ -177,25 +177,25 @@ def _bad_flags(tokens, flag_index) -> list[str]:
 
 def unrunnable(command: str) -> str | None:
     """Why `command` would not run, or `None` if it would. `command` is a whole shell line
-    (`"sgt feature why auth.py::login"`); arguments and placeholders after the verb path are ignored.
+    (`"ugh feature why auth.py::login"`); arguments and placeholders after the verb path are ignored.
 
     Public because two callers need the same answer and a second implementation drifted immediately:
     `tests/test_show.py` checks that every command `show_view` *suggests* dispatches, and it had grown
     its own parser walk with the same blind spot this module just fixed -- both treated an unknown
-    subcommand as if it were a positional argument, so `sgt feature why` passed in both places after
+    subcommand as if it were a positional argument, so `ugh feature why` passed in both places after
     `why` was promoted out of the `feature` grouping."""
     tokens = command.split()
-    if not tokens or tokens[0] != "sgt":
-        return f"{command!r} does not start with `sgt`"
+    if not tokens or tokens[0] != "ugh":
+        return f"{command!r} does not start with `ugh`"
     rest = [t for t in tokens[1:] if not t.startswith("-")]
     flags = [t for t in tokens[1:] if t.startswith("--")]
     if not rest:
-        return None  # `sgt --help` and friends
+        return None  # `ugh --help` and friends
     verbs, routing, renamed = _surface()
     if rest[0] not in verbs:
         replacement = _replacement(rest[0], routing, renamed)
-        return (f"`sgt {rest[0]}` moved -> {replacement}" if replacement
-                else f"`sgt {rest[0]}` is not a verb")
+        return (f"`ugh {rest[0]}` moved -> {replacement}" if replacement
+                else f"`ugh {rest[0]}` is not a verb")
     flag_index = _flag_index()
     bad_sub = _bad_subcommand(rest, flag_index)
     if bad_sub is not None:
@@ -213,7 +213,7 @@ def _fenced_as_quoted(line: str) -> str:
     same verbs in backticks only sometimes. A sheet could therefore go stale in the one form someone
     copies while passing here.
 
-    The sheets write a command in a left column and its gloss in a right one (`sgt log --map     one
+    The sheets write a command in a left column and its gloss in a right one (`ugh log --map     one
     row per feature`), so the command ends at the first run of two or more spaces, or at a comment.
     """
     # A `.ts` sheet holds the same markdown inside a template literal, where every backtick is
@@ -221,7 +221,7 @@ def _fenced_as_quoted(line: str) -> str:
     body = line.strip().replace("\\`", "`")
     if body.startswith("$ "):
         body = body[2:].lstrip()
-    if not body.startswith("sgt ") and body != "sgt":
+    if not body.startswith("ugh ") and body != "ugh":
         return ""
     return "`" + re.split(r"\s{2,}|\s+#", body, maxsplit=1)[0]
 
@@ -268,21 +268,21 @@ def check(targets=DEFAULT_TARGETS, *, fix: bool = False):
                 if verb in verbs:
                     # The top-level verb dispatches. Also check the *sub*-path when the next token
                     # names a grouping's subcommand: checking only the first token let
-                    # `sgt feature why` pass unnoticed after `why` was promoted out of `feature`,
+                    # `ugh feature why` pass unnoticed after `why` was promoted out of `feature`,
                     # because `feature` itself still dispatched. A grouping prints its subhelp for an
                     # unknown subcommand, so the failure there is quiet rather than loud.
                     bad_sub = _bad_subcommand(tokens, flag_index)
                     if bad_sub is not None:
-                        findings.append((_display(path), i, f"sgt {' '.join(tokens)}", bad_sub))
+                        findings.append((_display(path), i, f"ugh {' '.join(tokens)}", bad_sub))
                     continue
                 replacement = _replacement(verb, routing, renamed)
-                quoted = f"sgt {' '.join(tokens)}"
+                quoted = f"ugh {' '.join(tokens)}"
                 findings.append((_display(path), i, quoted, replacement))
                 if fix and replacement is not None and not in_fence:
                     # Replace just the verb, keeping whatever arguments followed it.
                     rest = " ".join(tokens[1:])
                     fixed = f"`{replacement}" + (f" {rest}" if rest else "")
-                    lines[i - 1] = lines[i - 1].replace(f"`sgt {' '.join(tokens)}", fixed, 1)
+                    lines[i - 1] = lines[i - 1].replace(f"`ugh {' '.join(tokens)}", fixed, 1)
                     changed = True
 
             # Flags, checked against the verb they were written for. Not auto-fixable: the right
@@ -293,7 +293,7 @@ def check(targets=DEFAULT_TARGETS, *, fix: bool = False):
                 if tokens[0] not in verbs:
                     continue  # the verb itself is already reported above
                 for flag in _bad_flags(tokens, flag_index):
-                    findings.append((_display(path), i, f"sgt {' '.join(tokens)}",
+                    findings.append((_display(path), i, f"ugh {' '.join(tokens)}",
                                      f"{flag} is not a flag of that verb"))
 
         if changed:
@@ -312,7 +312,7 @@ def main(argv=None) -> int:
 
     findings = check(args.targets or DEFAULT_TARGETS, fix=args.fix)
     if not findings:
-        print("✓ every quoted sgt command dispatches")
+        print("✓ every quoted ugh command dispatches")
         return 0
 
     print(f"✗ found {len(findings)} command(s) that do not dispatch:\n")

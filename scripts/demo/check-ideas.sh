@@ -6,9 +6,9 @@
 #
 # For each idea it reverts BY NAME, typechecks, photographs both sheets, compares
 # them against the repo as it stands, undoes, and byte-compares the restored tree.
-# Five ideas, six checks each. A mining pass (`sgt save`, `sgt log --refresh`,
-# `sgt log --rebuild`) used to rewrite authored features with no warning, so the
-# names kept resolving while the reverts quietly grew; sgt 0.6.10 fixed that
+# Five ideas, six checks each. A mining pass (`ugh save`, `ugh log --refresh`,
+# `ugh log --rebuild`) used to rewrite authored features with no warning, so the
+# names kept resolving while the reverts quietly grew; ugh 0.6.10 fixed that
 # (findings 79 and 80) by giving each authored feature a lane of exactly its own
 # symbols. A re-mine still re-clusters and re-labels the machine-named rows around
 # them, so this preflight remains the check to run before recording.
@@ -20,15 +20,15 @@ set -uo pipefail
 
 repo="$(cd "${1:-$HOME/repos/sgt-demo/sketchpad-v2}" && pwd)"
 out="${2:-/tmp/sketchpad-check-ideas}"
-SGT="${SGT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/.venv/bin/sgt}"
+UGH="${UGH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/.venv/bin/ugh}"
 CHROME="${CHROME:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
 PORT="${PORT:-5384}"
 
 [ -x "$CHROME" ] || { echo "no headless Chrome at $CHROME" >&2; exit 1; }
 [ -d "$repo/node_modules" ] || { echo "$repo has no node_modules; npm ci there" >&2; exit 1; }
-PY_BIN="$(dirname "$SGT")/python"
-kind=$("$PY_BIN" -c "import sgt.core.op as o; print(o._symbol_kind('a.ts::__import__::./b'))" 2>/dev/null)
-[ "$kind" = "import" ] || { echo "wrong sgt: $SGT does not own import lines" >&2; exit 1; }
+PY_BIN="$(dirname "$UGH")/python"
+kind=$("$PY_BIN" -c "import ugh.core.op as o; print(o._symbol_kind('a.ts::__import__::./b'))" 2>/dev/null)
+[ "$kind" = "import" ] || { echo "wrong ugh: $UGH does not own import lines" >&2; exit 1; }
 
 rm -rf "$out"; mkdir -p "$out"
 pass=0; fail=0
@@ -76,7 +76,7 @@ while IFS=$'\t' read -r name expect; do
   slug=$(echo "$name" | tr ' ' '-')
   work="$out/$slug"
   git clone -q "$repo" "$work" && cp -r "$repo/.sgt" "$work/.sgt" && ln -s "$repo/node_modules" "$work/node_modules"
-  res=$( cd "$work" && "$SGT" revert "$name" --yes </dev/null 2>&1 | sed -e 's/\x1b\[[0-9;]*m//g' )
+  res=$( cd "$work" && "$UGH" revert "$name" --yes </dev/null 2>&1 | sed -e 's/\x1b\[[0-9;]*m//g' )
   echo "$res" > "$out/$slug.revert"
   if ! echo "$res" | grep -qE 'revert applied|removed [0-9]+ edit'; then
     bad "\"$name\": revert did not apply"; continue
@@ -92,7 +92,7 @@ while IFS=$'\t' read -r name expect; do
     *"$expect"*) ok "\"$name\" moves the picture ($moved)" ;;
     *) bad "\"$name\" expected $expect to move; moved: ${moved:-nothing}" ;;
   esac
-  ( cd "$work" && "$SGT" undo </dev/null >/dev/null 2>&1 )
+  ( cd "$work" && "$UGH" undo </dev/null >/dev/null 2>&1 )
   if diff -rq "$work/src" "$repo/src" >/dev/null 2>&1; then
     ok "\"$name\": undo restores src byte for byte"
   else

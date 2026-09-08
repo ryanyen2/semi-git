@@ -1,11 +1,11 @@
-// Shared state: one sgt client, a cached feature map, and a per-file blame cache. Everything
+// Shared state: one ugh client, a cached feature map, and a per-file blame cache. Everything
 // reactive (decorations, the tree) listens to `onDidChange` and re-reads from here, so a single
 // refresh after a checkpoint/feature-verb op updates every surface at once.
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { FoldFrontier, foldAtSpec, Sgt } from "./sgt";
+import { FoldFrontier, foldAtSpec, Ugh } from "./ugh";
 import {
   BlameView,
   ComposeView,
@@ -26,7 +26,7 @@ import {
 } from "./types";
 
 export class Store {
-  readonly sgt: Sgt;
+  readonly ugh: Ugh;
   private mapCache: MapView | undefined;
   private mapInFlight: Promise<MapView> | undefined;
   private historyCache: HistoryView | undefined;
@@ -61,7 +61,7 @@ export class Store {
   readonly onDidChange = this._onDidChange.event;
 
   constructor(private readonly repoRoot: string, out: vscode.OutputChannel) {
-    this.sgt = new Sgt(repoRoot, out);
+    this.ugh = new Ugh(repoRoot, out);
     void this.stampHead(); // baseline now, so the first staleness check has something to compare
   }
 
@@ -78,7 +78,7 @@ export class Store {
    *
    * The recursive `.sgt` json watcher (extension.ts) is the primary way an external mutation
    * reaches this store, and it deliberately ignores writes that land while one of OUR subprocesses is
-   * active -- a `sgt map`/`compose` READ rewrites `.sgt/`, so without that guard every read would
+   * active -- a `ugh map`/`compose` READ rewrites `.sgt/`, so without that guard every read would
    * re-trigger itself. The cost is that a mutation from outside the editor whose writes overlap
    * one of our own reads is DROPPED, with no retry: a participant's `./stage 4` rewrites the tree,
    * replaces `.sgt/` wholesale and commits a revert over several seconds, so its watcher events
@@ -102,16 +102,16 @@ export class Store {
   }
 
   // Shares the in-flight promise like `composeView` -- activation fires several map consumers at
-  // once, so without this each misses the (still-unset) cache and spawns its own `sgt log --tree`.
+  // once, so without this each misses the (still-unset) cache and spawns its own `ugh log --tree`.
   // A forced call starts a fresh fetch rather than joining a possibly-stale in-flight one -- it
   // means "do not reuse the cache", NOT "rebuild the tree". The rebuild is `rebuildMap()`, kept
   // apart because it re-mines and a re-mine between a revert and its restore destroys the removal
-  // record (`Sgt.map`).
+  // record (`Ugh.map`).
   async map(force = false): Promise<MapView> {
     if (this.mapCache && !force) return this.mapCache;
     if (!this.mapInFlight || force) {
       const gen = this.generation;
-      const p: Promise<MapView> = this.sgt
+      const p: Promise<MapView> = this.ugh
         .map()
         .then((v) => {
           if (gen === this.generation) {
@@ -130,11 +130,11 @@ export class Store {
 
   // The one deliberate tree rebuild, cached like `map()` so the readers that follow see it. Not a
   // mode of `map(force)`: a rebuild re-mines, and a mine that lands between a `revert` and its
-  // `restore` leaves the removal with nothing to invert (`Sgt.map`). So it lives behind its own
+  // `restore` leaves the removal with nothing to invert (`Ugh.map`). So it lives behind its own
   // name, with one caller -- the empty-tree heal, where there is nothing yet to lose.
   async rebuildMap(): Promise<MapView> {
     const gen = this.generation;
-    const v = await this.sgt.rebuildMap();
+    const v = await this.ugh.rebuildMap();
     if (gen === this.generation) {
       this.mapCache = v;
       this.nodeById = new Map(v.nodes.map((n) => [n.id, n]));
@@ -149,7 +149,7 @@ export class Store {
     if (this.historyCache && !force) return this.historyCache;
     if (!this.historyInFlight || force) {
       const gen = this.generation;
-      const p: Promise<HistoryView> = this.sgt
+      const p: Promise<HistoryView> = this.ugh
         .history()
         .then((v) => {
           if (gen === this.generation) this.historyCache = v;
@@ -170,7 +170,7 @@ export class Store {
     if (this.gridCache && !force) return this.gridCache;
     if (!this.gridInFlight || force) {
       const gen = this.generation;
-      const p: Promise<GridView> = this.sgt
+      const p: Promise<GridView> = this.ugh
         .grid()
         .then((v) => {
           if (gen === this.generation) this.gridCache = v;
@@ -194,7 +194,7 @@ export class Store {
     if (this.statusCache && !force) return this.statusCache;
     if (!this.statusInFlight || force) {
       const gen = this.generation;
-      const p: Promise<StatusView> = this.sgt
+      const p: Promise<StatusView> = this.ugh
         .status()
         .then((v) => {
           if (gen === this.generation) this.statusCache = v;
@@ -213,21 +213,21 @@ export class Store {
     if (cached && !force) {
       return cached;
     }
-    const view = await this.sgt.blame(file);
+    const view = await this.ugh.blame(file);
     this.blameCache.set(file, view);
     return view;
   }
 
   async planView(force = false): Promise<PlanView> {
     if (!this.planCache || force) {
-      this.planCache = await this.sgt.planStatus();
+      this.planCache = await this.ugh.planStatus();
     }
     return this.planCache;
   }
 
   // Drift is no longer a standalone CLI verb (folded into `save`, plan U12); its per-op span
   // projection is one child of the `compose_view` aggregate this store already fetches, so source
-  // it from there rather than a dead `sgt drift` shell-out.
+  // it from there rather than a dead `ugh drift` shell-out.
   async driftView(force = false): Promise<DriftView> {
     if (!this.driftCache || force) {
       this.driftCache = (await this.composeView(force)).drift;
@@ -235,7 +235,7 @@ export class Store {
     return this.driftCache;
   }
 
-  // The in-situ save preview -- which features would gain ops on the next `sgt save`. Like
+  // The in-situ save preview -- which features would gain ops on the next `ugh save`. Like
   // `driftView`, it's one child of the `compose_view` aggregate the store already fetches, so
   // source it from there rather than a separate shell-out.
   async savePreview(force = false): Promise<SavePreviewView> {
@@ -244,13 +244,13 @@ export class Store {
 
   // The workbench's primary poll -- one aggregate refresh instead of ~9 separate shell-outs.
   // Activation fires this from 3 tree/webview consumers at once; share the in-flight promise so
-  // they collapse into a single `sgt advanced compose` invocation instead of each missing the
+  // they collapse into a single `ugh advanced compose` invocation instead of each missing the
   // (still-unset) cache and firing its own.
   async composeView(force = false): Promise<ComposeView> {
     if (this.composeCache && !force) return this.composeCache;
     if (!this.composeInFlight || force) {
       const gen = this.generation;
-      const p: Promise<ComposeView> = this.sgt
+      const p: Promise<ComposeView> = this.ugh
         .compose()
         .then((v) => {
           if (gen === this.generation) this.composeCache = v;
@@ -270,7 +270,7 @@ export class Store {
     if (this.forksCache && !force) return this.forksCache;
     if (!this.forksInFlight || force) {
       const gen = this.generation;
-      const p: Promise<ForksView> = this.sgt
+      const p: Promise<ForksView> = this.ugh
         .forksView()
         .then((v) => {
           if (gen === this.generation) this.forksCache = v;
@@ -284,15 +284,15 @@ export class Store {
     return this.forksInFlight;
   }
 
-  // The intent overlay (`sgt.api.intent_view`), cached like `map`/`history` and invalidated with
+  // The intent overlay (`ugh.api.intent_view`), cached like `map`/`history` and invalidated with
   // them off the same `.sgt/**/*.json` watcher. The hover reads it to surface a feature's live
   // intent-ledger rationale; sharing the in-flight promise keeps repeated hovers from each firing
-  // their own `sgt intent list`.
+  // their own `ugh intent list`.
   async intentView(force = false): Promise<IntentView> {
     if (this.intentCache && !force) return this.intentCache;
     if (!this.intentInFlight || force) {
       const gen = this.generation;
-      const p: Promise<IntentView> = this.sgt
+      const p: Promise<IntentView> = this.ugh
         .intentView()
         .then((v) => {
           if (gen === this.generation) this.intentCache = v;
@@ -306,15 +306,15 @@ export class Store {
     return this.intentInFlight;
   }
 
-  // The state-of-actions view (`sgt.api.now_view`), cached and invalidated off the same
+  // The state-of-actions view (`ugh.api.now_view`), cached and invalidated off the same
   // `.sgt/**/*.json` watcher as the rest -- the activity feed and save preview both write under
   // `.sgt/`, so an agent edit (via the PostToolUse hook) or a save refreshes the Now tree live.
-  // Shares the in-flight promise so the several tree sections don't each fire their own `sgt now`.
+  // Shares the in-flight promise so the several tree sections don't each fire their own `ugh now`.
   async nowView(force = false): Promise<NowView> {
     if (this.nowCache && !force) return this.nowCache;
     if (!this.nowInFlight || force) {
       const gen = this.generation;
-      const p: Promise<NowView> = this.sgt
+      const p: Promise<NowView> = this.ugh
         .nowView()
         .then((v) => {
           if (gen === this.generation) this.nowCache = v;
@@ -330,7 +330,7 @@ export class Store {
 
   async sessionsView(force = false): Promise<SessionsView> {
     if (!this.sessionsCache || force) {
-      this.sessionsCache = await this.sgt.sessionsView();
+      this.sessionsCache = await this.ugh.sessionsView();
     }
     return this.sessionsCache;
   }
@@ -340,24 +340,24 @@ export class Store {
     if (cached && !force) {
       return cached;
     }
-    const view = await this.sgt.proposalView(id);
+    const view = await this.ugh.proposalView(id);
     this.proposalCache.set(id, view);
     return view;
   }
 
-  // A small bounded LRU keyed by the `sgt fold --at` spec: the scrubber replays the same handful
-  // of frontiers as the playhead moves back and forth, so a cache spares a fresh `sgt advanced
+  // A small bounded LRU keyed by the `ugh fold --at` spec: the scrubber replays the same handful
+  // of frontiers as the playhead moves back and forth, so a cache spares a fresh `ugh advanced
   // fold` per revisited frame. Capped so a long scrub can't grow it without bound (an eviction
   // per insert past the cap), and cleared in `invalidate()` with the other caches.
   // `stillWanted` (optional) lets an interactive caller -- the scrub playhead, a selection fold --
-  // drop a queued fold that a newer one superseded before it ever spawns (see Sgt.run). A cache
+  // drop a queued fold that a newer one superseded before it ever spawns (see Ugh.run). A cache
   // hit ignores it: already-computed data costs nothing to hand back.
   // The render panel's fold. Deliberately NOT cached, and deliberately not routed through
   // `foldAt`'s LRU: this call has a side effect on disk, so a cache hit would report success while
   // leaving the directory on the previous frontier -- the panel would show the old app and say it
   // was showing the new one. Exactly the failure class the panel exists to make visible.
   foldTo(frontier: FoldFrontier, outDir: string, stillWanted?: () => boolean): Promise<FoldView> {
-    return this.sgt.foldTo(frontier, outDir, stillWanted);
+    return this.ugh.foldTo(frontier, outDir, stillWanted);
   }
 
   async foldAt(frontier: FoldFrontier, stillWanted?: () => boolean): Promise<FoldView> {
@@ -368,7 +368,7 @@ export class Store {
     // reaches `invalidate()` at all, so memoizing it would reintroduce exactly the staleness
     // `current` was added to cure. Only `commitIndex`/`opIds` name fixed content and are safe to
     // memoize; the other two always shell out.
-    if ("ref" in frontier || "current" in frontier) return this.sgt.foldAt(frontier, stillWanted);
+    if ("ref" in frontier || "current" in frontier) return this.ugh.foldAt(frontier, stillWanted);
     const key = foldAtSpec(frontier);
     const cached = this.foldCache.get(key);
     if (cached) {
@@ -377,7 +377,7 @@ export class Store {
       return cached;
     }
     const gen = this.generation;
-    const view = await this.sgt.foldAt(frontier, stillWanted);
+    const view = await this.ugh.foldAt(frontier, stillWanted);
     if (gen !== this.generation) return view; // an invalidate() raced this fetch -- don't repopulate
     this.foldCache.set(key, view);
     if (this.foldCache.size > 32) {

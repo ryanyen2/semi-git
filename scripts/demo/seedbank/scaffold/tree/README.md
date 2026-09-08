@@ -2,8 +2,8 @@
 
 A community seed library catalog: a grid of 24 seed varieties, one card each.
 
-This repo is a **demo fixture for [sgt](https://github.com/ryanyen2/semi-git)**, not a product.
-Its history was written on purpose, one `sgt save` per episode, so that manipulating that
+This repo is a **demo fixture for [ugh](https://github.com/ryanyen2/ugh)**, not a product.
+Its history was written on purpose, one `ugh save` per episode, so that manipulating that
 history produces changes you can see in a browser rather than read in a diff.
 
 ## Run it
@@ -14,18 +14,18 @@ npm run dev
 ```
 
 There are no binary assets. Every visual is generated SVG or CSS, so the whole repo is text and
-sgt's fold can be checked byte-for-byte.
+ugh's fold can be checked byte-for-byte.
 
 ## Provenance in the rendered page
 
-`tools/vite-plugin-sgt-loc.mjs` stamps every host element with `data-sgt-loc="<file>:<line>"`.
+`tools/vite-plugin-ugh-loc.mjs` stamps every host element with `data-ugh-loc="<file>:<line>"`.
 Open the page and inspect a card:
 
 ```html
-<article data-sgt-loc="src/Card.tsx:28" class="card" role="button">
+<article data-ugh-loc="src/Card.tsx:28" class="card" role="button">
 ```
 
-That line number lands inside the span `sgt advanced blame src/Card.tsx` reports for
+That line number lands inside the span `ugh advanced blame src/Card.tsx` reports for
 `src/Card.tsx::Card`, which names the feature that owns it. So a rendered region resolves to a
 symbol, and the symbol to a stripe of history -- which is the whole point of the demo. It is a
 development-time mechanism: a production build carries no such attribute, and does not need one.

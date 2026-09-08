@@ -12,11 +12,11 @@ import time
 
 import pytest
 
-from sgt import state
-from sgt.core import lens, opindex
-from sgt.core.op import make_op
-from sgt.core.store import Store
-from sgt.store.gitbind import GitBinding
+from ugh import state
+from ugh.core import lens, opindex
+from ugh.core.op import make_op
+from ugh.core.store import Store
+from ugh.store.gitbind import GitBinding
 
 
 def _op(sym: str = "a.py::foo", n: int = 0):
@@ -84,7 +84,7 @@ def test_reduced_ideal_ids_stamp_reproduces_the_reduction(tmp_path):
 
 
 def test_drift_by_hash_matches_byte_drift(tmp_path):
-    from sgt import api
+    from ugh import api
 
     (tmp_path / "a.txt").write_bytes(b"hello")
     materialized = {"a.txt": b"hello", "b.txt": b"gone"}
@@ -96,7 +96,7 @@ def test_drift_by_hash_matches_byte_drift(tmp_path):
 
 
 def test_persistent_extract_cache_roundtrips_and_degrades_on_corruption(tmp_path):
-    from sgt.entities import extract
+    from ugh.entities import extract
 
     Store(tmp_path).init()
     src = "def f():\n    return 1\n"
@@ -145,8 +145,8 @@ def test_sync_no_op_gate_misses_after_miner_upgrade(tmp_path, monkeypatch):
     """A sync memo written by an older miner must not gate away the re-mine after an upgrade:
     the fingerprint folds MINER_VERSION in, so the gate misses and the new miner's ops (e.g.
     anchor revisions absent under the old rules) actually land."""
-    from sgt.core import lens
-    from sgt.store.gitbind import init_store
+    from ugh.core import lens
+    from ugh.store.gitbind import init_store
 
     gb, _ = init_store(tmp_path)
     (tmp_path / "a.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")

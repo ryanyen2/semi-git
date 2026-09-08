@@ -24,11 +24,11 @@ jobs:
       # to exist or `git commit` fails on a fresh runner.
       - name: Configure git
         run: |
-          git config --global user.email "ci@semi-git.local"
-          git config --global user.name "semi-git CI"
+          git config --global user.email "ci@ugh.local"
+          git config --global user.name "ugh CI"
           git config --global init.defaultBranch main
 
-      # `tui` too: the consequence-pane tests exercise a real CLI path (`sgt resolve` on a tty), so
+      # `tui` too: the consequence-pane tests exercise a real CLI path (`ugh resolve` on a tty), so
       # skipping them locally-only would hide exactly the kind of undeclared import that first
       # turned this job red.
       - name: Install
@@ -38,7 +38,7 @@ jobs:
         run: uv run --python ${{ matrix.python-version }} pytest -q
         timeout-minutes: 30
 
-      # Guards the docs layer: every `sgt ...` command quoted in the README, the guide, or the
+      # Guards the docs layer: every `ugh ...` command quoted in the README, the guide, or the
       # bundled agent skills has to dispatch against the live CLI. Prose drifts silently because
       # nothing executes it, and an agent handed a command that no longer exists will thrash.
       - name: Check documented commands

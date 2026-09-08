@@ -1,6 +1,6 @@
 """Print what the confirm screen actually says before a session revert.
 
-`sgt revert --session <name>` shows a Textual pane on a tty and a plain prompt
+`ugh revert --session <name>` shows a Textual pane on a tty and a plain prompt
 everywhere else, so piping it into a file shows you the wrong one. This drives
 the real pane the way the test suite does and prints the four things a person
 reads off it: the consequence line, the code rail, the fallout rows, and the key
@@ -14,9 +14,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from sgt.api import _project_verb_preview, grid_view, map_view, segments_view
-from sgt.core import verbs
-from sgt.tui.consequence import ConsequenceApp
+from ugh.api import _project_verb_preview, grid_view, map_view, segments_view
+from ugh.core import verbs
+from ugh.tui.consequence import ConsequenceApp
 from textual.widgets import DataTable, Label, Static
 
 

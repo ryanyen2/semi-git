@@ -1,5 +1,5 @@
-// Mirror of the JSON shapes from `sgt.api` (the canonical projection). Keep in sync with
-// sgt/api.py — the CLI `--json` mode, MCP, and this extension all consume the same schema.
+// Mirror of the JSON shapes from `ugh.api` (the canonical projection). Keep in sync with
+// ugh/api.py — the CLI `--json` mode, MCP, and this extension all consume the same schema.
 
 export interface MapNode {
   id: string;
@@ -10,18 +10,18 @@ export interface MapNode {
   size: number;
   op_count: number;
   dir: string;
-  // The feature's member entities as `file::qualname` (sgt.api.map_view). The majority-prefix `dir`
+  // The feature's member entities as `file::qualname` (ugh.api.map_view). The majority-prefix `dir`
   // can exclude a feature's own production file when its members span dirs, so file filters union
   // the member file-set with the dir prefix.
   members: string[];
-  // What this feature's OWN ops touch, sentinels excluded (sgt.api.map_view) -- the set `sgt show`
+  // What this feature's OWN ops touch, sentinels excluded (ugh.api.map_view) -- the set `ugh show`
   // counts, which is not `members` (the clustering's assignment). A leaf with an empty one is a husk:
   // nothing to show and nothing a revert would remove, so listing surfaces drop it (`mapFilter.ts`).
   own_symbols?: string[];
   why: string;
   split_reason: string | null;
   // Present (an `af-` id) only when this leaf is claimed by a user-authored feature; absent for
-  // a purely clustered leaf (sgt.api.map_view, U6). Lets the tree mark authored vs. proposed.
+  // a purely clustered leaf (ugh.api.map_view, U6). Lets the tree mark authored vs. proposed.
   authored_id?: string;
 }
 
@@ -30,7 +30,7 @@ export interface IdentityEvent {
   feature_id: string;
 }
 
-// A cross-feature structural dependency edge (`sgt.lens.tree.feature_edges`) -- the fused
+// A cross-feature structural dependency edge (`ugh.lens.tree.feature_edges`) -- the fused
 // structural/co-change/scope coupling graph rolled up to leaf-feature pairs.
 export interface MapEdge {
   a: string;
@@ -39,7 +39,7 @@ export interface MapEdge {
 }
 
 // Whether this ref's witness has caught up to head and any in-progress genesis backfill has
-// finished (sgt.core.lens.sync_status) -- a pure read, never triggers mining itself.
+// finished (ugh.core.lens.sync_status) -- a pure read, never triggers mining itself.
 export interface SyncStatus {
   complete: boolean;
   reached_genesis: boolean;
@@ -54,7 +54,7 @@ export interface MapView {
   sync_status: SyncStatus;
 }
 
-// `sgt history --json`: the feature-map webview's shared commit-index axis.
+// `ugh history --json`: the feature-map webview's shared commit-index axis.
 export interface HistoryCommit {
   sha: string;
   subject: string;
@@ -73,7 +73,7 @@ export interface HistoryView {
   ops: HistoryOp[];
 }
 
-// `sgt preview <verb> <args...> --json` -- a side-effect-free preview shared by every feature
+// `ugh preview <verb> <args...> --json` -- a side-effect-free preview shared by every feature
 // verb + feature-grouped revert/restore; fields beyond `ok`/`verb`/`message`/`affected_features`
 // vary by verb, so callers narrow on `verb` before reading them.
 export interface FeatureVerbPreview {
@@ -96,7 +96,7 @@ export interface SelectionView {
   hub: { symbol: string; pulled_op_count: number } | null;
 }
 
-/** `sgt find --json`. `mode` says which rung answered: meaning, or word overlap. */
+/** `ugh find --json`. `mode` says which rung answered: meaning, or word overlap. */
 export interface FindView {
   ok: boolean;
   mode: "semantic" | "lexical" | "none";
@@ -133,7 +133,7 @@ export interface StatusView {
   staged: { any: boolean; paths: string[] };
   unmanaged: string[];
   backstop_kept: string[];
-  // Files sgt holds no op for at all (`.gitignore` in every repo these tools
+  // Files ugh holds no op for at all (`.gitignore` in every repo these tools
   // build). Kept on disk, but not damage and not repairable, so anything that
   // renders `backstop_kept` as something to fix must leave these out.
   never_recorded?: string[];
@@ -141,7 +141,7 @@ export interface StatusView {
   sync_status: SyncStatus;
 }
 
-// One dependent on the revert/edit frontier (sgt.api._frontier_rows, U3/R4). `bucket`:
+// One dependent on the revert/edit frontier (ugh.api._frontier_rows, U3/R4). `bucket`:
 // `blast` = a direct dependent that needs rework if kept (drafts a continuation hollow);
 // `carry` = a transitive dependent that repoints mechanically for free; `foundation` = an
 // upstream prerequisite the reverted core is built on, which cannot be dropped (`toggleable`
@@ -152,7 +152,7 @@ export interface FrontierRow {
   toggleable: boolean;
 }
 
-// A feature touched by the edit, rolled up (sgt.api._affected_rows). `direction`: `blast` =
+// A feature touched by the edit, rolled up (ugh.api._affected_rows). `direction`: `blast` =
 // downstream dependent, `foundation` = upstream prerequisite.
 export interface AffectedRow {
   feature_id: string;
@@ -160,7 +160,7 @@ export interface AffectedRow {
   op_count: number;
 }
 
-// One node of the "Focus & Morph" consequence subgraph (sgt.api.focus_subgraph): a feature the
+// One node of the "Focus & Morph" consequence subgraph (ugh.api.focus_subgraph): a feature the
 // edit touches, carrying its op-count before and after so the webview can morph just this lane
 // (N → M) against a dimmed field. `role` is hue-free — `target` acted-on, `blast` losing ops,
 // `foundation` gaining ops or a kept prerequisite.
@@ -182,7 +182,7 @@ export interface FocusView {
   context_count: number;
 }
 
-// One entity's line range in one side of a verb projection (`sgt.api._side_entity_spans`), from
+// One entity's line range in one side of a verb projection (`ugh.api._side_entity_spans`), from
 // the same tree-sitter extraction `blame` runs. Ranges are 1-based inclusive and are against THAT
 // SIDE's own text: `before` and `after` disagree about line numbers the moment an entity is added
 // or removed, so a span read against the wrong side lands on the wrong function.
@@ -193,8 +193,8 @@ export interface ChangeSpan {
   end_line: number;
 }
 
-// `sgt revert <ref> --emit --json` — a sandboxed dry-run preview, shared by single-op and
-// feature-grouped revert (both resolve to the same `sgt.api._project_verb_preview` shape).
+// `ugh revert <ref> --emit --json` — a sandboxed dry-run preview, shared by single-op and
+// feature-grouped revert (both resolve to the same `ugh.api._project_verb_preview` shape).
 export interface EmitView {
   ok: boolean;
   verb: string;
@@ -219,11 +219,11 @@ export interface EmitView {
   // `Waitlist Priority@2: Promote On Cancel`. Lets a confirm name the chapter the user clicked
   // instead of the opaque ref they never typed.
   checkpoint?: string;
-  // The "Focus & Morph" subgraph the webview dims-and-morphs from (sgt.api.focus_subgraph).
+  // The "Focus & Morph" subgraph the webview dims-and-morphs from (ugh.api.focus_subgraph).
   focus?: FocusView;
 }
 
-// `sgt merge <survivor> <absorbed> --json`.
+// `ugh merge <survivor> <absorbed> --json`.
 export interface MergeResult {
   ok: boolean;
   survivor?: string;
@@ -233,7 +233,7 @@ export interface MergeResult {
   message?: string;
 }
 
-// `sgt rename <feature> "<label>" --json`.
+// `ugh rename <feature> "<label>" --json`.
 export interface RenameResult {
   ok: boolean;
   feature?: string;
@@ -242,7 +242,7 @@ export interface RenameResult {
   message?: string;
 }
 
-// `sgt move <op>... --to <feature> --json`.
+// `ugh move <op>... --to <feature> --json`.
 export interface MoveResult {
   ok: boolean;
   op_ids?: string[];
@@ -250,7 +250,7 @@ export interface MoveResult {
   message?: string;
 }
 
-// `sgt split <feature> --json` (preview, no `--apply`).
+// `ugh split <feature> --json` (preview, no `--apply`).
 export interface SplitPreviewResult {
   ok: boolean;
   feature?: string;
@@ -263,7 +263,7 @@ export interface SplitPreviewResult {
   moving_op_ids?: string[];
 }
 
-// `sgt split <feature> --apply --json`.
+// `ugh split <feature> --apply --json`.
 export interface SplitApplyResult {
   ok: boolean;
   feature?: string;
@@ -272,7 +272,7 @@ export interface SplitApplyResult {
   message?: string;
 }
 
-// `sgt plan status --json` / `sgt checkpoint --json` (plan U14): one file's current line spans
+// `ugh plan status --json` / `ugh checkpoint --json` (plan U14): one file's current line spans
 // for a set of symbols an op or a matched step touched.
 export interface PlanFileSpan {
   path: string;
@@ -288,7 +288,7 @@ export interface PlanStep {
   status: "pending" | "matched";
   matched_op_ids: string[];
   files: PlanFileSpan[];
-  // Pending steps only (`sgt.api.plan_view --full`): whether the step's predicted files already saw
+  // Pending steps only (`ugh.api.plan_view --full`): whether the step's predicted files already saw
   // edits since intake, and a one-line "why" -- so a stall can be explained ("built in server.py,
   // not the predicted connection.py") without re-deriving it. Absent on matched steps.
   covered?: boolean;
@@ -302,7 +302,7 @@ export interface PlanSession {
   created_ts: number;
   last_activity_ts: number;
   steps: PlanStep[];
-  // Derived in `sgt.api.plan_view` (not stored): "building" | "stalled" | "complete". A stalled
+  // Derived in `ugh.api.plan_view` (not stored): "building" | "stalled" | "complete". A stalled
   // plan has unbuilt steps, no work in flight, and has gone quiet -- the Resume affordance targets it.
   derived_status?: "building" | "stalled" | "complete";
   pending_count?: number;
@@ -319,7 +319,7 @@ export interface CheckpointGroup {
   files: PlanFileSpan[];
 }
 
-// `sgt plan status --json`.
+// `ugh plan status --json`.
 export interface PlanView {
   sessions: PlanSession[];
   checkpoint: { matches: CheckpointGroup[]; drift_op_ids: string[] };
@@ -332,12 +332,12 @@ export interface DriftEntry {
   files: PlanFileSpan[];
 }
 
-// `sgt drift --json`.
+// `ugh drift --json`.
 export interface DriftView {
   entries: DriftEntry[];
 }
 
-// `sgt.core.oracle.verdict_for` -- the stored record for one exact ideal, or `null` (pending, no
+// `ugh.core.oracle.verdict_for` -- the stored record for one exact ideal, or `null` (pending, no
 // tier has run and no override recorded yet). `overall_status` reduces this to one status string.
 export interface OracleTierResult {
   status: string;
@@ -359,7 +359,7 @@ export interface OracleVerdictRecord {
 
 export type OracleVerdict = OracleVerdictRecord | null;
 
-// `sgt forks [--json]` / `sgt forks <symbol> --json` (C4).
+// `ugh forks [--json]` / `ugh forks <symbol> --json` (C4).
 export interface ForkRecord {
   symbol: string;
   tips: [string, string];
@@ -384,7 +384,7 @@ export interface ForkDetailView {
   error?: string;
 }
 
-// `sgt fold --at <spec> [--json]` -- a side-effect-free fold of an arbitrary frontier; the
+// `ugh fold --at <spec> [--json]` -- a side-effect-free fold of an arbitrary frontier; the
 // draggable-playhead primitive. Never all three of `files`/`forked`/`error` at once.
 export interface FoldView {
   op_count?: number;
@@ -399,7 +399,7 @@ export interface FoldView {
   error?: string;
 }
 
-// `sgt session start|status --json` (plan U30, D5).
+// `ugh session start|status --json` (plan U30, D5).
 export interface SessionInfo {
   name: string;
   branch: string;
@@ -421,7 +421,7 @@ export interface SessionsView {
   overlaps: SessionOverlap[];
 }
 
-// `sgt review-queue list --json` / the U31 trust queue.
+// `ugh review-queue list --json` / the U31 trust queue.
 export interface TrustOpEntry {
   op_id: string;
   kind: string;
@@ -441,7 +441,7 @@ export interface TrustView {
   total_ops: number;
 }
 
-// `sgt propose create/status/land/render/publish --json`.
+// `ugh propose create/status/land/render/publish --json`.
 export interface PinContradiction {
   kind: string;
   members: string[];
@@ -500,16 +500,16 @@ export interface ComposeProposalSummary {
   feature_delta: string[];
 }
 
-// `sgt compose [--json]` -- one aggregate refresh, collapsing ~9 shell-outs into one.
+// `ugh compose [--json]` -- one aggregate refresh, collapsing ~9 shell-outs into one.
 // One feature-scoped intent segment -- a "checkpoint": a contiguous chapter of a feature's
 // history sharing one intent, addressable as `<feature_id>@<seg_index>` and revertable as a unit.
 // `intent` is the chapter's label in the developer's language; `novelty` (0..1) weights how much
-// behavior it changed, so trivial chapters can be dimmed. From `sgt.api.intent_view`.
-// One captured ask, as every surface renders it (`sgt.intent.stint.ask_record`). `gist` is the
+// behavior it changed, so trivial chapters can be dimmed. From `ugh.api.intent_view`.
+// One captured ask, as every surface renders it (`ugh.intent.stint.ask_record`). `gist` is the
 // excerpt to put on a line -- the request inside a real prompt, which opens with throat-clearing
-// and carries its reasoning after the ask (`sgt.intent.gist`); `source` is whose words they were,
+// and carries its reasoning after the ask (`ugh.intent.gist`); `source` is whose words they were,
 // in words, so the reader can tell their own typing from an agent's paraphrase. `text` is the
-// verbatim prompt and arrives only on demand (`sgt show <ref> --asked`), because a panel listing
+// verbatim prompt and arrives only on demand (`ugh show <ref> --asked`), because a panel listing
 // every chapter of every feature would otherwise carry every prompt in the repository.
 export interface CapturedAsk {
   gist: string;
@@ -544,7 +544,7 @@ export interface IntentSegment {
   asks: CapturedAsk[];
 }
 
-// One commit-keyed `IntentAtom` from `sgt.api.intent_view` (only the fields the hover reads are
+// One commit-keyed `IntentAtom` from `ugh.api.intent_view` (only the fields the hover reads are
 // typed; the projection carries more -- prompt, session ids, tier). `feature_span` is the set of
 // feature ids the atom's ops land in; `rationale` is the live intent-ledger reason(s) for those
 // ops -- the "why" the hover joins to a feature.
@@ -561,7 +561,7 @@ export interface IntentView {
   segments: IntentSegment[];
 }
 
-// `sgt log --json` == `sgt.api.grid_view(repo)` (plan U1/U3): the canonical lane×commit cell join
+// `ugh log --json` == `ugh.api.grid_view(repo)` (plan U1/U3): the canonical lane×commit cell join
 // -- the one projection every surface (CLI, TUI, this webview) renders from, so the (op -> cell)
 // join is computed once server-side and never re-derived per surface. A cell carries the ops one
 // feature touched in one commit; unattributed ops have no cell.
@@ -590,7 +590,7 @@ export interface GridView {
   feature_count: number;
 }
 
-// `sgt.api.save_preview_view` -- the in-situ "what would a save land" read (feature-granular):
+// `ugh.api.save_preview_view` -- the in-situ "what would a save land" read (feature-granular):
 // which existing features would gain ops if you saved now (`affected`), how many pending ops
 // belong to no built feature (`new_work_count`), and the total pending op count. Drives the
 // workbench's dashed ghost-checkpoint cars. Empty `affected` + zero counts == nothing pending.
@@ -606,9 +606,9 @@ export interface SavePreviewView {
   total_op_count: number;
 }
 
-// `sgt advanced rewrite status --json` (plan U11), also bundled into `ComposeView`. `staged` is the
+// `ugh advanced rewrite status --json` (plan U11), also bundled into `ComposeView`. `staged` is the
 // candidate awaiting a landing decision, `null` when there is none; its `oracle_status` is the gate
-// `sgt advanced commit` refuses on, and is the candidate's own verdict rather than the current
+// `ugh advanced commit` refuses on, and is the candidate's own verdict rather than the current
 // ideal's -- so a surface offering Land has to read it here, not off the titlebar oracle chip.
 export interface RewriteView {
   drafts: {
@@ -643,7 +643,7 @@ export interface ComposeView {
   proposals: ComposeProposalSummary[];
 }
 
-// `sgt sync [remote] [branch] --json` (U15/U20).
+// `ugh sync [remote] [branch] --json` (U15/U20).
 export interface SyncReport {
   ok: boolean;
   remote: string;
@@ -662,7 +662,7 @@ export interface SyncReport {
   identity_events: IdentityEvent[];
 }
 
-// `sgt land <branch> [--json]` (U23). Also reused for `sgt propose land <id> [--subset ...]`
+// `ugh land <branch> [--json]` (U23). Also reused for `ugh propose land <id> [--subset ...]`
 // (same `land_view` projection) -- which, unlike a branch land, can fail before ever running
 // (an invalid `--subset` ref) and report that through `error` rather than `blocked_reason`.
 export interface LandReport {
@@ -681,7 +681,7 @@ export interface LandReport {
   error?: string;
 }
 
-// `sgt switch <branch> [--json]` (D3) — or the `{ok:false, error}` envelope shared by all three
+// `ugh switch <branch> [--json]` (D3) — or the `{ok:false, error}` envelope shared by all three
 // daily-loop verbs below.
 export interface SwitchResult {
   ok: boolean;
@@ -691,7 +691,7 @@ export interface SwitchResult {
 }
 
 // One feature this save's new ops landed in -- the label feedforward
-// (`sgt.cli.porcelain._save_attribution`): its id, current label, a typeable handle, the real
+// (`ugh.cli.porcelain._save_attribution`): its id, current label, a typeable handle, the real
 // symbols the save touched in it, its edit count, and whether the save minted the lane (still unnamed).
 export interface SaveFeature {
   feature_id: string;
@@ -702,7 +702,7 @@ export interface SaveFeature {
   new: boolean;
 }
 
-// `sgt save --as "<label>"`'s name-at-encode result -- present only when the save named a feature.
+// `ugh save --as "<label>"`'s name-at-encode result -- present only when the save named a feature.
 export interface SaveRename {
   ok: boolean;
   feature_id?: string;
@@ -710,7 +710,7 @@ export interface SaveRename {
   message?: string;
 }
 
-// `sgt save [-m <message>] [--as "<label>"] [--json]` (D3). `features`/`renamed` are additive: which
+// `ugh save [-m <message>] [--as "<label>"] [--json]` (D3). `features`/`renamed` are additive: which
 // feature(s) the save's new ops landed in, and any inline `--as` rename result.
 export interface SaveResult {
   ok: boolean;
@@ -723,7 +723,7 @@ export interface SaveResult {
   renamed?: SaveRename;
 }
 
-// `sgt undo [--json]` (D3).
+// `ugh undo [--json]` (D3).
 export interface UndoResult {
   ok: boolean;
   undone?: boolean;
@@ -735,7 +735,7 @@ export interface UndoResult {
   error?: string;
 }
 
-// `sgt undo --emit --json` (oplog.preview): what the next undo *would* do. `ok: false` means undo
+// `ugh undo --emit --json` (oplog.preview): what the next undo *would* do. `ok: false` means undo
 // would refuse -- the F3 guard's "this would drop work committed since" -- and `applied` is always
 // false, which is how a caller tells this report apart from the mutation's own `ok: true`.
 export interface UndoPreview {
@@ -749,7 +749,7 @@ export interface UndoPreview {
   error?: string;
 }
 
-// `sgt merge-op <a> <b>` / `split-op <op>` / `transplant <op>... --onto <ref>` (plan U11, R14) --
+// `ugh merge-op <a> <b>` / `split-op <op>` / `transplant <op>... --onto <ref>` (plan U11, R14) --
 // all three share this printer, drafting a hollow op for a human/agent to fulfill.
 export interface RewriteDraft {
   ok: boolean;
@@ -760,7 +760,7 @@ export interface RewriteDraft {
   message?: string;
 }
 
-// `sgt fulfill <draft-id> --from-tree [--json]` (plan U11): supplies a drafted hollow's image
+// `ugh fulfill <draft-id> --from-tree [--json]` (plan U11): supplies a drafted hollow's image
 // from the working tree -- stages, no commit. Note: unlike most verbs, a `RewriteError` here
 // prints plain text even with `--json`, so callers should expect the promise to reject (not
 // resolve with `ok: false`) on that path.
@@ -769,15 +769,15 @@ export interface FulfillResult {
   op_ids?: string[];
 }
 
-// `sgt advanced commit [--json]` (plan U11): commits the staged rewrite candidate. Distinct from
-// `sgt land <branch> --json` (`LandReport`, the U23 CAS shared-branch advance). Same caveat as
+// `ugh advanced commit [--json]` (plan U11): commits the staged rewrite candidate. Distinct from
+// `ugh land <branch> --json` (`LandReport`, the U23 CAS shared-branch advance). Same caveat as
 // `FulfillResult` -- a refusal prints plain text even with `--json`.
 export interface LandCandidateResult {
   ok: boolean;
   sha?: string;
 }
 
-// `sgt advanced unstage --json` (plan U6): the other exit from a staged candidate -- drop it and
+// `ugh advanced unstage --json` (plan U6): the other exit from a staged candidate -- drop it and
 // restore the committed ideal to the working tree. `op_ids` is what was restored, not what was
 // discarded, which is why the toast counts ops rather than claiming a number of ops lost.
 export interface UnstageResult {
@@ -785,7 +785,7 @@ export interface UnstageResult {
   op_ids?: string[];
 }
 
-// `sgt propose publish <id> [--remote origin] --json` (plan U32, D7).
+// `ugh propose publish <id> [--remote origin] --json` (plan U32, D7).
 export interface PublishResult {
   ok: boolean;
   action?: "created" | "updated";
@@ -794,7 +794,7 @@ export interface PublishResult {
   error?: string;
 }
 
-// `sgt now --json` (`sgt.api.now_view`): the "state of actions" the Now tree renders -- what's in
+// `ugh now --json` (`ugh.api.now_view`): the "state of actions" the Now tree renders -- what's in
 // flight, what needs me, what was recently done, and the single next action. A thin assembler that
 // deliberately avoids the heavy intent_view; rationale/feature_span stay a drill-down.
 export interface NowInFlightRow {
@@ -847,7 +847,7 @@ export interface NowInProgressPlan {
 }
 
 // The current task in the developer's own words, derived from the prompt hook rather than declared
-// via `sgt plan intake` -- the common way to work (Claude Code plan mode, a planning plugin) never
+// via `ugh plan intake` -- the common way to work (Claude Code plan mode, a planning plugin) never
 // calls intake, so nothing else supplies it. `source` distinguishes a stated plan step from a raw
 // prompt, because the two carry different amounts of deliberation and blurring them would make the
 // surface look like it knows more than it does. Null when nothing has been asked for.

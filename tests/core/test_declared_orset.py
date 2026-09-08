@@ -1,4 +1,4 @@
-"""The declared-edge OR-Set (U21/D6): `sgt after` adds an edge with a unique tag, `sgt after
+"""The declared-edge OR-Set (U21/D6): `ugh after` adds an edge with a unique tag, `ugh after
 --retract` tombstones the tags it observes, and the *live* edge set (what `order` consumes) is
 every edge value with a surviving tag. Unlike the pre-U21 flat G-Set, a retraction is durable,
 travelling state -- and a concurrent add elsewhere survives it.
@@ -11,8 +11,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sgt.core import lens, sync
-from sgt.core.lens import (
+from ugh.core import lens, sync
+from ugh.core.lens import (
     DeclaredORSet,
     _load_declared,
     declare_after,
@@ -20,8 +20,8 @@ from sgt.core.lens import (
     retract_after,
     save_declared_orset,
 )
-from sgt.core.store import Store
-from sgt.store.gitbind import GitBinding
+from ugh.core.store import Store
+from ugh.store.gitbind import GitBinding
 
 from tests.conftest import _clone, _init_bare, _push
 
@@ -91,7 +91,7 @@ _BASE = "def foo():\n    return 1\n\n\ndef bar():\n    return 2\n"
 
 
 def _two_clones(tmp_path: Path) -> tuple[Path, Path]:
-    # Phase 1.2: the declared OR-Set moved off the branch tree onto `refs/sgt/state`, so the shared
+    # Phase 1.2: the declared OR-Set moved off the branch tree onto `refs/ugh/state`, so the shared
     # conftest helpers (which publish + push + fetch that ref) are the transport -- a raw `git push`
     # would leave the edge stranded in a's local mirror. This is exactly why the fixtures were hoisted.
     remote = _init_bare(tmp_path)
@@ -100,7 +100,7 @@ def _two_clones(tmp_path: Path) -> tuple[Path, Path]:
     (a / "main.py").write_text(_BASE, encoding="utf-8")
     GitBinding(a).commit_all("init")
     ideal = lens.get(a)
-    put_sha = lens.put(a, ideal, message="sgt: init")
+    put_sha = lens.put(a, ideal, message="ugh: init")
     lens.record_ideal(a, ideal, put_sha)
     _push(a)
     b = _clone(remote, tmp_path / "b")
@@ -109,7 +109,7 @@ def _two_clones(tmp_path: Path) -> tuple[Path, Path]:
 
 
 def test_declared_edge_travels_through_sync(tmp_path):
-    """`sgt after` on one clone, committed and pushed, unions into the other clone's OR-Set on sync
+    """`ugh after` on one clone, committed and pushed, unions into the other clone's OR-Set on sync
     (by tag) -- so the live declared edge appears on the syncing side without any textual merge."""
     a, b = _two_clones(tmp_path)
     ops = sorted(op.id for op in Store(a).all_ops())
@@ -117,7 +117,7 @@ def test_declared_edge_travels_through_sync(tmp_path):
 
     declare_after(a, *edge)
     GitBinding(a).commit_all("a: declare order edge")
-    _push(a)  # publishes the declared-edge OR-Set onto refs/sgt/state, then pushes the branch
+    _push(a)  # publishes the declared-edge OR-Set onto refs/ugh/state, then pushes the branch
 
     assert edge not in _load_declared(b)  # not yet
     sync.sync(b, remote="origin", branch="main")

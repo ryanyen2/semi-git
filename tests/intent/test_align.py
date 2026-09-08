@@ -1,4 +1,4 @@
-"""Tests for sgt.intent.align -- the staged alignment inference pipeline (design doc
+"""Tests for ugh.intent.align -- the staged alignment inference pipeline (design doc
 `docs/plans/2026-08-01-001-the-alignment-pipeline.md` §3.2). The fixture banks here are the
 robustness spec: real turns are messy (backchannels, corrections, deixis, compound asks,
 half-finished sentences, speculative/unimplemented requests), and each stage must handle that input
@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import pytest
 
-from sgt.intent import align
-from sgt.intent.align import (
+from ugh.intent import align
+from ugh.intent.align import (
     PRIOR_ACTION,
     REPAIR_CANDIDATE_OFFER,
     REPAIR_OPEN,
@@ -542,7 +542,7 @@ _TOPIC_ANCHORED = frozenset({"topic", "temporal"})
 
 
 def test_content_words_keeps_topical_tokens_drops_fillers_and_shorts():
-    from sgt.intent.align import _content_words
+    from ugh.intent.align import _content_words
     w = _content_words("make the search better, fix the bug")
     assert "search" in w          # a real topic word survives
     assert "make" not in w        # dev-filler stopword dropped

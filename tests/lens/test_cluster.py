@@ -1,15 +1,15 @@
-"""Tests for sgt.lens.cluster -- the fused coupling graph (plan U12, R15/R16)."""
+"""Tests for ugh.lens.cluster -- the fused coupling graph (plan U12, R15/R16)."""
 
 from __future__ import annotations
 
 from itertools import product
 from math import comb
 
-from sgt.core.lens import get
-from sgt.core.op import make_op
-from sgt.core.store import Store
-from sgt.lens import cluster
-from sgt.store.gitbind import init_store
+from ugh.core.lens import get
+from ugh.core.op import make_op
+from ugh.core.store import Store
+from ugh.lens import cluster
+from ugh.store.gitbind import init_store
 from tests.laws import corpus
 
 
@@ -111,16 +111,16 @@ def test_commit_edges_exclude_hubs_and_mega_commits():
     assert cluster.commit_edges(ops, nodes, hubs=set(), max_commit=4, sha_of=sha_of) == {}
 
 
-def test_signals_bind_work_that_was_saved_through_sgt(tmp_path):
+def test_signals_bind_work_that_was_saved_through_ugh(tmp_path):
     """The co-commit and scope signals read *which commit an op happened in*. Work saved through
-    sgt (`get` on a dirty tree, then `put`) mines its ops as pending -- empty `provenance`, the
+    ugh (`get` on a dirty tree, then `put`) mines its ops as pending -- empty `provenance`, the
     witnessing commit recorded only in that commit's `Sgt-Op:` trailers. Keying the signals off
-    `op.provenance` therefore made them blind to exactly the histories sgt itself produces: in the
+    `op.provenance` therefore made them blind to exactly the histories ugh itself produces: in the
     study repos 366 of 370 ops carried no provenance, so both signals were near-empty and the
     clustering ran on structure and file paths alone. `opindex.earliest_commit_sha` is the one rule
     the time-aware projections already share, and the signals now read it too."""
-    from sgt.core.lens import put
-    from sgt.lens import tree
+    from ugh.core.lens import put
+    from ugh.lens import tree
 
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
@@ -128,7 +128,7 @@ def test_signals_bind_work_that_was_saved_through_sgt(tmp_path):
     gb.commit_all("seed")
     get(repo)
 
-    # One episode, saved through sgt: two unrelated symbols, no call between them and not in the
+    # One episode, saved through ugh: two unrelated symbols, no call between them and not in the
     # same file, so a co-commit edge is the only thing that can bind them.
     (repo / "b.py").write_text("def beta():\n    return 2\n", encoding="utf-8")
     (repo / "c.py").write_text("def gamma():\n    return 3\n", encoding="utf-8")
@@ -198,8 +198,8 @@ def test_leiden_splits_two_disjoint_dense_pairs_into_two_communities():
 
 
 def test_dominant_dir_picks_most_common_two_segment_prefix():
-    members = ["sgt/core/op.py::Op", "sgt/core/ideal.py::Ideal", "sgt/entities/graph.py::EntityGraph"]
-    assert cluster._dominant_dir(members) == "sgt/core"
+    members = ["ugh/core/op.py::Op", "ugh/core/ideal.py::Ideal", "ugh/entities/graph.py::EntityGraph"]
+    assert cluster._dominant_dir(members) == "ugh/core"
 
 
 # --- Phase B temporal prior (plan §3.1 / §5 pinned tests) ---------------------------------------

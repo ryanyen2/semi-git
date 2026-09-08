@@ -1,7 +1,7 @@
 """Plan-session ownership and concurrency (Phase 1 items 4/6/7).
 
 Several coding agents share one repo, and every plan id is readable by all of them
-(`sgt plan status`). Two failures follow from that, and both are silent:
+(`ugh plan status`). Two failures follow from that, and both are silent:
 
 * **clobbering** -- agent B closes or abandons A's plan. `mark_done`/`abandon` unlink the pending
   hollows, so A keeps working, its checkpoints stop matching, and nothing says why.
@@ -19,10 +19,10 @@ import os
 
 import pytest
 
-from sgt.cli import main
-from sgt.loop import plan as plan_mod
-from sgt.loop.match import confirm_match
-from sgt.store.gitbind import init_store
+from ugh.cli import main
+from ugh.loop import plan as plan_mod
+from ugh.loop.match import confirm_match
+from ugh.store.gitbind import init_store
 
 
 def _no_client(*args, **kwargs):
@@ -54,7 +54,7 @@ def test_another_agent_cannot_close_or_abandon_your_plan(repo):
             verb(repo, session.session_id, actor="agent-B")
         # The error has to be actionable: it names who owns it and how to proceed.
         assert "agent-A" in str(excinfo.value)
-        assert "sgt plan adopt" in str(excinfo.value)
+        assert "ugh plan adopt" in str(excinfo.value)
 
     # And nothing was destroyed by the refused call.
     assert session.session_id in plan_mod.active_sessions(repo)
@@ -196,7 +196,7 @@ def test_cli_close_refuses_with_the_owner_named(repo, capsys):
     rc = _cli(repo, ["plan", "done", session.session_id, "--claude-session", "agent-B"])
     assert rc == 1
     out = capsys.readouterr().out
-    assert "agent-A" in out and "sgt plan adopt" in out
+    assert "agent-A" in out and "ugh plan adopt" in out
 
 
 def test_cli_adopt_then_close_succeeds(repo, capsys):
