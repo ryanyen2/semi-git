@@ -160,6 +160,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   headWatcher.onDidDelete(headRefresh);
   context.subscriptions.push(headWatcher, new vscode.Disposable(() => clearTimeout(headPending)));
 
+  // ...and a third watcher, on the plan alone. `ugh plan intake` (an agent's, over MCP, or a
+  // human's in a terminal) writes `.sgt/local/plan_sessions.json` and commits nothing, so the
+  // HEAD backstop above never fires for it and the `.sgt/` watcher drops the event whenever the
+  // editor happened to be mid-read -- which, with the workbench open, is most of the time. The
+  // result was a plan the agent reported taking and a graph that never grew its forecast cars.
+  // Our own reads never write this file (compose/log/plan status all leave its mtime alone), so a
+  // write here is unambiguously somebody else's and needs no `recentlyActive` guard.
+  const planWatcher = vscode.workspace.createFileSystemWatcher(
+    new vscode.RelativePattern(root, ".sgt/local/plan_sessions.json")
+  );
+  let planPending: NodeJS.Timeout | undefined;
+  const planRefresh = () => {
+    clearTimeout(planPending);
+    planPending = setTimeout(() => store.invalidate(), 250);
+  };
+  planWatcher.onDidChange(planRefresh);
+  planWatcher.onDidCreate(planRefresh);
+  planWatcher.onDidDelete(planRefresh);
+  context.subscriptions.push(planWatcher, new vscode.Disposable(() => clearTimeout(planPending)));
+
   void blame.render();
   void planStatusBar.refresh();
   void gitStatusBar.refresh();

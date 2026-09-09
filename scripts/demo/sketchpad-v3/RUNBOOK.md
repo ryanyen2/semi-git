@@ -19,18 +19,16 @@ record is kept at `~/repos/sgt-demo/.sgt-golden-v2-pre-carve-2026-09-05`.
 UGH_SRC=~/repos/semi-git
 bash $UGH_SRC/scripts/demo/sketchpad-v3/check-v3.sh      # want: 17 passed, 0 failed
 bash $UGH_SRC/scripts/demo/sketchpad-v3/stage.sh         # prints the take dir, vite on :5501
-cd <take-dir> && ugh init --agent                        # gives Claude Code the ugh MCP server
 ```
 
 The preflight runs the whole take with the agent scripted, so a failure there means the take will
 fail on camera. It takes a few minutes because it typechecks and photographs each step.
 
-`stage.sh` clones the demo repo and copies the golden record, and that is all it does: the clone
-carries no `.mcp.json`, and nothing wires one globally, so Claude Code started in the take has no
-`ugh_plan_intake` or `ugh_save` to call and shot 3 cannot happen. `ugh init --agent` writes the
-one it needs. Running it on a staged take is safe — it rewrites `.sgt/local/sync_cache.json` and
-nothing else, and the map prints byte for byte the same afterwards — but run it before shot 1
-rather than between shots.
+`stage.sh` runs `ugh init --agent` in the take for you. A clone carries no `.mcp.json` and nothing
+wires one globally, so without it Claude Code started in the take has no `ugh_plan_intake` or
+`ugh_save` to call: it answers the request by shelling out instead, which is off-script and shows
+in the transcript as "Ran N shell commands" rather than as a tool call. If you are recording
+somewhere `stage.sh` did not make, run `ugh init --agent` there yourself before shot 1.
 
 Put the browser on http://localhost:5501/ on the left and a terminal on the right, with its
 working directory set to the take directory. Give the terminal at least 100 columns: at 80 the map

@@ -20,6 +20,12 @@ rm -rf "$TAKE"
 git clone -q "$SRC" "$TAKE"
 cp -r "$GOLDEN" "$TAKE/.sgt"
 ln -s "$SRC/node_modules" "$TAKE/node_modules"
+# The take is where Claude Code runs on camera, and a clone carries no agent wiring: without this
+# the agent has no `ugh_plan_intake`/`ugh_save` to call and answers the request by shelling out,
+# which is both off-script and invisible as a tool call. Safe on a staged take -- it rewrites
+# `.sgt/local/sync_cache.json` and nothing else, and the map prints identically afterwards.
+UGH=${UGH:-$(command -v ugh || true)}
+if [ -n "$UGH" ]; then ( cd "$TAKE" && "$UGH" init --agent >/dev/null 2>&1 || true ); fi
 ( cd "$TAKE" && ./node_modules/.bin/vite --port "$PORT" --strictPort >/dev/null 2>&1 & )
 for _ in $(seq 1 40); do curl -sf -o /dev/null "http://localhost:$PORT/" && break; sleep 0.25; done
 echo "$TAKE"
