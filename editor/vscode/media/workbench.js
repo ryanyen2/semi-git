@@ -789,6 +789,10 @@ function changeMeter(added, removed, width) {
   let pendingSettle = []; // feature ids to flash once the post-apply state lands (the receipt)
   let settleDir = "out"; // which way that flash goes: "out" reverted, "in" restored
   let semanticState = null; // the meaning rung of find: {query, pending, hits, mode, message}
+  // The result the reader actually clicked, and the lanes it reaches: {query, ids}. A save hit
+  // carries a commit index rather than a feature, so matching the raw query text against lane
+  // labels lit nothing and the map answered a chosen result with no highlight at all.
+  let findPick = null;
 
   // Composition-picker hover-preview: while the titlebar's composition QuickPick is open, arrowing
   // over a session/branch item folds it live and takes over the code(I) slot -- "what would
@@ -2348,7 +2352,12 @@ function changeMeter(added, removed, width) {
         x: tx, y: ay + 16, class: "axis-tick" + (i === 0 ? " start" : i === 4 ? " end" : ""), text: `c${ci}`, "data-ci": ci,
       }));
     }
-    svg.appendChild(mk("text", { x: geom.plotX0, y: GANTT.padT - 3, class: "axis-title", text: "time →" }));
+    // Right-aligned into the label gutter rather than at the plot's left edge: the ◆ spanning-work
+    // marks ride that same band (y 4..20), and a piece of work starting at c0 sits exactly on top of
+    // this label. The gutter is empty at this height -- lane rows begin at padT.
+    svg.appendChild(mk("text", {
+      x: geom.plotX0 - 10, y: GANTT.padT - 3, class: "axis-title axis-title-end", text: "time →",
+    }));
     // The count column had no header at all: a strip of bare numbers (97, 328, 204…) down the right
     // edge of the plot, in a view whose every other column says what it is. A reader who cannot
     // tell whether that is edits, commits, or symbols cannot use it.
@@ -2849,9 +2858,30 @@ function changeMeter(added, removed, width) {
   // Search used to do none of this. It filled a dropdown and left the map exactly as it was, so the
   // answer to "where is the thing that formats dates" was a list of names you then had to find by
   // eye in thirty rows -- the map, the one surface that could have answered, stayed silent.
+  // Every lane a hit reaches, so clicking a result lights the work it names. A save has no lane of
+  // its own -- it is a commit -- so it lights every lane its cells touched, which is what the reader
+  // pointed at when they picked it.
+  function lanesForHit(hit) {
+    const ids = new Set();
+    if (hit.feature) ids.add(hit.feature);
+    if (hit.theme) {
+      const t = ((((compose || {}).intent) || {}).themes || []).find((x) => x.theme_id === hit.theme);
+      for (const f of (t && t.feature_span) || []) ids.add(f);
+    }
+    if (hit.commitIndex != null) {
+      for (const c of ((grid && grid.cells) || [])) {
+        if (c.commit_index === hit.commitIndex && c.feature_id) ids.add(c.feature_id);
+      }
+    }
+    return ids;
+  }
+
   function lensState() {
     const box = document.getElementById("findBox");
     const query = box ? box.value.trim() : "";
+    if (findPick && findPick.query === query && findPick.ids.size) {
+      return { query, ids: findPick.ids };
+    }
     if (query) {
       const hits = localFindHits(query, (map || {}).nodes, checkpointsByFeature, 500,
                                  ((compose || {}).intent || {}).themes, (grid || {}).commits);
@@ -2876,13 +2906,14 @@ function changeMeter(added, removed, width) {
   function applyLens() {
     const svg = rail.querySelector("svg");
     const lens = lensState();
-    renderLensBanner(lens);
     if (!svg) return;
     // A held revert/restore preview owns the field: its dim is deeper and says something else
     // ("these lanes change"), and stacking a lens under it multiplies two opacities into a floor
     // nothing can be read at. The preview's own teardown re-applies whatever was in the find box.
     if (previewActive) return;
-    if (!lens) {
+    // A query that reaches no lane dims nothing: a fully greyed map with nothing lit says only that
+    // the view broke. Typing on toward a match then lights lanes as they start matching.
+    if (!lens || !lens.ids.size) {
       svg.classList.remove("focus");
       svg.querySelectorAll(".lit").forEach((el) => el.classList.remove("lit"));
       return;
@@ -2901,36 +2932,6 @@ function changeMeter(added, removed, width) {
   // What receded, why, and how to get it back. A map with half its rows dimmed and no caption is
   // read as a rendering fault -- the terminal's `ugh log --focus` has said so above its own rows
   // for months and this surface had nothing.
-  function renderLensBanner(lens) {
-    const el = document.getElementById("lensBanner");
-    if (!el) return;
-    if (!lens) { el.hidden = true; el.innerHTML = ""; return; }
-    el.hidden = false;
-    el.innerHTML = "";
-    el.classList.toggle("stacked", !!themeMarks); // sit under the theme caption, not on top of it
-    const lanes = (layout.lanes || []).filter((l) => !l.isMeta).length;
-    const name = document.createElement("span");
-    name.className = "theme-banner-name";
-    name.textContent = `◉ ${lens.query}`;
-    const note = document.createElement("span");
-    note.className = "theme-banner-note";
-    note.textContent = lens.ids.size
-      ? `${lens.ids.size} of ${lanes} features match — the rest are dimmed, not hidden`
-      : "nothing in this graph matches — press ⏎ to search by meaning";
-    el.append(name, note);
-    const clear = document.createElement("button");
-    clear.textContent = "✕ Show everything";
-    clear.title = "clear the search (Esc)";
-    clear.addEventListener("click", () => {
-      const box = document.getElementById("findBox");
-      if (box) box.value = "";
-      semanticState = null;
-      const results = document.getElementById("findResults");
-      if (results) results.hidden = true;
-      render();
-    });
-    el.appendChild(clear);
-  }
 
   // Reveal a feature from the editor (task 4): select it (so the inspector opens) and scroll its
   // lane/row into view -- the same primitives selectRow uses, but deterministic (never toggling
@@ -3609,6 +3610,7 @@ function changeMeter(added, removed, width) {
     // round-trip). The dropdown never sits blank while something is already known.
     box.addEventListener("input", () => {
       semanticState = null; // a changed query orphans any older meaning results
+      findPick = null;
       renderFind(box.value.trim());
       applyLens(); // and the map answers too, not just the dropdown
     });
@@ -3659,6 +3661,10 @@ function changeMeter(added, removed, width) {
     row.addEventListener("click", () => {
       const results = document.getElementById("findResults");
       if (results) results.hidden = true;
+      // The chosen result owns the highlight from here until the query changes.
+      const box = document.getElementById("findBox");
+      const ids = lanesForHit(hit);
+      findPick = ids.size ? { query: box ? box.value.trim() : "", ids } : null;
       // Every hit that belongs somewhere takes you there. A chapter hit lands on its exact car;
       // a theme enters the cross-lane focus; a save flashes every lane its commit touched.
       if (hit.theme) { setThemeFocus(hit.theme); return; }

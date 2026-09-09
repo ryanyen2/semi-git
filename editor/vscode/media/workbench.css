@@ -1060,6 +1060,10 @@ svg.railsvg {
   opacity: 0.7;
 }
 
+/* The `time →` title, ending at the plot's left edge instead of starting there, so the ◆ marks that
+   ride the same band cannot land on it. */
+.axis-title-end { text-anchor: end; }
+
 .future-veil {
   fill: var(--bg);
   fill-opacity: 0.55;
@@ -1632,16 +1636,18 @@ svg.railsvg {
                    .find-detail never engages and a long path widens the whole dropdown */
 }
 
-/* One line per result, always. A save's label is its commit subject, and a long one wrapped to
-   three lines -- so a list of ten results was a wall of prose with no row boundaries the eye could
-   use, and the rows below it were pushed out of the panel. A result row is an index entry, not the
-   thing itself: name it in one line and let the click open the rest. */
+/* Two lines per result. One line was too few: a save's label is its commit subject, and clipping it
+   at the width left over after the action phrase cut most of them mid-word ("masters and
+   instances: file..."), which is exactly the part that says which save this is. Three or more lines
+   was the original problem -- a wall of prose with no row boundaries -- so the clamp holds at two,
+   which fits every commit subject in this corpus and keeps the rows scannable. */
 .find-label {
-  display: block;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   font-size: 12px;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .find-detail {
@@ -2246,9 +2252,6 @@ svg.railsvg {
    reallocates row HEIGHT (TableLens), a lens reallocates PRESENCE (opacity). Neither replaces the
    other, so the lens sits under the theme's caption instead of on top of it -- both are absolutely
    positioned at the same top, and one silently covered the other. */
-#lensBanner.stacked {
-  top: 46px;
-}
 
 .theme-banner .theme-banner-name {
   font-weight: 600;

@@ -216,7 +216,6 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     <!-- The lens caption: a live search, saying what receded and how to clear it. Shares the
          theme banner's styling because it is the same kind of statement about the same kind of
          state -- one thing asked about, the rest dimmed. -->
-    <div id="lensBanner" class="theme-banner" hidden></div>
     <div id="confirmBar" class="confirm-bar" hidden></div>
     <div id="inspector"></div>
   </div>
