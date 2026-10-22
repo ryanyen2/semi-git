@@ -1206,10 +1206,12 @@ function changeMeter(added, removed, width) {
     prevPendingFeatures = nowPending;
     prevCarCounts = carCounts;
 
+    syncFocus();
     renderGraph();
     renderInspector();
     renderPresence();
     renderThemeBanner();
+    renderContextRows();
     if (stagedAction && !applyBusy && stagedAction.res) {
       paintStaged(stagedAction);
       renderConfirmBar(); // its words also mark the other checkpoints and each function's fate
@@ -1239,7 +1241,7 @@ function changeMeter(added, removed, width) {
     name.textContent = themeMarks.label;
     const note = document.createElement("span");
     note.className = "theme-banner-note";
-    note.textContent = `one request across ${themeMarks.featureIds.size} features: its checkpoints are ringed, other lanes compressed`;
+    note.textContent = `one request across ${themeMarks.featureIds.size} features: its checkpoints are ringed, other lanes are faded`;
     el.append(name, note);
     const mkBtn = (label, title, fn) => {
       const b = document.createElement("button");
@@ -1296,6 +1298,41 @@ function changeMeter(added, removed, width) {
   // The persistent "where am I" band (Stage C): composition · view · current selection + its live
   // closure count · scrub position · uncommitted work. Always visible, so the developer never loses
   // their place regardless of what's selected or scrubbed.
+  // Faded always means "outside what you are looking at", and the strip says which question that is
+  // and offers the one way out: the playhead in the past, a followed session, a search. (A focused
+  // cross-feature request and a held revert have their own rows already.)
+  function renderContextRows() {
+    const host = document.getElementById("contextRows");
+    if (!host) return;
+    host.replaceChildren();
+    const row = (text, button, fn) => {
+      const r = el("div", "context-row");
+      r.appendChild(el("span", "context-text", text));
+      const b = el("button", "context-exit", button);
+      b.addEventListener("click", fn);
+      r.appendChild(b);
+      host.appendChild(r);
+    };
+    if (playheadCommitIndex != null) {
+      const n = ((compose.history || {}).commits || []).length;
+      const when = axisLabel(playheadCommitIndex);
+      row(`Looking at save ${playheadCommitIndex + 1} of ${n}${when.startsWith("save") ? "" : ", " + when}. Work after it is faded.`,
+        "Back to now", () => clearPlayhead());
+    }
+    const followed = selectedActor();
+    if (followed) row(`Following ${followed.label}. Lanes it has not touched are faded.`, "Show all", () => clearActor());
+    const box = document.getElementById("findBox");
+    const q = box ? box.value.trim() : "";
+    if (q) row(`Showing what matches “${q}”. Everything else is faded.`, "Clear", () => {
+      box.value = "";
+      findPick = null;
+      if (typeof renderFind === "function") renderFind("");
+      applyLens();
+      renderContextRows();
+    });
+    host.hidden = !host.children.length;
+  }
+
   function renderPresence() {
     const el = document.getElementById("presence");
     if (!el) return;
@@ -1310,9 +1347,6 @@ function changeMeter(added, removed, width) {
       const n = byId(state.selected);
       parts.push((n && n.label) || state.selected);
     }
-    if (playheadCommitIndex != null) parts.push(`as of ${axisLabel(playheadCommitIndex)}`);
-    const followed = selectedActor();
-    if (followed) parts.push(`following ${followed.label} · Esc clears`);
     // Lanes the held preview changes that are out of view: the rail's edge glows, counted here.
     const out = [offscreen.above ? `${offscreen.above} above` : null, offscreen.below ? `${offscreen.below} below` : null].filter(Boolean);
     if (out.length) parts.push(`also changes ${out.join(", ")}`);
@@ -1369,13 +1403,14 @@ function changeMeter(added, removed, width) {
   // the reading is on screen however far the rows are scrolled.
   let hoverLayer = null; // the top <g>, re-made every render (SVG paints in document order)
 
-  function axisRead(x1, x2, text, color) {
+  function axisRead(x1, x2, text, color, car) {
     const v = graphView;
     if (!v || !v.axisReadEl) return;
     const reading = text != null;
     v.axisSvg.classList.toggle("reading", reading);
     v.axisSpanEl.style.display = reading ? "" : "none";
     v.axisReadEl.style.display = reading ? "" : "none";
+    if (v.axisGlyphEl) { v.axisGlyphEl.remove(); v.axisGlyphEl = null; }
     if (!reading) return;
     const geom = v.geom;
     const lo = geom.plotX0, hi = geom.plotX0 + geom.plotW;
@@ -1388,14 +1423,77 @@ function changeMeter(added, removed, width) {
     const x = Math.max(lo + w / 2, Math.min(hi - w / 2, mid));
     v.axisReadEl.setAttribute("x", x);
     v.axisReadEl.textContent = fit.text;
+    // The checkpoint's shape, drawn rather than counted: a cell per function per save.
+    if (car) {
+      const gl = unitGlyph(car, color);
+      if (gl) {
+        const gx = Math.max(lo, x - w / 2 - gl.w - 8);
+        gl.g.setAttribute("transform", `translate(${gx} ${v.handleY + 16 - gl.h + 1})`);
+        v.axisSvg.appendChild(gl.g);
+        v.axisGlyphEl = gl.g;
+      }
+    }
+  }
+
+  // ---- unit-glyph (test slice boundary)
+  // A checkpoint's shape as a unit chart: one cell per function (rows) per save (columns), filled
+  // where that function changed in that save, hollow where it has since been taken out. It is the
+  // thumbnail of the opened checkpoint, so "5 functions, 2 saves" is something seen, not read.
+  function unitCells(car) {
+    const syms = (car.symbols || []).filter((s) => s && s.symbol && !/::__/.test(s.symbol));
+    const saves = [...new Set(syms.flatMap((s) => s.saves || []))].sort((a, b) => a - b);
+    const cols = saves.slice(0, 8), rows = syms.slice(0, 6);
+    const cells = [];
+    rows.forEach((s, r) => cols.forEach((ci, c) => {
+      if ((s.saves || []).includes(ci)) cells.push({ r, c, live: s.live !== false });
+    }));
+    return { rows: rows.length, cols: cols.length, cells, more: syms.length > rows.length || saves.length > cols.length };
+  }
+  // ---- end-unit-glyph
+
+  function unitGlyph(car, color) {
+    const u = unitCells(car);
+    if (!u.rows) return null;
+    const cell = 3, gap = 1;
+    const g = mk("g", { class: "unit-glyph" });
+    for (const k of u.cells) {
+      g.appendChild(mk("rect", { x: k.c * (cell + gap), y: k.r * (cell + gap), width: cell, height: cell, rx: 0.5,
+        fill: k.live ? color : "none", stroke: color, "stroke-width": k.live ? 0 : 0.8 }));
+    }
+    return { g, w: u.cols * (cell + gap) - gap, h: u.rows * (cell + gap) - gap };
+  }
+
+  // The same glyph as an inline element for the detail panel's list.
+  function unitGlyphEl(car, color) {
+    const u = unitCells(car);
+    const ns = "http://www.w3.org/2000/svg";
+    const cell = 3, gap = 1;
+    const svgEl = document.createElementNS ? document.createElementNS(ns, "svg") : document.createElement("svg");
+    const w = Math.max(1, u.cols) * (cell + gap) - gap, h = Math.max(1, u.rows) * (cell + gap) - gap;
+    svgEl.setAttribute("width", w);
+    svgEl.setAttribute("height", h);
+    svgEl.setAttribute("class", "unit-glyph-inline");
+    for (const k of u.cells) {
+      const r = document.createElementNS ? document.createElementNS(ns, "rect") : document.createElement("rect");
+      r.setAttribute("x", k.c * (cell + gap)); r.setAttribute("y", k.r * (cell + gap));
+      r.setAttribute("width", cell); r.setAttribute("height", cell);
+      r.setAttribute("fill", k.live ? color : "none"); r.setAttribute("stroke", color);
+      r.setAttribute("stroke-width", k.live ? 0 : 0.8);
+      svgEl.appendChild(r);
+    }
+    return svgEl;
   }
 
   // The words for one checkpoint, as the axis reads them: its name, its size in the reader's
   // units, whether it is still in, and whether anything later stands on it.
   function carReading(car) {
-    const parts = [car.label || "checkpoint", carCountText(car)];
+    const parts = [car.label || "checkpoint"];
+    const named = (car.symbols || []).filter((s) => s && s.symbol && !/::__/.test(s.symbol));
     if (car.reverted) parts.push("taken out");
-    else if (car.partial) parts.push("partly taken out");
+    else if (car.partial && named.length) {
+      const still = named.filter((s) => s.live !== false).length;
+      parts.push(`${still} of ${named.length} still in`);
+    }
     if (Array.isArray(car.dependents) && !car.reverted) {
       const n = car.dependents.length;
       // `clean` (the kernel's): taking it out removes its work outright and touches nothing else.
@@ -1407,33 +1505,13 @@ function changeMeter(added, removed, width) {
     return parts.join(" · ");
   }
 
-  function readCar(car, laneId, rect, color, quiet) {
+  // Hover is brushing: the bar takes an outline, the checkpoints that stand on it take the amber
+  // outline, and the ruler reads it. No lines are drawn across the plot.
+  function readCar(car, laneId, rect, color) {
     if (!hoverLayer || !graphView) return;
     hoverLayer.replaceChildren();
-    axisRead(rect.x, rect.x + rect.w, carReading(car), color);
-    if (quiet) return;
-    const geom = graphView.geom;
-    const bottom = rect.midY + GANTT.barH / 2;
-    for (const gx of [rect.x, rect.x + rect.w]) {
-      hoverLayer.appendChild(mk("line", { x1: gx, x2: gx, y1: bottom, y2: geom.axisY, class: "read-guide", stroke: color }));
-    }
-    // What stands on it, drawn only while asked: an amber line from this checkpoint's end to the
-    // start of each later checkpoint a revert of it would rewrite, and an outline on that one.
-    const deps = car.reverted ? [] : car.dependents || [];
-    // Many lines read as one texture (the scaffold everything stands on), a few as individual ties.
-    const many = deps.length > 6;
-    for (const dep of deps) {
-      const t = carRects.get(dep.ref);
-      if (!t) continue;
-      const sx = rect.x + rect.w, sy = rect.midY, tx = t.x, ty = t.midY;
-      const dx = Math.max(14, Math.abs(tx - sx) / 2);
-      // On its own row a line would run through the bars in between; it hops over the row instead.
-      const lift = Math.abs(ty - sy) < 4 ? GANTT.barH + 4 : 0;
-      hoverLayer.appendChild(mk("path", {
-        d: `M ${sx} ${sy} C ${sx + dx} ${sy - lift}, ${tx - dx} ${ty - lift}, ${tx} ${ty}`,
-        class: "dep-arc" + (many ? " many" : ""),
-      }));
-      hoverLayer.appendChild(mk("circle", { cx: tx, cy: ty, r: 2.2, class: "dep-dot" }));
+    axisRead(rect.x, rect.x + rect.w, carReading(car), color, car);
+    for (const dep of (car.reverted ? [] : car.dependents || [])) {
       const w = findCar(dep.ref);
       if (w) w.classList.add("gcar-dependent");
     }
@@ -1451,7 +1529,62 @@ function changeMeter(added, removed, width) {
   // save. It is the answer to "what is a checkpoint made of", drawn instead of counted: a checkpoint
   // is these functions over these saves, and every number elsewhere counts these marks. A zoom
   // flare joins the bar to the panel so the eye knows which bar it is reading.
-  const PANEL = { padT: 12, headH: 16, rowH: 18, foot: 18, padB: 8, maxRows: 12 };
+  const PANEL = { padT: 6, headH: 16, rowH: 18, padB: 8, maxRows: 12 };
+
+  // The lens's state: which checkpoint it is on and how far it has opened (0..1). Opening tweens
+  // the axis and the panel's height together; the panel's content arrives once the lens is open, so
+  // the room is made before anything moves into it.
+  const focus = { t: 0, from: 0, to: 0, start: 0, raf: 0, ref: null, car: null, laneId: null };
+  const FOCUS_MS = 280;
+
+  function focusCar() {
+    const ref = focus.ref || (focus.car && focus.car.checkpoint);
+    if (!ref) return null;
+    for (const l of layout.lanes || []) for (const c of l.cars || []) if (c.checkpoint === ref) return { lane: l, car: c };
+    return null;
+  }
+
+  function syncFocus() {
+    const open = expandedCar();
+    const ref = open ? open.car.checkpoint : null;
+    if (ref === focus.ref) return;
+    if (ref && focus.ref) focus.t = 0; // one checkpoint to another: the lens moves
+    if (ref) focus.car = open.car;
+    focus.ref = ref;
+    if (!ref && focus.car) focus.ref = null;
+    tweenFocus(ref ? 1 : 0);
+  }
+
+  function tweenFocus(to) {
+    if (focus.raf && typeof cancelAnimationFrame === "function") cancelAnimationFrame(focus.raf);
+    focus.raf = 0;
+    // No frames to tween on (a test harness), reduced motion, or a history too large to redraw per
+    // frame: the lens opens in one step.
+    if (typeof requestAnimationFrame !== "function" || prefersReducedMotion() || (layout.lanes || []).length > 150) {
+      focus.t = to;
+      if (!to) focus.car = null;
+      return;
+    }
+    focus.from = focus.t;
+    focus.to = to;
+    focus.start = 0;
+    focus.raf = requestAnimationFrame(stepFocus);
+  }
+
+  function stepFocus(now) {
+    focus.raf = 0;
+    if (!focus.start) focus.start = now;
+    const k = Math.min(1, (now - focus.start) / FOCUS_MS);
+    const e = 1 - Math.pow(1 - k, 3);
+    focus.t = focus.from + (focus.to - focus.from) * e;
+    if (k >= 1) {
+      focus.t = focus.to;
+      if (!focus.to) focus.car = null;
+    } else {
+      focus.raf = requestAnimationFrame(stepFocus);
+    }
+    renderGraph();
+  }
 
   function expandedCar() {
     const ref = state.selectedCheckpoint;
@@ -1461,11 +1594,20 @@ function changeMeter(added, removed, width) {
   }
 
   // ---- checkpoint-panel (test slice boundary)
-  // The functions a panel lists (named ones, oldest first, capped) and the saves it spans.
+  // The rows a panel draws: the named functions this checkpoint changed, oldest first, then any
+  // function a later checkpoint shares with it (what stands on it), each once, capped.
   function panelRows(car) {
     const syms = (car.symbols || []).filter((s) => s && s.symbol && !/::__/.test(s.symbol));
     const first = (s) => Math.min(...((s.saves && s.saves.length) ? s.saves : [Infinity]));
-    return syms.slice().sort((a, b) => first(a) - first(b) || (a.symbol < b.symbol ? -1 : 1)).slice(0, PANEL.maxRows);
+    const own = syms.slice().sort((a, b) => first(a) - first(b) || (a.symbol < b.symbol ? -1 : 1));
+    const seen = new Set(own.map((s) => s.symbol));
+    const shared = [];
+    for (const d of car.reverted ? [] : car.dependents || []) for (const sym of d.symbols || []) {
+      if (seen.has(sym) || /::__/.test(sym)) continue;
+      seen.add(sym);
+      shared.push({ symbol: sym, file: String(sym).split("::")[0], shared: true });
+    }
+    return own.concat(shared).slice(0, PANEL.maxRows);
   }
   function panelSaves(car) {
     const set = new Set();
@@ -1475,138 +1617,131 @@ function changeMeter(added, removed, width) {
     return [...set].sort((a, b) => a - b);
   }
   function panelHeight(car) {
-    const rows = panelRows(car).length || 1;
-    const more = (car.symbols || []).length > rows || car.symbolsTruncated ? 1 : 0;
-    const foot = (car.dependents || []).length && !car.reverted ? PANEL.foot : 0;
-    return PANEL.padT + PANEL.headH + (rows + more) * PANEL.rowH + foot + PANEL.padB;
+    const rows = panelRows(car);
+    const named = (car.symbols || []).filter((s) => s && s.symbol && !/::__/.test(s.symbol)).length;
+    const more = named > rows.filter((r) => !r.shared).length || car.symbolsTruncated ? 1 : 0;
+    return PANEL.padT + PANEL.headH + ((rows.length || 1) + more) * PANEL.rowH + PANEL.padB;
   }
-  function kindWord(sym) {
-    if (sym.live === false) return "taken out";
-    return { added: "added", changed: "changed", modified: "changed", removed: "removed", deleted: "removed", moved: "moved" }[sym.kind] || sym.kind || "changed";
+  // Every save in which any checkpoint touched each function: symbol -> [{ci, ref, featureId, live}].
+  function symbolTouches(lanes) {
+    const out = new Map();
+    for (const l of lanes || []) for (const c of l.cars || []) for (const s of c.symbols || []) {
+      if (!s || !s.symbol) continue;
+      if (!out.has(s.symbol)) out.set(s.symbol, []);
+      for (const ci of s.saves || []) out.get(s.symbol).push({ ci, ref: c.checkpoint, featureId: c.featureId, live: s.live !== false });
+    }
+    for (const list of out.values()) list.sort((a, b) => a.ci - b.ci);
+    return out;
   }
   // ---- end-checkpoint-panel
 
-  let lastOpened = null; // the checkpoint the previous render had open, so only a new one animates in
+  let lastOpened = null; // the checkpoint whose panel content was last drawn, so only a new one animates in
 
   function renderCheckpointPanel(g, l, geom, car, color) {
-    const r = carRects.get(car.checkpoint);
     const H = geom.panelH(l.row);
-    if (!r || !H) return;
+    if (!H) return;
     const enter = lastOpened !== car.checkpoint && !prefersReducedMotion();
+    lastOpened = car.checkpoint;
     const top = geom.panelY(l.row);
     const x0 = geom.plotX0, x1 = geom.plotX0 + geom.plotW;
-    const groundY = top + PANEL.padT - 4;
+    const colX = (ci) => ci < geom.maxCommit
+      ? (geom.xOf(ci) + geom.xOf(ci + 1)) / 2
+      : geom.xOf(ci) - Math.min(14, (geom.xOf(ci) - geom.xOf(ci - 1)) / 2);
+    const colW = (ci) => ci < geom.maxCommit ? geom.xOf(ci + 1) - geom.xOf(ci) : 28;
+    // This checkpoint's own saves sit under its own bar as drawn: a neighbour that starts in the
+    // same save cuts the bar short, and a column centre past that cut would sit under the neighbour.
+    const bar = carRects.get(car.checkpoint);
+    const ownX = (ci) => {
+      if (!bar) return colX(ci);
+      const lo = Math.max(bar.x, ci < geom.maxCommit ? geom.xOf(ci) : bar.x);
+      const hi = Math.min(bar.x + bar.w, ci < geom.maxCommit ? geom.xOf(ci + 1) : bar.x + bar.w);
+      return hi > lo ? (lo + hi) / 2 : Math.max(bar.x + 4, Math.min(bar.x + bar.w - 4, colX(ci)));
+    };
     const panel = mk("g", { class: "cp-panel" + (enter ? " cp-enter" : ""), "data-checkpoint": car.checkpoint });
     panel.addEventListener("click", (ev) => ev.stopPropagation()); // a click in here is not a lane click
-    // the flare from the bar to the panel, and the panel's own ground
-    const barBottom = r.midY + GANTT.barH / 2;
-    panel.appendChild(mk("path", {
-      d: `M ${r.x} ${barBottom} L ${r.x + r.w} ${barBottom} L ${x1} ${groundY} L ${x0} ${groundY} Z`,
-      class: "cp-flare", fill: color,
-    }));
-    panel.appendChild(mk("rect", { x: x0, y: groundY, width: x1 - x0, height: H - PANEL.padT - PANEL.padB + 8, rx: 3, class: "cp-ground", fill: color }));
+    // The lens band: the opened checkpoint's own span, carried down from its bar through its rows.
+    const lx1 = bar ? bar.x : geom.xOf(car.firstIndex);
+    const lx2 = bar ? bar.x + bar.w : car.lastIndex >= geom.maxCommit ? x1 : geom.xOf(car.lastIndex + 1);
+    panel.appendChild(mk("rect", { x: x0, y: top, width: x1 - x0, height: H - 4, class: "cp-ground" }));
+    panel.appendChild(mk("rect", { x: lx1, y: top - 6, width: Math.max(4, lx2 - lx1), height: H + 2, rx: 2, class: "cp-lens", fill: color }));
 
     const saves = panelSaves(car);
-    const cw = (x1 - x0 - 16) / Math.max(1, saves.length);
-    const colX = (k) => x0 + 8 + cw * (k + 0.5);
     const commits = (compose.history && compose.history.commits) || [];
-    const headY = groundY + PANEL.headH - 3;
-    saves.forEach((ci, k) => {
+    const headY = top + PANEL.padT + PANEL.headH - 5;
+    for (const ci of saves) {
       const c = commits.find((x) => x.index === ci) || commits[ci] || {};
       const when = axisLabel(ci);
-      const head = mk("text", {
-        x: colX(k), y: headY, class: "cp-col",
-        text: fitText(when.startsWith("save") ? `${when}${c.subject ? " · " + c.subject : ""}` : `save ${ci + 1} · ${when}`, cw - 8, "cp-col").text,
-      }, [mk("title", { text: `save ${ci + 1}${c.subject ? ": " + c.subject : ""}` })]);
-      panel.appendChild(head);
-      panel.appendChild(mk("line", { x1: colX(k), x2: colX(k), y1: headY + 4, y2: groundY + H - PANEL.padT - PANEL.padB + 4 - ((car.dependents || []).length && !car.reverted ? PANEL.foot : 0), class: "cp-guide" }));
-    });
+      panel.appendChild(mk("text", {
+        x: ownX(ci), y: headY, class: "cp-col",
+        text: fitText(when.startsWith("save") ? when : `save ${ci + 1} · ${when}`, Math.max(20, colW(ci) - 6), "cp-col").text,
+      }));
+    }
 
     const rows = panelRows(car);
-    const kOf = new Map(saves.map((ci, k) => [ci, k]));
+    const touches = symbolTouches(layout.lanes);
+    const depRefs = new Set((car.reverted ? [] : car.dependents || []).map((d) => d.ref));
     const gx = GANTT.gutterPad + (l.depth || 0) * GANTT.indent + 24;
-    const metaX = geom.plotX0 + geom.plotW + geom.forecastW + GANTT.countW - 6;
-    const later = new Map(); // symbol -> the later checkpoints that edit it
-    for (const d of car.reverted ? [] : car.dependents || []) for (const sym of d.symbols || []) {
-      if (!later.has(sym)) later.set(sym, []);
-      later.get(sym).push(d.ref);
-    }
-    const markW = Math.min(26, Math.max(8, cw * 0.5));
     const verb = car.reverted ? "restore" : "revert";
-    let y = groundY + PANEL.headH + 2;
+    let y = top + PANEL.padT + PANEL.headH;
     rows.forEach((sym, i) => {
       const mid = y + PANEL.rowH / 2;
-      const row = mk("g", { class: "cp-row" + (sym.live === false ? " out" : ""), "data-symbol": sym.symbol });
-      if (enter) row.style.animationDelay = `${60 + i * 28}ms`;
-      row.appendChild(mk("rect", { x: gx - 6, y, width: metaX - gx + 8, height: PANEL.rowH, class: "cp-row-hit" }));
+      const ownSym = !sym.shared;
+      const row = mk("g", { class: "cp-row" + (sym.live === false ? " out" : "") + (sym.shared ? " shared" : ""), "data-symbol": sym.symbol });
+      if (enter) row.style.animationDelay = `${i * 26}ms`;
+      row.appendChild(mk("rect", { x: gx - 6, y, width: x1 - gx + 6, height: PANEL.rowH, class: "cp-row-hit" }));
+      // Its name, and its file only where the name does not already say it.
       const name = String(sym.symbol).split("::").slice(1).join("::") || String(sym.symbol);
-      const file = String(sym.file || String(sym.symbol).split("::")[0]).split("/").pop();
+      const fileBase = String(sym.file || String(sym.symbol).split("::")[0]).split("/").pop();
+      const showFile = name !== fileBase && name !== String(sym.symbol);
       const room = geom.labelW - gx - 6;
-      const fileW = Math.min(room * 0.45, textWidth(file, "cp-file") + 8);
-      const label = mk("text", { x: gx, y: mid + 4, class: "cp-fn" }, [mk("title", { text: `${sym.symbol}\nopen what ${car.label || "this checkpoint"} did to it` })]);
+      const fileW = showFile ? Math.min(room * 0.45, textWidth(fileBase, "cp-file") + 8) : 0;
+      const label = mk("text", { x: gx, y: mid + 4, class: "cp-fn" });
       label.appendChild(mk("tspan", { class: "cp-name", text: fitText(name, room - fileW, "cp-fn").text }));
-      label.appendChild(mk("tspan", { class: "cp-file", dx: 6, text: fitText(file, fileW - 6, "cp-file").text }));
+      if (showFile) label.appendChild(mk("tspan", { class: "cp-file", dx: 6, text: fitText(fileBase, fileW - 6, "cp-file").text }));
       row.appendChild(label);
-      const ks = (sym.saves || []).map((ci) => kOf.get(ci)).filter((k) => k != null).sort((a, b) => a - b);
-      if (ks.length > 1) {
-        row.appendChild(mk("line", { x1: colX(ks[0]), x2: colX(ks[ks.length - 1]), y1: mid, y2: mid, class: "cp-life", stroke: color }));
+      // The function's lifeline: every save any checkpoint touched it, in that checkpoint's hue. This
+      // checkpoint's own marks are full size; others are small; one that would be rewritten by
+      // taking this out is ringed amber. Born here reads as nothing to the left; built on reads as
+      // marks to the right.
+      const all = touches.get(sym.symbol) || [];
+      const xAt = (tch) => tch.ref === car.checkpoint ? ownX(tch.ci) : colX(tch.ci);
+      if (all.length > 1) {
+        const xs = all.map(xAt);
+        row.appendChild(mk("line", { x1: Math.min(...xs), x2: Math.max(...xs), y1: mid, y2: mid, class: "cp-life" }));
       }
-      ks.forEach((k, j) => {
+      for (const tch of all) {
+        const own = tch.ref === car.checkpoint;
+        const cx = xAt(tch), cw = colW(tch.ci);
+        const w = own ? Math.min(26, Math.max(6, cw * 0.6)) : Math.min(10, Math.max(3, cw * 0.6));
+        const h = own ? 8 : 6;
         const m = mk("rect", {
-          x: colX(k) - markW / 2, y: mid - 4, width: markW, height: 8, rx: 2,
-          class: "cp-mark" + (sym.live === false ? " out" : ""), fill: color, stroke: color,
+          x: cx - w / 2, y: mid - h / 2, width: w, height: h, rx: own ? 2 : 1.5,
+          class: (own ? "cp-mark" : "cp-touch") + (tch.live ? "" : " out") + (depRefs.has(tch.ref) ? " dep" : ""),
+          fill: own ? color : laneColor(tch.featureId), stroke: own ? color : laneColor(tch.featureId),
         });
-        if (enter) m.style.animationDelay = `${90 + i * 28 + j * 24}ms`;
+        if (enter && own) m.style.animationDelay = `${60 + i * 26}ms`;
         row.appendChild(m);
-      });
-      if (later.has(sym.symbol) && ks.length) {
-        const lx = colX(ks[ks.length - 1]) + markW / 2 + 4;
-        row.appendChild(mk("line", { x1: lx, x2: lx, y1: mid - 5, y2: mid + 5, class: "cp-later" }));
       }
-      row.appendChild(mk("text", { x: metaX, y: mid + 4, class: "cp-kind" + (later.has(sym.symbol) ? " later" : ""),
-        "data-word": kindWord(sym) + (later.has(sym.symbol) ? " · edited later" : ""),
-        text: kindWord(sym) + (later.has(sym.symbol) ? " · edited later" : "") }));
       row.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        vscode.postMessage({ type: "openChangeDiff", verb, ref: car.checkpoint, label: car.label || "", path: sym.file || String(sym.symbol).split("::")[0], symbol: sym.symbol });
+        const ref = ownSym ? car.checkpoint : ((all.find((x) => depRefs.has(x.ref)) || {}).ref || car.checkpoint);
+        const target = carByRef(ref) || car;
+        vscode.postMessage({ type: "openChangeDiff", verb: ownSym ? verb : "revert", ref, label: target.label || "",
+          path: sym.file || String(sym.symbol).split("::")[0], symbol: sym.symbol });
       });
       panel.appendChild(row);
       y += PANEL.rowH;
     });
     if (!rows.length) {
-      panel.appendChild(mk("text", { x: x0 + 12, y: y + PANEL.rowH / 2 + 4, class: "cp-empty",
-        text: "This checkpoint moved lines without changing a named function." }));
+      panel.appendChild(mk("text", { x: gx, y: y + PANEL.rowH / 2 + 4, class: "cp-empty",
+        text: "moved lines without changing a named function" }));
       y += PANEL.rowH;
     }
-    const hidden = (car.symbols || []).length - rows.length;
+    const named = (car.symbols || []).filter((sv) => sv && sv.symbol && !/::__/.test(sv.symbol)).length;
+    const hidden = named - rows.filter((r) => !r.shared).length;
     if (hidden > 0 || car.symbolsTruncated) {
       panel.appendChild(mk("text", { x: gx, y: y + PANEL.rowH / 2 + 4, class: "cp-more",
         text: hidden > 0 ? `${hidden} more function${hidden === 1 ? "" : "s"}` : "and more functions" }));
-      y += PANEL.rowH;
-    }
-    // What stands on it, in words, each one a way to open that checkpoint instead.
-    const deps = car.reverted ? [] : car.dependents || [];
-    if (deps.length) {
-      const fy = y + PANEL.foot / 2 + 6;
-      let fx = x0 + 12;
-      const lead = mk("text", { x: fx, y: fy, class: "cp-deps", text: "Later work builds on this:" });
-      panel.appendChild(lead);
-      fx += textWidth("Later work builds on this:", "cp-deps") + 8;
-      deps.slice(0, 4).forEach((d, i) => {
-        const dc = carByRef(d.ref);
-        const fns = (d.symbols || []).map((s) => String(s).split("::").pop());
-        const text = `${(dc && dc.label) || "a later checkpoint"}${fns.length ? " (" + fns.slice(0, 2).join(", ") + ")" : ""}${i < Math.min(deps.length, 4) - 1 ? "," : ""}`;
-        const t = mk("text", { x: fx, y: fy, class: "cp-deps cp-dep-link", text });
-        t.addEventListener("click", (ev) => {
-          ev.stopPropagation();
-          state.selectedCheckpoint = d.ref;
-          saveState();
-          render();
-        });
-        panel.appendChild(t);
-        fx += textWidth(text, "cp-deps") + 6;
-      });
-      if (deps.length > 4) panel.appendChild(mk("text", { x: fx, y: fy, class: "cp-deps", text: `and ${deps.length - 4} more` }));
     }
     g.appendChild(panel);
   }
@@ -1687,23 +1822,15 @@ function changeMeter(added, removed, width) {
     const nowX = plotX0 + plotW;          // the `now` rule: right edge of measured time
     const forecastX0 = nowX + GANTT.nowPad;
     const w = paneW;
-    // Per-row heights (TableLens): a theme focus keeps every lane on screen but gives the
-    // emphasized lanes full rows and compresses the rest to thin density strips -- focus is a
-    // reallocation of ink, never a removal of context. With no focus this is the identity.
-    const ROW_DIM = 16;
+    // Every row is full height. A theme focus used to compress the other lanes to thin strips; it
+    // recedes them through the lens instead, so a row never changes size for a reason the reader
+    // has to guess.
     const heights = new Array(layout.rowCount).fill(GANTT.rowH);
-    if (themeMarks) {
-      for (const l of layout.lanes || []) {
-        if (l.row != null && !laneInThemeFocus(l)) heights[l.row] = ROW_DIM;
-      }
-    }
-    // A checkpoint opened in place adds its panel under its own lane; every row below moves down
-    // (glideRows animates that) and nothing is drawn over anything.
+    // A checkpoint opened in place adds its panel under its own lane, growing with the focus tween;
+    // every row below moves down and nothing is drawn over anything.
     const extra = new Array(layout.rowCount).fill(0);
-    const open = expandedCar();
-    if (open && open.lane.row != null && heights[open.lane.row] === GANTT.rowH) {
-      extra[open.lane.row] = panelHeight(open.car);
-    }
+    const fc = focusCar();
+    if (fc && fc.lane.row != null) extra[fc.lane.row] = Math.round(panelHeight(fc.car) * focus.t);
     const yTop = new Array(layout.rowCount + 1);
     yTop[0] = GANTT.padT;
     for (let i = 0; i < layout.rowCount; i++) yTop[i + 1] = yTop[i] + heights[i] + extra[i];
@@ -1723,7 +1850,7 @@ function changeMeter(added, removed, width) {
     const h = GANTT.padT + rowsH + 12;
     const axisY = h;  // gridlines, the future-veil and the frontier line run the full plot height
     const maxCommit = Math.max(1, layout.commitCount - 1);
-    const xOf = (ci) => plotX0 + (Math.max(0, Math.min(maxCommit, ci)) / maxCommit) * plotW;
+    const xOf = bifocalScale(plotX0, plotW, maxCommit, fc ? fc.car : null, fc ? focus.t : 0);
     return {
       labelW, plotX0, plotW, w, h, axisY, maxCommit,
       forecastW, forecastSlots, nowX, forecastX0,
@@ -1737,10 +1864,40 @@ function changeMeter(added, removed, width) {
       panelY: (row) => yTop[row] + heights[row],
       panelH: (row) => extra[row] || 0,
       scrubX: (idx) => xOf(idx),
-      xToCommit: (x) => Math.max(0, Math.min(maxCommit,
-        Math.round(((x - plotX0) / Math.max(1, plotW)) * maxCommit))),
+      xToCommit: (x) => {
+        let best = 0, bestD = Infinity;
+        for (let ci = 0; ci <= maxCommit; ci++) { const d = Math.abs(xOf(ci) - x); if (d < bestD) { bestD = d; best = ci; } }
+        return best;
+      },
     };
   }
+
+  // ---- bifocal (test slice boundary)
+  // The time axis with one checkpoint under the lens (Spence and Apperley's bifocal display, a
+  // fisheye in one dimension): the open checkpoint's span takes a wide share of the plot, enough for
+  // its saves to be read one by one, and the rest of history shares what is left in proportion. Every
+  // lane is drawn on this one axis, so everything stays aligned in time, and the opened checkpoint's
+  // functions sit exactly under its saves. `t` runs 0..1 and blends from the plain axis, so opening
+  // and closing are a continuous change of scale rather than a jump.
+  function bifocalScale(plotX0, plotW, maxCommit, car, t) {
+    const lin = (u) => plotX0 + (Math.max(0, Math.min(maxCommit, u)) / maxCommit) * plotW;
+    if (!car || !(t > 0)) return lin;
+    let a = Math.max(0, Math.min(maxCommit, car.firstIndex));
+    let b = Math.max(0, Math.min(maxCommit, car.lastIndex + 1));
+    if (b - a < 1) a = Math.max(0, b - 1);
+    const left = a, right = maxCommit - b, rest = left + right;
+    const wf = rest > 0 ? Math.min(plotW * 0.7, Math.max(plotW * 0.35, (b - a) * 120)) : plotW;
+    const wl = rest > 0 ? (plotW - wf) * (left / rest) : 0;
+    const wr = plotW - wf - wl;
+    const bi = (u) => {
+      u = Math.max(0, Math.min(maxCommit, u));
+      if (u <= a) return plotX0 + (left ? (u / left) * wl : 0);
+      if (u <= b) return plotX0 + wl + ((u - a) / (b - a)) * wf;
+      return plotX0 + wl + wf + (right ? ((u - b) / right) * wr : 0);
+    };
+    return (u) => lin(u) + (bi(u) - lin(u)) * t;
+  }
+  // ---- end-bifocal
 
   function laneColor(id) {
     const n = byId(id);
@@ -1785,14 +1942,13 @@ function changeMeter(added, removed, width) {
     // wide enough to carry its label inline. It never runs into the next car (capped at that car's
     // start, less a gap); the final car fills to the plot edge. Distant chapters still leave a dim gap
     // between them, so "when the feature went quiet" stays readable.
-    const colStep = geom.plotW / Math.max(1, geom.maxCommit);
     let cursor = geom.plotX0;
     let lastRight = geom.plotX0;
     let tagRight = 0; // how far right an in-row big-event tag reached, so the op count clears it
     for (let i = 0; i < cars.length; i++) {
       const car = cars[i];
       let x = Math.max(geom.xOf(car.firstIndex), cursor); // anchored in time, never behind the last car
-      let rightEnd = car.lastIndex >= geom.maxCommit ? plotR : geom.xOf(car.lastIndex) + colStep;
+      let rightEnd = car.lastIndex >= geom.maxCommit ? plotR : geom.xOf(car.lastIndex + 1);
       if (i + 1 < cars.length) rightEnd = Math.min(rightEnd, geom.xOf(cars[i + 1].firstIndex) - GANTT.carGap);
       let w = Math.max(GANTT.minCarW, rightEnd - x);
       // Never past the plot's right edge. x means WHEN, so a car drawn beyond the axis is claiming a
@@ -1810,22 +1966,6 @@ function changeMeter(added, removed, width) {
         "data-first": car.firstIndex, "data-checkpoint": car.checkpoint,
       });
       carRects.set(car.checkpoint, { x, w, midY, laneId: l.id, subBins: car.subBins || [] });
-      // Native tooltip: an SVG element ignores a `title` attribute, so the hover text has to be a
-      // `<title>` child of the rect (not attrs.title) to actually show on hover.
-      const ask = dominantAsk(car.asks);
-      // In words, in the reader's units: no tier, no source, no op count. `tier`/`source` were
-      // internal confidence a reader cannot act on; `N edit(s)` counted ops. One change is one
-      // function in one save, and the state says what a click will do.
-      const tip = `${car.label}` +
-        // The chapter in the user's own words on hover: the ask that accounts for most of it, as
-        // an excerpt, with whose words they were. This used to print up to two captured prompts
-        // verbatim -- and a real prompt is a 900-character paragraph, so a native tooltip (no
-        // wrapping, no scrolling, no styling) became a wall that covered the timeline it was
-        // describing. Selecting the chapter opens the rest.
-        (ask ? `\n“${ask.gist}”\n${ask.source}` : "") +
-        `\n${carCountText(car)}` +
-        (car.reverted ? " · taken out: Restore brings it back"
-          : car.partial ? " · partly taken out" : " · click to select");
       // A reverted car is drawn hollow in its own identity hue: the edits are still recorded and
       // still addressable (`ugh restore`), they are just no longer in the ideal, so the car has to
       // stay in place and read as emptied rather than vanish or redraw as live. The inline stroke
@@ -1844,7 +1984,7 @@ function changeMeter(added, removed, width) {
           (car.reverted ? " gcar-reverted" : car.partial ? " gcar-partial" : "") +
           (landing && i === cars.length - 1 ? " gcar-landing" : ""),
         fill: color, "data-checkpoint": car.checkpoint,
-      }, [mk("title", { text: tip })]);
+      });
       if (car.reverted || car.partial) carRect.style.stroke = color;
       // A focused theme's member chapters carry a shared accent ring across every lane they sit
       // on -- the one visual that makes "this work spans these lanes" a single object on screen.
@@ -1856,6 +1996,13 @@ function changeMeter(added, removed, width) {
         wrap.classList.add("gcar-save-hit");
       }
       wrap.appendChild(carRect);
+      // Partly taken out reads as a bar filled only as far as its work is still in: the share of its
+      // named functions still live, from the left. "Partly" is a quantity, so it is drawn as one.
+      if (car.partial && !layoutOnly) {
+        const named = (car.symbols || []).filter((sv) => sv && sv.symbol && !/::__/.test(sv.symbol));
+        const frac = named.length ? named.filter((sv) => sv.live !== false).length / named.length : 0.5;
+        wrap.appendChild(mk("rect", { x, y: barY, width: Math.max(1, w * frac), height: carH, rx: 3, class: "gcar-partial-fill", fill: color }));
+      }
       // Inline label: the chapter's intent, not the bare @n index (which reads as a meaningless
       // "0"). Only when the car is wide enough to hold the WHOLE name; otherwise the hover tooltip
       // carries it (a clipped `Variet…` could be two different chapters, so it names nothing while
@@ -1882,12 +2029,6 @@ function changeMeter(added, removed, width) {
       // pointing at, and pointing at a chapter is not pointing at a verb. Instant and local: no
       // round-trip, no hover-intent delay, because naming what is already on screen costs nothing.
       // Pointing at a checkpoint reads it on the time axis -- see readCar for why nothing grows.
-      // At rest, a thin amber line under a live checkpoint that later work stands on: taking it out
-      // rewrites more than itself. Amber means "also affected" everywhere on this surface.
-      if (!quiet && !car.reverted && Array.isArray(car.dependents) && car.dependents.length) {
-        wrap.appendChild(mk("rect", { x: x + 1, y: barY + barH + 1.5, width: Math.max(2, w - 2), height: 1.5, rx: 0.75, class: "gcar-builton" },
-          [mk("title", { text: `${car.dependents.length} later checkpoint${car.dependents.length === 1 ? "" : "s"} build${car.dependents.length === 1 ? "s" : ""} on this: taking it out rewrites them too` })]));
-      }
       const rectArgs = { x, w, midY };
       // A held revert/restore preview does NOT block this. Reading is not previewing: a reader
       // deciding whether to approve a consequence is exactly the reader who needs to point at a
@@ -1900,7 +2041,7 @@ function changeMeter(added, removed, width) {
       wrap.addEventListener("mouseenter", () => {
         if (armedVerb || playheadDragging) return;
         wrap.classList.add("gcar-hovered");
-        readCar(car, l.id, rectArgs, color, quiet);
+        readCar(car, l.id, rectArgs, color);
       });
       wrap.addEventListener("mouseleave", () => {
         wrap.classList.remove("gcar-hovered");
@@ -2280,98 +2421,11 @@ function changeMeter(added, removed, width) {
   // milestone idiom): hovering it rings that work's member chapters and names it in the presence
   // pill; clicking enters the TableLens focus, and only THEN does the one focused spine draw --
   // a dotted vertical with a dot at each member lane, no elbows, members already ringed.
-  function renderThemeSpines(layer, svg, geom) {
-    const themes = spanningThemes();
-    if (!themes.length) return;
-    const idxOf = new Map(((grid && grid.commits) || []).map((c) => [c.sha, c.index]));
-    const spines = [];
-    for (const t of themes) {
-      const cid = new Set((t.atom_shas || []).map((sh) => idxOf.get(sh)).filter((i) => i != null));
-      if (!cid.size) continue;
-      // ONE anchor per lane -- the chapter holding most of this work there.
-      const bestByLane = new Map();
-      for (const [chk, r] of carRects) {
-        const overlap = r.subBins.reduce((n, b) => n + (cid.has(b[0]) ? b[1] : 0), 0);
-        if (!overlap) continue;
-        const cur = bestByLane.get(r.laneId);
-        if (!cur || overlap > cur.overlap) bestByLane.set(r.laneId, { chk, overlap, ...r });
-      }
-      const members = [...bestByLane.values()];
-      if (members.length < 2) continue; // folded into one visible lane: nothing to link
-      const centers = members.map((m) => m.x + m.w / 2).sort((a, b) => a - b);
-      const x = centers[Math.floor(centers.length / 2)];
-      spines.push({ t, members, x, span: members.length });
-    }
-    if (!spines.length) return;
-    spines.sort((a, b) => a.x - b.x);
-    let lastX = -Infinity;
-    for (const sp of spines) {
-      if (sp.x - lastX < 10) sp.x = lastX + 10;
-      lastX = sp.x;
-    }
-
-    const ring = (sp, on) => {
-      for (const m of sp.members) {
-        svg.querySelectorAll(".gcar-wrap").forEach((w) => {
-          if (w.getAttribute("data-checkpoint") === m.chk) {
-            w.classList[on ? "add" : "remove"]("gcar-theme-member");
-          }
-        });
-      }
-    };
-    const drawSpine = (sp, cls) => {
-      const ys = sp.members.map((m) => m.midY);
-      const y1 = Math.min(...ys);
-      const y2 = Math.max(...ys);
-      const g = mk("g", { class: cls, "data-theme": sp.t.theme_id });
-      g.appendChild(mk("line", { x1: sp.x, x2: sp.x, y1: y1 - 6, y2: y2 + 6, class: "theme-spine-line" }));
-      for (const m of sp.members) {
-        g.appendChild(mk("circle", { cx: sp.x, cy: m.midY, r: 3, class: "theme-spine-dot" }));
-      }
-      const label = mk("text", {
-        x: sp.x, y: Math.max(12, y1 - 12), "text-anchor": "middle",
-        class: "theme-spine-label", text: sp.t.label,
-      });
-      g.appendChild(label);
-      return g;
-    };
-
-    // Focused: exactly one piece of work is the subject -- its spine draws, nothing else.
-    if (themeMarks) {
-      const sp = spines.find((x) => x.t.theme_id === themeMarks.id);
-      if (sp) layer.appendChild(drawSpine(sp, "theme-spine theme-spine-focused"));
-      return;
-    }
-
-    // Default: one ◆ per spanning work, sitting on the time axis. Presence without spaghetti.
-    let hoverSpine = null;
-    for (const sp of spines) {
-      const g = mk("g", { class: "theme-mark", "data-theme": sp.t.theme_id });
-      g.appendChild(mk("rect", { x: sp.x - 7, y: 4, width: 14, height: 16, class: "theme-mark-hit" }));
-      g.appendChild(mk("rect", {
-        x: sp.x - 3.6, y: 8.4, width: 7.2, height: 7.2, rx: 1.5,
-        class: "theme-mark-glyph", transform: `rotate(45 ${sp.x} 12)`,
-      }));
-      g.appendChild(mk("title", {
-        text: `${sp.t.label}\none piece of work across ${sp.span} features. Click to focus it`,
-      }));
-      g.addEventListener("mouseenter", () => {
-        g.classList.add("theme-mark-hot");
-        ring(sp, true);
-        hoverSpine = drawSpine(sp, "theme-spine theme-spine-hot");
-        layer.appendChild(hoverSpine);
-        setPreviewContext(`${sp.t.label}: across ${sp.span} features. Click to focus`, "identity");
-      });
-      g.addEventListener("mouseleave", () => {
-        g.classList.remove("theme-mark-hot");
-        ring(sp, false);
-        if (hoverSpine) { hoverSpine.remove(); hoverSpine = null; }
-        if (previewContext.classList.contains("identity")) setPreviewContext(null);
-      });
-      g.addEventListener("click", (ev) => { ev.stopPropagation(); setThemeFocus(sp.t.theme_id); });
-      layer.appendChild(g);
-    }
-  }
+  // A focused cross-feature request rings its checkpoints (renderCars) and the lens recedes the
+  // other lanes; the strip names it with its exit. The spine, its floating label and the axis
+  // diamonds that used to mark these are gone: lines and labels laid over the rows read as clutter,
+  // and a diamond no reader could name was a control nobody found.
+  function renderThemeSpines() {}
 
   function renderGraph() {
     if (!paneMeasurable()) return;
@@ -2443,7 +2497,7 @@ function changeMeter(added, removed, width) {
       graphView.scrubBandEl.focus({ preventScroll: true }); // a push must not take the keyboard away
     }
     glideRows(svg, geom); // rows that moved glide to their new slot instead of teleporting
-    lastOpened = state.selectedCheckpoint || null;
+    if (!state.selectedCheckpoint) lastOpened = null;
     applyLens(); // re-apply a live search across the re-render
   }
 
@@ -2454,10 +2508,11 @@ function changeMeter(added, removed, width) {
   // in in place. Pure view-side motion: layout stays exact, and reduced-motion gets the old cut.
   let prevRowYById = new Map();
   function glideRows(svg, geom) {
+    const tweening = !!focus.raf;
     const next = new Map();
     for (const l of layout.lanes || []) if (l.row != null) next.set("L:" + l.id, geom.rowY(l.row));
     for (const hd of layout.headers || []) next.set("H:" + hd.collapsedId, geom.rowY(hd.row));
-    if (!prefersReducedMotion() && prevRowYById.size) {
+    if (!tweening && !prefersReducedMotion() && prevRowYById.size) {
       const els = new Map();
       svg.querySelectorAll(".glane").forEach((n) => els.set("L:" + n.getAttribute("data-id"), n));
       svg.querySelectorAll(".swimlane").forEach((n) => els.set("H:" + n.getAttribute("data-id"), n));
@@ -2619,7 +2674,7 @@ function changeMeter(added, removed, width) {
     // renderCars) -- the visual atom is the intent segment, not a raw op or a shared time column.
     const lastX = renderCars(g, l, geom, color, barY, midY, { barH, quiet });
     const open = expandedCar();
-    if (open && open.lane.id === l.id && !quiet) renderCheckpointPanel(g, l, geom, open.car, color);
+    if (open && open.lane.id === l.id && !quiet && focus.t >= 1 && !focus.raf) renderCheckpointPanel(g, l, geom, open.car, color);
     // Op count in its own right-hand column: one x for every row, so the numbers read down the page
     // and none of them can land on the plot edge or the frontier scrubber.
     // The lane's size in changes (one function in one save), summed over its chapters when the
@@ -2638,9 +2693,6 @@ function changeMeter(added, removed, width) {
       x: geom.plotX0 + geom.plotW + geom.forecastW + GANTT.countW - 6,
       y: midY + 4, class: "gbar-count" + (laneChanges === 0 ? " zero" : ""), text: layoutOnly ? "layout" : String(laneChanges),
     });
-    count.appendChild(mk("title", {
-      text: `${laneChanges} change${laneChanges === 1 ? "" : "s"} in this feature: one change is one function or file in one save`,
-    }));
     g.appendChild(count);
 
     // This lane's future, in the band right of the `now` rule: each actor's work here, in that
@@ -2979,6 +3031,7 @@ function changeMeter(added, removed, width) {
       el.classList.toggle("beyond", !atHead && first > playheadCommitIndex);
     }
     renderPresence(); // keep the "where am I" band's scrub position live while dragging
+    renderContextRows();
   }
 
   // Move the four marks that ARE the playhead to one x: the line, the veil's edge, the handle on
@@ -3047,7 +3100,7 @@ function changeMeter(added, removed, width) {
   // boundaries. A flick ratchets on through a few notches, each a click, slowing as it goes; a
   // release on the now edge returns to now. Reduced motion jumps from notch to notch.
   // ---- playhead-wells (test slice boundary)
-  const PH = { omega: 70, zeta: 0.65, coastMs: 140, minGap: 6 };
+  const PH = { omega: 48, zeta: 0.78, coastMs: 140, minGap: 6, hold: 0.08, deepHold: 0.16, lean: 0.22 };
 
   function notchesFor(geom, snap) {
     const step = geom.plotW / Math.max(1, geom.maxCommit);
@@ -3069,7 +3122,7 @@ function changeMeter(added, removed, width) {
     const next = notches[i + dir];
     if (next == null) return cur;
     const gap = Math.abs(geom.xOf(next) - geom.xOf(cur));
-    const hold = Math.min(12, Math.max(2, gap * (deep && deep.has(cur) ? 0.32 : 0.18)));
+    const hold = Math.min(8, Math.max(1, gap * (deep && deep.has(cur) ? PH.deepHold : PH.hold)));
     return Math.abs(px - geom.xOf(cur)) > gap / 2 + hold ? best : cur;
   }
 
@@ -3220,6 +3273,16 @@ function changeMeter(added, removed, width) {
     if (idx !== phDrag.cur) {
       phDrag.cur = idx;
       phClick(idx);
+    } else if (!prefersReducedMotion()) {
+      // Inside its notch the line leans a little toward the hand, so it stays connected to the
+      // pointer; past the halfway point it lets go into the next notch.
+      const home = geom.xOf(idx);
+      const i = phDrag.notches.indexOf(idx);
+      const nb = phDrag.notches[i + (px > home ? 1 : -1)];
+      const gap = nb == null ? 0 : Math.abs(geom.xOf(nb) - home);
+      const lean = Math.max(-gap * 0.3, Math.min(gap * 0.3, (px - home) * PH.lean));
+      if (ph.x == null) { ph.x = home; ph.v = 0; }
+      phGlideTo(home + lean);
     }
   }
 
@@ -3232,6 +3295,7 @@ function changeMeter(added, removed, width) {
 
   function onScrubPointerUp() {
     playheadDragging = false;
+    if (graphView && phDrag.cur != null) phGlideTo(graphView.geom.xOf(phDrag.cur)); // seat from the lean
     window.removeEventListener("pointermove", onScrubPointerMove);
     window.removeEventListener("pointerup", onScrubPointerUp);
     window.removeEventListener("pointercancel", onScrubPointerUp);
@@ -3537,6 +3601,8 @@ function changeMeter(added, removed, width) {
       }
       return { query, ids };
     }
+    // A focused cross-feature request: its lanes stay, the rest recede (the strip says so).
+    if (themeMarks && themeMarks.featureIds.size) return { query: "", theme: themeMarks.id, ids: new Set(themeMarks.featureIds) };
     // A followed actor: the lanes it touched stay, the rest recede, until Esc.
     const actor = selectedActor();
     if (actor && actor.lanes.size) return { query: "", actor, ids: new Set(actor.lanes) };
@@ -3567,6 +3633,7 @@ function changeMeter(added, removed, width) {
       const inside = (lane.leaves || []).some((f) => lens.ids.has(f));
       el.classList.toggle("lit", lens.ids.has(rid) || inside);
     });
+    renderContextRows();
   }
 
   // What receded, why, and how to get it back. A map with half its rows dimmed and no caption is
@@ -5475,14 +5542,9 @@ function changeMeter(added, removed, width) {
     const stateOf = (s) => s.state || (s.present_op_count === 0 ? "reverted" : s.present_op_count == null ? null : "live");
     const nGone = segs.filter((s) => stateOf(s) === "reverted").length;
     const nPart = segs.filter((s) => stateOf(s) === "partial").length;
-    head.textContent = `Checkpoints · ${segs.length}` + (nGone ? ` · ${nGone} taken out` : "")
-      + (nPart ? ` · ${nPart} partly` : "");
+    head.textContent = `Checkpoints · ${segs.length}` + (nGone ? ` · ${nGone} taken out` : "");
     wrap.appendChild(head);
-    // The glyph legend, in words, once, where the count is: the dot used to encode "novelty", an
-    // internal confidence a reader was never told about and could not act on. It encodes state now
-    // -- the one thing about a row that decides what clicking its button will do.
-    wrap.appendChild(el("div", "checkpoints-hint",
-      "● live\u2002\u2002◐ partly taken out\u2002\u2002○ taken out"));
+    void nPart;
 
     for (const seg of segs) {
       const st = stateOf(seg);
@@ -5493,29 +5555,25 @@ function changeMeter(added, removed, width) {
         (seg.checkpoint === state.selectedCheckpoint ? " selected" : "");
       row.dataset.checkpoint = seg.checkpoint;
       const goneSyms = (seg.symbols || []).filter((s) => s.live === false).map((s) => s.symbol.split("::").slice(-1)[0]);
-      // a fallback segment's rationale is a span count ("N commit(s), M op(s)"), not a reason
-      row.title = (seg.rationale && seg.source !== "fallback" ? seg.rationale + "\n" : "") + (gone
-        ? "Taken out: Restore brings it back"
-        : (partial ? `Partly taken out: gone: ${goneSyms.join(", ")}\n` : "") +
-          "Revert takes this checkpoint out; later ones stay");
+      void goneSyms;
       row.addEventListener("click", () => highlightCheckpoint(seg.checkpoint)); // sync with the gantt car
 
-      const dot = document.createElement("span");
-      dot.className = "checkpoint-dot";
-      dot.style.color = laneColor(id); // the lane's own hue: this list IS that lane, read as text
-      dot.textContent = gone ? "○" : partial ? "◐" : "●";
-      row.appendChild(dot);
+      // Its shape before its name: the unit glyph (a cell per function per save, hollow where taken
+      // out), the same thumbnail the ruler shows on hover and the chart the checkpoint opens into.
+      const glyph = el("span", "checkpoint-glyph");
+      glyph.appendChild(unitGlyphEl({ symbols: seg.symbols || [] }, laneColor(id)));
+      row.appendChild(glyph);
 
       const label = document.createElement("span");
       label.className = "checkpoint-label";
       label.textContent = seg.intent;
       row.appendChild(label);
-      // Its size in the reader's units, muted, after the name: functions and saves, never ops.
-      if (seg.change_count != null) {
-        const n = seg.symbol_count || 0, k = (seg.commit_shas || []).length;
-        row.appendChild(el("span", "checkpoint-size",
-          n ? `${n} function${n === 1 ? "" : "s"} · ${k} save${k === 1 ? "" : "s"}` : `layout only · ${k} save${k === 1 ? "" : "s"}`));
-      }
+      // A word only where the state needs one, in the reader's terms.
+      const named = (seg.symbols || []).filter((sv) => sv && sv.symbol && !/::__/.test(sv.symbol));
+      const stateWord = gone ? "taken out"
+        : partial && named.length ? `${named.filter((sv) => sv.live !== false).length} of ${named.length} still in`
+        : !named.length ? "lines moved" : "";
+      if (stateWord) row.appendChild(el("span", "checkpoint-size", stateWord));
 
       // One button, whichever direction is actually available. Before this the row offered `⤺`
       // even on an already-reverted chapter, where a second revert can only report "no change" --

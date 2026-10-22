@@ -234,6 +234,9 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
   <div id="strip">
     <div id="armedBanner" class="armed-banner" hidden></div>
     <div id="themeBanner" class="theme-banner" hidden></div>
+    <!-- Why something is faded, and the one way out: the playhead in the past, a followed session,
+         a search. -->
+    <div id="contextRows" class="context-rows" hidden></div>
     <!-- A held revert or restore: the question, what it will do in words, and its answer. It used
          to float over the bottom of the plot; here it pushes the map down and covers nothing. -->
     <div id="confirmBar" class="confirm-bar" hidden></div>

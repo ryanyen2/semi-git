@@ -961,17 +961,17 @@ def test_every_save_is_a_notch_when_there_is_room_and_only_boundaries_when_there
     assert dense == [0, 5, 120, 300, 400]
 
 
-def test_the_playhead_holds_until_the_hand_is_past_halfway_by_a_margin():
-    # saves are 30 px apart: halfway is 15 px, the hold margin 5.4 px
+def test_the_playhead_holds_until_the_hand_is_past_halfway_by_a_small_margin():
+    # saves are 30 px apart: halfway is 15 px, the hold margin 2.4 px (soft)
     assert _detent("detentIndex(geom.xOf(5) + 16, 5, all, geom, new Set())") == 5
-    assert _detent("detentIndex(geom.xOf(5) + 21, 5, all, geom, new Set())") == 6
-    assert _detent("detentIndex(geom.xOf(5) - 21, 5, all, geom, new Set())") == 4
+    assert _detent("detentIndex(geom.xOf(5) + 18, 5, all, geom, new Set())") == 6
+    assert _detent("detentIndex(geom.xOf(5) - 18, 5, all, geom, new Set())") == 4
 
 
-def test_a_checkpoint_boundary_takes_a_firmer_pull_to_leave():
-    # 21 px leaves a plain notch but not a deep one (margin 9.6 px)
-    assert _detent("detentIndex(geom.xOf(5) + 21, 5, all, geom, new Set([5]))") == 5
-    assert _detent("detentIndex(geom.xOf(5) + 26, 5, all, geom, new Set([5]))") == 6
+def test_a_checkpoint_boundary_takes_a_little_more_pull_to_leave():
+    # 18 px leaves a plain notch but not a deep one (margin 4.8 px)
+    assert _detent("detentIndex(geom.xOf(5) + 18, 5, all, geom, new Set([5]))") == 5
+    assert _detent("detentIndex(geom.xOf(5) + 21, 5, all, geom, new Set([5]))") == 6
 
 
 def test_a_fast_hand_lands_in_the_notch_it_reached():
@@ -990,7 +990,7 @@ def test_a_flick_ratchets_on_a_few_notches_and_a_slow_release_stays():
 # The panel lists the named functions (kernel bookkeeping left out), oldest first and capped; its
 # columns are every save the checkpoint touched; a function's word says what happened to it.
 
-_PANEL_PRELUDE = "const PANEL = { padT: 12, headH: 16, rowH: 18, foot: 18, padB: 8, maxRows: 12 };\n"
+_PANEL_PRELUDE = "const PANEL = { padT: 6, headH: 16, rowH: 18, padB: 8, maxRows: 12 };\n"
 
 
 def _panel(expr: str):
@@ -1014,15 +1014,63 @@ def test_the_panel_spans_every_save_the_checkpoint_touched():
     assert _panel(f"panelSaves({_CAR})") == [6, 7, 8, 9]
 
 
-def test_a_function_taken_out_says_so_and_the_rest_say_what_happened():
-    assert _panel('kindWord({ kind: "added", live: false })') == "taken out"
-    assert _panel('kindWord({ kind: "added", live: true })') == "added"
-    assert _panel('kindWord({ kind: "modified", live: true })') == "changed"
+def test_a_function_another_checkpoint_shares_gets_its_own_row():
+    # what stands on it can share a name this checkpoint did not change (a caller of what it made)
+    car = _CAR.replace('symbols: ["a.py::render"]', 'symbols: ["a.py::render", "b.py::caller"]')
+    rows = _panel(f"panelRows({car})")
+    assert [r["symbol"] for r in rows] == ["a.py::parse", "a.py::render", "b.py::caller"]
+    assert rows[-1]["shared"] is True
 
 
-def test_the_panel_makes_room_for_its_rows_and_what_stands_on_it():
-    # 12 top + 16 header + 3 rows (2 named + the "more" row for the hidden bookkeeping) + footer + 8
-    assert _panel(f"panelHeight({_CAR})") == 12 + 16 + 3 * 18 + 18 + 8
+def test_the_panel_makes_room_for_its_rows():
+    # 6 top + 16 header + 2 named rows + 8; the bookkeeping symbol is not a hidden function
+    assert _panel(f"panelHeight({_CAR})") == 6 + 16 + 2 * 18 + 8
+
+
+def test_every_save_a_function_was_touched_is_on_its_lifeline():
+    lanes = """[{ cars: [
+      { checkpoint: "f@1", featureId: "f", symbols: [{ symbol: "a.py::render", saves: [7, 9], live: true }] },
+      { checkpoint: "g@0", featureId: "g", symbols: [{ symbol: "a.py::render", saves: [12], live: true }] } ] }]"""
+    got = _panel(f"[...symbolTouches({lanes}).get('a.py::render')].map((t) => [t.ci, t.ref])")
+    assert got == [[7, "f@1"], [9, "f@1"], [12, "g@0"]]
+
+
+# ---- the bifocal axis -------------------------------------------------------------------------
+# Opening a checkpoint magnifies its span on the one shared axis and compresses the rest in
+# proportion; every lane stays aligned in time. t blends from the plain axis.
+
+def _bifocal(expr: str):
+    return _node(_slice("// ---- bifocal", "// ---- end-bifocal"), f"console.log(JSON.stringify({expr}));\n")
+
+
+def test_closed_the_axis_is_linear():
+    assert _bifocal("[0, 10, 20].map((u) => bifocalScale(100, 600, 20, null, 0)(u))") == [100, 400, 700]
+
+
+def test_open_a_checkpoint_takes_a_wide_share_and_the_rest_keeps_its_order():
+    xs = _bifocal("(() => { const f = bifocalScale(100, 600, 20, { firstIndex: 9, lastIndex: 10 }, 1); "
+                  "return [0, 9, 11, 20].map(f); })()")
+    assert xs[0] == 100 and xs[3] == 700  # the ends do not move
+    assert xs[2] - xs[1] >= 0.35 * 600 - 1e-6  # two saves get at least a third of the plot
+    assert xs == sorted(xs)  # time still runs left to right
+
+
+def test_halfway_open_is_halfway_between():
+    mid = _bifocal("(() => { const lin = bifocalScale(100, 600, 20, null, 0)(9); "
+                   "const full = bifocalScale(100, 600, 20, { firstIndex: 9, lastIndex: 10 }, 1)(9); "
+                   "const half = bifocalScale(100, 600, 20, { firstIndex: 9, lastIndex: 10 }, 0.5)(9); "
+                   "return Math.abs(half - (lin + full) / 2) < 1e-9; })()")
+    assert mid is True
+
+
+# ---- the unit glyph -----------------------------------------------------------------------------
+
+def test_the_unit_glyph_is_a_cell_per_function_per_save():
+    u = _node(_slice("// ---- unit-glyph", "// ---- end-unit-glyph"),
+              f"console.log(JSON.stringify(unitCells({_CAR})));\n")
+    assert (u["rows"], u["cols"]) == (2, 3)  # two named functions over saves 6, 7, 9
+    assert sorted((c["r"], c["c"], c["live"]) for c in u["cells"]) == [
+        (0, 1, True), (0, 2, True), (1, 0, False)]
 
 
 # ---- what a preview says ---------------------------------------------------------------------

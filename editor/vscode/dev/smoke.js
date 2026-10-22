@@ -298,29 +298,30 @@ try {
     check("a collapsed subsystem exists to test fold stability", false, "no meta lane found");
   }
 
-  // Theme focus (TableLens): clicking a group on the idle panel compresses every non-member lane
-  // to a thin density row, keeps the members at full height, and captions the lens in a banner.
+  // Theme focus: clicking a group on the idle panel rings its checkpoints and recedes the other
+  // lanes through the lens, and the strip names it with its way out. Rows keep their height (a row
+  // that shrank for a reason nobody stated was one of the things read as clutter), and nothing is
+  // drawn over the plot: no spine, no floating label, no axis diamonds.
   console.log("theme focus:");
   const themeRow = byId.inspector.querySelectorAll(".theme-row")[0];
   check("idle panel lists cross-feature groups", !!themeRow);
+  check("no axis diamonds or spines are drawn", byId.rail.querySelectorAll(".theme-mark, .theme-spine").length === 0);
   if (themeRow && themeRow._listeners.click) {
     themeRow._listeners.click.forEach((fn) => fn({}));
-    const quiet = byId.rail.querySelectorAll(".glane-quiet");
-    const loud = byId.rail.querySelectorAll(".glane").filter((n) => !String(n.attrs.class).includes("glane-quiet"));
-    check("context lanes compress under the focus", quiet.length > 0, `${quiet.length} quiet lanes`);
-    check("member lanes keep their full rows", loud.length > 0, `${loud.length} full lanes`);
-    check("the banner names the lens", byId.themeBanner && byId.themeBanner.hidden === false);
+    check("rows keep their height under the focus", byId.rail.querySelectorAll(".glane-quiet").length === 0);
+    const gantt = byId.rail.querySelector("svg");
+    const lit = byId.rail.querySelectorAll(".glane.lit");
+    check("non-member lanes recede through the lens; members stay lit",
+      gantt.classList.contains("focus") && lit.length > 0, `${lit.length} lit`);
+    check("its checkpoints are ringed", byId.rail.querySelectorAll(".gcar-theme-member").length > 0);
+    check("the strip names the focus", byId.themeBanner && byId.themeBanner.hidden === false);
+    check("still no spine is drawn", byId.rail.querySelectorAll(".theme-spine").length === 0);
     const clearBtns = byId.themeBanner.querySelectorAll("button");
     const clearBtn = clearBtns[clearBtns.length - 1];
     if (clearBtn && clearBtn._listeners.click) clearBtn._listeners.click.forEach((fn) => fn({}));
-    check("clearing the focus restores every lane",
-          byId.rail.querySelectorAll(".glane-quiet").length === 0);
+    check("clearing the focus brings every lane back", !byId.rail.querySelector("svg").classList.contains("focus"));
   }
-
-  // Cross-feature work: by default each spanning item is ONE ◆ marker on the time axis (no
-  // always-on link lines -- several at once drew spaghetti); hovering rings its member chapters
-  // and clicking enters the focus, where exactly one spine draws.
-  console.log("cross-feature markers:");
+  // Later checks read leaves directly: unfold every subsystem.
   let unfoldGuard = 0;
   for (;;) {
     const metaFold = byId.rail.querySelectorAll(".glane").find((n) => {
@@ -329,36 +330,6 @@ try {
     });
     if (!metaFold || !metaFold._listeners.click || unfoldGuard++ > 10) break;
     metaFold._listeners.click.forEach((fn) => fn({}));
-  }
-  const marks = byId.rail.querySelectorAll(".theme-mark");
-  check("spanning work sits on the axis as a ◆ marker", marks.length > 0, `${marks.length} markers`);
-  check("no spine draws before anyone asks", byId.rail.querySelectorAll(".theme-spine").length === 0);
-  const mark = marks[0];
-  if (mark && mark._listeners.mouseenter) {
-    mark._listeners.mouseenter.forEach((fn) => fn({}));
-    check("hovering the marker draws its one spine",
-          byId.rail.querySelectorAll(".theme-spine").length === 1);
-    check("hovering rings the member chapters",
-          byId.rail.querySelectorAll(".gcar-theme-member").length >= 2,
-          `${byId.rail.querySelectorAll(".gcar-theme-member").length} ringed`);
-    mark._listeners.mouseleave.forEach((fn) => fn({}));
-    check("leaving retracts the spine",
-          byId.rail.querySelectorAll(".theme-spine").length === 0);
-  }
-  if (mark && mark._listeners.click) {
-    mark._listeners.click.forEach((fn) => fn({ stopPropagation() {} }));
-    check("clicking the marker enters the focus",
-          byId.themeBanner && byId.themeBanner.hidden === false);
-    const focusedSpines = byId.rail.querySelectorAll(".theme-spine-focused");
-    check("the focused work draws exactly one spine", focusedSpines.length === 1,
-          `${focusedSpines.length} spines`);
-    check("its dots mark at least two lanes",
-          focusedSpines.length > 0 && focusedSpines[0].querySelectorAll(".theme-spine-dot").length >= 2);
-    const markClear = byId.themeBanner.querySelectorAll("button");
-    const mcb = markClear[markClear.length - 1];
-    if (mcb && mcb._listeners.click) mcb._listeners.click.forEach((fn) => fn({}));
-    check("clearing the focus removes the spine",
-          byId.rail.querySelectorAll(".theme-spine-focused").length === 0);
   }
 
   // Selecting a feature: simulate a click on the first feature lane -> inspector populates.
@@ -670,7 +641,8 @@ try {
       read ? read.textContent : "no axis reading");
     check("the reading names its size in functions and saves, never ops",
       !!read && !/\bops?\b|edit\(s\)/.test(read.textContent), read ? read.textContent : "");
-    check("two guides drop from the bar to the axis", hoverLayer.querySelectorAll(".read-guide").length === 2);
+    check("nothing is drawn across the plot to name it", hoverLayer.children.length === 0
+      && narrow.classList.contains("gcar-hovered"));
     check("nothing on the plot grew to name it", byId.rail.querySelectorAll(".gchip").length === 0);
     narrow._listeners.mouseleave.forEach((fn) => fn({}));
     check("the reading leaves with the cursor",
@@ -694,20 +666,23 @@ try {
     ];
     target.change_count = 3;
     target.dependents = [{ ref: later.checkpoint, symbols: ["src/a.py::render"] }];
+    later.symbols = [{ symbol: "src/a.py::render", file: "src/a.py", kind: "changed", live: true, saves: [later.first_index] }];
     later.dependents = [];
     feed({ type: "state", compose: opened });
     const car = byId.rail.querySelectorAll(".gcar-wrap").find((w) => w.getAttribute("data-checkpoint") === target.checkpoint);
-    check("a checkpoint that later work stands on carries the amber underline at rest",
-      !!car && car.querySelectorAll(".gcar-builton").length === 1);
-    const laterCar = byId.rail.querySelectorAll(".gcar-wrap").find((w) => w.getAttribute("data-checkpoint") === later.checkpoint);
-    check("a checkpoint nothing stands on carries none", !!laterCar && laterCar.querySelectorAll(".gcar-builton").length === 0);
+    check("nothing marks safety at rest (no underline under any bar)",
+      byId.rail.querySelectorAll(".gcar-builton").length === 0);
     if (car) {
       car._listeners.mouseenter.forEach((fn) => fn({}));
-      check("hovering it draws a line to what stands on it",
-        byId.rail.querySelector(".hover-layer").querySelectorAll(".dep-arc").length === 1
+      const laterWrap = byId.rail.querySelectorAll(".gcar-wrap").find((w) => w.getAttribute("data-checkpoint") === later.checkpoint);
+      check("hovering it outlines what stands on it, and draws no line",
+        !!laterWrap && laterWrap.classList.contains("gcar-dependent")
+          && byId.rail.querySelector(".hover-layer").children.length === 0
           && /1 later checkpoint builds on it/.test(byId.rail.querySelector(".axis-read").textContent),
         byId.rail.querySelector(".axis-read").textContent);
+      check("the ruler draws its shape as a unit glyph", byId.rail.querySelectorAll(".unit-glyph").length === 1);
       car._listeners.mouseleave.forEach((fn) => fn({}));
+      check("leaving clears the outline", !laterWrap.classList.contains("gcar-dependent"));
       const laneYs = () => {
         const out = new Map();
         for (const n of byId.rail.querySelectorAll(".glane")) {
@@ -717,10 +692,9 @@ try {
         return out;
       };
       const ownId = car.parent && car.parent.getAttribute ? car.parent.getAttribute("data-id") : null;
-      // An earlier test may have selected this very checkpoint, and a second click closes it:
-      // start from closed so the click under test is the one that opens it.
-      if (byId.rail.querySelectorAll(".cp-panel").length) {
-        car._listeners.click.forEach((fn) => fn(noopEv));
+      // Start from closed: an earlier test may have left a checkpoint open.
+      for (let k = 0; k < 4 && byId.rail.querySelectorAll(".cp-panel").length; k++) {
+        global.window.dispatchEvent({ type: "keydown", key: "Escape", preventDefault() {}, stopPropagation() {} });
       }
       check("a closed checkpoint draws no panel", byId.rail.querySelectorAll(".cp-panel").length === 0);
       const before = laneYs();
@@ -736,10 +710,18 @@ try {
           `${rows.length} rows: ${rows.map((r) => r.querySelector(".cp-fn").textContent)}`);
         check("one mark per function per save it changed in", panel.querySelectorAll(".cp-mark").length === (lo === hi ? 2 : 3),
           `${panel.querySelectorAll(".cp-mark").length} marks`);
-        check("the function later work edits is marked and said",
-          panel.querySelectorAll(".cp-later").length === 1
-            && panel.querySelectorAll(".cp-kind").some((k) => /edited later/.test(k.textContent))
-            && panel.querySelectorAll(".cp-deps").length >= 2);
+        // The lifeline: the later checkpoint's edit to render sits on render's row at its own save,
+        // in its own hue, ringed amber because taking this one out would rewrite it.
+        const renderRow = rows.find((r) => r.getAttribute("data-symbol") === "src/a.py::render");
+        check("a function's row shows the later edit that stands on it, ringed",
+          !!renderRow && renderRow.querySelectorAll(".cp-touch.dep").length === 1 && renderRow.querySelectorAll(".cp-life").length === 1);
+        check("no sentence stands in for the chart", panel.querySelectorAll(".cp-deps, .cp-kind").length === 0);
+        // Bifocal axis: the opened checkpoint's own marks sit under its own bar.
+        const bar = byId.rail.querySelectorAll(".gcar-wrap").find((w) => w.getAttribute("data-checkpoint") === target.checkpoint).querySelector(".gcar");
+        const bx = Number(bar.getAttribute("x")), bw = Number(bar.getAttribute("width"));
+        const marks = panel.querySelectorAll(".cp-mark").map((m) => Number(m.getAttribute("x")) + Number(m.getAttribute("width")) / 2);
+        check("its marks sit under its own bar, on the shared axis",
+          marks.length > 0 && marks.every((x) => x >= bx - 0.5 && x <= bx + bw + 0.5), `bar ${bx}..${bx + bw}, marks ${marks.map((x) => x.toFixed(1))}`);
         posted = [];
         rows[0]._listeners.click.forEach((fn) => fn(noopEv));
         const diff = posted.find((m) => m.type === "openChangeDiff");
