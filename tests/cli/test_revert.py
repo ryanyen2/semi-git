@@ -906,6 +906,38 @@ def test_a_common_name_in_another_file_is_not_a_surviving_reference(tmp_path):
         f"{plan.broken_references}")
 
 
+def test_a_function_removed_from_a_package_init_is_still_named_by_its_importers(tmp_path):
+    """A function a package's `__init__.py` defines is imported by naming the package --
+    `from shop.pages import shell`, or `from . import shell` inside it -- never `__init__`. The
+    byte sweep required another file to name the removed module's stem, which for a package is
+    "__init__", so neither importer was reported: reverting the bikecount scaffold left
+    `pages/yearly.py` importing a `shell` that no longer exists while `--emit` said nothing
+    (2026-10-22). A package's own name is what an importer writes."""
+    from ugh.core import verbs as core_verbs
+    from ugh.core.subtract import plan_subtraction
+
+    repo = tmp_path / "pkginit"
+    corpus._init(repo)
+    corpus._write(repo, "shop/__init__.py", "")
+    corpus._write(repo, "shop/pages/__init__.py",
+                  "def shell(body):\n    return '<main>' + body + '</main>'\n")
+    corpus._commit(repo, "one", 1)
+    corpus._write(repo, "shop/pages/yearly.py",
+                  "from shop.pages import shell\n\n\ndef render(rows):\n    return shell(str(rows))\n")
+    corpus._write(repo, "shop/pages/monthly.py",
+                  "from . import shell\n\n\ndef render(rows):\n    return shell(str(rows))\n")
+    corpus._commit(repo, "two", 2)
+    get(repo)
+
+    ops, ideal, declared = core_verbs._load(repo)
+    shell_add = next(o.id for o in ops
+                     if o.footprint.get("shop/pages/__init__.py::shell", (0,))[0] is None)
+    plan = plan_subtraction(repo, {shell_add}, ops, ideal.op_ids, declared, tag="t")
+
+    assert plan.broken_references == (
+        "shop/pages/monthly.py::render", "shop/pages/yearly.py::render"), plan.broken_references
+
+
 def test_json_revert_says_whether_it_applied(tmp_path, capsys, monkeypatch):
     """F124. The plain path prints its preview and declines with no terminal attached; `--json` skips
     the confirm block and applies. That asymmetry is the machine contract (`--emit --json` is the dry

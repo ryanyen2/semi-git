@@ -134,7 +134,13 @@ def _broken_references(
             continue
         path, name = sym.split("::", 1)[0], sym.rsplit("::", 1)[1]
         removed_by_file.setdefault(path, set()).add(name.encode())
-        stem_of[path] = path.rsplit("/", 1)[-1].rsplit(".", 1)[0].encode()
+        stem = path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+        if stem == "__init__" and "/" in path:
+            # An importer names the package, never its `__init__` (`from shop.pages import shell`):
+            # reverting the bikecount scaffold left `pages/yearly.py` importing a removed `shell`
+            # and this sweep said nothing, because it was looking for "__init__" (2026-10-22).
+            stem = path.rsplit("/", 2)[-2]
+        stem_of[path] = stem.encode()
     if not removed_by_file:
         return ()
 
@@ -142,6 +148,13 @@ def _broken_references(
         """Whole-word only, so `_label` stops matching `label` and `labels` stops matching `label`."""
         return any(_re.search(rb"(?<![A-Za-z0-9_])" + _re.escape(n) + rb"(?![A-Za-z0-9_])", image)
                    for n in names)
+
+    def _relative_package_import(path: str, other_path: str, blob: bytes) -> bool:
+        """A module inside a package reaches its `__init__.py` with `from . import name`, which
+        names no module at all."""
+        package, sep, init = other_path.rpartition("/")
+        return (bool(sep) and init == "__init__.py" and path.rpartition("/")[0] == package
+                and _re.search(rb"(?<![A-Za-z0-9_.])from\s+\.\s+import\b", blob) is not None)
 
     spliced_by_sym = {next(iter(op.footprint)): op for op in new_ops}
     broken: set[str] = set()
@@ -187,7 +200,8 @@ def _broken_references(
                 continue
             if blob is None:
                 blob = _blob_for(path)
-            if _names(blob, (stem_of[other_path],)):
+            if (_names(blob, (stem_of[other_path],))
+                    or _relative_package_import(path, other_path, blob)):
                 candidates |= names
         if candidates and _names(image, candidates):
             broken.add(sym)
