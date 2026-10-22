@@ -2259,8 +2259,19 @@
     ],
     "change_count": 3,
     "checkpoint": "af-m497c150046b02bb5afbf983032f4fda56eb56d6be3eda2613a6be351f16780bc@0",
+    "clean": false,
     "commit_shas": [
      "a65651559cb22f3d18102c0f926d6621947f8dd5"
+    ],
+    "dependents": [
+     {
+      "ref": "f-1fe33edc98b39954121b9311c231b472c438ebbc766aeba2a89d01f65bdf2691@1",
+      "symbols": [
+       "bikecount/server.py::Handler",
+       "bikecount/server.py::Handler.do_GET",
+       "bikecount/server.py::daily_csv"
+      ]
+     }
     ],
     "feature_id": "af-m497c150046b02bb5afbf983032f4fda56eb56d6be3eda2613a6be351f16780bc",
     "feature_label": "Handler.do_GET",
@@ -2329,8 +2340,35 @@
     ],
     "change_count": 2,
     "checkpoint": "f-00f15095589dbef57bc54fbc5decd4260be2e4eb05184f959ba62186eae7a1d1@0",
+    "clean": false,
     "commit_shas": [
      "e36a2d246bfc938c32677b77ef05c52619b9dec3"
+    ],
+    "dependents": [
+     {
+      "ref": "f-00f15095589dbef57bc54fbc5decd4260be2e4eb05184f959ba62186eae7a1d1@1",
+      "symbols": [
+       "bikecount/metrics.py::yearly_summary"
+      ]
+     },
+     {
+      "ref": "f-00f15095589dbef57bc54fbc5decd4260be2e4eb05184f959ba62186eae7a1d1@2",
+      "symbols": [
+       "bikecount/pages/yearly.py::render"
+      ]
+     },
+     {
+      "ref": "f-0462f12c54fc19883f0bd088ee41c4d4786c9f418a554de164efddb6ef65983e@4",
+      "symbols": [
+       "bikecount/pages/yearly.py::render"
+      ]
+     },
+     {
+      "ref": "f-00f15095589dbef57bc54fbc5decd4260be2e4eb05184f959ba62186eae7a1d1@3",
+      "symbols": [
+       "bikecount/metrics.py::yearly_summary"
+      ]
+     }
     ],
     "feature_id": "f-00f15095589dbef57bc54fbc5decd4260be2e4eb05184f959ba62186eae7a1d1",
     "feature_label": "Yearly Summary Table",
@@ -2403,8 +2441,17 @@
     ],
     "change_count": 1,
     "checkpoint": "f-00f15095589dbef57bc54fbc5decd4260be2e4eb05184f959ba62186eae7a1d1@1",
+    "clean": false,
     "commit_shas": [
      "c360a3d9c8c73babd43f929b9d9c0efde3554a69"
+    ],
+    "dependents": [
+     {
+      "ref": "f-00f15095589dbef57bc54fbc5decd4260be2e4eb05184f959ba62186eae7a1d1@3",
+      "symbols": [
+       "bikecount/metrics.py::yearly_summary"
+      ]
+     }
     ],
     "feature_id": "f-00f15095589dbef57bc54fbc5decd4260be2e4eb05184f959ba62186eae7a1d1",
     "feature_label": "Yearly Summary Table",
@@ -2455,8 +2502,17 @@
     ],
     "change_count": 1,
     "checkpoint": "f-00f15095589dbef57bc54fbc5decd4260be2e4eb05184f959ba62186eae7a1d1@2",
+    "clean": false,
     "commit_shas": [
      "dbd71ffb4c24ad4277a8c7b02a1ac651f62901a9"
+    ],
+    "dependents": [
+     {
+      "ref": "f-0462f12c54fc19883f0bd088ee41c4d4786c9f418a554de164efddb6ef65983e@4",
+      "symbols": [
+       "bikecount/pages/yearly.py::render"
+      ]
+     }
     ],
     "feature_id": "f-00f15095589dbef57bc54fbc5decd4260be2e4eb05184f959ba62186eae7a1d1",
     "feature_label": "Yearly Summary Table",
@@ -2507,9 +2563,11 @@
     ],
     "change_count": 1,
     "checkpoint": "f-00f15095589dbef57bc54fbc5decd4260be2e4eb05184f959ba62186eae7a1d1@3",
+    "clean": false,
     "commit_shas": [
      "421d22a88a293ec66b0e2d54c0fdd325a6a486cd"
     ],
+    "dependents": [],
     "feature_id": "f-00f15095589dbef57bc54fbc5decd4260be2e4eb05184f959ba62186eae7a1d1",
     "feature_label": "Yearly Summary Table",
     "first_index": 25,
@@ -2559,8 +2617,35 @@
     ],
     "change_count": 1,
     "checkpoint": "f-01f4dcde9213d71e0a40f96c54e0fc2544bb1ef37595848416a31ab356451661@0",
+    "clean": false,
     "commit_shas": [
      "66ca5b908720d6fc7b88be6c601a562210271283"
+    ],
+    "dependents": [
+     {
+      "ref": "f-0462f12c54fc19883f0bd088ee41c4d4786c9f418a554de164efddb6ef65983e@2",
+      "symbols": [
+       "bikecount/events.py::label"
+      ]
+     },
+     {
+      "ref": "f-00f15095589dbef57bc54fbc5decd4260be2e4eb05184f959ba62186eae7a1d1@1",
+      "symbols": [
+       "bikecount/events.py::label"
+      ]
+     },
+     {
+      "ref": "f-0289065103b82135f1b13615f026fa3d44ab55b7099de26f83d3defd6c43c11f@3",
+      "symbols": [
+       "bikecount/events.py::label"
+      ]
+     },
+     {
+      "ref": "f-00f15095589dbef57bc54fbc5decd4260be2e4eb05184f959ba62186eae7a1d1@3",
+      "symbols": [
+       "bikecount/events.py::label"
+      ]
+     }
     ],
     "feature_id": "f-01f4dcde9213d71e0a40f96c54e0fc2544bb1ef37595848416a31ab356451661",
     "feature_label": "Event Day Labels",
@@ -2619,9 +2704,11 @@
     ],
     "change_count": 1,
     "checkpoint": "f-01f4dcde9213d71e0a40f96c54e0fc2544bb1ef37595848416a31ab356451661@1",
+    "clean": true,
     "commit_shas": [
      "0c56354027ee87bd3de380b4e56032556996b2c7"
     ],
+    "dependents": [],
     "feature_id": "f-01f4dcde9213d71e0a40f96c54e0fc2544bb1ef37595848416a31ab356451661",
     "feature_label": "Event Day Labels",
     "first_index": 9,
@@ -2660,9 +2747,11 @@
     "asks": [],
     "change_count": 0,
     "checkpoint": "f-0289065103b82135f1b13615f026fa3d44ab55b7099de26f83d3defd6c43c11f@0",
+    "clean": true,
     "commit_shas": [
      "e2617473eb7b2ff5a62e20bf7dfe4dec951bc838"
     ],
+    "dependents": [],
     "feature_id": "f-0289065103b82135f1b13615f026fa3d44ab55b7099de26f83d3defd6c43c11f",
     "feature_label": "Ride Pattern Analysis",
     "first_index": 0,
@@ -2715,9 +2804,24 @@
     ],
     "change_count": 5,
     "checkpoint": "f-0289065103b82135f1b13615f026fa3d44ab55b7099de26f83d3defd6c43c11f@1",
+    "clean": false,
     "commit_shas": [
      "196f7b6a94ced03d25ba50009f5d50fd2e2a6fa2",
      "b9f66c7f6268f525a450f9f54e90e90b4b4adf38"
+    ],
+    "dependents": [
+     {
+      "ref": "f-0289065103b82135f1b13615f026fa3d44ab55b7099de26f83d3defd6c43c11f@3",
+      "symbols": [
+       "bikecount/metrics.py::hourly_averages"
+      ]
+     },
+     {
+      "ref": "f-0462f12c54fc19883f0bd088ee41c4d4786c9f418a554de164efddb6ef65983e@4",
+      "symbols": [
+       "bikecount/pages/hourly.py::render"
+      ]
+     }
     ],
     "feature_id": "f-0289065103b82135f1b13615f026fa3d44ab55b7099de26f83d3defd6c43c11f",
     "feature_label": "Ride Pattern Analysis",
@@ -2820,10 +2924,12 @@
     ],
     "change_count": 0,
     "checkpoint": "f-0289065103b82135f1b13615f026fa3d44ab55b7099de26f83d3defd6c43c11f@2",
+    "clean": true,
     "commit_shas": [
      "977e808a7e2cd574d68489110ad4dd844c340044",
      "ca89fc2856009469ed8ca11ed0999e3702ffa334"
     ],
+    "dependents": [],
     "feature_id": "f-0289065103b82135f1b13615f026fa3d44ab55b7099de26f83d3defd6c43c11f",
     "feature_label": "Ride Pattern Analysis",
     "first_index": 7,
@@ -2864,9 +2970,11 @@
     ],
     "change_count": 1,
     "checkpoint": "f-0289065103b82135f1b13615f026fa3d44ab55b7099de26f83d3defd6c43c11f@3",
+    "clean": false,
     "commit_shas": [
      "c360a3d9c8c73babd43f929b9d9c0efde3554a69"
     ],
+    "dependents": [],
     "feature_id": "f-0289065103b82135f1b13615f026fa3d44ab55b7099de26f83d3defd6c43c11f",
     "feature_label": "Ride Pattern Analysis",
     "first_index": 15,
@@ -2907,8 +3015,106 @@
     "asks": [],
     "change_count": 15,
     "checkpoint": "f-0462f12c54fc19883f0bd088ee41c4d4786c9f418a554de164efddb6ef65983e@0",
+    "clean": false,
     "commit_shas": [
      "e2617473eb7b2ff5a62e20bf7dfe4dec951bc838"
+    ],
+    "dependents": [
+     {
+      "ref": "f-0289065103b82135f1b13615f026fa3d44ab55b7099de26f83d3defd6c43c11f@1",
+      "symbols": [
+       "bikecount/charts.py::bar_chart",
+       "bikecount/pages/__init__.py::shell"
+      ]
+     },
+     {
+      "ref": "f-0a0f11c83615a1c57c3dcbfe243d9b1968ed5d8cc2f12dd8409f3ac2fde28afb@0",
+      "symbols": [
+       "bikecount/charts.py::bar_chart",
+       "bikecount/pages/__init__.py::shell"
+      ]
+     },
+     {
+      "ref": "f-0462f12c54fc19883f0bd088ee41c4d4786c9f418a554de164efddb6ef65983e@2",
+      "symbols": [
+       "bikecount/charts.py::bar_chart",
+       "bikecount/pages/overview.py::render"
+      ]
+     },
+     {
+      "ref": "f-2f19b51026537ab022ae93582b156f83c9b4e74cdee852f33eadc4a240bdf9a8@0",
+      "symbols": [
+       "bikecount/charts.py::bar_chart",
+       "bikecount/pages/__init__.py::shell"
+      ]
+     },
+     {
+      "ref": "f-00f15095589dbef57bc54fbc5decd4260be2e4eb05184f959ba62186eae7a1d1@0",
+      "symbols": [
+       "bikecount/metrics.py::daily_totals",
+       "bikecount/pages/__init__.py::shell"
+      ]
+     },
+     {
+      "ref": "f-00f15095589dbef57bc54fbc5decd4260be2e4eb05184f959ba62186eae7a1d1@1",
+      "symbols": [
+       "bikecount/metrics.py::daily_totals"
+      ]
+     },
+     {
+      "ref": "af-m497c150046b02bb5afbf983032f4fda56eb56d6be3eda2613a6be351f16780bc@0",
+      "symbols": [
+       "bikecount/server.py::Handler",
+       "bikecount/server.py::Handler.do_GET"
+      ]
+     },
+     {
+      "ref": "f-0462f12c54fc19883f0bd088ee41c4d4786c9f418a554de164efddb6ef65983e@3",
+      "symbols": [
+       "bikecount/pages/__init__.py::shell"
+      ]
+     },
+     {
+      "ref": "f-00f15095589dbef57bc54fbc5decd4260be2e4eb05184f959ba62186eae7a1d1@2",
+      "symbols": [
+       "bikecount/pages/__init__.py::shell"
+      ]
+     },
+     {
+      "ref": "f-2f19b51026537ab022ae93582b156f83c9b4e74cdee852f33eadc4a240bdf9a8@1",
+      "symbols": [
+       "bikecount/charts.py::bar_chart",
+       "bikecount/pages/__init__.py::shell"
+      ]
+     },
+     {
+      "ref": "f-0462f12c54fc19883f0bd088ee41c4d4786c9f418a554de164efddb6ef65983e@4",
+      "symbols": [
+       "README.md",
+       "bikecount/pages/__init__.py::shell",
+       "bikecount/pages/overview.py::render"
+      ]
+     },
+     {
+      "ref": "f-1fe33edc98b39954121b9311c231b472c438ebbc766aeba2a89d01f65bdf2691@1",
+      "symbols": [
+       "bikecount/server.py::Handler",
+       "bikecount/server.py::Handler.do_GET",
+       "check.py::main"
+      ]
+     },
+     {
+      "ref": "f-0462f12c54fc19883f0bd088ee41c4d4786c9f418a554de164efddb6ef65983e@5",
+      "symbols": [
+       "bikecount/pages/overview.py::render"
+      ]
+     },
+     {
+      "ref": "f-00f15095589dbef57bc54fbc5decd4260be2e4eb05184f959ba62186eae7a1d1@3",
+      "symbols": [
+       "bikecount/metrics.py::daily_totals"
+      ]
+     }
     ],
     "feature_id": "f-0462f12c54fc19883f0bd088ee41c4d4786c9f418a554de164efddb6ef65983e",
     "feature_label": "Date-Scoped Bike Dashboard",
@@ -3161,9 +3367,11 @@
     ],
     "change_count": 0,
     "checkpoint": "f-0462f12c54fc19883f0bd088ee41c4d4786c9f418a554de164efddb6ef65983e@1",
+    "clean": true,
     "commit_shas": [
      "196f7b6a94ced03d25ba50009f5d50fd2e2a6fa2"
     ],
+    "dependents": [],
     "feature_id": "f-0462f12c54fc19883f0bd088ee41c4d4786c9f418a554de164efddb6ef65983e",
     "feature_label": "Date-Scoped Bike Dashboard",
     "first_index": 1,
@@ -3229,9 +3437,25 @@
     ],
     "change_count": 3,
     "checkpoint": "f-0462f12c54fc19883f0bd088ee41c4d4786c9f418a554de164efddb6ef65983e@2",
+    "clean": false,
     "commit_shas": [
      "0c56354027ee87bd3de380b4e56032556996b2c7",
      "c360a3d9c8c73babd43f929b9d9c0efde3554a69"
+    ],
+    "dependents": [
+     {
+      "ref": "f-0462f12c54fc19883f0bd088ee41c4d4786c9f418a554de164efddb6ef65983e@4",
+      "symbols": [
+       "bikecount/pages/monthly.py::render",
+       "bikecount/pages/overview.py::render"
+      ]
+     },
+     {
+      "ref": "f-0462f12c54fc19883f0bd088ee41c4d4786c9f418a554de164efddb6ef65983e@5",
+      "symbols": [
+       "bikecount/pages/overview.py::render"
+      ]
+     }
     ],
     "feature_id": "f-0462f12c54fc19883f0bd088ee41c4d4786c9f418a554de164efddb6ef65983e",
     "feature_label": "Date-Scoped Bike Dashboard",
@@ -3303,8 +3527,17 @@
     ],
     "change_count": 1,
     "checkpoint": "f-0462f12c54fc19883f0bd088ee41c4d4786c9f418a554de164efddb6ef65983e@3",
+    "clean": false,
     "commit_shas": [
      "a65651559cb22f3d18102c0f926d6621947f8dd5"
+    ],
+    "dependents": [
+     {
+      "ref": "f-0462f12c54fc19883f0bd088ee41c4d4786c9f418a554de164efddb6ef65983e@4",
+      "symbols": [
+       "bikecount/pages/__init__.py::shell"
+      ]
+     }
     ],
     "feature_id": "f-0462f12c54fc19883f0bd088ee41c4d4786c9f418a554de164efddb6ef65983e",
     "feature_label": "Date-Scoped Bike Dashboard",
@@ -3361,8 +3594,17 @@
     ],
     "change_count": 8,
     "checkpoint": "f-0462f12c54fc19883f0bd088ee41c4d4786c9f418a554de164efddb6ef65983e@4",
+    "clean": false,
     "commit_shas": [
      "22496d8505bd38ee8c9b648a8df3039cfbe29f4c"
+    ],
+    "dependents": [
+     {
+      "ref": "f-0462f12c54fc19883f0bd088ee41c4d4786c9f418a554de164efddb6ef65983e@5",
+      "symbols": [
+       "bikecount/pages/overview.py::render"
+      ]
+     }
     ],
     "feature_id": "f-0462f12c54fc19883f0bd088ee41c4d4786c9f418a554de164efddb6ef65983e",
     "feature_label": "Date-Scoped Bike Dashboard",
@@ -3490,9 +3732,11 @@
     ],
     "change_count": 1,
     "checkpoint": "f-0462f12c54fc19883f0bd088ee41c4d4786c9f418a554de164efddb6ef65983e@5",
+    "clean": true,
     "commit_shas": [
      "7b19d0ed7622369c145d64c9d14b89dd8468cc46"
     ],
+    "dependents": [],
     "feature_id": "f-0462f12c54fc19883f0bd088ee41c4d4786c9f418a554de164efddb6ef65983e",
     "feature_label": "Date-Scoped Bike Dashboard",
     "first_index": 23,
@@ -3542,9 +3786,11 @@
     ],
     "change_count": 0,
     "checkpoint": "f-08d47cb152cb32807be0765cf03c70a75dc1dab690d4a3326ab9d5fb706faa60@0",
+    "clean": true,
     "commit_shas": [
      "196f7b6a94ced03d25ba50009f5d50fd2e2a6fa2"
     ],
+    "dependents": [],
     "feature_id": "f-08d47cb152cb32807be0765cf03c70a75dc1dab690d4a3326ab9d5fb706faa60",
     "feature_label": "Hourly Ride Averages",
     "first_index": 1,
@@ -3617,10 +3863,31 @@
     ],
     "change_count": 2,
     "checkpoint": "f-0a0f11c83615a1c57c3dcbfe243d9b1968ed5d8cc2f12dd8409f3ac2fde28afb@0",
+    "clean": false,
     "commit_shas": [
      "977e808a7e2cd574d68489110ad4dd844c340044",
      "0c56354027ee87bd3de380b4e56032556996b2c7",
      "e36a2d246bfc938c32677b77ef05c52619b9dec3"
+    ],
+    "dependents": [
+     {
+      "ref": "f-0462f12c54fc19883f0bd088ee41c4d4786c9f418a554de164efddb6ef65983e@2",
+      "symbols": [
+       "bikecount/pages/monthly.py::render"
+      ]
+     },
+     {
+      "ref": "f-0462f12c54fc19883f0bd088ee41c4d4786c9f418a554de164efddb6ef65983e@4",
+      "symbols": [
+       "bikecount/pages/monthly.py::render"
+      ]
+     },
+     {
+      "ref": "f-0462f12c54fc19883f0bd088ee41c4d4786c9f418a554de164efddb6ef65983e@5",
+      "symbols": [
+       "bikecount/pages/overview.py::render"
+      ]
+     }
     ],
     "feature_id": "f-0a0f11c83615a1c57c3dcbfe243d9b1968ed5d8cc2f12dd8409f3ac2fde28afb",
     "feature_label": "Monthly Totals",
@@ -3696,9 +3963,11 @@
     ],
     "change_count": 0,
     "checkpoint": "f-0a0f11c83615a1c57c3dcbfe243d9b1968ed5d8cc2f12dd8409f3ac2fde28afb@1",
+    "clean": true,
     "commit_shas": [
      "22496d8505bd38ee8c9b648a8df3039cfbe29f4c"
     ],
+    "dependents": [],
     "feature_id": "f-0a0f11c83615a1c57c3dcbfe243d9b1968ed5d8cc2f12dd8409f3ac2fde28afb",
     "feature_label": "Monthly Totals",
     "first_index": 21,
@@ -3739,9 +4008,11 @@
     ],
     "change_count": 0,
     "checkpoint": "f-18993795eb18698816549454445408aed43db5894f59ad2acd0f96631abc9ef0@0",
+    "clean": true,
     "commit_shas": [
      "a65651559cb22f3d18102c0f926d6621947f8dd5"
     ],
+    "dependents": [],
     "feature_id": "f-18993795eb18698816549454445408aed43db5894f59ad2acd0f96631abc9ef0",
     "feature_label": "Daily CSV Download",
     "first_index": 17,
@@ -3775,9 +4046,11 @@
     "asks": [],
     "change_count": 0,
     "checkpoint": "f-1fe33edc98b39954121b9311c231b472c438ebbc766aeba2a89d01f65bdf2691@0",
+    "clean": true,
     "commit_shas": [
      "e2617473eb7b2ff5a62e20bf7dfe4dec951bc838"
     ],
+    "dependents": [],
     "feature_id": "f-1fe33edc98b39954121b9311c231b472c438ebbc766aeba2a89d01f65bdf2691",
     "feature_label": "Date Window Selection",
     "first_index": 0,
@@ -3819,9 +4092,11 @@
     ],
     "change_count": 6,
     "checkpoint": "f-1fe33edc98b39954121b9311c231b472c438ebbc766aeba2a89d01f65bdf2691@1",
+    "clean": true,
     "commit_shas": [
      "22496d8505bd38ee8c9b648a8df3039cfbe29f4c"
     ],
+    "dependents": [],
     "feature_id": "f-1fe33edc98b39954121b9311c231b472c438ebbc766aeba2a89d01f65bdf2691",
     "feature_label": "Date Window Selection",
     "first_index": 21,
@@ -3925,8 +4200,24 @@
     ],
     "change_count": 3,
     "checkpoint": "f-2f19b51026537ab022ae93582b156f83c9b4e74cdee852f33eadc4a240bdf9a8@0",
+    "clean": false,
     "commit_shas": [
      "ca89fc2856009469ed8ca11ed0999e3702ffa334"
+    ],
+    "dependents": [
+     {
+      "ref": "f-2f19b51026537ab022ae93582b156f83c9b4e74cdee852f33eadc4a240bdf9a8@1",
+      "symbols": [
+       "bikecount/pages/sides.py::render"
+      ]
+     },
+     {
+      "ref": "f-0462f12c54fc19883f0bd088ee41c4d4786c9f418a554de164efddb6ef65983e@4",
+      "symbols": [
+       "bikecount/metrics.py::side_totals",
+       "bikecount/pages/sides.py::render"
+      ]
+     }
     ],
     "feature_id": "f-2f19b51026537ab022ae93582b156f83c9b4e74cdee852f33eadc4a240bdf9a8",
     "feature_label": "East-West Share Trends",
@@ -4002,8 +4293,18 @@
     ],
     "change_count": 2,
     "checkpoint": "f-2f19b51026537ab022ae93582b156f83c9b4e74cdee852f33eadc4a240bdf9a8@1",
+    "clean": false,
     "commit_shas": [
      "dbd71ffb4c24ad4277a8c7b02a1ac651f62901a9"
+    ],
+    "dependents": [
+     {
+      "ref": "f-0462f12c54fc19883f0bd088ee41c4d4786c9f418a554de164efddb6ef65983e@4",
+      "symbols": [
+       "bikecount/metrics.py::west_share_by_year",
+       "bikecount/pages/sides.py::render"
+      ]
+     }
     ],
     "feature_id": "f-2f19b51026537ab022ae93582b156f83c9b4e74cdee852f33eadc4a240bdf9a8",
     "feature_label": "East-West Share Trends",
@@ -4066,9 +4367,11 @@
     ],
     "change_count": 0,
     "checkpoint": "f-387362ac1b137dde057db4bbea661e80f4b65c159ed00f8ead1dc60b924020db@0",
+    "clean": true,
     "commit_shas": [
      "ca89fc2856009469ed8ca11ed0999e3702ffa334"
     ],
+    "dependents": [],
     "feature_id": "f-387362ac1b137dde057db4bbea661e80f4b65c159ed00f8ead1dc60b924020db",
     "feature_label": "East-West Comparison",
     "first_index": 11,
@@ -4115,9 +4418,11 @@
     ],
     "change_count": 0,
     "checkpoint": "f-3dfdb3897807d281803c804955c9de3f9c0b8efc24f2fd683a45df3eff422277@0",
+    "clean": true,
     "commit_shas": [
      "22496d8505bd38ee8c9b648a8df3039cfbe29f4c"
     ],
+    "dependents": [],
     "feature_id": "f-3dfdb3897807d281803c804955c9de3f9c0b8efc24f2fd683a45df3eff422277",
     "feature_label": "Date Window",
     "first_index": 21,

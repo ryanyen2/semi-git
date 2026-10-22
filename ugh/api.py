@@ -3330,7 +3330,161 @@ def _segments_out(repo, op_leaf, tree_result) -> list[dict]:
                 **_segment_symbols(s, by_id, op_commit, files_with_entities, head_op_ids,
                                    masks, tips),
             })
+    _segment_dependents(repo, out, idx_ops, by_id, head_op_ids)
     return out
+
+
+DEPENDENT_SYMBOL_CAP = 8
+
+
+def _segment_dependents(repo, segs, ops, by_id, live) -> None:
+    """What standing on each checkpoint looks like before anyone previews a revert: `dependents`,
+    the later live checkpoints whose work reverting this one would rewrite or leave naming removed
+    code (each with up to 8 shared names a reader sees), and `clean`, whether that revert takes the
+    work out outright with nothing later standing on it. `None` for a checkpoint with no live work.
+
+    Answered from the per-symbol chains once, never by planning a revert per checkpoint: the same
+    rules `ugh.core.subtract.plan_subtraction` applies, on precomputed chains. Its removal is the
+    checkpoint's live ops, their declared dependents, every later op on a symbol the checkpoint
+    created, and the layout siblings of what that removes, to a fixpoint. A revert is outright
+    exactly when that removal is closed upward (no chain, `requires` or declared successor outside
+    it) and no collateral op in it owes an edit elsewhere -- otherwise it layers a rework over
+    later work. Dependents are the checkpoints owning (a) collateral ops of that removal, (b) later
+    edits on a symbol the removal subtracts from, (c) ops requiring a symbol it created.
+
+    Where this and the real revert disagree: (b) lists a later edit even when the splice would be a
+    no-op because that edit replaced the checkpoint's lines outright; (c) lists a reference a later
+    edit has since rewritten away, because `requires` is not recorded on every version (an op that
+    changes the caller and the callee together records none), so it cannot be checked against the
+    current text; the byte-level sweep for names inside strings and callbacks
+    (`_broken_references`) is not run, so such a dependent is missed. A checkpoint linked only
+    through layout (gaps, anchors) makes `clean` false without becoming a dependent."""
+    from ugh.core import lens, order
+    from ugh.core.op import _symbol_kind
+    from ugh.core.subtract import _born_symbols
+
+    if not live:
+        for seg in segs:
+            seg["dependents"], seg["clean"] = [], None
+        return
+    chains = order.ordered_chains(live, ops)  # the walk `tips` above already paid for
+    pos_memo: dict[str, dict[str, int]] = {}
+
+    def _pos(sym: str) -> dict[str, int]:
+        hit = pos_memo.get(sym)
+        if hit is None:
+            hit = pos_memo[sym] = {oid: i for i, oid in enumerate(chains[sym])}
+        return hit
+    seg_of = {oid: i for i, seg in enumerate(segs) for oid in seg["op_ids"]}
+    standing = {i for i, seg in enumerate(segs) if seg.get("state") in ("live", "partial")}
+    requirers: dict[str, set[str]] = {}
+    version_users: dict[tuple[str, str], set[str]] = {}
+    for oid in live:
+        for req in by_id[oid].requires:
+            requirers.setdefault(req[0], set()).add(oid)
+            version_users.setdefault(req, set()).add(oid)
+    declared_of: dict[str, set[str]] = {}
+    for a, b in lens._load_declared(repo):
+        if a in live and b in live:
+            declared_of.setdefault(a, set()).add(b)
+
+    def _declared_closure(seed) -> set[str]:
+        out, todo = set(seed), list(seed)
+        while todo:
+            for dep in declared_of.get(todo.pop(), ()):
+                if dep not in out:
+                    out.add(dep)
+                    todo.append(dep)
+        return out
+
+    suffix_memo: dict[str, list[frozenset[int]]] = {}
+
+    def _later_segs(sym: str, i: int) -> frozenset[int]:
+        """The checkpoints owning an op after position `i` on `sym`'s chain (memoised per chain)."""
+        suf = suffix_memo.get(sym)
+        if suf is None:
+            chain, acc, suf = chains[sym], set(), []
+            for oid in reversed(chain):
+                suf.append(frozenset(acc))
+                if oid in seg_of:
+                    acc.add(seg_of[oid])
+            suf.reverse()
+            suffix_memo[sym] = suf
+        return suf[i]
+
+    def _named(sym: str) -> bool:
+        return _symbol_kind(sym) in _NAMED_KINDS
+
+
+    for x, seg in enumerate(segs):
+        targets = {oid for oid in seg["op_ids"] if oid in live}
+        if x not in standing or not targets:
+            seg["dependents"], seg["clean"] = [], None
+            continue
+        while True:  # plan_subtraction's removal + layout-sibling fixpoint
+            whole = _declared_closure(targets)
+            born = _born_symbols(whole, by_id)
+            on_born = {o for sym in born for o in chains.get(sym, ())}
+            removal = _declared_closure(whole | on_born)
+            also = set()
+            for sym in _born_symbols(removal, by_id):
+                path, sep, name = sym.partition("::")
+                if sep and name and "::__" not in sym and "." not in name:
+                    for sib in (f"{path}::__residue__::{name}", f"{path}::__anchor__::{name}"):
+                        also.update(chains.get(sib, ()))
+            also -= removal
+            if not also:
+                break
+            targets |= also
+
+        def _producer_in_removal(oid: str, sym: str) -> bool:
+            i = _pos(sym).get(oid, 0)
+            return i > 0 and chains[sym][i - 1] in removal
+
+        outright = True
+        shared: dict[int, set[str]] = {}
+        declared_deps: set[int] = set()
+        x_syms = {sym for t in whole for sym in by_id[t].footprint} | born
+        for r in removal:
+            op = by_id[r]
+            collateral = r not in whole
+            for sym, (before, after) in op.footprint.items():
+                chain = chains.get(sym)
+                i = _pos(sym).get(r) if chain else None
+                if i is None:
+                    continue
+                if i + 1 < len(chain) and chain[i + 1] not in removal:
+                    outright = False  # later work on this symbol survives: a rework, not a removal
+                if version_users.get((sym, after), set()) - removal:
+                    outright = False
+                if collateral and (before is None or not _producer_in_removal(r, sym)):
+                    outright = False  # the op owes an edit elsewhere; it is spliced, not removed
+                owes = not collateral or sym in born or _producer_in_removal(r, sym)
+                if owes and _named(sym):
+                    for d in _later_segs(sym, i):
+                        shared.setdefault(d, set()).add(sym)  # (b)
+            if declared_of.get(r, set()) - removal:
+                outright = False
+            if r not in targets and r in seg_of:
+                names = {sym for sym in op.footprint if _named(sym) and sym in x_syms}
+                if names:
+                    shared.setdefault(seg_of[r], set()).update(names)  # (a)
+                elif r not in on_born:
+                    declared_deps.add(seg_of[r])  # taken whole by a declared edge, nothing shared
+        for sym in born:
+            if not _named(sym):
+                continue
+            for o in requirers.get(sym, set()) - removal:
+                if o in seg_of:
+                    shared.setdefault(seg_of[o], set()).add(sym)  # (c)
+        deps = [d for d in (set(shared) | declared_deps) if d != x and d in standing]
+        deps.sort(key=lambda d: (segs[d]["first_index"], segs[d]["checkpoint"]))
+        seg["dependents"] = [
+            {"ref": segs[d]["checkpoint"],
+             "symbols": sorted(shared.get(d, ()))[:DEPENDENT_SYMBOL_CAP]}
+            for d in deps
+        ]
+        seg["clean"] = outright and not deps
 
 
 def segments_view(repo) -> list[dict]:

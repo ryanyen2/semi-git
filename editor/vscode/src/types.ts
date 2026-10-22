@@ -606,6 +606,15 @@ export interface IntentSegment {
   change_count?: number;
   symbols_truncated?: number;
   state?: "live" | "reverted" | "partial" | null;
+  // What stands on the chapter, without a preview (`ugh.api._segment_dependents`): the later live
+  // chapters a revert of it would rewrite or leave naming removed code, sorted by their first
+  // commit, each with up to 8 shared names a reader sees. A dependent can start before this
+  // chapter when one of its later saves builds on it. `clean` is true when nothing stands on it
+  // and the revert removes its work outright; false when later work stands on it or the revert
+  // would layer a rework (a chapter linked only through layout is false with no dependent); null
+  // when the chapter has no live work to take out.
+  dependents?: { ref: string; symbols: string[] }[];
+  clean?: boolean | null;
 }
 
 // One commit-keyed `IntentAtom` from `ugh.api.intent_view` (only the fields the hover reads are

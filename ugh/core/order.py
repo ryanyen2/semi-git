@@ -53,6 +53,10 @@ _VALID_CACHE_MAX = 64
 # copied per call; the memoized one is never handed out.
 _FRONTIER_CACHE: "OrderedDict[frozenset, dict[str, str]]" = OrderedDict()
 _FRONTIER_CACHE_MAX = 32
+# `ordered_chains` memo, same key and argument as `_FRONTIER_CACHE`; kept small because a chain
+# map holds every in-ideal (op, symbol) pair, not one tip per symbol.
+_CHAINS_CACHE: "OrderedDict[frozenset, dict[str, list[str]]]" = OrderedDict()
+_CHAINS_CACHE_MAX = 4
 
 
 def chain_edges(ops: list[Op]) -> frozenset[Edge]:
@@ -536,6 +540,23 @@ def _ordered_chains(ideal_ids, ops: list[Op]) -> dict[str, list[str]]:
     return chains
 
 
+def ordered_chains(ideal_ids, ops: list[Op]) -> dict[str, list[str]]:
+    """`_ordered_chains`, memoised on the id set exactly as `frontier` is (chains read only the
+    in-ideal ops' footprints, which their ids fix). `frontier` and the per-checkpoint dependents
+    read (`ugh.api._segment_dependents`) share one walk per ideal. The lists are shared: callers
+    must not mutate them."""
+    key = frozenset(ideal_ids)
+    hit = _CHAINS_CACHE.get(key)
+    if hit is not None:
+        _CHAINS_CACHE.move_to_end(key)
+        return hit
+    result = _ordered_chains(key, ops)
+    _CHAINS_CACHE[key] = result
+    if len(_CHAINS_CACHE) > _CHAINS_CACHE_MAX:
+        _CHAINS_CACHE.popitem(last=False)
+    return result
+
+
 def frontier(ideal_ids, ops: list[Op]) -> dict[str, str]:
     """Per-symbol frontier (the ADR's per-chain frontier vector): for each symbol touched
     anywhere in the ideal, the id of the *maximal* in-ideal op for that symbol's chain -- the
@@ -559,7 +580,7 @@ def frontier(ideal_ids, ops: list[Op]) -> dict[str, str]:
     if hit is not None:
         _FRONTIER_CACHE.move_to_end(key)
         return dict(hit)
-    result = {sym: seq[-1] for sym, seq in _ordered_chains(key, ops).items()}
+    result = {sym: seq[-1] for sym, seq in ordered_chains(key, ops).items()}
     _FRONTIER_CACHE[key] = result
     if len(_FRONTIER_CACHE) > _FRONTIER_CACHE_MAX:
         _FRONTIER_CACHE.popitem(last=False)

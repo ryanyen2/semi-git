@@ -98,6 +98,9 @@ def test_segments_carry_documented_keys_and_addressable_checkpoint(tmp_path):
         # so a card can say "1 change · 1 function · 1 save" without a dry run, and never an op
         # count (most ops are residue/anchor bookkeeping a reader does not recognise).
         "symbols", "symbol_count", "change_count", "symbols_truncated", "state", "taken_out_by",
+        # What stands on the chapter before any preview: the later live chapters a revert would
+        # rewrite or leave naming removed code, and whether that revert removes it outright.
+        "dependents", "clean",
     }
     assert s["checkpoint"] == "F-A@0"
     assert s["feature_label"] == "Foo Feature"
@@ -106,11 +109,54 @@ def test_segments_carry_documented_keys_and_addressable_checkpoint(tmp_path):
                              "live": True}]
     assert (s["symbol_count"], s["change_count"], s["symbols_truncated"]) == (1, 1, 0)
     assert s["state"] == "live"
+    assert (s["dependents"], s["clean"]) == ([], True)
     # Per-chapter captured asks: an excerpt plus whose words they were, never the raw prompt --
     # this list draws every chapter of every feature (`stint.ask_record`, `full=False`).
     assert isinstance(s["asks"], list)
     assert all({"gist", "source", "trimmed", "chars"} <= set(a) and "text" not in a
                for a in s["asks"])
+
+
+def test_segments_say_what_stands_on_them_and_which_revert_is_clean(tmp_path):
+    """Before any preview, each checkpoint says which later live checkpoints a revert of it would
+    rewrite or leave naming removed code, and whether that revert removes it outright. `foo` is
+    called by `bar`, and a later save edits both: taking out F-A leaves `bar` calling a removed
+    `foo`; taking out F-B rewrites the later edit of `bar`; nothing stands on `baz`. A chapter
+    already taken out has nothing to say (`clean` None)."""
+    from ugh.core import verbs
+    from ugh.core.store import Store
+    from ugh.lens import tree
+
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    (tmp_path / "c.py").write_text("def baz():\n    return 3\n", encoding="utf-8")
+    gb.commit_all("add foo and baz")
+    get(tmp_path)
+    (tmp_path / "b.py").write_text("from a import foo\n\n\ndef bar():\n    return foo()\n", encoding="utf-8")
+    gb.commit_all("add bar calling foo")
+    get(tmp_path)
+    (tmp_path / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("from a import foo\n\n\ndef bar():\n    return foo() + 1\n",
+                                   encoding="utf-8")
+    gb.commit_all("foo returns two, bar adds one")
+    get(tmp_path)
+    nodes = {f: {"parent": None, "children": [], "members": [m], "size": 1, "dir": "", "label": f}
+             for f, m in (("F-A", "a.py::foo"), ("F-B", "b.py::bar"), ("F-C", "c.py::baz"))}
+    tree.save(tmp_path, {"nodes": nodes, "roots": sorted(nodes),
+                         "op_leaf": tree.assign_ops_to_leaves(nodes, Store(tmp_path).all_ops()),
+                         "max_depth": 0, "cannot_link_moves": [], "identity_events": []})
+
+    by_ref = {s["checkpoint"]: s for s in intent_view(tmp_path)["segments"]}
+    assert (by_ref["F-A@0"]["dependents"], by_ref["F-A@0"]["clean"]) == (
+        [{"ref": "F-B@0", "symbols": ["a.py::foo"]}], False)
+    assert (by_ref["F-B@0"]["dependents"], by_ref["F-B@0"]["clean"]) == (
+        [{"ref": "F-A@0", "symbols": ["b.py::bar"]}], False)
+    assert (by_ref["F-C@0"]["dependents"], by_ref["F-C@0"]["clean"]) == ([], True)
+
+    baz_ops = frozenset(by_ref["F-C@0"]["op_ids"])
+    verbs.apply(tmp_path, verbs.plan_revert_op_set(tmp_path, "F-C@0", baz_ops))
+    taken_out = next(s for s in intent_view(tmp_path)["segments"] if s["checkpoint"] == "F-C@0")
+    assert (taken_out["state"], taken_out["dependents"], taken_out["clean"]) == ("reverted", [], None)
 
 
 def test_cross_feature_theme_reports_both_features_with_correct_tier(tmp_path, monkeypatch):
