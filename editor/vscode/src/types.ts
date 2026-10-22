@@ -59,6 +59,10 @@ export interface HistoryCommit {
   sha: string;
   subject: string;
   index: number;
+  // Committer time (`%ct`) and whether the commit carries only bookkeeping -- both emitted by
+  // `history_view` for a long time, and pinned in the `log` golden; this mirror just lacked them.
+  ts?: number | null;
+  bookkeeping?: boolean;
 }
 
 export interface HistoryOp {
@@ -221,6 +225,22 @@ export interface EmitView {
   checkpoint?: string;
   // The "Focus & Morph" subgraph the webview dims-and-morphs from (ugh.api.focus_subgraph).
   focus?: FocusView;
+  // The one-line consequence (`ugh.api.so_what_for`) and the ops the user actually named, as
+  // opposed to what the closure swept up; `removed` is empty for the ordinary forward-subtraction
+  // revert, so a count read off it says "0 edits".
+  so_what?: string;
+  target_ops?: string[];
+  // A forked refusal, structured: the live op the edit collides with (what a swap takes out), the
+  // symbol's live tip, and the op that wanted in; `[]` on every ok preview.
+  conflicts?: { symbol: string; live_op: string; live_tip: string; requested_op: string }[];
+  // The subtraction report (`ugh.core.subtract`): symbols rewritten in place with the target's
+  // contribution cut out, symbols removed entirely, symbols left with two overlapping versions, and
+  // survivors still naming removed code. For a checkpoint, feature or theme target these -- plus
+  // `focus.nodes` -- are the consequence; `frontier` is always empty for one.
+  subtracted_symbols?: string[];
+  pruned_symbols?: string[];
+  kept_conflicts?: string[];
+  broken_references?: string[];
 }
 
 // `ugh merge <survivor> <absorbed> --json`.
@@ -310,6 +330,9 @@ export interface PlanSession {
   // Best-effort Claude Code session id captured at intake; when present, Resume relaunches this
   // exact conversation via `claude --resume <id>`, else the bare `claude --resume` picker.
   claude_session_id?: string | null;
+  // True when a live `ugh session` shares this plan's `claude_session_id`: its steps also match
+  // against that session's work, so the matched fraction counts work not yet landed.
+  matched_in_session?: boolean;
 }
 
 export interface CheckpointGroup {
@@ -407,12 +430,41 @@ export interface SessionInfo {
   scratch: string;
   new_op_count: number;
   owner_pid: number | null;
+  // The process fact: the process that started it still exists (for an agent, the whole Claude
+  // Code process). Not "someone is working on it" -- that is `last_change_ts`.
   alive: boolean;
+  // The Claude Code session that started it; joins `PlanSession.claude_session_id`.
+  claude_session_id: string | null;
+  // "claude" when started under Claude Code, "terminal" otherwise, null for an older record.
+  started_by: "claude" | "terminal" | null;
+  // Commits on the session branch its target branch lacks, and whether the scratch tree has
+  // uncommitted source. A session with neither is what `ugh session gc` cleans up once it is dead.
+  unlanded: number;
+  uncommitted: boolean;
+  // Unix seconds: the newest of its start, its own commits, and its dirty files' mtimes.
+  last_change_ts: number;
+  // K9: the lanes this session's own work touched, by the symbols a reader sees (never a
+  // `__residue__`/`__anchor__`/`__import__` sentinel), each list capped at 24.
+  touched: SessionTouch[];
+  symbols_truncated: boolean;
+  // Each touched symbol counted once per save that touched it; uncommitted work is one save.
+  change_count: number;
 }
 
+// `feature_id` is a `compose.map.nodes[].id`, or null for new code no lane owns yet.
+export interface SessionTouch {
+  feature_id: string | null;
+  symbols: string[];
+}
+
+// Two sessions that changed the same symbols, or (`branch === true`) a session `a` and its target
+// branch `b`, which changed `symbols` since the session's base: what landing `a` must reconcile. A
+// session pair carries no `branch` and raw footprints, sentinels included; a branch entry carries
+// only symbols a reader sees.
 export interface SessionOverlap {
   a: string;
   b: string;
+  branch?: true;
   symbols: string[];
 }
 
@@ -542,6 +594,18 @@ export interface IntentSegment {
   tier: "coupled" | "co-changed" | "thematic";
   source: "llm" | "fallback" | "words";
   asks: CapturedAsk[];
+  // The named symbols the chapter touched (`ugh.api._segment_symbols`): a function, class or
+  // whole file, never residue/anchor/import bookkeeping, with the kind read off the symbol's own
+  // chain inside the chapter and the saves (commit indices) that touched it. `change_count` is the
+  // sum of those saves, so "6 changes · 4 functions · 3 saves" is true by construction; an op
+  // count is mostly bookkeeping and never reaches a reader. `state` is read per symbol: a
+  // forward-subtraction revert keeps ops in the ideal under a masking rework, so
+  // `present_op_count === 0` is not "taken out" (15 of 22 reverted footfall chapters read live).
+  symbols?: { symbol: string; file: string; kind: "added" | "changed" | "removed" | "moved"; saves: number[]; live: boolean }[];
+  symbol_count?: number;
+  change_count?: number;
+  symbols_truncated?: number;
+  state?: "live" | "reverted" | "partial" | null;
 }
 
 // One commit-keyed `IntentAtom` from `ugh.api.intent_view` (only the fields the hover reads are

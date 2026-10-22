@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<!-- Local dev preview of the ledger webview (media/ledger.js) outside VS Code. Mocks
+     acquireVsCodeApi, supplies VS Code theme tokens, feeds `dev/fixture-ledger.json` (a compose_view
+     capture of the bikecount study repo with the per-checkpoint `symbols`/`state`, plus three
+     revert dry runs) and answers the page's `requestChange` from those dry runs. Serve
+     `editor/vscode` and open /dev/ledger-preview.html?t=light|dark. Not shipped. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<link href="../media/ledger.css" rel="stylesheet">
+<style>
+:root {
+  --vscode-editor-background: #1f1f1f; --vscode-editorWidget-background: #202020; --vscode-foreground: #cccccc;
+  --vscode-descriptionForeground: #9d9d9d; --vscode-panel-border: #2b2b2b; --vscode-focusBorder: #0078d4;
+  --vscode-list-hoverBackground: #2a2d2e; --vscode-list-activeSelectionBackground: #37373d; --vscode-input-background: #313131;
+  --vscode-textCodeBlock-background: #181818; --vscode-button-background: #0078d4; --vscode-button-foreground: #ffffff;
+  --vscode-testing-iconPassed: #73c991; --vscode-testing-iconFailed: #f14c4c; --vscode-editorWarning-foreground: #cca700;
+  --vscode-charts-orange: #d18616; --vscode-editor-font-family: "SF Mono", Menlo, Consolas, monospace;
+  --vscode-font-family: -apple-system, "Segoe UI", system-ui, sans-serif; color-scheme: dark;
+}
+:root[data-theme="light"] {
+  --vscode-editor-background: #ffffff; --vscode-editorWidget-background: #f8f8f8; --vscode-foreground: #3b3b3b;
+  --vscode-descriptionForeground: #717171; --vscode-panel-border: #e5e5e5; --vscode-focusBorder: #005fb8;
+  --vscode-list-hoverBackground: #f2f2f2; --vscode-list-activeSelectionBackground: #e8e8e8; --vscode-input-background: #ffffff;
+  --vscode-textCodeBlock-background: #f5f5f5; --vscode-button-background: #005fb8; --vscode-button-foreground: #ffffff;
+  --vscode-testing-iconPassed: #388a34; --vscode-testing-iconFailed: #e51400; --vscode-editorWarning-foreground: #bf8803;
+  --vscode-charts-orange: #d18616; color-scheme: light;
+}
+html, body { margin: 0; height: 100%; }
+</style>
+</head>
+<body>
+<div id="wb">
+  <header class="top">
+    <div class="brand">ugh<span class="repo">bikecount</span></div>
+    <div class="find-wrap">
+      <input id="find" class="find" type="search" spellcheck="false" autocomplete="off" placeholder="find a function, a feature, or the words you asked for" />
+      <div id="findResults" class="find-results" hidden></div>
+    </div>
+    <div class="actions">
+      <button id="workbenchBtn" class="tbtn" title="open the Composition Workbench (the timeline)">Timeline</button>
+      <button id="undoBtn" class="tbtn" title="undo the last thing ugh did">Undo</button>
+      <button id="saveBtn" class="tbtn primary" title="record your edits as a save">Save</button>
+    </div>
+  </header>
+  <div id="main" class="main">
+    <div class="page">
+      <div id="themesLine" class="themes-line"></div>
+      <div id="strip" class="strip" hidden></div>
+      <div id="rows" class="rows"></div>
+      <div id="foot" class="foot"></div>
+    </div>
+    <aside id="note" class="note" hidden></aside>
+  </div>
+  <footer class="status"><span id="statusLeft" class="s-left"></span><span id="statusRight" class="s-right"></span></footer>
+</div>
+<script>
+  const q = new URLSearchParams(location.search);
+  if (q.get("t")) document.documentElement.setAttribute("data-theme", q.get("t"));
+  let _st = null; window.__posted = []; window.__fixture = null;
+  // Smooth scrolling does not advance under headless virtual time, so a probe would read the pane
+  // before it moved; `?instant=1` makes every scrollIntoView jump instead.
+  if (q.get("instant")) { const s = Element.prototype.scrollIntoView; Element.prototype.scrollIntoView = function (o) { return s.call(this, typeof o === "object" ? { ...o, behavior: "instant" } : o); }; }
+  // The host, mocked: answers `ready` with the state and `requestChange` from the captured dry runs,
+  // after a short delay so the two-pass draw is exercised; an apply walks the phases and then pushes
+  // the same state again (nothing here mutates).
+  window.acquireVsCodeApi = () => ({
+    postMessage(msg) {
+      window.__posted.push(msg);
+      const send = (data, ms) => setTimeout(() => window.dispatchEvent(new MessageEvent("message", { data })), ms || 0);
+      if (msg.type === "ready") send({ type: "state", compose: window.__fixture.compose });
+      if (msg.type === "requestChange") { const view = window.__fixture.emits[msg.ref] || { ok: false, verb: msg.verb, target: msg.ref, files: {}, message: "no dry run captured for this checkpoint in the dev fixture" }; send({ type: "changeResult", seq: msg.seq, ref: msg.ref, verb: msg.verb, view }, 400); }
+      if (msg.type === "applyStaged") { ["checking", "applying", "refreshing"].forEach((phase, i) => send({ type: "applyProgress", verb: msg.verb, ref: msg.ref, phase }, 300 + i * 350)); send({ type: "applyProgress", verb: msg.verb, ref: msg.ref, phase: "done", detail: "recorded as save 8ebad53" }, 1400);
+        // A fixture with an `after` compose (captured after a real apply) pushes it as the new state,
+        // the way the host does, so the ledger's state-diff choreography runs on real data.
+        const fx = window.__fixture; if (fx.after) { Object.assign(fx.emits, fx.after_emits || {}); send({ type: "state", compose: fx.after }, 1500); } }
+    },
+    getState: () => _st, setState: (s) => { _st = s; },
+  });
+</script>
+<script src="../media/motion.js"></script>
+<script>
+  fetch(`./${q.get("fx") || "fixture-ledger.json"}`).then((r) => r.json()).then((fx) => { window.__fixture = fx; const s = document.createElement("script"); s.src = "../media/ledger.js"; document.body.appendChild(s); });
+</script>
+<script>
+  // Headless driver: `?do=open:hourly,stage:hourly,wait:1500,go,wait:3500,probe` walks the ledger the
+  // way a reader would and leaves a <pre id="PROBE"> for --dump-dom. Names resolve through the
+  // fixture (`fx.hourly`, `fx.datewin`); `go` clicks the note's action once it is enabled.
+  (function drive() {
+    const steps = (q.get("do") || "").split(",").filter(Boolean); if (!steps.length) return;
+    const ref = (n) => (window.__fixture && window.__fixture[n]) || n;
+    const noteBtn = () => [...document.querySelectorAll(".note button")].find((b) => /^(Take out|Put back)/.test(b.textContent.trim()) && !b.disabled);
+    const probe = () => {
+      const fx = window.__fixture, refs = [fx.hourly, fx.datewin];
+      const rows = [...document.querySelectorAll(".row")].filter((r) => refs.includes(r.dataset.ref)).map((r) => `${r.className} | ${r.innerText.replace(/\s+/g, " ").slice(0, 220)}`);
+      const note = document.querySelector(".note"); const foot = document.querySelector("footer.status");
+      const pre = document.createElement("pre"); pre.id = "PROBE";
+      const open = document.querySelector(".row.open"); const hunks = open ? open.querySelectorAll(".hunk").length : -1; const saves = open ? (open.querySelector(".saves") || {}).innerText : null; const hunkOpacity = open && open.querySelector(".hunk") ? getComputedStyle(open.querySelector(".hunk")).opacity : null;
+      const mainEl = document.getElementById("main"), noteEl = document.getElementById("note"); const mr = mainEl.getBoundingClientRect(), nr = noteEl.getBoundingClientRect();
+      const geo = { scrollTop: mainEl.scrollTop, clientH: mainEl.clientHeight, clientW: mainEl.clientWidth, noteParent: noteEl.parentNode && (noteEl.parentNode.id || noteEl.parentNode.className), noteTop: Math.round(nr.top - mr.top), noteBottom: Math.round(nr.bottom - mr.top), noteLeft: Math.round(nr.left - mr.left), noteHidden: noteEl.hidden };
+      pre.textContent = JSON.stringify({ geo, hunks, saves, hunkOpacity, rows, note: note ? note.innerText.replace(/\s+/g, " ").slice(0, 600) : null, foot: foot ? foot.innerText.replace(/\s+/g, " ") : null, posted: window.__posted.map((m) => m.type) });
+      document.body.appendChild(pre);
+    };
+    let i = 0;
+    const next = () => {
+      if (i >= steps.length) return;
+      const [name, arg] = steps[i++].split(":");
+      if (!window.__wb && name !== "wait") { setTimeout(next, 100); i--; return; }
+      if (name === "open") { window.__wb.toggleOpen(ref(arg)); setTimeout(next, 50); }
+      else if (name === "stage") { window.__wb.stage("revert", ref(arg)); setTimeout(next, 50); }
+      else if (name === "restore") { window.__wb.stage("restore", ref(arg)); setTimeout(next, 50); }
+      else if (name === "go") { const b = noteBtn(); if (b) { b.click(); setTimeout(next, 50); } else { i--; setTimeout(next, 100); } }
+      else if (name === "wait") setTimeout(next, Number(arg) || 500);
+      else if (name === "settle") { document.getAnimations().forEach((a) => { try { a.finish(); } catch (e) {} }); setTimeout(next, 50); }
+      else if (name === "probe") { probe(); setTimeout(next, 10); }
+      else if (name === "top") { const pre = document.createElement("pre"); pre.id = "PROBE"; const m = document.getElementById("main").getBoundingClientRect().top; pre.textContent = JSON.stringify([...document.querySelectorAll("#themesLine, #strip, #rows > *")].slice(0, 5).map((e) => ({ id: e.id, cls: e.className, hidden: e.hidden, top: Math.round(e.getBoundingClientRect().top - m), h: Math.round(e.getBoundingClientRect().height), text: e.innerText.replace(/\s+/g, " ").slice(0, 80) }))); document.body.appendChild(pre); setTimeout(next, 10); }
+      else setTimeout(next, 10);
+    };
+    setTimeout(next, 300);
+  })();
+</script>
+</body>
+</html>
