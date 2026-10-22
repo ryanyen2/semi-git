@@ -303,13 +303,35 @@ def _backfill_predicted_feature(repo: Path, steps: list[PlanStep]) -> None:
         return
     member_leaf = leaf_member_index(result["nodes"])
     for step in steps:
-        if step.predicted_feature is not None:
-            continue
-        votes = Counter(member_leaf[sym] for sym in step.predicted_footprint if sym in member_leaf)
-        if not votes:
-            continue
-        top_count = votes.most_common(1)[0][1]
-        step.predicted_feature = min(leaf for leaf, count in votes.items() if count == top_count)
+        if step.predicted_feature is None:
+            step.predicted_feature = _vote_leaf(member_leaf, step.predicted_footprint)
+
+
+def _vote_leaf(member_leaf: dict[str, str], symbols) -> str | None:
+    """The leaf most of `symbols` are members of (tie: smallest leaf id), or None if none is."""
+    votes = Counter(member_leaf[sym] for sym in symbols if sym in member_leaf)
+    if not votes:
+        return None
+    top_count = votes.most_common(1)[0][1]
+    return min(leaf for leaf, count in votes.items() if count == top_count)
+
+
+# A `file::Qualname` token in a step title, as the ugh-plan skill asks agents to write steps.
+_TITLE_SYMBOL_RE = re.compile(r"[\w./-]+::\w+(?:\.\w+)*")
+
+
+def step_feature(member_leaf: dict[str, str], step: dict) -> str | None:
+    """A read-time lane for a recorded step: its own `predicted_feature`, else the vote of its
+    `predicted_footprint`, else the vote of the `file::Symbol` tokens its title names. The
+    fallback decomposer (no LLM) keeps every footprint empty and the plan line verbatim as the
+    title, so the title is the only record of which code the agent said it would touch. Exact
+    membership only: a title naming no known symbol, or only a bare file, stays unplaced. Never
+    persisted, and never fed to the matcher -- a name in a title places a ghost, it does not
+    credit work."""
+    if step.get("predicted_feature"):
+        return step["predicted_feature"]
+    symbols = step.get("predicted_footprint") or _TITLE_SYMBOL_RE.findall(step.get("title", ""))
+    return _vote_leaf(member_leaf, symbols)
 
 
 # -- intake / abandon / staleness sweep ------------------------------------------------------------

@@ -73,11 +73,35 @@ def _start(repo, session_mod, name, base, task, as_json) -> int:
     return 0
 
 
-def _render_status(view: dict) -> None:
+def _holds(s: dict, reasons: tuple[str, ...]) -> str:
+    """What a session holds that its target branch lacks, from the view row's counts; `gc`'s own
+    reasons when the counts cannot say (a target branch that no longer resolves)."""
+    parts = []
+    if s["unlanded"]:
+        parts.append(f"{s['unlanded']} unlanded commit{'s' if s['unlanded'] != 1 else ''}")
+    if s["uncommitted"]:
+        parts.append("uncommitted edits")
+    return " and ".join(parts) or ", ".join(reasons)
+
+
+def _kept_by_gc(repo, session_mod, view: dict) -> dict[str, tuple[str, ...]]:
+    """Dead sessions `gc` would refuse to reap, with its reasons -- asked of `pending_work`, the
+    guard `gc` itself uses, so "gc will reap" is printed for exactly the sessions it removes."""
+    dead = {s["name"] for s in view["sessions"] if not s["alive"]}
+    return {s.name: reasons for s in session_mod.list_sessions(repo)
+            if s.name in dead and (reasons := session_mod.pending_work(s))}
+
+
+def _render_status(view: dict, kept: dict[str, tuple[str, ...]]) -> None:
     if not view["sessions"]:
         print("no active sessions")
     for s in view["sessions"]:
-        liveness = "alive" if s["alive"] else "DEAD (gc will reap)"
+        if s["alive"]:
+            liveness = "alive"
+        elif s["name"] in kept:
+            liveness = f"DEAD, holds {_holds(s, kept[s['name']])} -- gc keeps it"
+        else:
+            liveness = "DEAD (gc will reap)"
         print(f"  {s['name']}: {s['new_op_count']} new op(s), pid {s['owner_pid']} ({liveness}), "
               f"-> {s['target_branch']}")
     for pair in view["overlaps"]:
@@ -100,12 +124,13 @@ def _status(repo, session_mod, name, watch, as_json) -> int:
         view = _view()
         if as_json:
             return _emit_json(view)
-        _render_status(view)
+        _render_status(view, _kept_by_gc(repo, session_mod, view))
         return 0
 
     try:
         while True:
-            _render_status(_view())
+            view = _view()
+            _render_status(view, _kept_by_gc(repo, session_mod, view))
             time.sleep(2)
     except KeyboardInterrupt:
         return 0

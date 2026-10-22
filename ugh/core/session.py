@@ -12,9 +12,9 @@ the landing commit is mined into the *main* repo's store -- the same append-only
 enrichment U14's `ugh.loop.match._stamp_session` already uses for its own, unrelated notion of
 "session" (a plan-intake session). The two concepts share the convention, not the code.
 
-Owning-pid liveness (the crash-vs-leak distinction `gc` needs): `start` records
-`os.getppid()` -- the invoking agent/shell, since ugh's own CLI process is transient and its pid
-means nothing by the time anyone checks. `gc` treats a session as dead once `os.kill(pid, 0)`
+Owning-pid liveness (the crash-vs-leak distinction `gc` needs): `start` records Claude Code's
+own pid (`CLAUDE_PID`) when it runs under Claude Code, else `os.getppid()` -- the invoking shell,
+since ugh's own CLI process is transient and its pid means nothing by the time anyone checks. `gc` treats a session as dead once `os.kill(pid, 0)`
 raises `ProcessLookupError` (POSIX, stdlib, no new dependency).
 """
 
@@ -24,7 +24,7 @@ import os
 import time
 from dataclasses import dataclass
 
-from ugh.core import lens
+from ugh.core import lens, opindex
 from ugh.core.op import Attribution
 from ugh.core.store import Store
 from ugh.core.sync import land as _sync_land
@@ -49,6 +49,8 @@ class Session:
     base_op_ids: tuple[str, ...]  # the ideal at base_ref -- lets `land`/`status` diff "new since start"
     owner_pid: int
     started_at: float
+    claude_session_id: str | None = None  # the Claude Code session that started it, if any
+    started_by: str | None = None  # "claude" (CLAUDE_PID was set at start) | "terminal"; None = older record
 
 
 def _load(repo) -> dict[str, Session]:
@@ -58,7 +60,8 @@ def _load(repo) -> dict[str, Session]:
             name=name, branch=body["branch"], scratch=body["scratch"],
             target_branch=body["target_branch"], base_ref=body["base_ref"],
             base_op_ids=tuple(body["base_op_ids"]), owner_pid=body["owner_pid"],
-            started_at=body["started_at"],
+            started_at=body["started_at"], claude_session_id=body.get("claude_session_id"),
+            started_by=body.get("started_by"),
         )
         for name, body in raw.items()
     }
@@ -70,6 +73,7 @@ def _save(repo, sessions: dict[str, Session]) -> None:
             "branch": s.branch, "scratch": s.scratch, "target_branch": s.target_branch,
             "base_ref": s.base_ref, "base_op_ids": list(s.base_op_ids),
             "owner_pid": s.owner_pid, "started_at": s.started_at,
+            "claude_session_id": s.claude_session_id, "started_by": s.started_by,
         }
         for s in sessions.values()
     })
@@ -135,7 +139,13 @@ def start(repo, name: str, base: str | None = None, task: str | None = None) -> 
     session = Session(
         name=name, branch=branch, scratch=str(scratch), target_branch=target_branch,
         base_ref=base_sha, base_op_ids=tuple(sorted(base_ideal.op_ids)),
-        owner_pid=os.getppid(), started_at=time.time(),
+        # An agent runs `ugh session start` from a tool shell that exits as soon as the command
+        # does, so `getppid()` read dead within milliseconds. Claude Code exports its own pid
+        # (`CLAUDE_PID`, the long-lived `claude` process each tool shell is a child of) and its
+        # session id (`CLAUDE_CODE_SESSION_ID`, the key a plan records as `claude_session_id`).
+        owner_pid=int(os.environ.get("CLAUDE_PID") or os.getppid()), started_at=time.time(),
+        claude_session_id=os.environ.get("CLAUDE_CODE_SESSION_ID") or None,
+        started_by="claude" if os.environ.get("CLAUDE_PID") else "terminal",
     )
     sessions[name] = session
     _save(repo, sessions)
@@ -153,26 +163,60 @@ def start(repo, name: str, base: str | None = None, task: str | None = None) -> 
 
 def new_op_ids(session: Session) -> frozenset[str]:
     """The ops this session's scratch tree has added since it started -- mine-on-contact first
-    to absorb any committed-but-not-yet-mined work, then diff against the recorded base."""
+    to absorb any committed-but-not-yet-mined work, then diff against the recorded base.
+
+    The diff alone is not enough. The scratch tree re-mines the shared history into its own
+    store, and an ideal is not a function of the code: after a `ugh revert` on the target branch
+    the main ideal holds the verb's authored ops while the scratch holds what mining that commit
+    yields, so the diff named ops nobody in the session wrote (6 after one revert on a 12-commit
+    demo), and `land` stamped the session's name onto the main store's copies of them. An op is
+    the session's only when no base commit alone witnesses it: provenance in a session commit, or
+    none at all (the scratch's uncommitted work, or an op a verb minted inside the scratch)."""
     ideal = lens.get(session.scratch)
-    return frozenset(ideal.op_ids) - set(session.base_op_ids)
+    commits = {sha for sha, _parent, _subject in GitBinding(session.scratch).history(since=session.base_ref)}
+    return _since_base(session.scratch, ideal.op_ids, session.base_op_ids, commits)
 
 
-def footprint(session: Session) -> frozenset[str]:
-    """The symbols touched by `new_op_ids(session)` -- the footprint a sibling session's own new
-    ops might collide with (the early-fork warning's input)."""
-    store = Store(session.scratch)
-    by_id = {op.id: op for op in store.all_ops()}
+def target_op_ids(repo, session: Session) -> frozenset[str]:
+    """The ops `session.target_branch` has gained since the session's base: its ideal now, read
+    the way `start` read the base (`lens.ideal_for_ref`, from the main store), minus `base_op_ids`,
+    under the same provenance rule as `new_op_ids`. Empty when the branch has not moved. A pure
+    read: never mines, so it sees what the branch's commits record, not a dirty main tree."""
+    gb = GitBinding(repo)
+    tip = gb.rev_parse(f"refs/heads/{session.target_branch}")
+    if tip is None or tip == session.base_ref:
+        return frozenset()
+    commits = {sha for sha, _parent, _subject in gb.history(since=session.base_ref, target=tip)}
+    return _since_base(repo, lens.ideal_for_ref(repo, tip).op_ids, session.base_op_ids, commits)
+
+
+def _since_base(repo, ideal_ids, base_ids, commits) -> frozenset[str]:
+    """`ideal_ids` minus `base_ids`, keeping an op only when its provenance names one of `commits`
+    (the commits since the base) or is empty (uncommitted work, or an op a verb minted)."""
+    by_id = {op.id: op for op in opindex.index_ops(repo)}
     return frozenset(
-        sym for op_id in new_op_ids(session) if op_id in by_id for sym in by_id[op_id].footprint
+        oid for oid in frozenset(ideal_ids) - set(base_ids)
+        if oid in by_id and (not by_id[oid].provenance or commits.intersection(by_id[oid].provenance))
     )
 
 
-def overlaps(repo) -> tuple[dict, ...]:
+def footprint(session: Session, ids: frozenset[str] | None = None) -> frozenset[str]:
+    """The symbols touched by `new_op_ids(session)` -- the footprint a sibling session's own new
+    ops might collide with (the early-fork warning's input). `ids` is that set when the caller
+    already has it. Reads the footprint-only index, never the ops' images, so the cost is one
+    pass over a memoised parse instead of decoding the scratch's whole store."""
+    ids = new_op_ids(session) if ids is None else ids
+    return frozenset(sym for op in opindex.index_ops(session.scratch) if op.id in ids for sym in op.footprint)
+
+
+def overlaps(repo, new_ids: dict[str, frozenset[str]] | None = None) -> tuple[dict, ...]:
     """Every pair of live sessions whose new-op footprints share a symbol -- reported, never
-    blocked (S6/D5's early *warning*, not a lock): `{"a", "b", "symbols"}` per colliding pair."""
+    blocked (S6/D5's early *warning*, not a lock): `{"a", "b", "symbols"}` per colliding pair.
+    `new_ids` (session name -> `new_op_ids`) spares a caller that has them a second mine-on-contact
+    per session, which was most of `sessions_view`'s cost."""
     sessions = list_sessions(repo)
-    prints = {s.name: footprint(s) for s in sessions}
+    new_ids = new_ids or {}
+    prints = {s.name: footprint(s, new_ids.get(s.name)) for s in sessions}
     found = []
     for i, a in enumerate(sessions):
         for b in sessions[i + 1:]:
@@ -232,6 +276,27 @@ def pending_work(session: Session) -> tuple[str, ...]:
     if head is not None and not gb.is_ancestor(head, f"refs/heads/{session.target_branch}"):
         reasons.append("unlanded commits")
     return tuple(reasons)
+
+
+def activity(session: Session) -> tuple[int, bool, float]:
+    """What a surface shows about a session beside the process fact (`is_alive`): the commits on its
+    branch that its target branch lacks, whether its scratch has uncommitted source, and when it last
+    changed -- the newest of its start, those commits, and its dirty files' mtimes. `is_alive` says
+    whether the process that started it still exists, which for an agent is the whole Claude Code
+    process; this says whether anything is happening. A display read: `gc`'s guard stays
+    `pending_work`, which refuses rather than counts when the target branch cannot be resolved."""
+    if not os.path.isdir(session.scratch):
+        return 0, False, session.started_at
+    gb = GitBinding(session.scratch)
+    commits = gb.history_meta(since=f"refs/heads/{session.target_branch}")
+    dirty = gb.dirty_source_paths()
+    times = [session.started_at] + [ts for _sha, _parent, _subject, ts, _bk in commits if ts]
+    for path in dirty:
+        try:
+            times.append(os.stat(os.path.join(session.scratch, path)).st_mtime)
+        except OSError:
+            pass  # a deleted file has no mtime; the deletion is still uncommitted work
+    return len(commits), bool(dirty), max(times)
 
 
 def gc(repo, force: bool = False) -> tuple[str, ...]:

@@ -2115,11 +2115,24 @@ def plan_view(repo, *, full: bool = False) -> dict:
     # different name?") -- the "why isn't this matched" surface. Kept off the compact path (which
     # `now_view` reads on every refresh) so that hot path stays a pure count read.
     coverage = session_coverage(repo) if full else {}
+    # Read-time lanes for unplaced steps (`plan_mod.step_feature`); the map is only read for the
+    # full payload, the one that carries steps.
+    member_leaf = {}
+    if full:
+        from ugh.lens.tree import leaf_member_index
+        from ugh.lens.tree import load as load_tree
+
+        tree_result = load_tree(repo)
+        member_leaf = leaf_member_index(tree_result["nodes"]) if tree_result else {}
     now = time.time()
     # A session with a live candidate has uncommitted work flowing toward it right now, so it is
     # actively *building* regardless of how long ago its last step was confirmed -- age alone must
     # not flag an agent mid-edit (or a fresh intake) as stalled.
     sessions_with_candidates = {g.session_id for g in checkpoint.matches}
+    # A plan whose Claude session also started a live `ugh session` matches against that session's
+    # work too (`match.joined_session_ops`), so its matched fraction counts work not yet landed.
+    from ugh.core import session as session_mod
+    joined_ids = {s.claude_session_id for s in session_mod.list_sessions(repo) if s.claude_session_id}
 
     def _files_for_ops(op_ids) -> list[dict]:
         symbols = {sym for op_id in op_ids if op_id in by_id for sym in by_id[op_id].footprint}
@@ -2143,6 +2156,7 @@ def plan_view(repo, *, full: bool = False) -> dict:
             "session_id": session_id, "plan_text": rec["plan_text"], "status": rec["status"],
             "created_ts": rec["created_ts"], "last_activity_ts": rec["last_activity_ts"],
             "claude_session_id": rec.get("claude_session_id"),
+            "matched_in_session": rec.get("claude_session_id") in joined_ids,
             "derived_status": derived_status,
             "pending_count": len(pending),
             "remaining_titles": [s["title"] for s in pending],
@@ -2151,6 +2165,7 @@ def plan_view(repo, *, full: bool = False) -> dict:
             cov_by_hollow = {c["hollow_id"]: c for c in coverage.get(session_id, {}).get("pending", [])}
             base["steps"] = [
                 {**step,
+                 "predicted_feature": plan_mod.step_feature(member_leaf, step),
                  "files": _files_for_ops(step["matched_op_ids"]) if step["status"] == "matched" else [],
                  # A pending step also carries whether its predicted file already saw edits (covered)
                  # and why -- so a surface can explain a stall ("built in server.py, not the predicted
@@ -2386,21 +2401,108 @@ def land_view(report) -> dict:
 def sessions_view(repo) -> dict:
     """Every active scratch-tree session (plan U30, D5): name, branches, new-op count since its
     base, and whether its owning pid is still alive. `overlaps` is the early-fork warning's data
-    -- pairs of sessions whose new ops touch a shared symbol -- that `ugh session status`/
-    `--watch` renders; it is a *report*, never a lock (S6)."""
+    -- pairs of sessions whose new ops touch a shared symbol, plus each session's collisions with
+    its target branch (`_target_collisions`) -- that `ugh session status`/`--watch` renders; it is
+    a *report*, never a lock (S6)."""
+    from ugh.core import session as session_mod
+    from ugh.lens.tree import leaf_member_index
+    from ugh.lens.tree import load as load_tree
+
+    tree_result = load_tree(repo)
+    nodes = tree_result["nodes"] if tree_result else {}
+    member_leaf = leaf_member_index(nodes) if nodes else {}
+    rows = []
+    sessions = session_mod.list_sessions(repo)
+    ids_by = {}
+    for s in sessions:
+        ids = ids_by[s.name] = session_mod.new_op_ids(s)
+        unlanded, uncommitted, last_change_ts = session_mod.activity(s)
+        rows.append({
+            "name": s.name, "branch": s.branch, "target_branch": s.target_branch,
+            "scratch": s.scratch, "new_op_count": len(ids),
+            "owner_pid": s.owner_pid, "alive": session_mod.is_alive(s.owner_pid),
+            "claude_session_id": s.claude_session_id, "started_by": s.started_by,
+            "unlanded": unlanded, "uncommitted": uncommitted, "last_change_ts": last_change_ts,
+            **_session_touched(s, ids, nodes, member_leaf),
+        })
+    overlaps = list(session_mod.overlaps(repo, ids_by)) + _target_collisions(repo, sessions, ids_by)
+    return {"sessions": rows, "overlaps": overlaps}
+
+
+def _target_collisions(repo, sessions, ids_by) -> list[dict]:
+    """Per session, the symbols a reader sees that its target branch changed since the session's
+    base and the session changed too -- what `land` will have to reconcile, which the session pairs
+    never showed. Emitted beside them as `{"a": <session>, "b": <target branch>, "branch": true,
+    "symbols"}`; a session pair carries no `branch`, so a session that happens to share a branch's
+    name is never read as one. A report, never a lock (S6). Named by `_named_symbols` on both sides, so unlike the session pairs
+    no sentinel reaches it. Reads only the branch's committed ideal (`session.target_op_ids`)."""
+    from ugh.core import opindex
     from ugh.core import session as session_mod
 
-    sessions = session_mod.list_sessions(repo)
+    out = []
+    for s in sessions:
+        theirs_ids = session_mod.target_op_ids(repo, s)
+        if not theirs_ids:
+            continue
+        theirs = {sym for op in opindex.index_ops(repo) if op.id in theirs_ids for sym in _named_symbols(op)}
+        ours = {sym for op in opindex.index_ops(s.scratch) if op.id in ids_by[s.name] for sym in _named_symbols(op)}
+        if shared := sorted(theirs & ours):
+            out.append({"a": s.name, "b": s.target_branch, "branch": True, "symbols": shared})
+    return out
+
+
+def _session_touched(session, ids, nodes, member_leaf) -> dict:
+    """K9 (2026-10-21 actors note): the main map's lanes a live session's own work touches, named
+    by the symbols a reader sees (`_named_symbols`, plus `map_view`'s entity-less-file fallback),
+    so a surface can draw the session's ghost on each lane and join `overlaps` through it.
+
+    The scratch tree has no map of its own (`.sgt/tree/` is gitignored and a worktree starts with
+    an empty `.sgt/`), so lanes come from the main repo's tree exactly as `save_preview_view` files
+    the reader's own uncommitted work: a symbol goes to the lane that owns it, else to the lane its
+    op's footprint votes for (where the ledger will file the op once it lands), else to no lane
+    (`feature_id` None: new code nothing owns yet). `change_count` follows the checkpoint rule --
+    each symbol counted once per save that touched it -- with the scratch's uncommitted work as
+    one save. Reads only the session's new ops; the main repo is never mined."""
+    from ugh.core import opindex
+    from ugh.core.op import _symbol_kind
+    from ugh.lens.tree import _member_leaf_for, assign_ops_to_leaves
+    from ugh.store.gitbind import GitBinding, parse_op_ids
+
+    ops = [op for op in opindex.index_ops(session.scratch) if op.id in ids]
+    gb = GitBinding(session.scratch)
+    # An op's save is the earliest session commit that witnesses it: by provenance, else (a `ugh
+    # save` in the scratch commits by trailer and stamps none) by that commit's `Sgt-Op:`
+    # trailers -- `opindex.earliest_commit_sha`'s rule, read over the session's commits only,
+    # because ugh writes the whole ideal into every commit and the full-history walk that helper
+    # does would cost the base history, not the session. Neither: uncommitted, saved as "".
+    commits = [sha for sha, _parent, _subject in gb.history(since=session.base_ref)]
+    unplaced = {op.id for op in ops if not set(op.provenance).intersection(commits)}
+    named_by = {sha: set(parse_op_ids(gb.commit_message(sha))) for sha in commits} if unplaced else {}
+    save_of = {
+        op.id: next((sha for sha in commits if sha in op.provenance
+                     or (op.id in unplaced and op.id in named_by[sha])), "")
+        for op in ops
+    }
+    op_leaf = assign_ops_to_leaves(nodes, ops) if nodes else {}
+    files_with_entities = _files_with_entities(ops) | {
+        m.partition("::")[0] for m in member_leaf if _symbol_kind(m) in _NAMED_KINDS}
+    lane: dict[str, str | None] = {}
+    saves: dict[str, set[str]] = {}
+    for op in ops:
+        named = _named_symbols(op) or sorted(
+            {s.partition("::")[0] for s in op.footprint} - files_with_entities)
+        for sym in named:
+            if lane.get(sym) is None:
+                lane[sym] = _member_leaf_for(sym, member_leaf) or op_leaf.get(op.id)
+            saves.setdefault(sym, set()).add(save_of[op.id])
+    by_lane: dict[str | None, list[str]] = {}
+    for sym in sorted(lane):
+        by_lane.setdefault(lane[sym], []).append(sym)
     return {
-        "sessions": [
-            {
-                "name": s.name, "branch": s.branch, "target_branch": s.target_branch,
-                "scratch": s.scratch, "new_op_count": len(session_mod.new_op_ids(s)),
-                "owner_pid": s.owner_pid, "alive": session_mod.is_alive(s.owner_pid),
-            }
-            for s in sessions
-        ],
-        "overlaps": list(session_mod.overlaps(repo)),
+        "touched": [{"feature_id": fid, "symbols": syms[:SEGMENT_SYMBOL_CAP]}
+                    for fid, syms in sorted(by_lane.items(), key=lambda kv: (kv[0] is None, kv[0] or ""))],
+        "symbols_truncated": any(len(syms) > SEGMENT_SYMBOL_CAP for syms in by_lane.values()),
+        "change_count": sum(len(keys) for keys in saves.values()),
     }
 
 

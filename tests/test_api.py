@@ -855,6 +855,33 @@ def test_plan_view_reports_matched_step_spans_and_drift_view_reports_the_unpredi
     assert len(bar_entries) == 1
 
 
+def test_plan_view_places_an_unplaced_step_on_a_lane_by_its_footprint_or_its_title(tmp_path, monkeypatch):
+    """With no LLM the decomposer leaves every step unplaced, so a pending step had no lane to draw
+    its ghost on. `plan_view(full=True)` places it at read time: by its footprint when it has one,
+    else by a `file::Symbol` its title names, through the main map's membership. A step naming
+    nothing the map knows stays unplaced, and the stored record is never rewritten."""
+    from tests.core.test_session import _seed_repo
+    from ugh.lens.map import build_map
+
+    def no_client(*args, **kwargs):
+        raise RuntimeError("no key")
+
+    monkeypatch.setattr(plan_mod, "get_client", no_client)
+    _seed_repo(tmp_path)
+    build_map(tmp_path)
+    foo_lane = next(n["id"] for n in map_view(tmp_path)["nodes"] if "main.py::foo" in n["own_symbols"])
+    plan_mod.intake(tmp_path, "1. make it return two\n2. main.py::foo -- return two\n3. write the docs\n",
+                    session_id="s1")
+    table = plan_mod._load_sessions(tmp_path)
+    table["s1"]["steps"][0]["predicted_footprint"] = ["main.py::foo"]  # a footprint, no feature
+    plan_mod._save_sessions(tmp_path, table)
+
+    steps = plan_view(tmp_path, full=True)["sessions"][0]["steps"]
+
+    assert [s["predicted_feature"] for s in steps] == [foo_lane, foo_lane, None]
+    assert all(s["predicted_feature"] is None for s in plan_mod._load_sessions(tmp_path)["s1"]["steps"])
+
+
 def test_map_view_reports_no_sessions_for_a_plain_mined_tree(tmp_path):
     """No `ugh session` has ever landed against this repo, so every node's rollup is empty --
     additive to `map_view` (plan U31, S7), never a required field elsewhere."""

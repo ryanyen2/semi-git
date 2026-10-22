@@ -1096,6 +1096,22 @@ class GitBinding:
         proc = self._git("status", "--porcelain", "--", ".", ":(exclude).sgt", check=False)
         return proc.returncode != 0 or bool(proc.stdout.strip())
 
+    def dirty_source_paths(self) -> list[str]:
+        """The paths `has_dirty_source` counts (outside `.sgt/`: modified, deleted, staged or
+        untracked), worktree-relative. Empty on a git error -- a display read, never a guard."""
+        proc = self._git("status", "--porcelain", "-z", "--", ".", ":(exclude).sgt", check=False)
+        if proc.returncode != 0:
+            return []
+        paths, rename_source = [], False
+        for entry in proc.stdout.split("\x00"):
+            if rename_source:  # `-z` puts a rename's or copy's old path in the next entry
+                rename_source = False
+                continue
+            if len(entry) > 3:
+                paths.append(entry[3:])
+                rename_source = entry[0] in "RC"
+        return paths
+
     def dirty_source_digest(self) -> str | None:
         """A content hash of every uncommitted non-`.sgt` source change: the `git diff HEAD` patch
         (all tracked worktree changes, staged or not) plus each untracked source file's bytes. This
