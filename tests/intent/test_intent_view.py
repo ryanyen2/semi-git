@@ -93,10 +93,19 @@ def test_segments_carry_documented_keys_and_addressable_checkpoint(tmp_path):
         # kept and *say* it is gone rather than silently shrink its `op_count`.
         "op_ids", "op_count", "present_op_count", "commit_shas", "asks", "first_index",
         "last_index", "novelty", "tier", "source",
+        # The named symbols the chapter touched, with a per-symbol kind and the saves that touched
+        # each, plus the two counts a surface prints and whether the work is still in the code --
+        # so a card can say "1 change · 1 function · 1 save" without a dry run, and never an op
+        # count (most ops are residue/anchor bookkeeping a reader does not recognise).
+        "symbols", "symbol_count", "change_count", "symbols_truncated", "state", "taken_out_by",
     }
     assert s["checkpoint"] == "F-A@0"
     assert s["feature_label"] == "Foo Feature"
     assert s["op_count"] == len(s["op_ids"]) > 0
+    assert s["symbols"] == [{"symbol": "a.py::foo", "file": "a.py", "kind": "added", "saves": [0],
+                             "live": True}]
+    assert (s["symbol_count"], s["change_count"], s["symbols_truncated"]) == (1, 1, 0)
+    assert s["state"] == "live"
     # Per-chapter captured asks: an excerpt plus whose words they were, never the raw prompt --
     # this list draws every chapter of every feature (`stint.ask_record`, `full=False`).
     assert isinstance(s["asks"], list)

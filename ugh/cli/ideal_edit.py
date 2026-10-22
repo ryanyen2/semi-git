@@ -409,6 +409,7 @@ def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict
         "ok": preview.ok, "verb": preview.verb, "target": preview.target,
         "removed": sorted(preview.removed), "added": sorted(preview.added),
         "affected_symbols": list(preview.affected_symbols), "forked": preview.forked,
+        "conflicts": [dict(c) for c in getattr(preview, "conflicts", ())],
         "message": preview.message,
         **_subtraction_fields(preview),
     }
@@ -593,15 +594,13 @@ def _applied_magnitude(preview) -> str:
 
 
 def _subtraction_fields(preview) -> dict:
-    """The four subtraction-report keys, read off the preview. One accessor because the `--emit` view
-    and the apply view are built in different places and drifted apart for eight months (F129): the
-    preview carried none of these and the result of the mutation carried all four."""
-    return {
-        "subtracted_symbols": list(getattr(preview, "subtracted_symbols", ())),
-        "pruned_symbols": list(getattr(preview, "pruned_symbols", ())),
-        "kept_conflicts": list(getattr(preview, "kept_conflicts", ())),
-        "broken_references": list(getattr(preview, "broken_references", ())),
-    }
+    """The four subtraction-report keys, read off the preview. The definition moved to
+    `ugh.api.subtraction_fields` so the projection can hand them to `so_what_for` before the
+    sentence is written; this is the apply view's reader of the same accessor (F129: the two views
+    drifted for eight months when each built its own)."""
+    from ugh.api import subtraction_fields
+
+    return subtraction_fields(preview)
 
 
 def _readable_symbols(symbols) -> list[str]:

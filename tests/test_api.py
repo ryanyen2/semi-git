@@ -431,8 +431,53 @@ def test_segments_view_reports_which_chapters_are_still_in_head(tmp_path):
     after = {s["checkpoint"]: s for s in segments_view(tmp_path)}
     assert last["checkpoint"] in after, "a reverted chapter stays listed -- restore needs it"
     assert after[last["checkpoint"]]["present_op_count"] == 0
+    assert after[last["checkpoint"]]["state"] == "reverted"
     for s in before[:-1]:
         assert after[s["checkpoint"]]["present_op_count"] == s["op_count"]  # untouched chapters
+        assert after[s["checkpoint"]]["state"] == "live"
+
+
+def test_segment_state_is_read_per_symbol_not_per_op_count(tmp_path):
+    """`present_op_count` cannot say "taken out". A revert of one chapter takes the later chapter's
+    rework of the same function with it (its up-set) and leaves the function the later chapter added
+    on its own, so the later chapter keeps three of its five ops in the ideal and the workbench drew it
+    solid, as if untouched. Measured on the footfall study repo the other way round too: forward
+    subtraction kept ops in the ideal under a masking rework on 15 of 22 reverted chapters. `state`
+    asks the question that has an answer, per named symbol: is this chapter's contribution to it
+    still in the code. The reverted chapter reads `reverted`; the later one reads `partial`, and its
+    `symbols` say which function is gone and which is still there."""
+    from ugh.api import segments_view
+    from ugh.core import verbs
+
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def g():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("feat(s0): add g")
+    (tmp_path / "a.py").write_text("def g():\n    return 1 + 1\n\n\ndef h():\n    return 2\n",
+                                   encoding="utf-8")
+    gb.commit_all("feat(s1): rework g, add h")  # a fresh scope -> a second chapter
+    get(tmp_path)
+    from ugh.lens import tree
+    ops = Store(tmp_path).all_ops()
+    nodes = {"F-A": {"parent": None, "children": [], "members": ["a.py::g", "a.py::h"],
+                     "size": 2, "dir": "", "label": "Steps"}}
+    tree.save(tmp_path, {"nodes": nodes, "roots": ["F-A"], "max_depth": 0,
+                         "op_leaf": tree.assign_ops_to_leaves(nodes, ops),
+                         "cannot_link_moves": [], "identity_events": []})
+
+    before = {s["checkpoint"]: s for s in segments_view(tmp_path)}
+    assert len(before) == 2 and all(s["state"] == "live" for s in before.values())
+    first = min(before.values(), key=lambda s: s["seg_index"])
+    assert [(x["symbol"], x["kind"]) for x in first["symbols"]] == [("a.py::g", "added")]
+
+    verbs.apply(tmp_path, verbs.plan_revert_op_set(tmp_path, first["checkpoint"],
+                                                  frozenset(first["op_ids"])))
+
+    after = {s["checkpoint"]: s for s in segments_view(tmp_path)}
+    gone, later = after[first["checkpoint"]], after[max(after, key=lambda k: after[k]["seg_index"])]
+    assert gone["state"] == "reverted", gone
+    assert later["present_op_count"] > 0, "the old field still reads this chapter as untouched"
+    assert later["state"] == "partial", later
+    assert {x["symbol"]: x["live"] for x in later["symbols"]} == {"a.py::g": False, "a.py::h": True}
 
 
 def test_grid_view_marks_no_partial_commits_until_a_reduction_is_recorded(tmp_path):

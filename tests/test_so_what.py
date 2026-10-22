@@ -274,6 +274,34 @@ def test_restoring_a_named_piece_of_work_says_how_much_comes_back():
     )
 
 
+def test_a_forward_subtraction_counts_the_edits_the_user_named():
+    """The default revert keeps an op that later work builds on and rewrites the symbol in place,
+    so `removed` is empty. Counting it read "Removes 0 edits across 6 symbols in 6 files" over a
+    revert that rewrote four files (review 2026-10-18 §1.6). `target_ops` is what was asked for."""
+    said = so_what_for(_theme_revert(removed=[], target_ops=[f"op{i}" for i in range(5)]))
+    assert said.startswith("Removes 5 edits across 6 symbols in 5 files.")
+
+
+def test_what_a_subtraction_leaves_behind_is_not_called_clean():
+    """`kept_conflicts` and `broken_references` are the consequence of a set revert -- the frontier
+    is empty for one -- and the sentence used to say "nothing depends on it" beside both."""
+    said = so_what_for(_theme_revert(
+        broken_references=["bikecount/pages/monthly.py::render", "bikecount/pages/yearly.py::render"],
+        kept_conflicts=["bikecount/metrics.py::yearly_summary"],
+    ))
+    assert said == (
+        "Removes 17 edits across 6 symbols in 5 files — 2 still name removed code; "
+        "1 needs a hand edit. Undo-able."
+    )
+    # ...and alongside real dependents it is appended, not dropped.
+    said = so_what_for(_theme_revert(fallout=[{"kind": "blast", "op_id": "d1"}],
+                                     broken_references=["bikecount/pages/monthly.py::render"]))
+    assert said == (
+        "Removes 17 edits across 6 symbols in 5 files — 1 dependent(s) to re-draft; "
+        "1 still names removed code. Undo-able."
+    )
+
+
 def test_a_single_symbol_target_still_names_the_symbol():
     # The scale sentence is for sets. A one-symbol revert is still about that symbol.
     pview = _theme_revert(target="bikecount/charts.py::bar_chart")

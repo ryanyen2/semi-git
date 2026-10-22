@@ -120,6 +120,11 @@ def test_restore_resolves_a_superseded_ghost_and_validation_gates_reentry(tmp_pa
 
     blocked = verbs.plan_restore(repo, v2.id)
     assert not blocked.ok and blocked.forked  # sibling live -> refusal, not a silent no-op
+    # ...and the refusal names the pair structurally: the live op a swap has to take out, the
+    # symbol's live tip, and the op that wanted in. `affected_symbols` is empty on a refusal
+    # (before equals after), so this is the only actionable half of it.
+    assert blocked.conflicts == ({"symbol": "a.py::foo", "live_op": v3.id, "live_tip": v3.id,
+                                  "requested_op": v2.id},)
 
     verbs.revert(repo, v3.id)  # the swap's first half
     swapped = verbs.restore(repo, v2.id)
@@ -786,6 +791,7 @@ def test_restore_declines_the_event_inverse_when_later_work_built_on_the_splice(
     preview = verbs.plan_restore(repo, target.id)
     assert not preview.ok and preview.forked
     assert "util.py::build" in preview.message  # names the symbol, not a wall of op ids
+    assert preview.conflicts and preview.conflicts[0]["symbol"] == "util.py::build"
 
     assert get(repo).op_ids == before  # nothing moved
     assert is_valid_ideal(Store(repo).all_ops(), get(repo).op_ids)
@@ -1036,3 +1042,48 @@ def test_apply_journals_the_planned_edit_even_when_a_reader_syncs_mid_apply(tmp_
     monkeypatch.setattr(lens, "put", real_put)
     verbs.restore(repo, tip.id)
     assert get(repo).op_ids == original
+
+
+def test_reverting_a_checkpoint_keeps_unrelated_edits_of_an_op_it_drags_along(tmp_path):
+    """Save 1 births `hourly_averages` and `hourly.render`. Save 2 is one op (one def-use component)
+    that edits `hourly.render` to use the new function AND, through a shared helper, edits
+    `monthly.render`, which has nothing to do with hourly averages. Reverting save 1 takes the
+    hourly work out and leaves `monthly.render`'s save-2 edit in the code.
+
+    The collateral grain defect (review 2026-10-19 §2): the semantic closure used to grow through
+    symbols born by ops that had only *joined* the closure, and exclusion took a target's whole
+    up-set, so one shared born symbol dragged a seven-symbol op out of the ideal entirely --
+    measured on the bikecount study repo, reverting "Hourly Averages" spliced "Date Window" out of
+    four page renders. Now births are the targets' own, a collateral op with an edit on work that
+    stays is never excluded, and the splice loop subtracts it only where its edit sits on removed
+    work (`subtract._semantic_closure`, `_owes_nothing_elsewhere`, `_owes_edit_here`)."""
+    from ugh.store.gitbind import init_store
+
+    repo = tmp_path / "repo"
+    gb, _ = init_store(repo)
+    (repo / "metrics.py").write_text(
+        "def hourly_averages(readings):\n    return sum(readings) / 24\n", encoding="utf-8")
+    (repo / "hourly.py").write_text(
+        "from metrics import hourly_averages\n\n\ndef render(readings):\n"
+        "    return hourly_averages(readings)\n", encoding="utf-8")
+    (repo / "monthly.py").write_text(
+        "def render(readings):\n    return sum(readings)\n", encoding="utf-8")
+    gb.commit_all("hourly averages")
+    # save 2: one connected edit across both renders via a shared helper
+    (repo / "metrics.py").write_text(
+        "def hourly_averages(readings):\n    return sum(readings) / 24\n\n\n"
+        "def pick_window(readings, start, end):\n    return readings[start:end]\n", encoding="utf-8")
+    (repo / "hourly.py").write_text(
+        "from metrics import hourly_averages, pick_window\n\n\ndef render(readings, start, end):\n"
+        "    return hourly_averages(pick_window(readings, start, end))\n", encoding="utf-8")
+    (repo / "monthly.py").write_text(
+        "from metrics import pick_window\n\n\ndef render(readings, start, end):\n"
+        "    return sum(pick_window(readings, start, end))\n", encoding="utf-8")
+    gb.commit_all("a date window for both pages")
+    get(repo)
+    ops = Store(repo).all_ops()
+    target = _op_with(ops, "metrics.py::hourly_averages", b"/ 24")
+    verbs.revert(repo, target.id)
+    after = code(get(repo), Store(repo).all_ops())
+    assert b"hourly_averages" not in after.get("metrics.py", b"")  # the target left
+    assert b"pick_window(readings, start, end)" in after["monthly.py"]  # the unrelated edit stayed

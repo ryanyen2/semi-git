@@ -63,11 +63,20 @@ def _born_symbols(op_ids, by_id) -> set[str]:
 
 
 def _semantic_closure(target_ids, blast, by_id, declared_dependents_of) -> set[str]:
+    """The ops a removal has to take with it: the targets, every up-set op that touches a symbol
+    the *targets* created, and declared dependents, transitively through the declared edges.
+
+    A symbol born by an op that only joined this closure is not the target's: an op that touched
+    one target-born symbol and, in the same save, created an unrelated helper used to drag every
+    later user of that helper in too (the grain defect measured on the bikecount study repo,
+    review 2026-10-19 §2). Membership now grows through declared dependents only; births are the
+    targets' own. `target_ids` here already holds the targets' declared dependents (closed in
+    `plan_subtraction`): an `after(a, b)` edge is the user naming b, so b is taken whole."""
     removal = set(target_ids)
+    born = _born_symbols(target_ids, by_id)
     changed = True
     while changed:
         changed = False
-        born = _born_symbols(removal, by_id)
         declared = set().union(*(declared_dependents_of.get(rid, set()) for rid in removal)) \
             if removal else set()
         for oid in blast - removal:
@@ -401,9 +410,21 @@ def plan_subtraction(
     # next, and `put()` refused every save there from then on, `ugh undo` included (F35). Pull the
     # layout facts in as *targets* rather than pruning them forward, so they ride the same exclusion
     # the entity does and `ugh restore` brings gap, anchor and entity back together.
+    def _declared_closure(seed) -> frozenset[str]:
+        out, todo = set(seed), list(seed)
+        while todo:
+            for dep in declared_dependents_of.get(todo.pop(), ()):
+                if dep not in out:
+                    out.add(dep)
+                    todo.append(dep)
+        return frozenset(out)
+
     while True:
+        # The targets and their declared dependents are taken whole; everything else in the
+        # removal is collateral and is subtracted only where it owes.
+        whole = _declared_closure(targets)
         blast = set(order.upset_in_many(targets, live, ops, declared))
-        removal = _semantic_closure(targets, blast, by_id, declared_dependents_of)
+        removal = _semantic_closure(whole, blast, by_id, declared_dependents_of)
         also = layout_ops_of(removal, by_id, live) - removal
         if not also:
             break
@@ -411,8 +432,34 @@ def plan_subtraction(
 
     # The upward-closed part of the removal is excludable exactly as before; each member's whole
     # up-set lies inside the removal, so excluding it can never orphan a survivor.
-    excludable = {oid for oid in removal
-                  if order.upset_in(oid, live, ops, declared) <= removal}
+    #
+    # ...unless the member is a collateral op with an edit the removal does not own: it joined
+    # because one of its symbols was born by the target, and it also edited something unrelated
+    # (its `before` there was produced by an op that stays). Excluding it would drop that edit
+    # with the rest; such an op stays in the ideal and the splice loop below subtracts only what
+    # it owes. Its own births are its own.
+    chains = order._ordered_chains(live, ops)
+    producer_of_version = {(sym, by_id[c].footprint[sym][1]): c
+                           for sym, chain in chains.items() for c in chain}
+
+    def _owes_nothing_elsewhere(oid: str) -> bool:
+        if oid in whole:
+            return True
+        for sym, (before, _after) in by_id[oid].footprint.items():
+            if before is None:
+                return False  # a birth of its own, not the target's
+            if producer_of_version.get((sym, before)) not in removal:
+                return False  # an edit on work that stays
+        return True
+
+    # Exclusion takes a member's whole up-set with it, so the gate has to hold for every op in
+    # that up-set: a target whose up-set holds a collateral op with an unowed edit is not
+    # excludable either, and both go forward to be spliced where they owe.
+    def _excludable(oid: str) -> bool:
+        up = order.upset_in(oid, live, ops, declared)
+        return up <= removal and all(_owes_nothing_elsewhere(u) for u in up)
+
+    excludable = {oid for oid in removal if _excludable(oid)}
     excluded = order.upset_in_many(excludable, live, ops, declared) if excludable else frozenset()
     survivors = live - excluded
     forward = removal - excluded
@@ -468,13 +515,12 @@ def plan_subtraction(
             ok=True, after_ids=frozenset(survivors | {o.id for o in new_ops}),
             new_ops=tuple(new_ops), excluded=frozenset(excluded),
             broken_references=_broken_references(
-                ops, survivors, removal, _born_symbols(removal, by_id), by_id, _images_any,
+                ops, survivors, removal, _born_symbols(whole, by_id), by_id, _images_any,
                 live_after, new_ops),
         )
 
-    chains = order._ordered_chains(live, ops)
     post_frontier = order.frontier(survivors, ops)
-    born = _born_symbols(removal, by_id)
+    born = _born_symbols(whole, by_id)
 
     new_ops: list[Op] = []
     subtracted: list[str] = []
@@ -523,12 +569,28 @@ def plan_subtraction(
                 continue
 
             chain = chains.get(sym, [])
-            removed_here = [o for o in chain if o in forward]
-            if not removed_here:
-                continue
             producer_of = {}
             for chain_oid in chain:
                 producer_of[by_id[chain_oid].footprint[sym][1]] = chain_oid
+            # Which of this symbol's forward ops owe their edit here to the removal. An op the user
+            # named is subtracted everywhere it touched. An op that only joined through the semantic
+            # closure -- one of its symbols was born by the target -- is subtracted from a symbol
+            # only where its edit sits on removed work (its `before` was produced by an op in the
+            # removal, or the symbol is born). Its edits to unrelated symbols stay: measured on the
+            # bikecount study repo, reverting "Hourly Averages" used to splice "Date Window" out of
+            # four page renders and `side_totals` because that one seven-symbol op also touched
+            # `hourly.py::render` (review 2026-10-19 §2; test_reverting_a_checkpoint_keeps_
+            # unrelated_edits_of_an_op_it_drags_along).
+            def _owes_edit_here(o: str) -> bool:
+                if o in whole:
+                    return True
+                r_before = by_id[o].footprint[sym][0]
+                # a birth here is the collateral op's own (the target's births were pruned above)
+                return r_before is not None and producer_of.get(r_before) in removal
+
+            removed_here = [o for o in chain if o in forward and _owes_edit_here(o)]
+            if not removed_here:
+                continue
 
             conflicted = False
             current = ours

@@ -610,11 +610,26 @@ def _fallout_rows(projected: dict) -> list[dict]:
         if r.get("bucket") == "blast" and r.get("toggleable")
     ]
     if projected.get("forked"):
-        rows += [
-            {"kind": "fork", "symbol": s, "toggleable": False}
-            for s in projected.get("affected_symbols", [])
-        ]
+        # `affected_symbols` is always empty on a refusal (its before equals its after), so these
+        # rows were never produced; the structured `conflicts` name the forking symbols.
+        forking = [c["symbol"] for c in projected.get("conflicts") or ()] \
+            or list(projected.get("affected_symbols", []))
+        rows += [{"kind": "fork", "symbol": s, "toggleable": False} for s in forking]
     return rows
+
+
+def subtraction_fields(preview) -> dict:
+    """The four subtraction-report keys, read off a `VerbPreview`. One accessor because the
+    `--emit` view and the apply view are built in different places and drifted apart for eight
+    months (F129): the preview carried none of these and the result of the mutation carried all
+    four. Lives here rather than in the CLI so `_project_verb_preview` can hand them to
+    `so_what_for` before the sentence is written."""
+    return {
+        "subtracted_symbols": list(getattr(preview, "subtracted_symbols", ())),
+        "pruned_symbols": list(getattr(preview, "pruned_symbols", ())),
+        "kept_conflicts": list(getattr(preview, "kept_conflicts", ())),
+        "broken_references": list(getattr(preview, "broken_references", ())),
+    }
 
 
 def so_what_for(projected: dict, kept: frozenset = frozenset()) -> str:
@@ -697,11 +712,30 @@ def so_what_for(projected: dict, kept: frozenset = frozenset()) -> str:
     if not (target and "::" in target) and len(real) > 1:
         from ugh.tui.graph import plural
 
-        edits = len(projected.get("removed" if verb == "revert" else "added") or ())
+        # The ops the user named (`target_ops`), not `removed`: the default revert is forward
+        # subtraction, which keeps an op later work builds on and rewrites the symbol in place, so
+        # `removed` was empty for the ordinary checkpoint and the sentence read "Removes 0 edits
+        # across 6 symbols in 6 files" (review 2026-10-18 §1.6). Older projections without
+        # `target_ops` keep the old count.
+        edits = (len(projected.get("target_ops") or ())
+                 or len(projected.get("removed" if verb == "revert" else "added") or ()))
         scale = (f"{plural(edits, 'edit')} across {plural(len(real), 'symbol')} "
                  f"in {plural(len(projected.get('files') or ()), 'file')}")
 
+    # What a forward subtraction leaves behind that needs a person: survivors still naming code
+    # that is gone, and symbols where two versions overlap. Neither is a `blast` dependent (the
+    # frontier is empty for a set target), so without these the sentence claimed "nothing depends
+    # on it" beside `kept_conflicts: 2, broken_references: 4` in the same dict.
+    broken = [s for s in projected.get("broken_references") or () if "::__" not in s]
+    conflicts = [s for s in projected.get("kept_conflicts") or () if "::__" not in s]
+    aftermath = "; ".join(
+        ([f"{len(broken)} still name{'s' if len(broken) == 1 else ''} removed code"] if broken else [])
+        + ([f"{len(conflicts)} need{'s' if len(conflicts) == 1 else ''} a hand edit"] if conflicts else [])
+    )
+
     if verb == "revert":
+        if n == 0 and aftermath:
+            return f"Removes {scale or primary} — {aftermath}. {undo}"
         if n == 0:
             # F128. `n` is blast-only by design (`_fallout_rows` excludes carry and foundation --
             # neither needs a decision), but "Nothing depends on it" is a claim about dependents and
@@ -719,9 +753,10 @@ def so_what_for(projected: dict, kept: frozenset = frozenset()) -> str:
                         f"{', '.join(parts)}. {undo}")
             return f"Removes {scale or primary}. Nothing depends on it — clean revert. {undo}"
         kept_clause = f", keeping {n_kept}" if n_kept else ""
+        tail = f"; {aftermath}" if aftermath else ""
         if scale:
-            return f"Removes {scale} — {n_break} dependent(s) to re-draft{kept_clause}. {undo}"
-        return f"{primary} will break — {n_break} dependent(s) to re-draft{kept_clause}. {undo}"
+            return f"Removes {scale} — {n_break} dependent(s) to re-draft{kept_clause}{tail}. {undo}"
+        return f"{primary} will break — {n_break} dependent(s) to re-draft{kept_clause}{tail}. {undo}"
     if verb == "restore":
         if scale:
             return f"Re-adds {scale}. Nothing to reconcile. {undo}"
@@ -816,12 +851,22 @@ def _project_verb_preview(repo, preview) -> dict:
         # nothing but the key order in the golden CLI surface.
         "target_ops": sorted(getattr(preview, "target_ops", ()) or ()),
         "forked": preview.forked,
+        # A forked refusal, structured (`verbs._fork_conflicts`): the symbol, the live op the edit
+        # collides with, its live tip, and the op that wanted in. `affected_symbols` is empty on a
+        # refusal (before equals after), so this is the only place a surface can read the pair.
+        "conflicts": [dict(c) for c in getattr(preview, "conflicts", ())],
         "files": files,
         "message": preview.message,
         "affected": _affected_rows(repo, preview.removed, preview.added),
         "coupling": _coupling_rows(ops, op_leaf, preview.removed, preview.after_ids),
         "frontier": _frontier_rows(repo, preview),
     }
+    # The subtraction report: which symbols a forward-subtraction revert rewrites in place, prunes,
+    # leaves with two overlapping versions, or leaves naming removed code. It used to be merged in
+    # by `cli/ideal_edit.py` *after* this projection, so `so_what_for` never saw it and could say
+    # "nothing depends on it" beside two kept conflicts and four broken references (review
+    # 2026-10-18 §1.6). One accessor, read here and by the apply view.
+    projected.update(subtraction_fields(preview))
     # The "so-what" layer (consequence pane): reversibility bit, act-required fallout, the hidden
     # carry count, and the one-line consequence. Pure over `projected`, so every surface that reads
     # this dict (CLI gate, TUI pane, VS Code) inherits them without extra wiring.
@@ -1327,9 +1372,7 @@ def map_view(repo) -> dict:
         op = by_id.get(op_id)
         if op is None:
             continue
-        own_symbols.setdefault(leaf, set()).update(
-            s for s in op.footprint if _sym_kind(s) in ("entity", "nested", "whole_file")
-        )
+        own_symbols.setdefault(leaf, set()).update(_named_symbols(op))
         files_touched.setdefault(leaf, set()).update(s.partition("::")[0] for s in op.footprint)
     # A file the parser finds no named entity in (the Sketchpad demo's `src/kinds/T.ts` is one
     # `register(...)` call) is mined as a HEAD residue plus its imports, so a feature made of such
@@ -2940,6 +2983,142 @@ def _commit_words_join(repo):
     return words_for
 
 
+# ── per-checkpoint symbols and liveness (2026-10-18 workbench redesign, K1/K4) ───────────────────
+_NAMED_KINDS = ("entity", "nested", "whole_file")
+
+
+def _named_symbols(op) -> list[str]:
+    """The symbols in `op`'s footprint a reader recognises: a function/class/method, a nested
+    definition, or a whole file. Residue, anchors and imports are how the miner represents the
+    bytes *around* those, and most ops touch nothing else (83% on this repository, 85% on the
+    footfall study repo). One rule, used by `map_view`'s `own_symbols`, `_show_footprint` and the
+    checkpoint `symbols` below, so the map, `ugh show` and the workbench chips cannot disagree
+    about what a piece of work touched -- the husk-filter lesson, applied before a third copy."""
+    from ugh.core.op import _symbol_kind
+
+    return [s for s in op.footprint if _symbol_kind(s) in _NAMED_KINDS]
+
+
+def _files_with_entities(ops) -> set[str]:
+    """Files some op names an entity in. A file outside this set has no parseable definition
+    anywhere in the store, so work on it is owned at file level (`map_view`'s fallback rule)."""
+    return {s.partition("::")[0] for op in ops for s in _named_symbols(op)}
+
+
+def _revert_masks(ops, head_op_ids) -> dict[str, dict[str, str]]:
+    """symbol -> {op-id prefix a live revert has subtracted out of it: the revert's tag}.
+
+    A checkpoint revert usually removes nothing: when later work builds on the checkpoint's ops,
+    `ugh.core.subtract` keeps them in the ideal and layers a rework op over each symbol with the
+    checkpoint's contribution cut out, stamping the subtracted op ids into that op's intent
+    (`revert <tag>: subtract <id>, <id>`). So "is this checkpoint's work still in the code" cannot
+    be read off ideal membership -- `present_op_count` stays above zero on 15 of 22 reverted
+    checkpoints of the footfall study repo -- it has to ask whether a live scaffolding op has
+    masked the symbol *for these ops*. Keyed per subtracted op, so reverting one checkpoint never
+    reads as reverting its neighbour on the same symbol."""
+    masks: dict[str, dict[str, str]] = {}
+    for op in ops:
+        intent = op.intent or ""
+        if op.id not in head_op_ids or not intent.startswith("revert ") or ": subtract " not in intent:
+            continue
+        head, _, tail = intent.rpartition(": subtract ")
+        tag = head[len("revert "):]  # the revert that did it: a checkpoint ref or a feature
+        prefixes = {p.strip() for p in tail.split(",") if p.strip()}
+        for sym in op.footprint:
+            masks.setdefault(sym, {}).update({p: tag for p in prefixes})
+    return masks
+
+
+SEGMENT_SYMBOL_CAP = 24
+
+
+def _segment_symbols(seg, by_id, op_commit, files_with_entities, head_op_ids, masks, tips) -> dict:
+    """A checkpoint's named symbols with a per-symbol kind and the saves that touched each, the two
+    counts a surface prints, and whether its work is still in the code.
+
+    `kind` is read off the symbol's own chain inside the checkpoint, oldest op first: born here is
+    `added`, ending at bottom is `removed`, a move op is `moved`, anything else `changed`. Not the
+    op's kind, which is per op and can mean "some symbols added, some modified". A symbol born and
+    removed inside one checkpoint is dropped -- there is nothing of it to show.
+
+    `change_count` is the sum over symbols of the saves that touched each, so a surface saying
+    "6 changes · 4 functions · 3 saves" is true by construction; op counts, which are mostly
+    layout bookkeeping, never reach a reader. Each symbol carries `live`, and `state` rolls them
+    up: `live` when every named symbol's contribution is still in the code, `reverted` when none
+    is, `partial` otherwise (a surface then says which functions are gone), and `None` when the
+    ideal is unreadable (no claim, like `present_op_count`). A symbol's contribution is live when
+    one of the checkpoint's ops on it is in the ideal, no live revert has subtracted that op out of
+    it (`_revert_masks`), and the symbol's live tip is not someone else's removal. A layout-only
+    checkpoint (no named symbol, 9 of 27 on footfall) is live iff any of its ops is. The
+    file-level fallback is `map_view`'s: a file nobody names an entity in is owned whole."""
+    from ugh.core.op import is_bottom
+
+    ordered = sorted((by_id[o] for o in seg.op_ids if o in by_id),
+                     key=lambda op: (op_commit.get(op.id, -1), op.id))
+    per: dict[str, dict] = {}
+    touched_files: set[str] = set()
+    taken_out_by: set[str] = set()  # the reverts whose splices masked this chapter's symbols
+    for op in ordered:
+        touched_files.update(s.partition("::")[0] for s in op.footprint)
+        ci = op_commit.get(op.id)
+        for sym in _named_symbols(op):
+            before, after = op.footprint[sym]
+            e = per.get(sym)
+            if e is None:
+                e = per[sym] = {"first_before": before, "last_after": after, "saves": set(),
+                                "moved": False, "live": False, "own_tip": False}
+            e["last_after"] = after
+            if ci is not None:
+                e["saves"].add(ci)
+            if op.kind == "move":
+                e["moved"] = True
+            masked_by = masks.get(sym, {}).get(op.id[:12])
+            if masked_by is not None:
+                taken_out_by.add(masked_by)
+            elif op.id in head_op_ids:
+                e["live"] = True
+            if tips.get(sym) == op.id:
+                e["own_tip"] = True
+    if not per:
+        live_any = any(o in head_op_ids for o in seg.op_ids)
+        saves = {op_commit[o] for o in seg.op_ids if o in op_commit}
+        for f in sorted(f for f in touched_files if f not in files_with_entities):
+            per[f] = {"first_before": "", "last_after": "", "saves": set(saves), "moved": False,
+                      "live": live_any, "own_tip": False}
+    out = []
+    for sym in sorted(per):
+        e = per[sym]
+        born, gone = e["first_before"] is None, is_bottom(e["last_after"])
+        if born and gone:
+            continue
+        kind = "added" if born else "removed" if gone else "moved" if e["moved"] else "changed"
+        tip = tips.get(sym)
+        tip_gone = (tip is not None and tip in by_id
+                    and is_bottom(by_id[tip].footprint.get(sym, (None, ""))[1]))
+        out.append({"symbol": sym, "file": sym.partition("::")[0], "kind": kind,
+                    "saves": sorted(e["saves"]),
+                    "live": e["live"] and (not tip_gone or e["own_tip"])})
+    if not head_op_ids:
+        state = None
+    elif out:
+        n_live = sum(1 for e in out if e["live"])
+        state = "live" if n_live == len(out) else "reverted" if n_live == 0 else "partial"
+    else:
+        state = "live" if any(o in head_op_ids for o in seg.op_ids) else "reverted"
+    return {
+        "symbols": out[:SEGMENT_SYMBOL_CAP],
+        "symbol_count": len(out),
+        "change_count": sum(max(1, len(e["saves"])) for e in out),
+        "symbols_truncated": max(0, len(out) - SEGMENT_SYMBOL_CAP),
+        "state": state,
+        # Who took it out, when it was a revert of something else: the semantic closure can
+        # splice a chapter's contribution out as collateral of a revert the reader aimed at
+        # another checkpoint (measured on the bikecount study repo: reverting "Hourly Averages"
+        # spliced "Date Window"'s edits to four `render`s). A lane that goes hollow has to say so.
+        "taken_out_by": sorted(taken_out_by),
+    }
+
+
 def _segments_out(repo, op_leaf, tree_result) -> list[dict]:
     """The feature-scoped intent segments (the "checkpoints" a user rewinds to): every feature's
     ops cut into contiguous, labeled chapters (`ugh.intent.segment`), each addressable as
@@ -2970,7 +3149,18 @@ def _segments_out(repo, op_leaf, tree_result) -> list[dict]:
     # cannot represent "still in git history, excluded from the ideal". An empty ideal means the
     # ref is unborn or unmined, which is no claim about any chapter, so `present_op_count` is
     # `None` there and a renderer must not read it as "removed".
-    head_op_ids = current_ideal(repo).op_ids
+    ideal = current_ideal(repo)
+    head_op_ids = ideal.op_ids
+    # The ops behind every checkpoint, footprint-only (`opindex` is memoised and already loaded by
+    # `map_view`/`history_view` in the same compose), for the per-checkpoint symbols and liveness.
+    from ugh.core import opindex
+    idx_ops = opindex.index_ops(repo)
+    by_id = {op.id: op for op in idx_ops}
+    files_with_entities = _files_with_entities(idx_ops)
+    op_commit = {oid: run.commit_index
+                 for runs in runs_by_feature.values() for run in runs for oid in run.op_ids}
+    masks = _revert_masks(idx_ops, head_op_ids)
+    tips = ideal.frontier(idx_ops) if head_op_ids else {}
 
     out: list[dict] = []
     for feature_id in sorted(runs_by_feature):
@@ -3035,6 +3225,8 @@ def _segments_out(repo, op_leaf, tree_result) -> list[dict]:
                 "novelty": round(s.novelty, 3),
                 "tier": tier,
                 "source": s.source,
+                **_segment_symbols(s, by_id, op_commit, files_with_entities, head_op_ids,
+                                   masks, tips),
             })
     return out
 
@@ -3482,14 +3674,12 @@ def _show_footprint(repo, op_ids, *, only: str | None = None) -> tuple[list[str]
     showing them here read as the answer."""
     from ugh.core import opindex
 
-    from ugh.core.op import _symbol_kind
-
     wanted = frozenset(op_ids)
     symbols: set[str] = set()
     touched: set[str] = set()
     files_with_entities: set[str] = set()
     for op in opindex.index_ops(repo):
-        named = [s for s in op.footprint if _symbol_kind(s) in ("entity", "nested", "whole_file")]
+        named = _named_symbols(op)
         files_with_entities.update(s.partition("::")[0] for s in named)
         if op.id in wanted:
             # kind-classified like map_view's own_symbols: import crumbs are bookkeeping too

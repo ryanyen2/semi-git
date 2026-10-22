@@ -59,6 +59,11 @@ class VerbPreview:
     pruned_symbols: tuple[str, ...] = ()  # target-introduced symbols bottomed at their tip
     kept_conflicts: tuple[str, ...] = ()  # symbols left unchanged that need a manual edit
     broken_references: tuple[str, ...] = ()  # surviving symbols still naming removed code
+    # A forked refusal, structured: one entry per forking symbol -- the live op holding the step
+    # the edit collides with (what a swap has to take out), that symbol's live tip (what a reader
+    # is told is "the newer version"), and the op that wanted in. The message names the same pair
+    # in prose; this is the half a surface can act on. `()` on every ok preview.
+    conflicts: tuple[dict, ...] = ()
     target_ops: frozenset[str] = frozenset()  # the ops the user actually named. Distinct from
     # `removed`, which is empty whenever the edit rewrites symbols in place instead of dropping
     # ops -- the ordinary case for reverting one checkpoint of a symbol later work has touched.
@@ -150,6 +155,22 @@ def _invalid_ideal_reason(after_ids, ops: list[Op], declared) -> str:
     return "would leave an invalid ideal, refused"
 
 
+def _fork_conflicts(before_ids, after_ids, ops: list[Op]) -> tuple[dict, ...]:
+    """`order.forks` on the refused set, oriented: which side is live today. The same call
+    `_invalid_ideal_reason` makes, so the sentence and the structure name the same pair. A fork
+    whose both ops (or neither) are live was not introduced by this edit and is left out."""
+    live = frozenset(before_ids)
+    tips = order.frontier(live, ops)
+    out: dict[str, dict] = {}
+    for sym, a, b in order.forks(ops, frozenset(after_ids)):
+        if (a in live) == (b in live):
+            continue
+        held, wanted = (a, b) if a in live else (b, a)
+        out.setdefault(sym, {"symbol": sym, "live_op": held, "live_tip": tips.get(sym, held),
+                             "requested_op": wanted})
+    return tuple(out[s] for s in sorted(out))
+
+
 def _validated(
     verb: str, target: str, before_ids, after_ids, ops: list[Op],
     declared: frozenset[tuple[str, str]],
@@ -159,8 +180,9 @@ def _validated(
     try:
         Ideal.from_ops(after_ids, ops, declared)
     except ValueError:
-        return _preview(verb, target, before_ids, before_ids, ops, ok=False, forked=True,
-                        message=_invalid_ideal_reason(after_ids, ops, declared))
+        return replace(_preview(verb, target, before_ids, before_ids, ops, ok=False, forked=True,
+                                message=_invalid_ideal_reason(after_ids, ops, declared)),
+                       conflicts=_fork_conflicts(before_ids, after_ids, ops))
     return _preview(verb, target, before_ids, after_ids, ops)
 
 
@@ -506,8 +528,9 @@ def _plan_removal(
     try:
         Ideal.from_ops(plan.after_ids, all_ops, declared)
     except ValueError:
-        return _preview(verb, tag, ideal.op_ids, ideal.op_ids, ops, ok=False, forked=True,
-                        message=_invalid_ideal_reason(plan.after_ids, all_ops, declared))
+        return replace(_preview(verb, tag, ideal.op_ids, ideal.op_ids, ops, ok=False, forked=True,
+                                message=_invalid_ideal_reason(plan.after_ids, all_ops, declared)),
+                       conflicts=_fork_conflicts(ideal.op_ids, plan.after_ids, all_ops))
     base = _preview(verb, tag, ideal.op_ids, plan.after_ids, all_ops, message=plan.message)
     return VerbPreview(
         ok=True, verb=verb, target=tag, before_ids=base.before_ids, after_ids=base.after_ids,
