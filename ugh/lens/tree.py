@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import hashlib
 import math
-from collections import Counter, defaultdict
+from collections import Counter, OrderedDict, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -754,6 +754,50 @@ def assign_ops_to_leaves(nodes: dict, ops: list[Op]) -> dict[str, str]:
         top_count = max(votes.values())
         op_leaf[op.id] = min(leaf for leaf, count in votes.items() if count == top_count)
     return op_leaf
+
+
+# `filed_op_leaf` memo: (repo, tree file stat, op-index snapshot stat, len(op_leaf)) -> the filed
+# table. Both stats move on any write that could change the answer, as `opindex`'s own memo assumes.
+_FILED_MEMO: "OrderedDict[tuple, dict[str, str]]" = OrderedDict()
+_FILED_MEMO_MAX = 4
+
+
+def filed_op_leaf(repo: str | Path, op_leaf: dict[str, str], ops: list[Op]) -> dict[str, str]:
+    """`op_leaf` plus every current-generation op it has not filed, placed by the save-time
+    ledger's chain-continuation rule: the lane that owns the symbols the op touches
+    (`assign_ops_to_leaves` over the current map). Read-time only, never written back.
+
+    The persisted table is written when the map is rebuilt, so a save that only modified existing
+    functions, and every op a revert minted, sat on no lane until `ugh log --refresh`: missing from
+    the timeline, the checkpoints, their counts and their dependents. Measured 2026-10-22: the 3
+    latest saves on the bikecount study repo, a revert's prune on the demo repo, and 17,764 of
+    17,782 named touches on a repository whose map was 2.5 months old. Ops from older miner
+    generations stay unfiled: the store keeps them beside their re-mined twins, and filing both
+    would count each commit's work twice. An op touching nothing any lane owns stays unfiled too.
+    The returned table is shared; callers must not mutate it."""
+    import os
+
+    from ugh.core import opindex
+    from ugh.core.op import MINER_VERSION
+
+    try:
+        st = os.stat(state.path(repo, "tree"))
+    except OSError:
+        return op_leaf
+    snap = opindex._snapshot_stat(Path(repo))
+    key = (os.path.realpath(repo), st.st_mtime_ns, st.st_size, snap, len(op_leaf))
+    hit = _FILED_MEMO.get(key) if snap is not None else None
+    if hit is not None:
+        _FILED_MEMO.move_to_end(key)
+        return hit
+    unfiled = [op for op in ops if op.id not in op_leaf and op.miner_version == MINER_VERSION]
+    result = load(repo) if unfiled else None
+    filed = {**op_leaf, **assign_ops_to_leaves(result["nodes"], unfiled)} if result else op_leaf
+    if snap is not None:
+        _FILED_MEMO[key] = filed
+        if len(_FILED_MEMO) > _FILED_MEMO_MAX:
+            _FILED_MEMO.popitem(last=False)
+    return filed
 
 
 def fused_graph_with_hubs(

@@ -144,6 +144,9 @@ def feature_runs(repo: str | Path, op_leaf: dict[str, str]) -> dict[str, list[Ru
     subject_of = {sha: subject for sha, _p, subject in rows}
     ops = opindex.index_ops(repo)
     by_id = {op.id: op for op in ops}
+    from ugh.lens.tree import filed_op_leaf  # lazy: tree -> cluster stays off this module's import
+
+    op_leaf = filed_op_leaf(repo, op_leaf, ops)  # saves and reverts since the last map build
     # Same time-axis rule as `history_view`/`group.atoms` (`opindex.earliest_commit_sha`): an op's
     # earliest in-history provenance, or -- for a pending, provenance-less save -- the earliest
     # committed `Sgt-Op:` trailer. Without the fallback, just-saved work is dropped from every run,

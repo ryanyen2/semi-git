@@ -24,6 +24,21 @@ def test_record_then_retrieve_round_trips(tmp_path):
     assert got[0]["seq"] == 0
 
 
+def test_turns_for_sees_every_new_capture_and_hands_out_copies(tmp_path):
+    """`turns_for` answers from an index memoised on the turn store's stat (`_atom_prompt` asks
+    once per commit, hundreds of times per compose). A capture made after a read must still be
+    seen, and editing a returned record must not change what the next read returns."""
+    init_store(tmp_path)
+    turns.record_turn(tmp_path, key="k", key_kind="plan", actor="human", channel="cli",
+                      text="first", ts=1.0)
+    first = turns.turns_for(tmp_path, "k")
+    first[0]["text"] = "edited by a caller"
+    turns.record_turn(tmp_path, key="k", key_kind="plan", actor="human", channel="cli",
+                      text="second", ts=2.0)
+
+    assert [t["text"] for t in turns.turns_for(tmp_path, "k")] == ["first", "second"]
+
+
 def test_identical_capture_is_idempotent(tmp_path):
     init_store(tmp_path)
     first = turns.record_turn(tmp_path, key="plan-1", key_kind="plan", actor="human",

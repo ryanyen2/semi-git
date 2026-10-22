@@ -1475,6 +1475,9 @@ def history_view(repo, *, full: bool = False, limit: int = 200, offset: int = 0)
     # saved work a `record_ideal` witness-advance left provenance-less). `feature_runs`/`group.atoms`
     # read the same helper so all three time-aware projections agree on when an op happened.
     ops = list(opindex.index_ops(repo))
+    from ugh.lens.tree import filed_op_leaf
+
+    op_leaf = filed_op_leaf(repo, op_leaf, ops)  # saves and reverts since the last map build
     sha_of = opindex.earliest_commit_sha(gb, rows, ops)
     ops_out = []
     for op in sorted(ops, key=lambda op: op.id):

@@ -159,6 +159,51 @@ def test_segments_say_what_stands_on_them_and_which_revert_is_clean(tmp_path):
     assert (taken_out["state"], taken_out["dependents"], taken_out["clean"]) == ("reverted", [], None)
 
 
+def test_a_save_and_a_revert_after_the_last_map_build_are_on_their_lanes(tmp_path):
+    """The persisted map files ops only when it is rebuilt, so a save that only modified existing
+    functions, and the prune a revert minted, sat on no lane until a refresh: missing from the
+    timeline, the checkpoints, their counts and their dependents. Both are filed at read time by
+    the lane that owns what they touch, and nothing is written back."""
+    from ugh import state
+    from ugh.api import _named_symbols, history_view
+    from ugh.core import opindex, verbs
+    from ugh.core.store import Store
+    from ugh.lens import tree
+
+    gb, _ = init_store(tmp_path)
+    (tmp_path / "a.py").write_text("def foo():\n    return 1\n\n\ndef baz():\n    return 0\n",
+                                   encoding="utf-8")
+    gb.commit_all("add foo and baz")
+    get(tmp_path)
+    nodes = {f: {"parent": None, "children": [], "members": [m], "size": 1, "dir": "", "label": f}
+             for f, m in (("F-A", "a.py::foo"), ("F-B", "a.py::baz"))}
+    tree.save(tmp_path, {"nodes": nodes, "roots": sorted(nodes),
+                         "op_leaf": tree.assign_ops_to_leaves(nodes, Store(tmp_path).all_ops()),
+                         "max_depth": 0, "cannot_link_moves": [], "identity_events": []})
+    foo_birth = next(o.id for o in opindex.index_ops(tmp_path)
+                     if o.footprint.get("a.py::foo", (0,))[0] is None)
+    persisted = state.load_json(tmp_path, "tree")
+    # After the build: a save that only modifies existing functions (baz now calls foo, so the
+    # miner makes one op of both), then a revert of foo's creation that has to prune foo forward.
+    (tmp_path / "a.py").write_text("def foo():\n    return 2\n\n\ndef baz():\n    return foo()\n",
+                                   encoding="utf-8")
+    gb.commit_all("foo returns two and baz calls it")
+    get(tmp_path)
+    plan = verbs.plan_revert_op_set(tmp_path, "foo", frozenset({foo_birth}))
+    assert plan.pruned_symbols == ("a.py::foo",)
+    verbs.apply(tmp_path, plan)
+
+    by_id = {o.id: o for o in opindex.index_ops(tmp_path)}
+    late = [o for o in history_view(tmp_path, full=True)["ops"]
+            if o["commit_index"] >= 1 and _named_symbols(by_id[o["id"]])]
+    assert {o["kind"] for o in late} >= {"rework", "prune"}
+    assert all(o["feature_id"] == "F-A" for o in late), late
+    on_lane = {oid for s in intent_view(tmp_path)["segments"] if s["feature_id"] == "F-A"
+               for oid in s["op_ids"]}
+    assert {o["id"] for o in late} <= on_lane
+    assert state.load_json(tmp_path, "tree") == persisted  # read-time only
+
+
 def test_cross_feature_theme_reports_both_features_with_correct_tier(tmp_path, monkeypatch):
     def _no_client(*args, **kwargs):
         raise RuntimeError("OPENAI_API_KEY not found in environment or .env")

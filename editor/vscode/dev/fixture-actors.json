@@ -1647,19 +1647,19 @@
    },
    {
     "commit_index": 26,
-    "feature_id": null,
+    "feature_id": "f-00f15095589dbef57bc54fbc5decd4260be2e4eb05184f959ba62186eae7a1d1",
     "id": "df8f8462c82d78ec1defb513cde8af1b82a5f371291bde03b50f6ce2bba35e9a",
     "kind": "rework"
    },
    {
     "commit_index": 27,
-    "feature_id": null,
+    "feature_id": "f-0289065103b82135f1b13615f026fa3d44ab55b7099de26f83d3defd6c43c11f",
     "id": "d50ad91ce95ef0deabecd609e38ef1cc5cbf2559d60c924e1cc2b6ded4f258da",
     "kind": "rework"
    },
    {
     "commit_index": 28,
-    "feature_id": null,
+    "feature_id": "f-0289065103b82135f1b13615f026fa3d44ab55b7099de26f83d3defd6c43c11f",
     "id": "8ab1d7ec3d8b3dd1b7c599da61bfdd295cb2700fbfeeac248a609db4eabb2704",
     "kind": "rework"
    }
@@ -2366,7 +2366,8 @@
      {
       "ref": "f-00f15095589dbef57bc54fbc5decd4260be2e4eb05184f959ba62186eae7a1d1@3",
       "symbols": [
-       "bikecount/metrics.py::yearly_summary"
+       "bikecount/metrics.py::yearly_summary",
+       "bikecount/pages/yearly.py::render"
       ]
      }
     ],
@@ -2512,6 +2513,12 @@
       "symbols": [
        "bikecount/pages/yearly.py::render"
       ]
+     },
+     {
+      "ref": "f-00f15095589dbef57bc54fbc5decd4260be2e4eb05184f959ba62186eae7a1d1@3",
+      "symbols": [
+       "bikecount/pages/yearly.py::render"
+      ]
      }
     ],
     "feature_id": "f-00f15095589dbef57bc54fbc5decd4260be2e4eb05184f959ba62186eae7a1d1",
@@ -2559,31 +2566,46 @@
       "source": "a recorded prompt",
       "trimmed": false,
       "ts": null
+     },
+     {
+      "actor": "human",
+      "channel": "recorded",
+      "chars": 66,
+      "claimed": 0,
+      "claude_session_id": null,
+      "gist": "show the change against the year before as a signed percent column",
+      "resumable": false,
+      "scope": "stint",
+      "source": "a recorded prompt",
+      "trimmed": false,
+      "ts": null
      }
     ],
-    "change_count": 1,
+    "change_count": 2,
     "checkpoint": "f-00f15095589dbef57bc54fbc5decd4260be2e4eb05184f959ba62186eae7a1d1@3",
-    "clean": false,
+    "clean": true,
     "commit_shas": [
-     "421d22a88a293ec66b0e2d54c0fdd325a6a486cd"
+     "421d22a88a293ec66b0e2d54c0fdd325a6a486cd",
+     "55e9d7d629ec446391cca50e80ade42468b9a7de"
     ],
     "dependents": [],
     "feature_id": "f-00f15095589dbef57bc54fbc5decd4260be2e4eb05184f959ba62186eae7a1d1",
     "feature_label": "Yearly Summary Table",
     "first_index": 25,
     "intent": "carry each year's change in total against the year before",
-    "last_index": 25,
+    "last_index": 26,
     "novelty": 0.0,
-    "op_count": 1,
+    "op_count": 2,
     "op_ids": [
-     "3edced5190fef24767b62f776aa96009a08bca185b3ce6180e7cad1804507fdd"
+     "3edced5190fef24767b62f776aa96009a08bca185b3ce6180e7cad1804507fdd",
+     "df8f8462c82d78ec1defb513cde8af1b82a5f371291bde03b50f6ce2bba35e9a"
     ],
-    "present_op_count": 1,
-    "rationale": "one commit",
+    "present_op_count": 2,
+    "rationale": "2 commit(s), 2 op(s)",
     "seg_index": 3,
     "source": "fallback",
     "state": "live",
-    "symbol_count": 1,
+    "symbol_count": 2,
     "symbols": [
      {
       "file": "bikecount/metrics.py",
@@ -2593,11 +2615,20 @@
        25
       ],
       "symbol": "bikecount/metrics.py::yearly_summary"
+     },
+     {
+      "file": "bikecount/pages/yearly.py",
+      "kind": "changed",
+      "live": true,
+      "saves": [
+       26
+      ],
+      "symbol": "bikecount/pages/yearly.py::render"
      }
     ],
     "symbols_truncated": 0,
     "taken_out_by": [],
-    "tier": "co-changed"
+    "tier": "thematic"
    },
    {
     "asks": [
@@ -2821,6 +2852,12 @@
       "symbols": [
        "bikecount/pages/hourly.py::render"
       ]
+     },
+     {
+      "ref": "f-0289065103b82135f1b13615f026fa3d44ab55b7099de26f83d3defd6c43c11f@4",
+      "symbols": [
+       "bikecount/pages/hourly.py::render"
+      ]
      }
     ],
     "feature_id": "f-0289065103b82135f1b13615f026fa3d44ab55b7099de26f83d3defd6c43c11f",
@@ -3012,6 +3049,76 @@
     "tier": "co-changed"
    },
    {
+    "asks": [
+     {
+      "actor": "human",
+      "channel": "recorded",
+      "chars": 55,
+      "claimed": 0,
+      "claude_session_id": null,
+      "gist": "call the busiest hour the peak hour on the by-hour page",
+      "resumable": false,
+      "scope": "stint",
+      "source": "a recorded prompt",
+      "trimmed": false,
+      "ts": null
+     },
+     {
+      "actor": "human",
+      "channel": "recorded",
+      "chars": 61,
+      "claimed": 0,
+      "claude_session_id": null,
+      "gist": "spell out the weekday and weekend heading on the by-hour page",
+      "resumable": false,
+      "scope": "stint",
+      "source": "a recorded prompt",
+      "trimmed": false,
+      "ts": null
+     }
+    ],
+    "change_count": 2,
+    "checkpoint": "f-0289065103b82135f1b13615f026fa3d44ab55b7099de26f83d3defd6c43c11f@4",
+    "clean": true,
+    "commit_shas": [
+     "3aa38315ebd940bdbd1539f376ec647ea8296aea",
+     "8ffdd65fa3b99709a573092651999536b2004c4f"
+    ],
+    "dependents": [],
+    "feature_id": "f-0289065103b82135f1b13615f026fa3d44ab55b7099de26f83d3defd6c43c11f",
+    "feature_label": "Ride Pattern Analysis",
+    "first_index": 27,
+    "intent": "call the busiest hour the peak hour on the by-hour page",
+    "last_index": 28,
+    "novelty": 0.0,
+    "op_count": 2,
+    "op_ids": [
+     "8ab1d7ec3d8b3dd1b7c599da61bfdd295cb2700fbfeeac248a609db4eabb2704",
+     "d50ad91ce95ef0deabecd609e38ef1cc5cbf2559d60c924e1cc2b6ded4f258da"
+    ],
+    "present_op_count": 2,
+    "rationale": "2 commit(s), 2 op(s)",
+    "seg_index": 4,
+    "source": "fallback",
+    "state": "live",
+    "symbol_count": 1,
+    "symbols": [
+     {
+      "file": "bikecount/pages/hourly.py",
+      "kind": "changed",
+      "live": true,
+      "saves": [
+       27,
+       28
+      ],
+      "symbol": "bikecount/pages/hourly.py::render"
+     }
+    ],
+    "symbols_truncated": 0,
+    "taken_out_by": [],
+    "tier": "thematic"
+   },
+   {
     "asks": [],
     "change_count": 15,
     "checkpoint": "f-0462f12c54fc19883f0bd088ee41c4d4786c9f418a554de164efddb6ef65983e@0",
@@ -3112,7 +3219,15 @@
      {
       "ref": "f-00f15095589dbef57bc54fbc5decd4260be2e4eb05184f959ba62186eae7a1d1@3",
       "symbols": [
-       "bikecount/metrics.py::daily_totals"
+       "bikecount/metrics.py::daily_totals",
+       "bikecount/pages/__init__.py::shell"
+      ]
+     },
+     {
+      "ref": "f-0289065103b82135f1b13615f026fa3d44ab55b7099de26f83d3defd6c43c11f@4",
+      "symbols": [
+       "bikecount/charts.py::bar_chart",
+       "bikecount/pages/__init__.py::shell"
       ]
      }
     ],
@@ -3603,6 +3718,18 @@
       "ref": "f-0462f12c54fc19883f0bd088ee41c4d4786c9f418a554de164efddb6ef65983e@5",
       "symbols": [
        "bikecount/pages/overview.py::render"
+      ]
+     },
+     {
+      "ref": "f-00f15095589dbef57bc54fbc5decd4260be2e4eb05184f959ba62186eae7a1d1@3",
+      "symbols": [
+       "bikecount/pages/yearly.py::render"
+      ]
+     },
+     {
+      "ref": "f-0289065103b82135f1b13615f026fa3d44ab55b7099de26f83d3defd6c43c11f@4",
+      "symbols": [
+       "bikecount/pages/hourly.py::render"
       ]
      }
     ],

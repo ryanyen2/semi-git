@@ -33,6 +33,7 @@ from __future__ import annotations
 import fcntl
 import hashlib
 import json
+import os
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -97,12 +98,35 @@ def record_turn(repo: str | Path, *, key: str, key_kind: str, actor: str, channe
     return tid
 
 
+# `turns_for`'s read index: turn-store path -> ((mtime_ns, size), {key: [records in seq order]}).
+# `_atom_prompt` asks once per commit, 461 times per compose on this repository, and each ask used
+# to re-parse the whole store (~0.46 s). Writers keep reading fresh through `load_turns`.
+_BY_KEY: dict[str, tuple[tuple[int, int], dict[str, list[dict]]]] = {}
+
+
+def _turns_by_key(repo: str | Path) -> dict[str, list[dict]]:
+    path = state.path(repo, _ARTIFACT)
+    try:
+        st = os.stat(path)
+    except OSError:
+        return {}
+    stamp, real = (st.st_mtime_ns, st.st_size), os.path.realpath(path)
+    hit = _BY_KEY.get(real)
+    if hit is not None and hit[0] == stamp:
+        return hit[1]
+    index: dict[str, list[dict]] = {}
+    for t in load_turns(repo).values():
+        index.setdefault(t["key"], []).append(t)
+    for records in index.values():
+        records.sort(key=lambda t: t["seq"])
+    _BY_KEY[real] = (stamp, index)
+    return index
+
+
 def turns_for(repo: str | Path, key: str, key_kind: str | None = None) -> list[dict]:
     """Every captured turn under `key`, in capture order (`seq`). Pass `key_kind` to disambiguate
     the rare case of the same string used as both, e.g. a session name and a plan id; omit it to
-    take any kind. Empty list for an unknown key -- never raises."""
-    hits = [
-        t for t in load_turns(repo).values()
-        if t["key"] == key and (key_kind is None or t["key_kind"] == key_kind)
-    ]
-    return sorted(hits, key=lambda t: t["seq"])
+    take any kind. Empty list for an unknown key -- never raises. Copies, so a caller can never
+    edit the memoised index."""
+    return [dict(t) for t in _turns_by_key(repo).get(key, ())
+            if key_kind is None or t["key_kind"] == key_kind]
