@@ -83,7 +83,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("ugh.openRenderPanel", () => renderPanel.open()),
   );
 
+  // The workbench panel opens on the ledger (docs/design/2026-10-18-workbench-redesign.md): the
+  // history as a document, newest first; its Timeline button swaps the same panel to the Gantt.
   const workbenchProvider = new WorkbenchProvider(context, store, preview, root, renderPanel);
+  context.subscriptions.push(
+    vscode.commands.registerCommand("ugh.openLedger", () => workbenchProvider.setMode("ledger"))
+  );
   registerCommands(context, store, preview, () => void blame.render(), planDiff, root, workbenchProvider);
   registerGitBridgeCommands(context, store);
 

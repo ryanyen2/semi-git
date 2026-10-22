@@ -250,7 +250,10 @@ try {
         swatches.length > 0 && grey.length === 0,
         `${grey.length}/${swatches.length} swatches fell back to neutral grey`);
   check("chunk-cars emitted", cars.length > 0, `${cars.length} cars`);
-  check("within-car density cells emitted", cells.length > 0, `${cells.length} cells`);
+  // The per-commit density texture inside a car is gone on purpose (2026-10-18 redesign, W1): it
+  // was one of five unexplained magnitude encodings, of an op count that is mostly bookkeeping.
+  // Magnitude is the count in words. This guards against it coming back.
+  check("no within-car density texture (magnitude is the count, in words)", cells.length === 0, `${cells.length} cells`);
   check("time axis ticks", axisTick.length > 0, `${axisTick.length} ticks`);
   check("frontier handle + veil", handle.length === 1 && veil.length === 1);
   check("lane has swatch+cars+count",
@@ -426,11 +429,20 @@ try {
       `${band.length} band, ${nowRule.length} rule`);
     check("uncommitted work is a ghost car (not a badge)", saveGhosts.length === 1,
       `${saveGhosts.length} save ghost(s)`);
-    check("each pending plan step is its own ghost car", planGhosts.length === 2,
+    // A column is an actor (2026-10-21): the plan's two steps on one lane are ONE card in the plan's
+    // column, named after the first and carrying the "more behind this" back edge, not two cars
+    // packed left to right with no sign of whose plan they are.
+    check("a plan's steps on one lane are one card in the plan's column, with a back edge",
+      planGhosts.length === 1 && r2.querySelectorAll(".gcar-plan-wrap.gcar-ghost-stack").length === 1,
       `${planGhosts.length} plan ghost(s)`);
+    const heads = r2.querySelectorAll(".actor-head");
+    check("one column header per actor: unsaved, then the plan",
+      heads.length === 2 && /unsaved/.test(heads[0].textContent) && /^Add a fo/.test(heads[1].textContent),
+      heads.map((h) => h.textContent).join(" | "));
+    check("a plan header carries its progress underline", r2.querySelectorAll(".actor-progress.done").length === 1);
     // The whole point of the redesign: a forecast car is NAMED. The old badge was a bare `+N`.
     check("ghost cars carry their step title", ghostLabels.length >= 2 &&
-      ghostLabels.some((t) => /Reserve the band|Draw ghost/.test(t.textContent)),
+      ghostLabels.some((t) => /Reserve the|Draw ghost/.test(t.textContent)),
       ghostLabels.map((t) => t.textContent).join(" | "));
     // A plan ghost is the same click target as its inspector card -- the old badge was inert.
     const ghostWrap = r2.querySelectorAll(".gcar-plan-wrap").find((n) => n._listeners && n._listeners.click);
@@ -438,14 +450,18 @@ try {
     // The retired encodings must be gone, or the view carries two languages for one idea again.
     check("old plan underline + count badge retired",
       r2.querySelectorAll(".gbar-plan").length === 0 && r2.querySelectorAll(".gbar-plan-count").length === 0);
-    // Responsive: at a narrow pane the band must SHED cards into a stack (keeping the survivors
-    // readable) rather than shrink all three into unreadable stubs. The stack's back outline is the
-    // "more behind this" mark, so assert it appears and that fewer cards are drawn than at 900px.
-    const wideCards = planGhosts.length + saveGhosts.length;
-    PANE_W = 420;
-    feed({ type: "state", compose: {
+    // Responsive: at a narrow pane the band must SHED columns into a stack (keeping the survivors
+    // readable) rather than shrink them all into unreadable stubs. Four actors here: the unsaved
+    // edits, two live sessions, and the plan; the stack column's header counts what it folded.
+    const fourActors = {
       ...compose,
       save_preview: { affected: [{ feature_id: firstFeature.id, op_count: 4 }], new_work_count: 4 },
+      sessions: { sessions: [
+        { name: "loss-a", branch: "ugh/loss-a", target_branch: "main", scratch: "/tmp/a", new_op_count: 3, owner_pid: 1, alive: true,
+          touched: [{ feature_id: firstFeature.id, symbols: ["train.py::loss", "train.py::step"] }] },
+        { name: "loss-b", branch: "ugh/loss-b", target_branch: "main", scratch: "/tmp/b", new_op_count: 2, owner_pid: 2, alive: false,
+          touched: [{ feature_id: firstFeature.id, symbols: ["train.py::loss"] }] },
+      ], overlaps: [{ a: "loss-a", b: "loss-b", symbols: ["train.py::loss"] }] },
       plan: { sessions: [{
         session_id: "s1", plan_text: "Add a forecast band",
         steps: [
@@ -455,11 +471,59 @@ try {
             predicted_feature: secondFeature.id, predicted_footprint: [], files: [] },
         ],
       }] },
-    } });
-    const narrowCards = byId.rail.querySelectorAll(".gcar-ghost").length;
-    check("narrow pane sheds cards into a stack (not illegible stubs)",
-      narrowCards < wideCards && byId.rail.querySelectorAll(".gcar-ghost-stackback").length >= 1,
-      `${wideCards} card(s) at 900px -> ${narrowCards} at 420px`);
+    };
+    PANE_W = 1200;
+    feed({ type: "state", compose: fourActors });
+    const wideHeads = byId.rail.querySelectorAll(".actor-head").length;
+    check("four actors are four columns at 1200px", wideHeads === 4,
+      `${wideHeads} column(s): ${byId.rail.querySelectorAll(".actor-head").map((h) => h.className).join(", ")}`);
+    // Two sessions on one function: the amber ring on both ghosts, one tie above them, the sentence.
+    const tie = byId.rail.querySelectorAll(".overlap-tie");
+    check("two sessions on one function are tied in amber", tie.length === 1
+      && byId.rail.querySelectorAll(".gcar-session.overlap").length === 2
+      && /loss-a and loss-b both changed loss/.test(tie[0].querySelector("title").textContent),
+      `${tie.length} tie(s)`);
+    check("a running session breathes, a finished one does not",
+      byId.rail.querySelectorAll(".actor-alive.on").length === 1 && byId.rail.querySelectorAll(".actor-alive").length === 2);
+    // A collision with main: one ghost ringed, a dashed tie back to the now rule, the sentence.
+    const mainClash = JSON.parse(JSON.stringify(fourActors));
+    mainClash.sessions.overlaps = [{ a: "loss-b", b: "main", branch: true, symbols: ["train.py::loss"] }];
+    feed({ type: "state", compose: mainClash });
+    const mainTie = byId.rail.querySelectorAll(".overlap-tie.with-main");
+    check("a session colliding with main is ringed and tied back to now",
+      mainTie.length === 1 && byId.rail.querySelectorAll(".gcar-session.overlap").length === 1
+      && /main changed loss after loss-b began/.test(mainTie[0].querySelector("title").textContent),
+      `${mainTie.length} tie(s)`);
+    // One agent, one column: a plan whose Claude Code session id matches a live session's rides
+    // that session's column, with the alive mark AND the progress underline, and its steps' ghosts
+    // where the session's own tree has not reached yet.
+    const joinedActors = JSON.parse(JSON.stringify(fourActors));
+    joinedActors.sessions.sessions[0].claude_session_id = "cc-1";
+    joinedActors.plan.sessions[0].claude_session_id = "cc-1";
+    feed({ type: "state", compose: joinedActors });
+    const joinedHeads = byId.rail.querySelectorAll(".actor-head");
+    const joinedHead = joinedHeads.find((h) => /loss-a/.test(h.textContent));
+    // The fraction is drawn only once the kernel has matched the plan against the session's own
+    // work (`matched_in_session`); before that the column shows the steps and no progress.
+    check("a plan and the session its agent owns are one column, steps shown, no fraction yet",
+      joinedHeads.length === 3 && !!joinedHead
+      && joinedHead.querySelectorAll(".actor-alive").length === 1
+      && joinedHead.querySelectorAll(".actor-progress.done").length === 0
+      && byId.rail.querySelectorAll(".gcar-plan-ghost").length === 1,
+      `${joinedHeads.length} column(s): ${joinedHeads.map((h) => h.textContent).join(" | ")}`);
+    joinedActors.plan.sessions[0].matched_in_session = true;
+    feed({ type: "state", compose: joinedActors });
+    const honest = byId.rail.querySelectorAll(".actor-head").find((h) => /loss-a/.test(h.textContent));
+    check("matched against the session, the joined column shows its progress",
+      !!honest && honest.querySelectorAll(".actor-progress.done").length === 1);
+    PANE_W = 420;
+    feed({ type: "state", compose: fourActors });
+    const narrowHeads = byId.rail.querySelectorAll(".actor-head");
+    const stackHead = narrowHeads.find((h) => h.classList.contains("stack"));
+    check("narrow pane sheds columns into a stack (not illegible stubs)",
+      narrowHeads.length < wideHeads && !!stackHead && /^(\+\d+( more)?|\d+ at work)$/.test(stackHead.textContent)
+      && byId.rail.querySelectorAll(".gcar-ghost-stackback").length >= 1,
+      `${wideHeads} column(s) at 1200px -> ${narrowHeads.length} at 420px (${stackHead && stackHead.textContent})`);
     // Even collapsed, the reader still gets a NAME, never a bare count as their only information.
     const narrowLabels = byId.rail.querySelectorAll(".gcar-ghost-label, .gcar-ghost-tag")
       .map((t) => t.textContent);
@@ -764,8 +828,10 @@ try {
               && out.cars.every((c) => /gcar-preview-out/.test(c))
               && back.cars.every((c) => /gcar-preview-in/.test(c)),
             `revert=[${out.cars}] restore=[${back.cars}]`);
-      check("the sentence on the field names the verb",
-            /^Revert · −/.test(out.say) && /^Restore · \+/.test(back.say),
+      // No op count in the sentence any more (2026-10-19): it names the verb and the direction,
+      // and the lanes that change; the panel beside it names the functions.
+      check("the sentence on the field names the verb and its direction",
+            /^Revert · work leaves/.test(out.say) && /^Restore · work comes back/.test(back.say),
             `revert="${out.say}" restore="${back.say}"`);
 
       // The seam between two changes that landed together: chapters are hoverable under a held
@@ -855,6 +921,14 @@ try {
   // bad CSS by dropping things quietly, so the only way to catch these is to read the source.
   console.log("\nstylesheet:");
   const cssText = fs.readFileSync(path.join(__dirname, "..", "media", "workbench.css"), "utf8");
+
+  // 0. Nothing that states a mode floats over the plot. The armed question, the theme focus, the
+  // agent's verb and the off-screen counts were all absolutely positioned pills once (the
+  // "overlays here and there" of the study); they are rows of the context strip and slots of the
+  // status line now, and the two edge glows are the only absolute marks left, by design.
+  const floating = [...cssText.matchAll(/\.(armed-banner|theme-banner|agent-banner|offscreen-pill|preview-context-pill|preview-refusal-pill)\b[^{]*\{[^}]*position:\s*(absolute|fixed)/g)]
+    .map((m) => m[1]);
+  check("no statement floats over the plot (strip rows and status-line slots only)", floating.length === 0, floating.join(", "));
 
   // 1. A comment that ends early. `.ghost-*/.preview-*` inside prose closes the comment at the
   // `*/`, and the words after it become a selector that swallows the NEXT rule's whole block. That

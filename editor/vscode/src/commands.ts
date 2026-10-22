@@ -228,10 +228,16 @@ async function revertWithFrontier(
     return;
   }
 
-  // An `ok` revert that removes nothing is not a change to confirm -- these ops are already out of
+  // An `ok` revert that changes nothing is not a change to confirm -- these ops are already out of
   // this composition. Asking anyway and then reporting success is precisely the "wait, is that
   // done?" the preview exists to prevent. Mirrors `restoreWithPreview`'s already-live guard below.
-  if (view.removed.length === 0) {
+  //
+  // "Changes nothing" is not `removed.length === 0`: the default revert is forward subtraction,
+  // which keeps an op later work builds on and layers a rework over the symbol, so `removed` is
+  // empty while `added` holds the rework and `files` holds real rewrites. Guarded on `removed`
+  // alone, Apply reported success and changed nothing on 4 of 22 checkpoints of the footfall study
+  // repo (review 2026-10-18 §4.7).
+  if (view.removed.length === 0 && (view.added ?? []).length === 0 && Object.keys(view.files ?? {}).length === 0) {
     const nothing = `${name} removes nothing here — it is already out of this composition.`;
     phase("done", nothing);
     report.info(nothing);

@@ -33,6 +33,12 @@ import { PreviewProvider } from "./preview";
 import { FoldFrontier, StaleRequestError } from "./ugh";
 import type { EmitView } from "./types";
 import { Store } from "./store";
+import { ledgerHtml } from "./ledger";
+
+/** Which reading of the history the panel shows. The timeline is the default; the ledger is the
+ * document reading, one click away from it and back. Remembered per workspace. */
+export type WorkbenchMode = "ledger" | "timeline";
+const MODE_KEY = "ugh.workbench.mode";
 
 /** The composition picker's ref, as a fold frontier.
  *
@@ -61,6 +67,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
   // dropped before it spawns. Sequence numbers already existed for result-ordering -- this reuses
   // them for cancellation.
   private readonly latest = { preview: 0, fold: 0, playhead: 0, find: 0, change: 0, asked: 0 };
+  private mode: WorkbenchMode;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -71,6 +78,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     // consumer of a fold the scrub already performs, never a dependency of it.
     private readonly render?: { show(frontier: FoldFrontier): unknown; isOpen(): boolean }
   ) {
+    this.mode = context.workspaceState.get<WorkbenchMode>(MODE_KEY, "timeline");
     this.disposables.push(
       store.onDidChange(() => void this.pushState()),
       // Identity colors are theme-aware (color.ts's OKLCH lightness shifts light<->dark), so a
@@ -169,7 +177,20 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
     );
   }
 
+  /** Swap the panel between the ledger and the timeline. Setting `html` reloads the webview, which
+   * says `ready` and is answered with the current state, so both readings start from one push. */
+  async setMode(mode: WorkbenchMode): Promise<void> {
+    if (mode !== this.mode) {
+      this.mode = mode;
+      this.previewCache.clear();
+      await this.context.workspaceState.update(MODE_KEY, mode);
+      if (this.view) this.view.webview.html = this.html(this.view.webview);
+    }
+    await vscode.commands.executeCommand("ughWorkbench.focus");
+  }
+
   private html(webview: vscode.Webview): string {
+    if (this.mode === "ledger") return ledgerHtml(webview, this.context.extensionUri, this.root);
     const jsUri = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "media", "workbench.js"));
     const cssUri = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "media", "workbench.css"));
     const nonce = String(this.context.extension.packageJSON.version || "0").length + "-" + Date.now();
@@ -200,26 +221,38 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
       <div id="findResults" class="find-results" hidden></div>
     </div>
     <div id="titlebarActions" class="titlebar-actions">
-      <button id="inspectorToggle" title="Hide detail panel">◧</button>
-      <button id="saveBtn" class="btn-primary" title="ugh save — record and commit">Save</button>
+      <button id="ledgerBtn" title="Open the ledger: the same history as a document, newest first">Ledger</button>
+      <button id="inspectorToggle" title="Hide detail panel">Hide details</button>
+      <button id="saveBtn" title="ugh save: record and commit">Save</button>
       <button id="undoBtn" title="ugh undo">Undo</button>
     </div>
   </div>
-  <div id="main">
-    <div id="rail"></div>
-    <button id="offscreenAbove" class="offscreen-pill offscreen-pill-top" hidden></button>
-    <button id="offscreenBelow" class="offscreen-pill offscreen-pill-bottom" hidden></button>
-    <div id="previewContext" class="preview-context-pill" hidden></div>
-    <div id="previewRefusal" class="preview-refusal-pill" hidden></div>
+  <!-- The context strip: one standing statement at a time, between the title bar and the map,
+       which it pushes down and never covers: the armed merge/move question, or a focused piece
+       of cross-feature work with its verbs. Hidden when it has nothing to say. These two used to
+       float over the plot as bordered pills. -->
+  <div id="strip">
     <div id="armedBanner" class="armed-banner" hidden></div>
     <div id="themeBanner" class="theme-banner" hidden></div>
-    <!-- The lens caption: a live search, saying what receded and how to clear it. Shares the
-         theme banner's styling because it is the same kind of statement about the same kind of
-         state -- one thing asked about, the rest dimmed. -->
+  </div>
+  <div id="main">
+    <div id="rail"></div>
+    <!-- Lanes a held preview changes that are scrolled out of view: a glow on the rail's edge,
+         counted in the status line, clickable to scroll there. -->
+    <button id="offscreenAbove" class="edge-glow edge-glow-top" hidden></button>
+    <button id="offscreenBelow" class="edge-glow edge-glow-bottom" hidden></button>
     <div id="confirmBar" class="confirm-bar" hidden></div>
     <div id="inspector"></div>
   </div>
-  <div id="presence" title="where you are: composition · view · selection closure · uncommitted work"></div>
+  <!-- The status line. The sentence that names what the cursor is on and the refusal with its
+       ways out used to be two pills floating over the plot (bottom-right and top-centre), two of
+       the overlays the study named; they are slots in this one line now, beside "where you are",
+       and cover nothing. -->
+  <div id="statusline">
+    <div id="presence" title="what you are looking at, and any unsaved work"></div>
+    <div id="previewContext" class="preview-context-pill" hidden></div>
+    <div id="previewRefusal" class="preview-refusal-pill" hidden></div>
+  </div>
 </div>
 <script nonce="${nonce}" src="${jsUri}"></script>
 </body>
@@ -344,6 +377,11 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
       case "openFile":
         await this.openFile(msg.path, msg.symbol);
         return;
+      case "copyText":
+        // A command the reader runs in a terminal (landing a session stays on the CLI).
+        await vscode.env.clipboard.writeText(String(msg.text || ""));
+        vscode.window.setStatusBarMessage("Copied: " + String(msg.text || ""), 3000);
+        return;
       case "find":
         await this.find(msg.query, msg.seq);
         return;
@@ -376,6 +414,12 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
         return;
       case "resumePlan":
         await vscode.commands.executeCommand("ugh.resumePlan", msg.sessionId);
+        return;
+      case "openLedger":
+        await this.setMode("ledger");
+        return;
+      case "openWorkbench": // the ledger's Timeline button
+        await this.setMode("timeline");
         return;
       default:
         return;
@@ -686,7 +730,7 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
       paths.map((p) => ({ label: p })),
       {
         canPickMany: true,
-        placeHolder: `Files as of c${commitIndex} — opens read-only; your working tree is untouched`,
+        placeHolder: `Files as of save ${commitIndex + 1}: opens read-only; your working tree is untouched`,
       }
     );
     if (!picks?.length) return;
@@ -918,8 +962,11 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
   // ops and the tree without them, closure included.
   private async requestChange(verb: "revert" | "restore", ref: string, seq: number): Promise<void> {
     this.latest.change = seq;
+    // The timeline asks as the cursor sweeps, so only the newest ask is worth running. The ledger
+    // asks once per row it opens or stages and waits on each answer, so none of its asks is stale.
+    const stillWanted = this.mode === "ledger" ? undefined : () => this.latest.change === seq;
     try {
-      const view = await this.cachedEmit(verb, ref, () => this.latest.change === seq);
+      const view = await this.cachedEmit(verb, ref, stillWanted);
       void this.view?.webview.postMessage({
         type: "changeResult",
         seq,
@@ -928,11 +975,13 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
         ok: view.ok !== false,
         message: view.message,
         files: view.files || {},
+        view, // the whole dry run, for the ledger's consequence note
       });
     } catch (e: any) {
       if (e instanceof StaleRequestError) return; // a newer selection's projection answers instead
       void this.view?.webview.postMessage({
         type: "changeResult", seq, ref, verb, ok: false, message: e.message, files: {},
+        view: { ok: false, verb, target: ref, removed: [], added: [], affected_symbols: [], forked: false, files: {}, message: e.message },
       });
     }
   }

@@ -73,27 +73,34 @@ html, body { margin: 0; height: 100%; background: var(--vscode-editor-background
       <div id="findResults" class="find-results" hidden></div>
     </div>
     <div id="titlebarActions" class="titlebar-actions">
-      <button id="inspectorToggle" title="Hide detail panel">◧</button>
-      <button id="saveBtn" class="btn-primary" title="ugh save — record and commit">Save</button>
+      <button id="ledgerBtn" title="Open the ledger: the same history as a document, newest first">Ledger</button>
+      <button id="inspectorToggle" title="Hide detail panel">Hide details</button>
+      <button id="saveBtn" title="ugh save: record and commit">Save</button>
       <button id="undoBtn" title="ugh undo">Undo</button>
     </div>
   </div>
-  <div id="main">
-    <div id="rail"></div>
-    <button id="offscreenAbove" class="offscreen-pill offscreen-pill-top" hidden></button>
-    <button id="offscreenBelow" class="offscreen-pill offscreen-pill-bottom" hidden></button>
-    <div id="previewContext" class="preview-context-pill" hidden></div>
-    <div id="previewRefusal" class="preview-refusal-pill" hidden></div>
+  <!-- The context strip: one standing statement at a time, between the title bar and the map,
+       which it pushes down and never covers: the armed merge/move question, or a focused piece
+       of cross-feature work with its verbs. Hidden when it has nothing to say. These two used to
+       float over the plot as bordered pills. -->
+  <div id="strip">
     <div id="armedBanner" class="armed-banner" hidden></div>
     <div id="themeBanner" class="theme-banner" hidden></div>
-    <!-- The lens caption: a pinned lane or a live search, saying what receded and how to clear it.
-         Shares the theme banner's styling because it is the same kind of statement about the same
-         kind of state -- one thing asked about, the rest dimmed. -->
-    <div id="lensBanner" class="theme-banner" hidden></div>
+  </div>
+  <div id="main">
+    <div id="rail"></div>
+    <!-- Lanes a held preview changes that are scrolled out of view: a glow on the rail's edge,
+         counted in the status line, clickable to scroll there. -->
+    <button id="offscreenAbove" class="edge-glow edge-glow-top" hidden></button>
+    <button id="offscreenBelow" class="edge-glow edge-glow-bottom" hidden></button>
     <div id="confirmBar" class="confirm-bar" hidden></div>
     <div id="inspector"></div>
   </div>
-  <div id="presence" title="where you are: composition · view · selection closure · uncommitted work"></div>
+  <div id="statusline">
+    <div id="presence" title="what you are looking at, and any unsaved work"></div>
+    <div id="previewContext" class="preview-context-pill" hidden></div>
+    <div id="previewRefusal" class="preview-refusal-pill" hidden></div>
+  </div>
 </div>
 <script>
   let _st = null;
@@ -107,17 +114,81 @@ html, body { margin: 0; height: 100%; background: var(--vscode-editor-background
     setState: (s) => { _st = s; },
   });
 </script>
+<script>
+  // `?raf=timer`: run requestAnimationFrame on timers. Headless Chrome's virtual time starves rAF
+  // (four frames in 2.5 s of budget), so anything frame-driven -- the playhead's spring, a glide --
+  // looks stuck in a capture. Timers do advance under virtual time, so this lets a `--virtual-time-
+  // budget=N` screenshot show the N-th millisecond of a motion. Not for VS Code, which has real frames.
+  if (new URLSearchParams(location.search).get("raf") === "timer") {
+    window.requestAnimationFrame = (cb) => setTimeout(() => cb(performance.now()), 16);
+    window.cancelAnimationFrame = (id) => clearTimeout(id);
+  }
+</script>
 <script src="../media/workbench.js"></script>
 <script src="./fixture.js"></script>
 <script>
   // The same payload `smoke.js` renders, built by the same code (dev/fixture.js). This page used
   // to carry its own three-node map with no `grid`, so it drew an empty plot -- the one thing a
   // preview exists to rule out.
-  fetch("./fixture-compose.json")
+  // `?fx=<file>` renders another capture (a scratch copy of a real repository) through the same builder
+  const fx = new URLSearchParams(location.search).get("fx") || "fixture-compose.json";
+  fetch("./" + fx)
     .then((r) => r.json())
     .then((raw) => {
-      window.__fixture = buildComposeFixture(raw);
-      window.dispatchEvent(new MessageEvent("message", { data: { type: "state", compose: window.__fixture } }));
+      // a capture may nest the compose under `compose` (the ledger fixtures do)
+      window.__fixture = buildComposeFixture(raw.compose || raw);
+      // `?hues=1`: the real identity colours (src/color.ts, dark theme) instead of the fixture's
+      // placeholder greys, so a capture shows what the panel shows
+      // `?light=1`: VS Code "Light Modern" tokens and the light body class, so the second theme gets looked at
+      const light = !!new URLSearchParams(location.search).get("light");
+      if (light) {
+        document.body.classList.add("vscode-light");
+        const t = { "editor-background": "#ffffff", "editorWidget-background": "#f8f8f8", "foreground": "#3b3b3b", "descriptionForeground": "#717171", "panel-border": "#e5e5e5", "widget-border": "#e5e5e5", "focusBorder": "#005fb8", "input-background": "#ffffff", "textCodeBlock-background": "#f5f5f5", "list-hoverBackground": "#f2f2f2",
+          // the status hues Light Modern really has; without them the alive mark fell back to a pale chart green
+          "testing-iconPassed": "#388a34", "testing-iconFailed": "#e51400", "editorWarning-foreground": "#bf8803", "charts-blue": "#005fb8" };
+        for (const [k, v] of Object.entries(t)) document.documentElement.style.setProperty("--vscode-" + k, v);
+      }
+      if (new URLSearchParams(location.search).get("hues")) {
+        const hue = (id) => { let h = 2166136261; for (let i = 0; i < id.length; i++) { h ^= id.charCodeAt(i); h = Math.imul(h, 16777619); } return (((h >>> 0) * 0.618033988749895) % 1) * 360; };
+        const rgb = (L, C, d) => { const r = d * Math.PI / 180, a = C * Math.cos(r), b = C * Math.sin(r); const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3, m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3, s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3; const g = (x) => Math.round(Math.max(0, Math.min(1, x <= 0.0031308 ? 12.92 * x : 1.055 * Math.pow(x, 1 / 2.4) - 0.055)) * 255).toString(16).padStart(2, "0"); return "#" + g(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s) + g(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s) + g(-0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s); };
+        window.__fixture.map.nodes.forEach((n) => { n.color = light ? rgb(0.55, 0.14, hue(n.id)) : rgb(0.72, 0.13, hue(n.id)); });
+      }
+      // `?actors=<file>`: sessions and a plan merged over the capture, so the forecast band's columns
+      // can be looked at before a repository with live sessions is to hand
+      const actors = new URLSearchParams(location.search).get("actors");
+      const merge = actors ? fetch("./" + actors).then((r) => r.json()).then((a) => Object.assign(window.__fixture, a)) : Promise.resolve();
+      return merge.then(() => {
+        window.dispatchEvent(new MessageEvent("message", { data: { type: "state", compose: window.__fixture } }));
+      });
+    })
+    .then(() => {
+      // `?click=<selector>|<selector>|...`: click each in turn, 500ms apart, so a headless capture can
+      // reach the selected-feature and selected-checkpoint states. A selector may end in `:label=Text`
+      // to pick the element whose text (or whose lane label) starts with Text.
+      const steps = (new URLSearchParams(location.search).get("click") || "").split("|").filter(Boolean);
+      const pick = (sel) => {
+        const m = sel.match(/^(.*):label=(.*)$/); const css = m ? m[1] : sel, want = m ? m[2] : null;
+        const els = [...document.querySelectorAll(css)];
+        if (!want) return els[0];
+        return els.find((e) => (e.textContent || "").trim().startsWith(want)
+          || ((e.closest(".glane") || {}).textContent || "").trim().startsWith(want));
+      };
+      steps.forEach((sel, i) => setTimeout(() => {
+        const e = pick(sel); if (!e) { console.log("no match", sel); return; }
+        for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) e.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: 1, clientY: 1 }));
+      }, 400 + i * 500));
+      // `?flick=<px per frame>,<frames>`: grab the playhead at the now edge and drag it left that fast
+      // for that many frames, then let go -- the gesture the spring, the notches and the coast answer
+      // (pair with `raf=timer` and a `--virtual-time-budget` that ends mid-motion to see one frame).
+      const flick = (new URLSearchParams(location.search).get("flick") || "").split(",").map(Number);
+      if (flick[0]) setTimeout(() => {
+        const band = document.querySelector(".frontier-band"); if (!band) return;
+        const r = band.getBoundingClientRect(); let x = r.left + 6; const y = r.top + 20;
+        const ev = (type, target) => (target || window).dispatchEvent(new PointerEvent(type, { bubbles: true, clientX: x, clientY: y, pointerId: 1, isPrimary: true }));
+        ev("pointerdown", band);
+        let i = 0; const frames = flick[1] || 12;
+        const iv = setInterval(() => { x -= flick[0]; ev("pointermove"); if (++i >= frames) { clearInterval(iv); ev("pointerup"); } }, 16);
+      }, 900);
     })
     .catch((e) => { window.__err = String(e); });
 </script>

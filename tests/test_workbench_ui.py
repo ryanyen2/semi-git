@@ -123,9 +123,9 @@ def test_a_passing_oracle_says_so_and_makes_land_primary():
     card = _card(_STAGED, {"staged": {"verb": "merge-op", "op_count": 6, "oracle_status": "pass"}})
     assert card["actions"][0] == {
         "verb": "land", "label": "Land", "primary": True,
-        "hint": "ugh advanced commit — replace those ops in the ideal",
+        "hint": "ugh advanced commit: replace those edits in the record",
     }
-    assert card["gate"] == "Oracle passed — safe to land."
+    assert card["gate"] == "Oracle passed: safe to land."
 
 
 def test_abandon_is_offered_in_every_staged_state():
@@ -136,20 +136,21 @@ def test_abandon_is_offered_in_every_staged_state():
         assert any(a["verb"] == "unstage" for a in card["actions"]), gate
 
 
-def test_drift_offers_one_save_because_save_already_commits():
-    """The card drew Save *and* Commit. `ugh save` mines and commits in one verb, so the second button
-    named a step the first had already taken."""
+def test_drift_lists_what_the_title_bar_save_records_and_offers_no_second_save():
+    """The card drew Save *and* Commit, then one Save beside the title bar's Save: two buttons for one
+    act, the second a blue block in the panel. `ugh save` mines and commits in one verb from the title
+    bar; the card lists what it will record and points at it (2026-10-21 surface pass)."""
     card = _card(_DRIFT)
     assert card["state"] == "drift"
-    assert card["title"] == "Working changes · 1"
-    assert [a["verb"] for a in card["actions"]] == ["save"]
-    assert "commits" in card["why"]
+    assert card["title"] == "1 unsaved file"
+    assert card["actions"] == []
+    assert "commits" in card["why"] and "title bar" in card["why"]
 
 
 def test_a_clean_tree_draws_no_actions():
     card = _card(_CLEAN)
     assert card["state"] == "clean"
-    assert card["clean"] == "Clean — everything is recorded."
+    assert card["clean"] == "Nothing unsaved. Every change is recorded."
     assert "actions" not in card and "paths" not in card
 
 
@@ -163,7 +164,7 @@ def test_staged_without_the_candidate_detail_is_still_a_staged_card():
     card = _card(_STAGED, None)
     assert card["state"] == "staged"
     assert card["title"] == "Staged rewrite"
-    assert "recorded op(s) rewritten" not in card["why"]
+    assert "recorded edit(s) rewritten" not in card["why"]
     assert any(a["verb"] == "unstage" for a in card["actions"])
     assert next(a for a in card["actions"] if a["verb"] == "land")["disabled"] is True
 
@@ -301,7 +302,7 @@ def test_merge_says_the_hovered_lane_stops_existing():
     say = _arm("merge", _FEAT, 3)
     assert say["role"] == "blast"  # loses its ops -- the established meaning of that paint
     assert "Cart pricing" in say["message"]
-    assert "3 edits" in say["message"] and "2 symbols" in say["message"]
+    assert "3 changes" in say["message"] and "2 symbols" in say["message"]
     assert "stops existing" in say["message"]
 
 
@@ -314,7 +315,7 @@ def test_move_discloses_that_the_lane_leaves_the_graph():
     say = _arm("move", _FEAT, 3)
     assert "leaves the graph" in say["message"]
     assert "keeps its 2 symbols" in say["message"]  # the difference from merge, stated with the count
-    assert "3 edits" in say["message"]
+    assert "3 changes" in say["message"]
 
 
 def test_merge_and_move_are_told_apart_by_their_previews():
@@ -337,7 +338,7 @@ def test_rename_previews_that_it_is_safe():
 
 
 def test_one_edit_is_not_pluralised():
-    assert "1 edit " in _arm("merge", _FEAT, 1)["message"]
+    assert "1 change " in _arm("merge", _FEAT, 1)["message"]
     assert "1 symbol " in _arm("merge", {"label": "X", "own_symbols": ["a.py::b"]}, 1)["message"]
 
 
@@ -364,13 +365,13 @@ def test_a_hovered_merge_target_states_the_lane_that_results():
     thrown away, exactly as split's `groups` were: merge's counts are the combined totals."""
     say = _armed("merge", {"ok": True, "op_count": 10, "member_count": 14})
     assert "Checkout" in say and "Cart pricing" in say
-    assert "one lane of 10 edits" in say and "14 symbols" in say
+    assert "one lane of 14 symbols" in say and "edit" not in say  # sized in symbols, never ops
     assert "gone" in say  # which of the two ends is the whole decision
 
 
 def test_a_hovered_move_target_states_both_sides_of_the_transfer():
     say = _armed("move", {"ok": True, "op_ids": ["a", "b", "c"]})
-    assert "3 edits land here (7 → 10)" in say
+    assert "lands here" in say and "edit" not in say
     assert "leaves the graph" in say  # the source's fate, again, at the point of no return
 
 
@@ -410,18 +411,20 @@ def test_the_backend_headline_wins_when_it_exists():
 def test_without_a_headline_the_sentence_carries_the_three_counts():
     say = _staged({"verb": "revert", "kind": "feature", "targetId": "f-a",
                    "res": {"ok": True, "removed": ["o1", "o2", "o3"],
+                           "affected_symbols": ["a.py::f", "a.py::__anchor__::f", "b.py::g"],
                            "files": {"a.py": {}, "b.py": {}},
                            "affected": [{"feature_id": "f-a", "direction": "blast"},
                                         {"feature_id": "f-b", "direction": "blast"}]}})
-    assert "3 edits come out" in say
+    assert "2 functions come out" in say  # named symbols, never the op count (3 here)
     assert "2 files rewritten" in say
     assert "1 other feature affected" in say  # the target itself is never its own collateral
 
 
 def test_a_restore_counts_what_comes_back_not_what_leaves():
     say = _staged({"verb": "restore", "kind": "chapter", "targetId": "f-a",
-                   "res": {"ok": True, "added": ["o1", "o2"], "removed": [], "files": {"a.py": {}}}})
-    assert "brings back 2 edits" in say
+                   "res": {"ok": True, "added": ["o1", "o2"], "removed": [], "files": {"a.py": {}},
+                           "affected_symbols": ["a.py::f", "a.py::g"]}})
+    assert "brings back 2 functions" in say
 
 
 def test_a_refusal_is_the_sentence_not_a_blank_bar():
@@ -440,7 +443,7 @@ def test_back_to_here_counts_checkpoints_and_keeps_checking_honest():
     partial = _staged({"verb": "revert", "kind": "backto", "targetId": "f-a",
                        "refs": ["f-a@2", "f-a@1"], "opCount": 7, "blastCount": 1,
                        "blastDone": False, "res": {"ok": True}})
-    assert "removes 2 later checkpoints" in partial and "7 edits" in partial
+    assert "removes 2 later checkpoints" in partial and "edit" not in partial
     assert "still checking" in partial and "≥1" in partial
     done = _staged({"verb": "revert", "kind": "backto", "targetId": "f-a",
                     "refs": ["f-a@2"], "opCount": 3, "blastCount": 0,
@@ -623,7 +626,7 @@ def test_a_dumped_op_id_set_collapses_to_a_count():
     ids = ", ".join(f"'{i:064x}'" for i in range(40))
     say = _humanize(f"would leave an invalid (forked) ideal, refused: not a valid ideal "
                     f"(downward-closure or fork-freedom violated): [{ids}]")
-    assert "40 op(s)" in say
+    assert "40 recorded edit(s)" in say
     assert "0000000000" not in say
     assert say.startswith("would leave an invalid (forked) ideal")
     assert len(say) <= 220
@@ -919,11 +922,129 @@ def test_the_provenance_line_says_whose_words_and_how_much_more_there_is():
     one = _asked(f"askedMeta({json.dumps(_ask(trimmed=True, chars=649))}, 0, false)")
     assert one == "you, in a Claude Code chat · 649 characters in full"
 
+    # The share of the chapter is an op count and is no longer printed; the asks are already in
+    # dominance order, which says the same thing without a number nobody could place.
     many = _asked(f"askedMeta({json.dumps(_ask(claimed=7))}, 2, true)")
-    assert many == "2. you, in a Claude Code chat · accounts for 7 edits"
+    assert many == "2. you, in a Claude Code chat"
 
 
 def test_the_control_says_what_it_opens():
     """A bare "more" makes the reader click to find out what they are getting."""
     assert _asked(f"askedMoreLabel({json.dumps(_ask(trimmed=True))}, 0)") == "Read the whole prompt"
     assert _asked(f"askedMoreLabel({json.dumps(_ask())}, 3)") == "Read all 4 asks"
+
+
+# ---- the playhead's notches and landing -----------------------------------------------------------
+# The playhead has mass: under the hand it sits in the notch of the save that owns the pointer, a
+# checkpoint boundary is a deeper notch, and a release coasts to the save that owns the stopping
+# place. These pin the shape of that feel, not its constants: a save holds the handle back, a boundary
+# holds it more, the hand and the handle meet at the notch's edge (no jump between notches), and a
+# release near the now edge re-attaches to now.
+
+_PLAYHEAD_PRELUDE = """
+const graphView = { snap: [10], snapSet: new Set([10]) };
+const geom = (() => {
+  const plotX0 = 100, plotW = 600, maxCommit = 20;
+  const xOf = (ci) => plotX0 + (Math.max(0, Math.min(maxCommit, ci)) / maxCommit) * plotW;
+  return { plotX0, plotW, maxCommit, xOf,
+    xToCommit: (x) => Math.max(0, Math.min(maxCommit, Math.round(((x - plotX0) / plotW) * maxCommit))) };
+})();
+"""
+
+
+def _playhead(expr: str):
+    snippet = (_PLAYHEAD_PRELUDE
+               + _slice("function snapCommit", "// The checkpoint labels whose chapter")
+               + _slice("// ---- playhead-wells", "// ---- end-playhead-wells"))
+    return _node(snippet, f"console.log(JSON.stringify({expr}));\n")
+
+
+def test_a_save_holds_the_handle_back_and_a_boundary_holds_it_more():
+    # saves are 30px apart here; the pointer sits 9px right of save 5 (plain) and of save 10 (boundary)
+    plain = _playhead("phWell(geom.xOf(5) + 9, geom)")
+    deep = _playhead("phWell(geom.xOf(10) + 9, geom)")
+    assert plain["ci"] == 5 and deep["ci"] == 10
+    assert 0 < plain["x"] - 250 < 9          # behind the hand, past the save
+    assert 0 < deep["x"] - 400 < plain["x"] - 250  # a boundary lingers more
+
+
+def test_the_hand_and_the_handle_meet_at_the_edge_of_a_notch():
+    # at the notch's edge (half the spacing) the pull is zero, so crossing into the next notch is
+    # continuous: no jump in the line as the pointer passes between two saves
+    at_edge = _playhead("phWell(geom.xOf(5) + 15, geom)")
+    assert abs(at_edge["x"] - (250 + 15)) < 1e-6
+
+
+def test_a_release_lands_on_the_save_it_coasts_to():
+    assert _playhead("landingIndex(geom.xOf(5), 0, geom)") == 5
+    # 600 px/s for the coast window carries the playhead on to a later save
+    assert _playhead("landingIndex(geom.xOf(5), 600, geom)") > 5
+    assert _playhead("landingIndex(geom.xOf(5), -600, geom)") < 5
+
+
+def test_a_release_on_now_re_attaches_to_now_and_the_save_before_it_stays_reachable():
+    assert _playhead("landingIndex(geom.xOf(20), 0, geom)") is None
+    assert _playhead("landingIndex(geom.xOf(19), 0, geom)") == 19
+    # a flick from the save before now coasts onto now
+    assert _playhead("landingIndex(geom.xOf(19), 600, geom)") is None
+
+
+# ---- actors: whose work is coming, one column each ---------------------------------------------
+# The forecast band gives a column to each actor with work coming: the reader's unsaved edits
+# first, then every live session, then every agent plan, and a plan whose agent also owns a live
+# session rides that session's column. Past the band's width the rest fold into one stack column.
+
+_ACTORS_PRELUDE = """
+const savePreview = { byFeature: { "f-a": 2 } };
+const sessions = { sessions: [
+  { name: "loss-a", alive: true, claude_session_id: "cc-1", touched: [{ feature_id: "f-a", symbols: ["t.py::loss"] }, { feature_id: null, symbols: ["t.py::born"] }] },
+  { name: "loss-b", alive: false, touched: [{ feature_id: "f-b", symbols: ["t.py::step"] }] },
+] };
+const plan = {
+  sessions: [
+    { sessionId: "p1", planText: "Add the schema. Then wire it.", claudeSessionId: "cc-1", matchedCount: 1, stepCount: 2, matchedInSession: true },
+    { sessionId: "p2", planText: "Draw the chart", claudeSessionId: null, matchedCount: 0, stepCount: 1 },
+  ],
+  steps: [
+    { id: "s1", sessionId: "p1", matched: true, matchedFeature: "f-c", predictedFeature: null },
+    { id: "s2", sessionId: "p1", matched: false, predictedFeature: "f-d" },
+    { id: "s3", sessionId: "p2", matched: false, predictedFeature: "f-b" },
+  ],
+};
+const actors = collectActors(savePreview, sessions, plan);
+"""
+
+
+def _actors(expr: str):
+    return _node(_slice("// ---- actors", "// ---- end-actors") + _ACTORS_PRELUDE,
+                 f"console.log(JSON.stringify({expr}));\n")
+
+
+def test_actors_come_in_order_unsaved_sessions_then_plans():
+    assert _actors("actors.map((a) => a.id)") == ["unsaved", "session:loss-a", "session:loss-b", "plan:p2"]
+
+
+def test_a_plan_rides_the_session_its_agent_owns():
+    joined = _actors("actors[1]")
+    assert joined["plan"]["sessionId"] == "p1"
+    assert joined["done"] == 1 and joined["total"] == 2
+    # the fraction is honest only once matched against the session's work; otherwise none is shown
+    unmatched = _actors('(() => { plan.sessions[0].matchedInSession = false; return collectActors(savePreview, sessions, plan)[1]; })()')
+    assert unmatched["done"] is None and unmatched["total"] == 0
+    # the session's own lane, the plan's built lane and its predicted lane all keep the column lit
+    assert sorted(_actors("[...actors[1].lanes]")) == ["f-a", "f-c", "f-d"]
+    # a function born in the session's tree has no lane and is named apart
+    assert _actors("actors[1].unplaced") == ["t.py::born"]
+
+
+def test_a_plan_label_is_its_first_words():
+    assert _actors("actors[3].label") == "Draw the chart"
+    assert _actors('planLabel("Add the schema and then wire the api to it")') == "Add the schema and"
+
+
+def test_columns_fold_into_one_stack_past_the_band():
+    assert _actors("forecastColumnsFor(actors, 4).map((c) => c.actors.length)") == [1, 1, 1, 1]
+    cols = _actors("forecastColumnsFor(actors, 2)")
+    assert [c["stack"] for c in cols] == [False, True]
+    assert [a["id"] for a in cols[1]["actors"]] == ["session:loss-a", "session:loss-b", "plan:p2"]
+    assert _actors("forecastColumnsFor(actors, 0)") == []

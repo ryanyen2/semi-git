@@ -15,11 +15,21 @@ and drives `ugh`'s read views and its feature, kernel, and git-bridge verbs.
 - **Feature blame** — a colored tint per line, on the background, left border, and overview ruler,
   by the feature that owns it. Hover for the feature's label and id. Colors are a deterministic
   OKLCH hash of the feature id, identical across the editor, the workbench, and the terminal UI.
-- **Composition Workbench** (`ugh: Open Composition Workbench`) — a full-window rail (feature
-  tree + commit timeline) and inspector, grounded in a GitKraken/GitHub-Graph-style layout. A
-  draggable playhead scrubs any commit-index frontier and re-folds `code(I)` live, without
-  materializing the working tree. Selecting a feature or a checkpoint shows what it changed, down
-  to the lines. Hovering an action paints its blast/foundation effect before you commit to it.
+- **Composition Workbench** (what the ugh Workbench panel opens on; `ugh: Open Composition
+  Workbench`) — the timeline: one lane per feature in its own hue, its checkpoints as blocks on a
+  dated axis, counts in changes (one function in one save), functions and saves, never in ops.
+  Selecting a feature or a checkpoint shows what it changed, down to the lines; taking work out
+  or putting it back is previewed in place and confirmed from a bar docked under the rows. The
+  playhead has mass: drag it and it rests on saves, lingering where a checkpoint begins or ends;
+  flick it and it coasts to a save; the arrow keys step one save, Shift one checkpoint, Esc back to
+  now. Right of the now line, the forecast band names who has work coming, one column each: your
+  unsaved edits, every live `ugh session` (breathing while it runs, amber where two touched the
+  same function), and every agent's plan with its progress; click a column to follow that actor.
+- **Ledger** (the workbench's Ledger button; `ugh: Open Ledger`) — the same history as a
+  document: one line per checkpoint, newest first, the feature lanes in the gutter. Open a row for
+  the words that asked for it, the functions it touched, its saves and the exact lines; take a
+  checkpoint out or put it back from a margin note that reads the consequence first; ⌘-click rows
+  to take several out as one gesture. Its Timeline button swaps the panel back.
 - **Activity bar** (`ugh`) — three tree views: **Now** (what is unsaved, what needs you,
   what you just did), **Features** (the feature/subsystem tree), **Changes** (drift, unmanaged
   paths, the trust queue).

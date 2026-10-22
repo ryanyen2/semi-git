@@ -98,7 +98,9 @@ export class BlameController implements vscode.Disposable {
     for (const s of blame.spans) {
       const t = this.typeFor(s.feature_id);
       const range = new vscode.Range(s.start_line - 1, 0, s.end_line - 1, 0);
-      const hoverMessage = new vscode.MarkdownString(`${escape(s.label)} (\`${s.feature_id}\`)`);
+      // The feature's name alone. The raw `feature_id` used to follow it in backticks: 64 hex
+      // characters nobody retypes, in the one hover a reader opens to learn what this span is.
+      const hoverMessage = new vscode.MarkdownString(escape(s.label));
       const opts = byType.get(t) ?? [];
       opts.push({ range, hoverMessage });
       byType.set(t, opts);

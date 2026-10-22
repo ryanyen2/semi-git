@@ -21,6 +21,19 @@
   --fail: var(--vscode-testing-iconFailed, var(--vscode-charts-red, #e5675f));
   --code-bg: var(--vscode-textCodeBlock-background, var(--vscode-editor-background));
 
+  /* ── Surface language (2026-10-21 pass) ──────────────────────────────────────────────────────
+     The identity hues are the only colour on this surface; everything else is ink at three
+     strengths on one ground, and a control is a tone step, never a bordered box. Two radii: one for
+     marks drawn in the plot (bars, swatches), one for controls. */
+  --tone-1: color-mix(in srgb, var(--fg) 5%, transparent);
+  --tone-2: color-mix(in srgb, var(--fg) 10%, transparent);
+  --faint: color-mix(in srgb, var(--fg) 45%, transparent);
+  --r-mark: 3px;
+  --r-ctl: 5px;
+  /* text set ON an identity-filled bar: dark on the dark theme's light hues, light on the light
+     theme's darker ones */
+  --on-bar: rgba(12, 12, 14, 0.86);
+
   /* ── Receding ─────────────────────────────────────────────────────────────────────────────────
      Dim means exactly one thing in this view: "still here, not part of what you asked for". Two
      steps and no others, because the file used to carry four (0.78 on hover, 0.3 on the rail, 0.25
@@ -65,6 +78,8 @@
   box-sizing: border-box;
 }
 
+body.vscode-light { --on-bar: rgba(255, 255, 255, 0.94); }
+
 body {
   margin: 0;
   background: var(--bg);
@@ -91,8 +106,9 @@ body {
 #titlebar {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 10px;
+  gap: 8px;
+  padding: 4px 8px;
+  min-height: 32px;
   border-bottom: 1px solid var(--line);
   flex: 0 0 auto;
   position: relative; /* anchors the plans popover */
@@ -106,34 +122,49 @@ body {
   gap: 8px;
 }
 
-/* The persistent "where am I" band: composition · selection closure · scrub · uncommitted. */
-#presence {
+/* The status line: "where am I" (composition · selection closure · scrub · uncommitted), then
+   the sentence naming what the cursor is on, then a refusal with its ways out. One row, three
+   slots, nothing floating over the plot. */
+#statusline {
   flex: 0 0 auto;
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
   padding: 3px 10px;
   border-top: 1px solid var(--line);
   color: var(--dim);
   font-size: 11px;
   white-space: nowrap;
   overflow: hidden;
+  min-height: 22px;
+}
+
+#presence {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 45%;
 }
 
 /* The one mode switch left in the titlebar: not WHICH view (there is one), but how its rows are
    ordered. Quiet chrome on purpose -- a reader flips it rarely, so it must not compete with Save. */
 .group-btn {
-  padding: 2px 8px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
+  height: 24px;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--r-ctl);
   background: transparent;
   color: var(--dim);
   font: inherit;
-  font-size: 11px;
+  font-size: 12px;
   cursor: pointer;
+  transition: background-color var(--dur-flick) var(--ease-out), color var(--dur-flick) var(--ease-out);
 }
 
 .group-btn:hover {
   color: var(--fg);
-  background: var(--vscode-list-hoverBackground, transparent);
+  background: var(--tone-1);
 }
 
 /* The episode rail (vertical git-log). Rows are thin; the feature spine + dot carry identity. */
@@ -153,8 +184,8 @@ body {
 .titlebar-actions button {
   background: transparent;
   color: var(--dim);
-  border: 1px solid transparent;
-  border-radius: 4px;
+  border: none;
+  border-radius: var(--r-ctl);
   height: 24px;
   padding: 0 8px;
   font: inherit;
@@ -164,18 +195,25 @@ body {
 
 .titlebar-actions button:hover {
   color: var(--fg);
-  background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
+  background: var(--tone-1);
 }
 
+/* Save carries weight only while there is something to save (workbench.js toggles the class from
+   the drift count); at rest it is one more quiet word in the row. */
 .titlebar-actions .btn-primary {
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
+  background: var(--tone-2);
+  color: var(--fg);
   font-weight: 600;
 }
 
 .titlebar-actions .btn-primary:hover {
-  background: var(--vscode-button-hoverBackground, var(--vscode-button-background));
-  color: var(--vscode-button-foreground);
+  background: color-mix(in srgb, var(--fg) 15%, transparent);
+  color: var(--fg);
+}
+
+.titlebar-actions button:active,
+.group-btn:active {
+  transform: translateY(1px);
 }
 
 /* ── Main: rail (tree + timeline) | inspector ────────────────────────────────────────────────── */
@@ -186,7 +224,8 @@ body {
   /* Rail track is `minmax(0, 1fr)` (NOT `1fr`) so it can shrink below its SVG's intrinsic width
      and scroll, instead of the fixed inspector pushing it off-screen. The inspector scales with
      the pane (32cqi) but is clamped to a legible band, so it never grows to cover the rail. */
-  grid-template-columns: minmax(0, 1fr) clamp(240px, 32cqi, 340px);
+  --inspector-w: clamp(240px, 32cqi, 340px);
+  grid-template-columns: minmax(0, 1fr) var(--inspector-w);
   overflow: hidden;
 }
 
@@ -198,6 +237,17 @@ body {
     grid-template-columns: 1fr;
     grid-template-rows: minmax(0, 1.6fr) minmax(120px, 1fr);
   }
+  .confirm-bar {
+    right: 8px;
+  }
+  /* Stacked, the rail is the top row: the top glow spans it; the bottom edge belongs to the
+     inspector sheet now, so that glow steps aside and the status line keeps its count. */
+  .edge-glow {
+    right: 0;
+  }
+  .edge-glow-bottom {
+    display: none;
+  }
   #inspector {
     border-left: none;
     border-top: 1px solid var(--line);
@@ -208,6 +258,7 @@ body {
    @container rule above, so it wins regardless of pane width (a collapsed inspector stays collapsed
    even when stacked-narrow would otherwise apply). */
 #app.inspector-collapsed #main {
+  --inspector-w: 0px;
   grid-template-columns: 1fr;
   grid-template-rows: none;
 }
@@ -215,33 +266,41 @@ body {
   display: none;
 }
 
-/* Off-screen affected pills: anchored to #main (not #rail), so they stay pinned over the rail
-   pane regardless of #rail's own scroll position -- a hover-preview affordance, cleared with the
-   rest of the ghost-blast paint. */
-.offscreen-pill {
+/* Lanes a held preview changes that are scrolled out of view: a 2px glow on the rail's top or
+   bottom edge in the preview's own channel, clickable to scroll there; the status line carries the
+   count. It replaced two bordered pills floating over the plot. */
+.edge-glow {
   position: absolute;
-  left: 12px;
-  z-index: 5;
-  background: var(--panel-bg);
-  color: var(--blast);
-  border: 1px solid var(--blast);
-  border-radius: 10px;
-  padding: 2px 10px;
-  font: inherit;
-  font-size: 12px;
+  left: 0;
+  right: var(--inspector-w);
+  height: 3px;
+  padding: 0;
+  border: none;
+  background: var(--blast);
+  opacity: 0.85;
   cursor: pointer;
+  z-index: 5;
 }
 
-.offscreen-pill[hidden] {
+.edge-glow:hover {
+  opacity: 1;
+}
+
+.edge-glow[hidden] {
   display: none;
 }
 
-.offscreen-pill-top {
-  top: 8px;
+.edge-glow:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
-.offscreen-pill-bottom {
-  bottom: 8px;
+.edge-glow-top {
+  top: 0;
+}
+
+.edge-glow-bottom {
+  bottom: 0;
 }
 
 #rail {
@@ -264,7 +323,7 @@ body {
    sibling SVG, so the two share an x origin only while neither scrolls sideways -- a horizontal
    scroll here would slide the plot out from under its own ruler. */
 .plot-scroll {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   overflow-y: auto;
   overflow-x: hidden;
   min-height: 0;
@@ -285,7 +344,7 @@ body {
 
 svg.railsvg {
   display: block;
-  font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-family: var(--vscode-font-family, system-ui, sans-serif);
   /* Scrubbing the frontier is a pointer-drag over the plot; without this the drag also selects the
      SVG's text labels (a native text-selection gesture), leaving a stray highlight and swallowing
      pointer events. The timeline has no selectable text of its own, so suppressing it is free. */
@@ -343,20 +402,20 @@ svg.railsvg {
 
 .swimlane-label {
   fill: var(--fg);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
 }
 
 .swimlane-meta {
-  fill: var(--dim);
-  font-size: 10px;
+  fill: var(--faint);
+  font-size: 11px;
   text-anchor: end;
   font-variant-numeric: tabular-nums;
 }
 
 .swimlane-span {
   fill: var(--fg);
-  fill-opacity: 0.25;
+  fill-opacity: 0.18;
 }
 
 /* A feature lane. */
@@ -386,7 +445,7 @@ svg.railsvg {
 
 .glane-label {
   fill: var(--fg);
-  font-size: 11px;
+  font-size: 12px;
   pointer-events: none;
 }
 
@@ -395,11 +454,13 @@ svg.railsvg {
   fill-opacity: 0.14;
 }
 
-/* Chunk-cars: one per intent-segment checkpoint, packed left->right in seg_index order. A solid
-   border is a co-changed/coupled chapter; a dashed one is the weaker thematic claim. The interior
-   cells (gcar-cell) layer the chapter's own per-commit density on top at higher opacity. */
+/* Chunk-cars: one per intent-segment checkpoint, packed left->right in seg_index order. One
+   height, one fill, for every car: the per-commit density texture, the brighter "big event" and
+   the dashed "thematic" border were three encodings of internal confidence or of an op count a
+   reader was never told how to read (2026-10-18 redesign, W1). State is the only thing a car
+   varies by: solid live, hollow taken out, half-filled partly taken out. */
 .gcar {
-  fill-opacity: 0.55;
+  fill-opacity: 0.78;
   stroke: var(--bg);
   stroke-width: 1px;
   /* `0`, not the default `none`: a dash pattern can only interpolate against another pattern, so
@@ -407,10 +468,6 @@ svg.railsvg {
      otherwise smooth fade. Zero-length dashes draw a solid line, so this changes nothing visible. */
   stroke-dasharray: 0;
   cursor: pointer;
-}
-
-.gcar-thematic {
-  stroke-dasharray: 2 2;
 }
 
 /* A chapter a revert took out of the ideal. Its edits are still recorded and still addressable
@@ -425,10 +482,13 @@ svg.railsvg {
   stroke-opacity: 0.75;
 }
 
-/* The "big event" of a lane -- its fattest chapter -- reads brighter than its siblings so the most
-   consequential edit in a feature's history stands out without a second hue. */
-.gcar-big-rect {
-  fill-opacity: 0.78;
+/* A chapter a revert took only part of (the kernel's per-symbol `state`): some of the functions it
+   touched are gone, some are still in the code. Half-filled, in its own hue, between live and
+   hollow -- the list in the panel names which functions went. */
+.gcar-partial {
+  fill-opacity: 0.28;
+  stroke-width: 1px;
+  stroke-opacity: 0.75;
 }
 
 /* ── The forecast band ───────────────────────────────────────────────────────────────────────────
@@ -475,7 +535,7 @@ svg.railsvg {
 }
 
 .gcar-plan-ghost {
-  fill-opacity: 0.07;
+  fill-opacity: 0.1;
   stroke: var(--accent);
   stroke-width: 1.2px;
   stroke-dasharray: 1.5 2.5;
@@ -484,11 +544,15 @@ svg.railsvg {
 
 /* A ghost's label is dimmer than a history car's white-on-hue: it names something that does not exist
    yet, and must not compete with the record of what does. */
-.gcar-ghost-label {
+.gcar-ghost-wrap .gcar-ghost-label {
+  /* ink, not the on-bar colour: a ghost's fill is a wash, so the label sits on the ground. Scoped
+     under the wrap so this wins over `.gcar-label`, which is declared later and would paint the
+     name dark on dark. */
   fill: var(--fg);
   fill-opacity: 0.72;
   stroke: var(--bg);
-  stroke-width: 2.5px;
+  stroke-width: 1.5px;
+  paint-order: stroke; /* the halo under the glyphs, or the name is a smudge on the car */
   font-weight: 500;
 }
 
@@ -518,6 +582,10 @@ svg.railsvg {
   fill-opacity: 1;
 }
 
+.gcar-ghost-wrap .gcar-ghost-tag {
+  fill: var(--dim);
+}
+
 /* Newly-arrived plan steps settle in reading order (staggered by animation-delay from
    planStepEnterStagger) instead of the whole plan popping at once. */
 .gcar-ghost-enter {
@@ -534,6 +602,166 @@ svg.railsvg {
   50% { fill-opacity: 0.30; }
 }
 
+/* A layout-only chapter: a hairline in the lane's hue, lighter than a chapter that changed code. */
+.gcar-layout:not(.gcar-reverted):not(.gcar-partial) {
+  fill-opacity: 0.55;
+}
+
+/* The record-reorganising verbs: a quieter row under Revert and Restore, text on a tone step. */
+.action-bar-quiet {
+  margin-top: 2px;
+}
+
+.action-bar-quiet .action {
+  font-size: 11.5px;
+  color: var(--dim);
+  background: transparent;
+}
+
+.action-bar-quiet .action:hover {
+  color: var(--fg);
+  background: var(--tone-1);
+}
+
+/* ── Actors ──────────────────────────────────────────────────────────────────────────────────────
+   A session's ghost is work that exists in another tree: the unsaved look, breathing only while the
+   session's process lives. The column headers sit in the band's title strip in the same quiet
+   channel as every other axis word; a followed actor's header is in full ink. */
+.gcar-session {
+  fill-opacity: 0.18;
+  stroke: var(--accent);
+  stroke-width: 1.4px;
+  stroke-dasharray: 3 3;
+}
+
+.gcar-session.alive {
+  animation: gcar-pending-pulse var(--beat-slow) ease-in-out infinite;
+}
+
+/* Two sessions on one function: the amber ring on both ghosts and a tie above them, amber meaning
+   the one thing it always means here (also affected). */
+.gcar-ghost.overlap {
+  stroke: var(--blast);
+  stroke-dasharray: none;
+  stroke-opacity: 0.9;
+}
+
+.overlap-tie {
+  stroke: var(--blast);
+  stroke-width: 1.5px;
+  stroke-linecap: round;
+  cursor: default;
+}
+
+/* The tie to main reaches back across the band to the now rule, dashed: the other side is
+   history, not a ghost. */
+.overlap-tie.with-main {
+  stroke-width: 2px;
+  stroke-dasharray: 4 3;
+}
+
+.actor-head .actor-name {
+  cursor: pointer;
+  transition: fill var(--dur-flick) var(--ease-out);
+}
+
+.actor-head:hover .actor-name,
+.actor-head:focus-visible .actor-name,
+.actor-head.selected .actor-name {
+  fill: var(--fg);
+}
+
+.actor-head:focus-visible {
+  outline: none;
+}
+
+/* The alive mark: a dot that breathes while the owning process lives, still and faint when it
+   does not. */
+.actor-alive {
+  fill: var(--faint);
+}
+
+.actor-alive.on {
+  fill: var(--land);
+  animation: actor-breathe var(--beat-slow) ease-in-out infinite;
+}
+
+@keyframes actor-breathe {
+  0%, 100% { fill-opacity: 0.45; }
+  50% { fill-opacity: 1; }
+}
+
+/* A plan's progress: one thin line under its name, the built fraction in ink. */
+.actor-progress.track {
+  stroke: var(--fg);
+  stroke-opacity: 0.12;
+  stroke-width: 1.5px;
+}
+
+.actor-progress.done {
+  stroke: var(--fg);
+  stroke-opacity: 0.7;
+  stroke-width: 1.5px;
+  stroke-linecap: round;
+}
+
+/* The session card's lanes: one row per feature touched, the hue as the dot, the functions muted. */
+.actor-lanes {
+  margin: 6px 0 2px;
+}
+
+.actor-lane {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 2px 4px;
+  border-radius: var(--r-ctl);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.actor-lane:hover {
+  background: var(--tone-1);
+}
+
+.actor-lane-name {
+  white-space: nowrap;
+}
+
+/* A plan's step titles can be a sentence: they wrap, and a built step reads in the dim channel. */
+.actor-lane-name.plan-step-title {
+  white-space: normal;
+  min-width: 0;
+}
+
+.actor-lane.built .plan-step-title {
+  color: var(--dim);
+}
+
+.actor-lane-syms.plan-step-state {
+  flex: 0 0 auto;
+  font-family: inherit;
+  font-size: 11px;
+}
+
+.actor-lane-syms {
+  flex: 1 1 auto;
+  color: var(--dim);
+  font-family: var(--vscode-editor-font-family);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* The function two sessions both changed, in the colour that means also affected. */
+.overlap-note .overlap-what {
+  color: var(--blast);
+  font-family: var(--vscode-editor-font-family);
+  font-size: 11px;
+}
+
 /* The ghost just landed (a save committed it into a real checkpoint): the newest car enters once
    from the ghost look into a solid car. A one-shot keyframe -- not a transition -- because
    renderGraph rebuilds the car DOM each render, so there's no persistent element to interpolate. */
@@ -546,34 +774,13 @@ svg.railsvg {
   to { fill-opacity: 0.55; stroke: var(--bg); stroke-dasharray: 0; }
 }
 
-/* A label tag floated just above a narrow big-event car (when the car itself is too thin to hold
-   inline text) -- names the one chapter most worth noticing per lane. */
-.gcar-tag {
-  font-size: 9px;
-  text-anchor: middle;
-  pointer-events: none;
-  fill: var(--fg);
-  font-weight: 600;
-  paint-order: stroke;
-  stroke: var(--bg);
-  stroke-width: 2.5px;
-  stroke-linejoin: round;
-}
-
-.gcar-cell {
-  pointer-events: none;
-}
-
 .gcar-label {
-  font-size: 9px;
+  font-size: 10px;
+  font-weight: 600;
   text-anchor: middle;
   pointer-events: none;
   font-variant-numeric: tabular-nums;
-  fill: #fff;
-  paint-order: stroke;
-  stroke: rgba(0, 0, 0, 0.55);
-  stroke-width: 2px;
-  stroke-linejoin: round;
+  fill: var(--on-bar);
 }
 
 /* The car whose checkpoint is currently focused (clicked here or in the inspector list): an accent
@@ -592,16 +799,15 @@ svg.railsvg {
 /* The per-lane op count sits in a fixed right-hand column (GANTT.countW), right-aligned and
    tabular, so the numbers form a column the eye can run down instead of stopping wherever each
    lane's last chapter happened to end. */
-.gbar-count {
-  fill: var(--dim);
-  font-size: 10px;
-  text-anchor: end;
-  font-variant-numeric: tabular-nums;
+.gbar-count.zero {
+  fill: var(--faint);
 }
 
-/* The big-event tag set beside its car, inside the row (not floating in the gutter between rows). */
-.gcar-tag-inrow {
-  text-anchor: start;
+.gbar-count {
+  fill: var(--dim);
+  font-size: 11px;
+  text-anchor: end;
+  font-variant-numeric: tabular-nums;
 }
 
 /* The checkpoint name chip: the hovered (or selected) chapter's full name, drawn over its row in
@@ -896,18 +1102,15 @@ svg.railsvg {
    merge/move/rename), which is why it needs a width bound: those sentences run past 140 characters,
    and unbounded shrink-to-fit stretched the pill into a thin ribbon across the pane. */
 .preview-context-pill {
-  position: absolute;
-  right: 12px;
-  bottom: 8px;
-  max-width: min(52ch, calc(100% - 24px));
+  /* A slot in the status line (see #statusline), not a pill over the plot. The text is the
+     same; what changed is that it no longer covers the detail panel it used to sit on. */
+  flex: 1 1 auto;
+  min-width: 0;
   line-height: 1.45;
-  z-index: 5;
-  background: var(--panel-bg);
   color: var(--dim);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 2px 10px;
-  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11px;
   pointer-events: none;
   /* It rises into place and sinks back out. Toggling `hidden` alone made the sentence that explains
      what you are pointing at blink in and out of existence at the bottom of the pane -- the most
@@ -924,7 +1127,8 @@ svg.railsvg {
 .preview-context-pill[hidden] {
   display: block;
   opacity: 0;
-  transform: translateY(4px);
+  transform: translateY(2px);
+  flex: 0 0 0;
 }
 
 /* ── The held preview's direction, in the one sentence on the field ────────────────────────────
@@ -934,7 +1138,8 @@ svg.railsvg {
 .preview-context-pill.dir-out,
 .preview-context-pill.dir-in {
   color: var(--fg);
-  border-left-width: 3px;
+  border-left: 3px solid transparent;
+  padding-left: 6px;
 }
 
 .preview-context-pill.dir-out {
@@ -945,56 +1150,61 @@ svg.railsvg {
   border-left-color: var(--land);
 }
 
-/* The armed merge/move mode, stated. Same top-centered card the refusal overlay uses -- both are
-   "read this before you click again" -- in the --accent channel, because this is a live mode waiting
-   on the reader rather than something that went wrong. `pointer-events: none` so the one thing it
-   asks for (a lane click) is never the thing it blocks. */
-.armed-banner {
-  position: absolute;
-  left: 50%;
-  top: 12px;
-  transform: translateX(-50%);
-  z-index: 6;
-  max-width: min(90%, 460px);
-  background: var(--panel-bg);
-  color: var(--fg);
-  border: 1px solid var(--accent);
-  border-radius: 10px;
-  padding: 4px 12px;
+/* ── The context strip ────────────────────────────────────────────────────────────────────────
+   One standing statement at a time, between the title bar and the map, which it pushes down and
+   never covers: the armed merge/move question, or a focused piece of cross-feature work with its
+   verbs. Empty, it is not there. Both used to be bordered pills floating over the plot. */
+#strip {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 26px;
+  padding: 2px 10px;
+  border-bottom: 1px solid var(--line);
   font-size: 12px;
-  pointer-events: none;
+  color: var(--fg);
+  overflow: hidden;
+}
+
+#strip:not(:has(> :not([hidden]))) {
+  display: none;
+}
+
+/* The armed merge/move mode, stated: the question, then the live answer for the lane under the
+   cursor in the dim channel. */
+.armed-banner {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
 }
 
 .armed-banner[hidden] {
   display: none;
 }
 
-/* The live answer, under the standing question. Dim mono 11px is this file's established
-   "secondary detail inside a card" weight (see .refusal-remedy), so the pairing reads as one card
-   with a lead and a detail rather than two competing messages. */
 .armed-banner .armed-a {
-  margin-top: 3px;
   color: var(--dim);
-  font-family: var(--vscode-editor-font-family, monospace);
   font-size: 11px;
-  line-height: 1.45;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Blocked-restore overlay: a competing live version refuses the restore. A quiet centered card that
    states the refusal and its two remedies (swap / reconcile) as plain text -- hover-scoped. */
 .preview-refusal-pill {
-  position: absolute;
-  left: 50%;
-  top: 12px;
-  transform: translateX(-50%);
-  z-index: 6;
-  max-width: min(90%, 420px);
-  background: var(--panel-bg);
+  /* The refusal, as the last slot of the status line: the reason, then each way out, on one
+     line. It used to be a bordered card floating top-centre over the timeline. */
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
   color: var(--fg);
-  border: 1px solid var(--blast);
-  border-radius: 6px;
-  padding: 8px 12px;
-  font-size: 12px;
+  font-size: 11px;
+  overflow: hidden;
   pointer-events: none;
 }
 
@@ -1004,11 +1214,16 @@ svg.railsvg {
 
 .refusal-head {
   color: var(--blast);
-  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .refusal-remedy {
   color: var(--dim);
+  white-space: nowrap;
+  flex: 0 0 auto;
   font-family: var(--vscode-editor-font-family, monospace);
   font-size: 11px;
 }
@@ -1030,8 +1245,8 @@ svg.railsvg {
 }
 
 .axis-tick {
-  fill: var(--dim);
-  font-size: 10px;
+  fill: var(--faint);
+  font-size: 10.5px;
   text-anchor: middle;
   font-variant-numeric: tabular-nums;
 }
@@ -1054,10 +1269,9 @@ svg.railsvg {
 }
 
 .axis-title {
-  fill: var(--dim);
-  font-size: 9px;
+  fill: var(--faint);
+  font-size: 10.5px;
   text-anchor: start;
-  opacity: 0.7;
 }
 
 /* The `time →` title, ending at the plot's left edge instead of starting there, so the ◆ marks that
@@ -1109,9 +1323,24 @@ svg.railsvg {
   stroke-linejoin: round;
 }
 
+/* After a landing the readout holds its save for a second, then lets go. The base rule has no
+   transition on purpose: the next drag must show the name at once, not fade it back in. */
+.scrub-readout.fading {
+  opacity: 0;
+  transition: opacity var(--dur-base) var(--ease-in) 1s;
+}
+
+/* The band is the playhead's keyboard; a keyboard focus is a faint column, a click shows nothing. */
+.frontier-band:focus-visible {
+  outline: none;
+  fill: var(--accent);
+  fill-opacity: 0.08;
+}
+
 /* ── Inspector: detail + action bar + code(I) panel ──────────────────────────────────────────── */
 .detail-title {
   font-weight: 600;
+  font-size: 12.5px;
   margin-bottom: 4px;
 }
 
@@ -1123,30 +1352,35 @@ svg.railsvg {
 .detail-meta {
   color: var(--dim);
   font-size: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .action-bar {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
 }
 
 .action-bar .action {
-  background: var(--vscode-button-secondaryBackground, transparent);
-  color: var(--vscode-button-secondaryForeground, var(--fg));
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  padding: 4px 8px;
+  background: var(--tone-1);
+  color: var(--fg);
+  border: none;
+  border-radius: var(--r-ctl);
+  padding: 5px 9px;
   font: inherit;
+  font-size: 12px;
   text-align: left;
   cursor: pointer;
+  transition: background-color var(--dur-flick) var(--ease-out);
 }
 
 .action-bar .action:hover {
-  background: var(--vscode-button-secondaryHoverBackground, var(--vscode-list-hoverBackground));
-  border-color: var(--blast);
+  background: var(--tone-2);
+}
+
+.action-bar .action:active {
+  transform: translateY(1px);
 }
 
 .code-panel-back {
@@ -1165,8 +1399,7 @@ svg.railsvg {
 .code-panel-heading {
   color: var(--dim);
   font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-weight: 600;
   margin-bottom: 6px;
   transition: color var(--dur-base) var(--ease-both);
 }
@@ -1284,17 +1517,18 @@ svg.railsvg {
 }
 
 .chip {
-  background: var(--vscode-badge-background, var(--panel-bg));
-  color: var(--vscode-badge-foreground, var(--dim));
-  border: 1px solid var(--line);
-  border-radius: 3px;
+  background: var(--tone-1);
+  color: var(--fg);
+  border: none;
+  border-radius: var(--r-mark);
   padding: 1px 6px;
+  font: inherit;
   font-size: 11px;
 }
 
 /* A selected-feature chip in the multi-select card: outlined in the accent, click to deselect. */
 .chip.selected-chip {
-  border-color: var(--accent);
+  background: var(--tone-2);
   color: var(--fg);
   cursor: pointer;
 }
@@ -1316,6 +1550,8 @@ svg.railsvg {
      car appears solid immediately instead of animating in. The preview morph likewise snaps to its
      end state -- the "N -> M" delta label and the dimmed field carry the consequence without it. */
   .gcar-pending,
+  .gcar-session.alive,
+  .actor-alive.on,
   .gcar-landing,
   .gcar-ghost-enter,
   .preview-leaving .gcar,
@@ -1436,7 +1672,7 @@ svg.railsvg {
 
 .changes-file {
   font-family: var(--vscode-editor-font-family, monospace);
-  font-size: 12px;
+  font-size: 11px;
   color: var(--dim);
   padding: 1px 0;
   overflow: hidden;
@@ -1450,20 +1686,13 @@ svg.railsvg {
   padding-top: 2px;
 }
 
-/* Save/Commit sit side by side here (unlike the feature action bar's stacked verbs). */
-.changes-card .action-bar {
-  flex-direction: row;
-}
-
 .action-bar .action.primary {
-  background: var(--vscode-button-background, var(--accent));
-  color: var(--vscode-button-foreground, #fff);
-  border-color: var(--vscode-button-background, var(--accent));
+  background: var(--tone-2);
+  font-weight: 600;
 }
 
 .action-bar .action.primary:hover {
-  background: var(--vscode-button-hoverBackground, var(--accent));
-  border-color: var(--vscode-button-hoverBackground, var(--accent));
+  background: color-mix(in srgb, var(--fg) 15%, transparent);
 }
 
 /* Checkpoints: a selected feature's history as a short list of labeled chapters (intent segments).
@@ -1475,9 +1704,8 @@ svg.railsvg {
 }
 
 .checkpoints-head {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-size: 12px;
+  font-weight: 600;
   color: var(--dim);
   margin-bottom: 4px;
 }
@@ -1497,8 +1725,7 @@ svg.railsvg {
 
 /* The checkpoint focused by a gantt car-click (or a click here) -- kept in sync both ways. */
 .checkpoint.selected {
-  background: var(--panel-bg);
-  box-shadow: inset 2px 0 0 var(--accent);
+  background: var(--tone-2);
 }
 
 .checkpoint.trivial {
@@ -1517,8 +1744,22 @@ svg.railsvg {
   color: var(--dim);
 }
 
+/* Partly taken out: the kernel's per-symbol `state` says some of its functions are gone. */
+.checkpoint.partial .checkpoint-label {
+  opacity: 0.8;
+}
+
+/* The chapter's size, in functions and saves, after its name; muted so the name stays the row. */
+.checkpoint-size {
+  flex: none;
+  font-size: 10.5px;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .checkpoint-dot {
-  color: var(--accent);
+  color: var(--dim);
   font-size: 10px;
   flex: none;
 }
@@ -1534,42 +1775,27 @@ svg.railsvg {
 .checkpoint-rewind {
   flex: none;
   background: transparent;
-  border: 1px solid var(--line);
-  color: var(--fg);
-  border-radius: 3px;
+  border: none;
+  color: var(--faint);
+  border-radius: var(--r-mark);
   cursor: pointer;
   font-size: 12px;
   line-height: 1;
-  padding: 1px 5px;
+  padding: 2px 5px;
+  opacity: 0;
+  transition: opacity var(--dur-flick) var(--ease-out), background-color var(--dur-flick) var(--ease-out);
+}
+
+.checkpoint:hover .checkpoint-rewind,
+.checkpoint-rewind:focus-visible {
+  opacity: 1;
 }
 
 .checkpoint-rewind:hover {
-  border-color: var(--blast);
+  background: var(--tone-2);
   color: var(--blast);
 }
 
-/* An agent's revert or restore, announced while the rail paints its consequence.
-   Nothing else on screen says who asked for it, and "the graph just moved on its
-   own" is the one thing a person watching an assistant work must not have to
-   guess about. */
-.agent-banner {
-  position: fixed;
-  left: 50%;
-  bottom: 1rem;
-  transform: translateX(-50%);
-  z-index: 40;
-  max-width: 90%;
-  padding: 0.35rem 0.8rem;
-  border-radius: 999px;
-  border: 1px solid var(--vscode-focusBorder);
-  background: var(--vscode-editorWidget-background);
-  color: var(--vscode-editorWidget-foreground);
-  font-size: 11px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  pointer-events: none;
-}
 
 /* The find box and its results. Sits in the title bar because looking something
    up is not a mode you enter -- it is the thing you do while already reading. */
@@ -1581,12 +1807,29 @@ svg.railsvg {
 
 .find-box {
   width: 100%;
-  padding: 2px 8px;
-  border-radius: 4px;
-  border: 1px solid var(--vscode-input-border, transparent);
-  background: var(--vscode-input-background);
-  color: var(--vscode-input-foreground);
-  font-size: 11px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: var(--r-ctl);
+  border: none;
+  background: var(--tone-1);
+  color: var(--fg);
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+  transition: background-color var(--dur-flick) var(--ease-out);
+}
+
+.find-box::placeholder {
+  color: var(--faint);
+}
+
+.find-box:hover {
+  background: var(--tone-2);
+}
+
+.find-box:focus-visible {
+  background: var(--tone-2);
+  box-shadow: inset 0 0 0 1px var(--vscode-focusBorder, var(--accent));
 }
 
 .find-results {
@@ -1741,20 +1984,23 @@ svg.railsvg {
    green for restore -- so the weight of the click is visible before it happens. */
 .confirm-bar {
   position: absolute;
-  left: 50%;
-  bottom: 34px;
-  transform: translateX(-50%);
+  left: 8px;
+  /* the rail column only: the inspector's track width, as #main's grid sets it, plus a gutter */
+  right: calc(clamp(240px, 32cqi, 340px) + 8px);
+  bottom: 8px;
   z-index: 7;
   display: flex;
   align-items: center;
   gap: 12px;
-  max-width: min(94%, 720px);
-  background: var(--panel-bg);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 7px 12px;
+  background: linear-gradient(var(--tone-1), var(--tone-1)), var(--bg);
+  border: none;
+  border-radius: 6px;
+  padding: 6px 8px 6px 12px;
   font-size: 12px;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.25);
+}
+
+#app.inspector-collapsed .confirm-bar {
+  right: 8px;
 }
 
 .confirm-bar[hidden] {
@@ -1861,39 +2107,50 @@ svg.railsvg {
 }
 
 .confirm-btn {
-  background: var(--vscode-button-secondaryBackground, transparent);
-  color: var(--vscode-button-secondaryForeground, var(--fg));
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  padding: 3px 10px;
+  height: 24px;
+  background: transparent;
+  color: var(--fg);
+  border: none;
+  border-radius: var(--r-ctl);
+  padding: 0 10px;
   font: inherit;
   cursor: pointer;
+  transition: background-color var(--dur-flick) var(--ease-out);
 }
 
 .confirm-btn:hover {
-  background: var(--vscode-button-secondaryHoverBackground, var(--vscode-list-hoverBackground));
+  background: var(--tone-2);
+}
+
+.confirm-btn:active {
+  transform: translateY(1px);
 }
 
 .confirm-btn.subtle {
-  border-color: transparent;
   color: var(--dim);
 }
 
+/* The verb that changes the code: its colour is in the word, on a tone step, never a slab. */
 .confirm-btn.confirm-apply {
-  background: var(--fail);
-  border-color: var(--fail);
-  color: var(--vscode-button-foreground, #fff);
+  background: var(--tone-2);
+  color: var(--fail);
   font-weight: 600;
 }
 
+.confirm-btn.confirm-apply:hover {
+  background: color-mix(in srgb, var(--fail) 18%, transparent);
+}
+
 .confirm-btn.confirm-apply.restore {
-  background: var(--land);
-  border-color: var(--land);
+  color: var(--land);
+}
+
+.confirm-btn.confirm-apply.restore:hover {
+  background: color-mix(in srgb, var(--land) 18%, transparent);
 }
 
 .confirm-btn.confirm-apply.split {
-  background: var(--accent);
-  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .confirm-btn.confirm-apply:disabled {
@@ -1991,12 +2248,7 @@ svg.railsvg {
   fill-opacity: 0.4;
 }
 
-.gcar-wrap.gcar-preview-out .gcar-cell {
-  fill-opacity: 0.08 !important;
-}
-
-.gcar-wrap.gcar-preview-out .gcar-label,
-.gcar-wrap.gcar-preview-out .gcar-tag {
+.gcar-wrap.gcar-preview-out .gcar-label {
   opacity: 0.5;
   text-decoration: line-through;
 }
@@ -2028,8 +2280,7 @@ svg.railsvg {
 
 /* A chapter coming back keeps its label readable -- the mirror of the strike-through a leaving one
    wears. Without this the two directions agreed on the one piece of text in the strip. */
-.gcar-wrap.gcar-preview-in .gcar-label,
-.gcar-wrap.gcar-preview-in .gcar-tag {
+.gcar-wrap.gcar-preview-in .gcar-label {
   opacity: 1;
   font-weight: 600;
 }
@@ -2087,13 +2338,6 @@ svg.railsvg {
   padding: 2px 0 6px;
   font-size: 11px;
   color: var(--dim);
-}
-
-/* A refusal is a paragraph, not a scroll: bounded here as well as at the message source, so no
-   payload from any CLI can cover the pane. */
-.preview-refusal-pill {
-  max-height: 40vh;
-  overflow: hidden;
 }
 
 /* ── The receipt: a lane settling after its staged action landed ───────────────────────────────
@@ -2183,12 +2427,10 @@ svg.railsvg {
 /* ── Find: the two rungs, labeled ──────────────────────────────────────────────────────────────
    "matching by name" answers on the keystroke; "by meaning" arrives under it when asked. */
 .find-section {
-  padding: 5px 8px 2px;
-  font-size: 9px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--dim);
-  opacity: 0.8;
+  padding: 6px 8px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--faint);
 }
 
 .find-section:not(:first-child) {
@@ -2224,34 +2466,19 @@ svg.railsvg {
 
 /* ── Theme focus (the TableLens read) ─────────────────────────────────────────────────────────
    One cross-feature group emphasized: member lanes keep full rows, everything else compresses to
-   a thin density strip and drops to background weight. The banner names the lens, because a
+   a thin density strip and drops to background weight. The strip names the lens, because a
    mostly-dim field with no caption reads as a rendering fault. */
 .theme-banner {
-  position: absolute;
-  left: 50%;
-  top: 12px;
-  transform: translateX(-50%);
-  z-index: 6;
-  max-width: min(92%, 640px);
   display: flex;
   align-items: center;
   gap: 10px;
-  background: var(--panel-bg);
-  color: var(--fg);
-  border: 1px solid var(--accent);
-  border-radius: 10px;
-  padding: 4px 12px;
-  font-size: 12px;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .theme-banner[hidden] {
   display: none;
 }
-
-/* Two captions can be on screen at once, and they are different statements: a theme focus
-   reallocates row HEIGHT (TableLens), a lens reallocates PRESENCE (opacity). Neither replaces the
-   other, so the lens sits under the theme's caption instead of on top of it -- both are absolutely
-   positioned at the same top, and one silently covered the other. */
 
 .theme-banner .theme-banner-name {
   font-weight: 600;
@@ -2264,27 +2491,33 @@ svg.railsvg {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
+/* Its verbs are text controls on a tone step, like the title bar's; the first is pushed right. */
 .theme-banner button {
   flex: none;
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
+  height: 22px;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--r-ctl);
   background: transparent;
-  color: var(--fg);
+  color: var(--dim);
+  font: inherit;
+  font-size: 12px;
   cursor: pointer;
 }
 
 .theme-banner button:hover {
-  border-color: var(--accent);
+  color: var(--fg);
+  background: var(--tone-1);
 }
 
 /* A context lane under the focus: present, findable, quiet. */
 .glane-quiet .glane-label { opacity: 0.45; }
 .glane-quiet .glane-swatch { opacity: 0.45; }
-.glane-quiet .gcar, .glane-quiet .gcar-cell, .glane-quiet .gbar-track { opacity: 0.35; }
+.glane-quiet .gcar, .glane-quiet .gbar-track { opacity: 0.35; }
 .glane-quiet .gbar-count { opacity: 0.4; }
 
 /* A focused theme's member chapters: one shared ring across every lane they sit on. */
@@ -2330,24 +2563,25 @@ svg.railsvg {
   justify-content: space-between;
   gap: 8px;
   width: 100%;
-  margin-top: 4px;
+  margin-top: 2px;
   padding: 4px 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  border: none;
+  border-radius: var(--r-ctl);
   background: transparent;
   color: var(--fg);
+  font: inherit;
   font-size: 12px;
   cursor: pointer;
   text-align: left;
+  transition: background-color var(--dur-flick) var(--ease-out);
 }
 
 .theme-row:hover {
-  border-color: var(--accent);
+  background: var(--tone-1);
 }
 
 .theme-row-active {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  background: var(--tone-2);
 }
 
 .theme-row-meta {
@@ -2435,27 +2669,26 @@ svg.railsvg {
 
 .touched-files-label {
   color: var(--dim);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-right: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  margin-right: 4px;
 }
 
 .file-chip {
   font-family: var(--vscode-editor-font-family, monospace);
   font-size: 11px;
-  padding: 1px 6px;
-  border-radius: 5px;
-  border: 1px solid var(--line);
+  padding: 1px 4px;
+  border-radius: var(--r-mark);
+  border: none;
   color: var(--fg);
-  /* A <button>, so it has to shed the chrome one brings and keep reading as the chip it was. */
+  /* A <button> that reads as a file name: no chrome until the pointer asks for it. */
   background: none;
   cursor: pointer;
+  transition: background-color var(--dur-flick) var(--ease-out);
 }
 
 .file-chip-page {
-  border-color: var(--accent);
-  color: var(--accent);
+  font-weight: 600;
 }
 
 .touched-files-more {
@@ -2487,6 +2720,36 @@ svg.railsvg {
   padding: 3px 0;
   overflow-x: hidden;
 }
+
+/* The functions a checkpoint touched, as plain lines (pass one of the change panel, from the
+   payload, before the dry run answers): a kind glyph, the file, the name. One row per function,
+   no chips -- a wall of chips is template UI, and this list is read, not scanned. */
+.touched-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 2px 0 8px;
+}
+
+.touched-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: var(--vscode-editor-font-family);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.touched-row:hover { background: var(--vscode-list-hoverBackground); }
+.touched-row.gone { opacity: 0.55; text-decoration: line-through; }
+.touched-kind { flex: none; width: 10px; text-align: center; color: var(--dim); font-weight: 700; }
+.touched-kind.added { color: var(--land); }
+.touched-kind.removed { color: var(--fail); }
+.touched-file { flex: none; color: var(--dim); }
+.touched-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
 
 .ctree-row {
   display: flex;
@@ -2634,8 +2897,7 @@ svg.railsvg {
 
 /* The chip is a button now (it opens the file), so it says so on hover. */
 .file-chip:hover {
-  border-color: var(--accent);
-  background: var(--vscode-list-hoverBackground);
+  background: var(--tone-2);
 }
 
 /* The ◆ milestone markers: presence without link spaghetti. */
@@ -2684,9 +2946,8 @@ svg.railsvg {
 }
 
 .asked-head {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-size: 12px;
+  font-weight: 600;
   color: var(--dim);
   margin-bottom: 5px;
   font-variant-numeric: tabular-nums;

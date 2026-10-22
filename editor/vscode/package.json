@@ -26,6 +26,7 @@
     "onCommand:ugh.init",
     "onCommand:ugh.openRenderPanel",
     "onCommand:ugh.openWorkbench",
+    "onCommand:ugh.openLedger",
     "onView:ughFeatures",
     "workspaceContains:**/.sgt/local/ideal.json"
   ],
@@ -144,6 +145,12 @@
         "title": "Open Composition Workbench",
         "category": "ugh",
         "icon": "$(type-hierarchy)"
+      },
+      {
+        "command": "ugh.openLedger",
+        "title": "Open Ledger",
+        "category": "ugh",
+        "icon": "$(list-flat)"
       },
       {
         "command": "ugh.openRenderPanel",
@@ -268,6 +275,11 @@
         },
         {
           "command": "ugh.refresh",
+          "when": "view == ughFeatures",
+          "group": "navigation"
+        },
+        {
+          "command": "ugh.openLedger",
           "when": "view == ughFeatures",
           "group": "navigation"
         },
