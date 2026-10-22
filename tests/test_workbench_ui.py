@@ -1202,3 +1202,11 @@ def test_undo_and_land_read_as_what_happened_and_other_subjects_pass_through():
     assert _subject("sgt land: main") == "Landed a session into main"
     assert _subject("Put the setup steps in the order they have to happen") == \
         "Put the setup steps in the order they have to happen"
+
+
+def test_the_latest_save_has_a_column_and_opens_under_the_lens():
+    # 21 saves are 21 columns; a checkpoint that is only the newest save opens to a third of the plot
+    # at the right edge, instead of a nub with nothing to magnify
+    xs = _bifocal("(() => { const f = bifocalScale(100, 600, 21, { firstIndex: 20, lastIndex: 20 }, 1); "
+                  "return [f(20), f(21)]; })()")
+    assert xs[1] == 700 and xs[1] - xs[0] >= 0.35 * 600 - 1e-6

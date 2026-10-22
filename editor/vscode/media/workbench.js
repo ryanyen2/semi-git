@@ -1668,24 +1668,22 @@ function changeMeter(added, removed, width) {
     lastOpened = car.checkpoint;
     const top = geom.panelY(l.row);
     const x0 = geom.plotX0, x1 = geom.plotX0 + geom.plotW;
-    const colX = (ci) => ci < geom.maxCommit
-      ? (geom.xOf(ci) + geom.xOf(ci + 1)) / 2
-      : geom.xOf(ci) - Math.min(14, (geom.xOf(ci) - geom.xOf(ci - 1)) / 2);
-    const colW = (ci) => ci < geom.maxCommit ? geom.xOf(ci + 1) - geom.xOf(ci) : 28;
+    const colX = (ci) => (geom.xOf(ci) + geom.xOf(ci + 1)) / 2;
+    const colW = (ci) => geom.xOf(ci + 1) - geom.xOf(ci);
     // This checkpoint's own saves sit under its own bar as drawn: a neighbour that starts in the
     // same save cuts the bar short, and a column centre past that cut would sit under the neighbour.
     const bar = carRects.get(car.checkpoint);
     const ownX = (ci) => {
       if (!bar) return colX(ci);
-      const lo = Math.max(bar.x, ci < geom.maxCommit ? geom.xOf(ci) : bar.x);
-      const hi = Math.min(bar.x + bar.w, ci < geom.maxCommit ? geom.xOf(ci + 1) : bar.x + bar.w);
+      const lo = Math.max(bar.x, geom.xOf(ci));
+      const hi = Math.min(bar.x + bar.w, geom.xOf(ci + 1));
       return hi > lo ? (lo + hi) / 2 : Math.max(bar.x + 4, Math.min(bar.x + bar.w - 4, colX(ci)));
     };
     const panel = mk("g", { class: "cp-panel" + (enter ? " cp-enter" : ""), "data-checkpoint": car.checkpoint });
     panel.addEventListener("click", (ev) => ev.stopPropagation()); // a click in here is not a lane click
     // The lens band: the opened checkpoint's own span, carried down from its bar through its rows.
     const lx1 = bar ? bar.x : geom.xOf(car.firstIndex);
-    const lx2 = bar ? bar.x + bar.w : car.lastIndex >= geom.maxCommit ? x1 : geom.xOf(car.lastIndex + 1);
+    const lx2 = bar ? bar.x + bar.w : geom.xOf(car.lastIndex + 1);
     panel.appendChild(mk("rect", { x: x0, y: top, width: x1 - x0, height: H - 4, class: "cp-ground" }));
     panel.appendChild(mk("rect", { x: lx1, y: top - 6, width: Math.max(4, lx2 - lx1), height: H + 2, rx: 2, class: "cp-lens", fill: color }));
 
@@ -1693,6 +1691,9 @@ function changeMeter(added, removed, width) {
     const commits = (compose.history && compose.history.commits) || [];
     const headY = top + PANEL.padT + PANEL.headH - 5;
     for (const ci of saves) {
+      // A header only where it fits: a checkpoint over many saves has narrow columns, and clipped
+      // headers ("sa… sa…") say nothing the ruler below does not already date.
+      if (colW(ci) < 56) continue;
       const c = commits.find((x) => x.index === ci) || commits[ci] || {};
       const when = axisLabel(ci);
       panel.appendChild(mk("text", {
@@ -1874,7 +1875,10 @@ function changeMeter(added, removed, width) {
     const h = GANTT.padT + rowsH + 12;
     const axisY = h;  // gridlines, the future-veil and the frontier line run the full plot height
     const maxCommit = Math.max(1, layout.commitCount - 1);
-    const xOf = bifocalScale(plotX0, plotW, maxCommit, fc ? fc.car : null, fc ? focus.t : 0);
+    // One column per save, [xOf(ci), xOf(ci + 1)], so the latest save has a column of its own and the
+    // now edge is the end of it. It used to be the right edge itself, which left the newest work as a
+    // nub and gave a lens nothing to open on that save.
+    const xOf = bifocalScale(plotX0, plotW, maxCommit + 1, fc ? fc.car : null, fc ? focus.t : 0);
     return {
       labelW, plotX0, plotW, w, h, axisY, maxCommit,
       forecastW, forecastSlots, nowX, forecastX0,
@@ -1887,10 +1891,11 @@ function changeMeter(added, removed, width) {
       rowH: (row) => heights[Math.max(0, Math.min(row, layout.rowCount - 1))] || GANTT.rowH,
       panelY: (row) => yTop[row] + heights[row],
       panelH: (row) => extra[row] || 0,
-      scrubX: (idx) => xOf(idx),
+      // the playhead "as of save k" stands at the end of save k's column
+      scrubX: (idx) => xOf(idx + 1),
       xToCommit: (x) => {
         let best = 0, bestD = Infinity;
-        for (let ci = 0; ci <= maxCommit; ci++) { const d = Math.abs(xOf(ci) - x); if (d < bestD) { bestD = d; best = ci; } }
+        for (let ci = 0; ci <= maxCommit; ci++) { const d = Math.abs(xOf(ci + 1) - x); if (d < bestD) { bestD = d; best = ci; } }
         return best;
       },
     };
@@ -1903,18 +1908,18 @@ function changeMeter(added, removed, width) {
   // lane is drawn on this one axis, so everything stays aligned in time, and the opened checkpoint's
   // functions sit exactly under its saves. `t` runs 0..1 and blends from the plain axis, so opening
   // and closing are a continuous change of scale rather than a jump.
-  function bifocalScale(plotX0, plotW, maxCommit, car, t) {
-    const lin = (u) => plotX0 + (Math.max(0, Math.min(maxCommit, u)) / maxCommit) * plotW;
+  function bifocalScale(plotX0, plotW, cols, car, t) {
+    const lin = (u) => plotX0 + (Math.max(0, Math.min(cols, u)) / cols) * plotW;
     if (!car || !(t > 0)) return lin;
-    let a = Math.max(0, Math.min(maxCommit, car.firstIndex));
-    let b = Math.max(0, Math.min(maxCommit, car.lastIndex + 1));
+    let a = Math.max(0, Math.min(cols, car.firstIndex));
+    let b = Math.max(0, Math.min(cols, car.lastIndex + 1));
     if (b - a < 1) a = Math.max(0, b - 1);
-    const left = a, right = maxCommit - b, rest = left + right;
+    const left = a, right = cols - b, rest = left + right;
     const wf = rest > 0 ? Math.min(plotW * 0.7, Math.max(plotW * 0.35, (b - a) * 120)) : plotW;
     const wl = rest > 0 ? (plotW - wf) * (left / rest) : 0;
     const wr = plotW - wf - wl;
     const bi = (u) => {
-      u = Math.max(0, Math.min(maxCommit, u));
+      u = Math.max(0, Math.min(cols, u));
       if (u <= a) return plotX0 + (left ? (u / left) * wl : 0);
       if (u <= b) return plotX0 + wl + ((u - a) / (b - a)) * wf;
       return plotX0 + wl + wf + (right ? ((u - b) / right) * wr : 0);
@@ -1945,7 +1950,7 @@ function changeMeter(added, removed, width) {
     const laneName = (laneNode && laneNode.label) || l.id;
     const cars = l.cars || [];
     if (!cars.length) {
-      const x1 = geom.xOf(l.firstCommit), x2 = geom.xOf(l.lastCommit);
+      const x1 = geom.xOf(l.firstCommit), x2 = geom.xOf(l.lastCommit + 1);
       g.appendChild(mk("rect", {
         x: x1, y: barY, width: Math.max(GANTT.minBarW, x2 - x1), height: barH, rx: 3,
         class: "gbar-track", fill: color,
@@ -1972,7 +1977,7 @@ function changeMeter(added, removed, width) {
     for (let i = 0; i < cars.length; i++) {
       const car = cars[i];
       let x = Math.max(geom.xOf(car.firstIndex), cursor); // anchored in time, never behind the last car
-      let rightEnd = car.lastIndex >= geom.maxCommit ? plotR : geom.xOf(car.lastIndex + 1);
+      let rightEnd = geom.xOf(car.lastIndex + 1);
       if (i + 1 < cars.length) rightEnd = Math.min(rightEnd, geom.xOf(cars[i + 1].firstIndex) - GANTT.carGap);
       let w = Math.max(GANTT.minCarW, rightEnd - x);
       // Never past the plot's right edge. x means WHEN, so a car drawn beyond the axis is claiming a
@@ -2454,7 +2459,10 @@ function changeMeter(added, removed, width) {
   function renderGraph() {
     if (!paneMeasurable()) return;
     resetFontCache(); // the editor font can change under us; re-resolve before measuring anything
-    const prevScroll = rail.scrollTop;
+    // The plot scrolls, not the rail (whose overflow is hidden so the axis stays pinned): reading the
+    // rail's scrollTop always gave 0, and every render threw a long history back to its first row.
+    const prevScroller = rail.querySelector(".plot-scroll");
+    const prevScroll = prevScroller ? prevScroller.scrollTop : 0;
     const bandHadFocus = !!(document.activeElement && document.activeElement.classList
       && document.activeElement.classList.contains("frontier-band"));
     rail.innerHTML = "";
@@ -2631,7 +2639,7 @@ function changeMeter(added, removed, width) {
     setLabel(label, hd.label, geom.labelW - labelX - metaW);
     g.appendChild(label);
     // The subsystem's own activity envelope in the plot, so the header still shows "when".
-    const bx = geom.xOf(hd.firstCommit), bx2 = geom.xOf(hd.lastCommit);
+    const bx = geom.xOf(hd.firstCommit), bx2 = geom.xOf(hd.lastCommit + 1);
     g.appendChild(mk("rect", {
       x: bx, y: y + GANTT.rowH / 2 - 2, width: Math.max(GANTT.minBarW, bx2 - bx), height: 4,
       rx: 2, class: "swimlane-span", "data-first": hd.firstCommit,
@@ -2795,7 +2803,7 @@ function changeMeter(added, removed, width) {
     let prevTick = null;
     for (let i = 0; !single && i <= 4; i++) {
       const ci = Math.round((i / 4) * geom.maxCommit);
-      const tx = geom.xOf(ci);
+      const tx = i === 4 ? geom.xOf(geom.maxCommit + 1) : geom.xOf(ci);
       const tick = axisLabel(ci);
       // Faint full-height gridline so the plot reads as a structured field of time columns rather
       // than an empty expanse above the axis.
@@ -2867,7 +2875,7 @@ function changeMeter(added, removed, width) {
     const notches = notchesFor(geom, [...snap]);
     const notchEls = new Map();
     for (const n of notches) {
-      const nx = geom.xOf(n), deep = snap.has(n);
+      const nx = geom.scrubX(n), deep = snap.has(n);
       svg.appendChild(mk("line", { x1: nx, x2: nx, y1: GANTT.padT, y2: y, class: "notch-grid" + (deep ? " deep" : "") }));
       const t = mk("line", { x1: nx, x2: nx, y1: ay - (deep ? 5 : 3), y2: ay + (deep ? 5 : 3), class: "notch" + (deep ? " deep" : "") });
       axisSvg.appendChild(t);
@@ -2898,9 +2906,9 @@ function changeMeter(added, removed, width) {
   function snapCommit(idx, geom) {
     const pts = graphView && graphView.snap;
     if (!pts || !pts.length) return idx;
-    const x = geom.xOf(idx);
+    const x = geom.scrubX(idx);
     let best = idx, bestPx = Infinity;
-    for (const p of pts) { const d = Math.abs(geom.xOf(p) - x); if (d < bestPx) { bestPx = d; best = p; } }
+    for (const p of pts) { const d = Math.abs(geom.scrubX(p) - x); if (d < bestPx) { bestPx = d; best = p; } }
     return bestPx <= 8 ? best : idx;
   }
 
@@ -3092,7 +3100,7 @@ function changeMeter(added, removed, width) {
     clearTimeout(scrubTimer);
     // Home is the now edge: the playhead glides back to it rather than teleporting, so the eye
     // can follow where "now" is after a scrub. Seeded from where it is, so before the index clears.
-    if (graphView) phGlideTo(graphView.geom.xOf(graphView.geom.maxCommit));
+    if (graphView) phGlideTo(graphView.geom.scrubX(graphView.geom.maxCommit));
     playheadCommitIndex = null;
     applyFrontier();
     renderInspector();
@@ -3127,7 +3135,7 @@ function changeMeter(added, removed, width) {
   const PH = { omega: 48, zeta: 0.78, coastMs: 140, minGap: 6, hold: 0.08, deepHold: 0.16, lean: 0.22 };
 
   function notchesFor(geom, snap) {
-    const step = geom.plotW / Math.max(1, geom.maxCommit);
+    const step = geom.plotW / (geom.maxCommit + 1);
     if (step >= PH.minGap) return Array.from({ length: geom.maxCommit + 1 }, (_, i) => i);
     return [...new Set([0, geom.maxCommit, ...(snap || [])])].sort((a, b) => a - b);
   }
@@ -3230,7 +3238,7 @@ function changeMeter(added, removed, width) {
       ph.v = 0;
     }
     setPlayhead(idx);
-    phGlideTo(graphView.geom.xOf(idx));
+    phGlideTo(graphView.geom.scrubX(idx));
     const t = graphView.notchEls && graphView.notchEls.get(idx);
     if (t && !prefersReducedMotion()) {
       t.classList.remove("hit");
@@ -3293,17 +3301,17 @@ function changeMeter(added, removed, width) {
     const px = clampPlot(rawX, geom);
     phDrag.samples.push({ t: performance.now(), x: px });
     if (phDrag.samples.length > 12) phDrag.samples.shift();
-    const idx = detentIndex(px, phDrag.cur, phDrag.notches, geom, phDrag.deep);
+    const idx = detentIndex(px, phDrag.cur, phDrag.notches, { xOf: geom.scrubX }, phDrag.deep);
     if (idx !== phDrag.cur) {
       phDrag.cur = idx;
       phClick(idx);
     } else if (!prefersReducedMotion()) {
       // Inside its notch the line leans a little toward the hand, so it stays connected to the
       // pointer; past the halfway point it lets go into the next notch.
-      const home = geom.xOf(idx);
+      const home = geom.scrubX(idx);
       const i = phDrag.notches.indexOf(idx);
       const nb = phDrag.notches[i + (px > home ? 1 : -1)];
-      const gap = nb == null ? 0 : Math.abs(geom.xOf(nb) - home);
+      const gap = nb == null ? 0 : Math.abs(geom.scrubX(nb) - home);
       const lean = Math.max(-gap * 0.3, Math.min(gap * 0.3, (px - home) * PH.lean));
       if (ph.x == null) { ph.x = home; ph.v = 0; }
       phGlideTo(home + lean);
@@ -3319,7 +3327,7 @@ function changeMeter(added, removed, width) {
 
   function onScrubPointerUp() {
     playheadDragging = false;
-    if (graphView && phDrag.cur != null) phGlideTo(graphView.geom.xOf(phDrag.cur)); // seat from the lean
+    if (graphView && phDrag.cur != null) phGlideTo(graphView.geom.scrubX(phDrag.cur)); // seat from the lean
     window.removeEventListener("pointermove", onScrubPointerMove);
     window.removeEventListener("pointerup", onScrubPointerUp);
     window.removeEventListener("pointercancel", onScrubPointerUp);
@@ -3545,6 +3553,35 @@ function changeMeter(added, removed, width) {
     if (ev) ev.stopPropagation();
     if (stagedAction && !applyBusy) cancelStaged(); // navigating away withdraws the question
     if (armedVerb) { confirmArmed(laneId); return; }
+    // A checkpoint in a folded subsystem is packed among its siblings' bars, so it is not drawn at
+    // its own time; opening it there would put the lens on a time the bar is not at. Unfold to the
+    // checkpoint's own feature lane first, then open it there.
+    if (car.featureId && laneId !== car.featureId && state.selectedCheckpoint !== car.checkpoint) {
+      let cur = byId(car.featureId);
+      cur = cur ? byId(cur.parent) : null;
+      let unfolded = false;
+      while (cur) {
+        const i = state.collapsed.indexOf(cur.id);
+        if (i >= 0) { state.collapsed.splice(i, 1); unfolded = true; }
+        cur = byId(cur.parent);
+      }
+      if (unfolded) {
+        state.multi = [car.featureId];
+        state.selected = car.featureId;
+        state.selectedStep = null;
+        state.selectedPlanSession = null;
+        state.selectedActor = null;
+        selectionResult = null;
+        state.selectedCheckpoint = car.checkpoint;
+        askedOpen = null;
+        saveState();
+        recompute();
+        render();
+        const row = [...rail.querySelectorAll(".glane")].find((g) => g.getAttribute("data-id") === car.featureId);
+        if (row && row.scrollIntoView) row.scrollIntoView({ block: "center" });
+        return;
+      }
+    }
     if (state.selected !== laneId) {
       state.multi = [laneId];
       state.selected = laneId;
