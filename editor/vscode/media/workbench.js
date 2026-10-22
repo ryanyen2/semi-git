@@ -293,6 +293,30 @@ function flattenLayout(layout) {
 // A car whose `first_index` is past `frontier` is kept and flagged `isFuture` rather than dropped:
 // the renderer dims it, but a lane's car *count* and positions stay stable while scrubbing -- only
 // cell density (via `computeGraphLayout`'s own op filtering) accretes.
+// ---- readable-subject (test slice boundary)
+// Commits ugh writes for its own verbs carry bookkeeping subjects ("ugh revert 0f628ffc@1",
+// "ugh undo: restore prior ideal", "sgt land: main"). Shown as a checkpoint's name or a save's
+// subject they put an internal reference on screen; they read as what happened, naming the
+// checkpoint by its own name where the reference resolves.
+function readableSubject(text, segments) {
+  const t = String(text || "");
+  const m = /^(?:ugh|sgt) (revert|restore)\s+(\S+)/.exec(t);
+  if (m) {
+    const [fid, n] = m[2].replace(/^f-/, "").split("@");
+    const hit = (segments || []).find((s) => {
+      const [sf, sn] = String(s.checkpoint || "").replace(/^f-/, "").split("@");
+      return sf.startsWith(fid) && (n == null || sn === n) && !/^(?:ugh|sgt) /.test(s.intent || "");
+    });
+    const what = hit && hit.intent ? `“${hit.intent}”` : "a checkpoint";
+    return m[1] === "revert" ? `Took out ${what}` : `Put back ${what}`;
+  }
+  if (/^(?:ugh|sgt) undo\b/.test(t)) return "Undid the last change";
+  const land = /^(?:ugh|sgt) land:?\s*(\S+)?/.exec(t);
+  if (land) return land[1] ? `Landed a session into ${land[1]}` : "Landed a session";
+  return t;
+}
+// ---- end-readable-subject
+
 function computeSegmentLayout(map, grid, segments, opts) {
   opts = opts || {};
   const frontier = opts.frontier == null ? Infinity : opts.frontier;
@@ -344,7 +368,7 @@ function computeSegmentLayout(map, grid, segments, opts) {
           if (ci != null) bins.set(ci, (bins.get(ci) || 0) + 1);
         }
         cars.push({
-          featureId: leaf, segIndex: seg.seg_index, checkpoint: seg.checkpoint, label: seg.intent,
+          featureId: leaf, segIndex: seg.seg_index, checkpoint: seg.checkpoint, label: readableSubject(seg.intent, segments),
           opCount: seg.op_count, tier: seg.tier, source: seg.source,
           // Whether this chapter's ops are still in HEAD's ideal (`present_op_count`, from
           // `ugh.api._segments_out`). A revert leaves the chapter in the store and takes it out of
@@ -5429,7 +5453,7 @@ function changeMeter(added, removed, width) {
     heading.textContent = `Save ${idx + 1} of ${commits.length}` + (when.startsWith("save") ? "" : ` · ${when}`);
     section.appendChild(heading);
     const commit = commits.find((c) => c.index === idx) || commits[idx];
-    if (commit && commit.subject) section.appendChild(el("div", "detail-why", commit.subject));
+    if (commit && commit.subject) section.appendChild(el("div", "detail-why", readableSubject(commit.subject, segmentsOf(compose))));
 
     const back = document.createElement("button");
     back.className = "code-panel-back";
@@ -5566,7 +5590,7 @@ function changeMeter(added, removed, width) {
 
       const label = document.createElement("span");
       label.className = "checkpoint-label";
-      label.textContent = seg.intent;
+      label.textContent = readableSubject(seg.intent, segmentsOf(compose));
       row.appendChild(label);
       // A word only where the state needs one, in the reader's terms.
       const named = (seg.symbols || []).filter((sv) => sv && sv.symbol && !/::__/.test(sv.symbol));

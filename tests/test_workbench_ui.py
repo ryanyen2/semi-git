@@ -1181,3 +1181,24 @@ def test_columns_fold_into_one_stack_past_the_band():
     assert [c["stack"] for c in cols] == [False, True]
     assert [a["id"] for a in cols[1]["actors"]] == ["session:loss-a", "session:loss-b", "plan:p2"]
     assert _actors("forecastColumnsFor(actors, 0)") == []
+
+
+# ---- bookkeeping subjects read as what happened ----------------------------------------------
+
+def _subject(text: str, segs: str = "[]"):
+    return _node(_slice("// ---- readable-subject", "// ---- end-readable-subject"),
+                 f"console.log(JSON.stringify(readableSubject({json.dumps(text)}, {segs})));\n")
+
+
+def test_a_revert_commit_names_what_it_took_out():
+    segs = '[{ checkpoint: "f-0f628ffc1234@1", intent: "Limit the requests" }]'
+    assert _subject("ugh revert 0f628ffc@1", segs) == "Took out “Limit the requests”"
+    assert _subject("ugh restore f-0f628ffc@1", segs) == "Put back “Limit the requests”"
+    assert _subject("ugh revert deadbeef@0", segs) == "Took out a checkpoint"
+
+
+def test_undo_and_land_read_as_what_happened_and_other_subjects_pass_through():
+    assert _subject("ugh undo: restore prior ideal") == "Undid the last change"
+    assert _subject("sgt land: main") == "Landed a session into main"
+    assert _subject("Put the setup steps in the order they have to happen") == \
+        "Put the setup steps in the order they have to happen"
