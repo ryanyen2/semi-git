@@ -934,59 +934,144 @@ def test_the_control_says_what_it_opens():
     assert _asked(f"askedMoreLabel({json.dumps(_ask())}, 3)") == "Read all 4 asks"
 
 
-# ---- the playhead's notches and landing -----------------------------------------------------------
-# The playhead has mass: under the hand it sits in the notch of the save that owns the pointer, a
-# checkpoint boundary is a deeper notch, and a release coasts to the save that owns the stopping
-# place. These pin the shape of that feel, not its constants: a save holds the handle back, a boundary
-# holds it more, the hand and the handle meet at the notch's edge (no jump between notches), and a
-# release near the now edge re-attaches to now.
+# ---- the playhead's detents ---------------------------------------------------------------------
+# The playhead moves like a detented dial: it rests in a notch, holds while the hand starts to pull,
+# and clicks into the next notch only once the hand is past the halfway point by a margin; a
+# checkpoint boundary holds harder. Notches are the saves when they are at least 6 px apart, else
+# the boundaries. A release with speed ratchets on a few notches. These pin the feel's shape.
 
-_PLAYHEAD_PRELUDE = """
-const graphView = { snap: [10], snapSet: new Set([10]) };
+_DETENT_PRELUDE = """
 const geom = (() => {
   const plotX0 = 100, plotW = 600, maxCommit = 20;
   const xOf = (ci) => plotX0 + (Math.max(0, Math.min(maxCommit, ci)) / maxCommit) * plotW;
-  return { plotX0, plotW, maxCommit, xOf,
-    xToCommit: (x) => Math.max(0, Math.min(maxCommit, Math.round(((x - plotX0) / plotW) * maxCommit))) };
+  return { plotX0, plotW, maxCommit, xOf };
 })();
+const all = Array.from({ length: 21 }, (_, i) => i);
 """
 
 
-def _playhead(expr: str):
-    snippet = (_PLAYHEAD_PRELUDE
-               + _slice("function snapCommit", "// The checkpoint labels whose chapter")
-               + _slice("// ---- playhead-wells", "// ---- end-playhead-wells"))
-    return _node(snippet, f"console.log(JSON.stringify({expr}));\n")
+def _detent(expr: str):
+    return _node(_DETENT_PRELUDE + _slice("// ---- playhead-wells", "// ---- end-playhead-wells"),
+                 f"console.log(JSON.stringify({expr}));\n")
 
 
-def test_a_save_holds_the_handle_back_and_a_boundary_holds_it_more():
-    # saves are 30px apart here; the pointer sits 9px right of save 5 (plain) and of save 10 (boundary)
-    plain = _playhead("phWell(geom.xOf(5) + 9, geom)")
-    deep = _playhead("phWell(geom.xOf(10) + 9, geom)")
-    assert plain["ci"] == 5 and deep["ci"] == 10
-    assert 0 < plain["x"] - 250 < 9          # behind the hand, past the save
-    assert 0 < deep["x"] - 400 < plain["x"] - 250  # a boundary lingers more
+def test_every_save_is_a_notch_when_there_is_room_and_only_boundaries_when_there_is_not():
+    assert _detent("notchesFor(geom, [5, 10])") == list(range(21))  # 30 px apart
+    dense = _detent("notchesFor({ ...geom, maxCommit: 400 }, [5, 120, 300])")  # 1.5 px apart
+    assert dense == [0, 5, 120, 300, 400]
 
 
-def test_the_hand_and_the_handle_meet_at_the_edge_of_a_notch():
-    # at the notch's edge (half the spacing) the pull is zero, so crossing into the next notch is
-    # continuous: no jump in the line as the pointer passes between two saves
-    at_edge = _playhead("phWell(geom.xOf(5) + 15, geom)")
-    assert abs(at_edge["x"] - (250 + 15)) < 1e-6
+def test_the_playhead_holds_until_the_hand_is_past_halfway_by_a_margin():
+    # saves are 30 px apart: halfway is 15 px, the hold margin 5.4 px
+    assert _detent("detentIndex(geom.xOf(5) + 16, 5, all, geom, new Set())") == 5
+    assert _detent("detentIndex(geom.xOf(5) + 21, 5, all, geom, new Set())") == 6
+    assert _detent("detentIndex(geom.xOf(5) - 21, 5, all, geom, new Set())") == 4
 
 
-def test_a_release_lands_on_the_save_it_coasts_to():
-    assert _playhead("landingIndex(geom.xOf(5), 0, geom)") == 5
-    # 600 px/s for the coast window carries the playhead on to a later save
-    assert _playhead("landingIndex(geom.xOf(5), 600, geom)") > 5
-    assert _playhead("landingIndex(geom.xOf(5), -600, geom)") < 5
+def test_a_checkpoint_boundary_takes_a_firmer_pull_to_leave():
+    # 21 px leaves a plain notch but not a deep one (margin 9.6 px)
+    assert _detent("detentIndex(geom.xOf(5) + 21, 5, all, geom, new Set([5]))") == 5
+    assert _detent("detentIndex(geom.xOf(5) + 26, 5, all, geom, new Set([5]))") == 6
 
 
-def test_a_release_on_now_re_attaches_to_now_and_the_save_before_it_stays_reachable():
-    assert _playhead("landingIndex(geom.xOf(20), 0, geom)") is None
-    assert _playhead("landingIndex(geom.xOf(19), 0, geom)") == 19
-    # a flick from the save before now coasts onto now
-    assert _playhead("landingIndex(geom.xOf(19), 600, geom)") is None
+def test_a_fast_hand_lands_in_the_notch_it_reached():
+    assert _detent("detentIndex(geom.xOf(12), 5, all, geom, new Set())") == 12
+
+
+def test_a_flick_ratchets_on_a_few_notches_and_a_slow_release_stays():
+    assert _detent("coastSteps(0, 30)") == 0
+    assert _detent("coastSteps(100, 30)") == 0
+    assert _detent("coastSteps(900, 30)") == 4
+    assert _detent("coastSteps(-900, 30)") == -4
+    assert _detent("coastSteps(50000, 30)") == 8  # never more than eight clicks
+
+
+# ---- a checkpoint, opened in place ------------------------------------------------------------
+# The panel lists the named functions (kernel bookkeeping left out), oldest first and capped; its
+# columns are every save the checkpoint touched; a function's word says what happened to it.
+
+_PANEL_PRELUDE = "const PANEL = { padT: 12, headH: 16, rowH: 18, foot: 18, padB: 8, maxRows: 12 };\n"
+
+
+def _panel(expr: str):
+    return _node(_PANEL_PRELUDE + _slice("// ---- checkpoint-panel", "// ---- end-checkpoint-panel"),
+                 f"console.log(JSON.stringify({expr}));\n")
+
+
+_CAR = """{ symbols: [
+  { symbol: "a.py::render", kind: "changed", live: true, saves: [7, 9] },
+  { symbol: "a.py::__residue__::0", kind: "changed", live: true, saves: [7] },
+  { symbol: "a.py::parse", kind: "added", live: false, saves: [6] } ],
+  subBins: [[6, 2], [8, 1]], dependents: [{ ref: "f@2", symbols: ["a.py::render"] }] }"""
+
+
+def test_the_panel_lists_named_functions_oldest_first():
+    assert _panel(f"panelRows({_CAR}).map((s) => s.symbol)") == ["a.py::parse", "a.py::render"]
+
+
+def test_the_panel_spans_every_save_the_checkpoint_touched():
+    # saves from the functions, plus a save that held only bookkeeping (8)
+    assert _panel(f"panelSaves({_CAR})") == [6, 7, 8, 9]
+
+
+def test_a_function_taken_out_says_so_and_the_rest_say_what_happened():
+    assert _panel('kindWord({ kind: "added", live: false })') == "taken out"
+    assert _panel('kindWord({ kind: "added", live: true })') == "added"
+    assert _panel('kindWord({ kind: "modified", live: true })') == "changed"
+
+
+def test_the_panel_makes_room_for_its_rows_and_what_stands_on_it():
+    # 12 top + 16 header + 3 rows (2 named + the "more" row for the hidden bookkeeping) + footer + 8
+    assert _panel(f"panelHeight({_CAR})") == 12 + 16 + 3 * 18 + 18 + 8
+
+
+# ---- what a preview says ---------------------------------------------------------------------
+
+def _words(verb: str, res: dict):
+    block = _slice("// ---- preview-words", "// ---- end-preview-words")
+    return _node(block, f"console.log(JSON.stringify(previewWords({json.dumps(verb)}, {json.dumps(res)}, 'f-own', (id) => ({{'f-b': 'Date Window'}})[id])));\n")
+
+
+_RES = {
+    "pruned_symbols": ["m.py::hourly_averages", "m.py::__anchor__::x"],
+    "subtracted_symbols": ["m.py::render"],
+    "kept_conflicts": [], "broken_references": ["m.py::side_totals"],
+    "files": {"m.py": {}, "p.py": {}},
+    "focus": {"nodes": [
+        {"feature_id": "f-own", "role": "target", "ops_before": 9, "ops_after": 2},
+        {"feature_id": "f-b", "role": "blast", "ops_before": 4, "ops_after": 3},
+        {"feature_id": "f-c", "role": "blast", "ops_before": 3, "ops_after": 4},
+    ]},
+}
+
+
+def test_a_revert_preview_says_what_leaves_what_else_changes_and_that_nothing_happened_yet():
+    lines = _words("revert", _RES)
+    text = [ln["text"] for ln in lines]
+    assert text[0] == "Removes 1 function it added: hourly_averages."
+    assert text[1] == "Takes its edits out of render; the rest of that function stays."
+    # f-c's count rose: the kernel filing repair edits, not a change to that feature
+    assert text[2] == "Rewrites 2 files; also changes Date Window."
+    assert text[3] == "side_totals will still call code this removes."
+    assert lines[-1] == {"tone": "quiet", "text": "Nothing has changed yet. Undo reverses it afterwards."}
+    assert not any("__" in t or "op" in t.split() for t in text)
+
+
+def test_a_later_checkpoint_that_edited_a_function_going_is_named_by_its_own_name():
+    block = _slice("// ---- preview-words", "// ---- end-preview-words")
+    also = ("(touched) => touched.has('m.py::render') ? "
+            "[{ name: 'Date Window', featureId: 'f-b', ref: 'f-b@2' }] : []")
+    lines = _node(block, "console.log(JSON.stringify(previewWords('revert', "
+                  + json.dumps(_RES) + ", 'f-own', (id) => ({'f-b': 'East-West Share Trends'})[id], " + also + ")));\n")
+    # named once, by the checkpoint the reader sees on the timeline; its feature is not repeated
+    assert lines[2]["text"] == "Rewrites 2 files; also changes Date Window."
+    assert lines[2]["tone"] == "also"
+
+
+def test_a_restore_preview_says_what_comes_back():
+    lines = _words("restore", {"affected_symbols": ["m.py::hourly_averages"], "files": {}, "focus": {"nodes": []}})
+    assert lines[0]["text"] == "Brings back 1 function: hourly_averages."
+    assert lines[1]["text"] == "Rewrites no file; no other feature changes."
 
 
 # ---- actors: whose work is coming, one column each ---------------------------------------------

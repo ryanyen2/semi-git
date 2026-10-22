@@ -645,15 +645,17 @@ try {
   check("no density cell is drawn narrower than it can be seen", subPixel.length === 0,
     `${subPixel.length} sub-pixel cell(s)`);
 
-  // ── Every checkpoint can say its own name ─────────────────────────────────────────────────────
-  // Most cars are too narrow to hold their label inline, so before the chip the only way to read a
-  // chapter's name was an OS tooltip on a one-second delay. Hovering must put the name on screen,
-  // and it must come back off.
+  // ── Every checkpoint can say its own name, without covering anything ────────────────────────
+  // The hover chip that unfolded over a row is gone (2026-10-22): it was larger than its bar, it
+  // covered the neighbours, and with several lanes of one hue family it was hard to say which bar it
+  // named. Hovering outlines the bar and the pinned time axis reads it out; nothing is drawn over a
+  // row, and the reading leaves with the cursor.
   console.log("\ncheckpoint names:");
-  const chipLayer = byId.rail.querySelector(".gchip-layer");
-  check("the chip layer paints above the lanes", !!chipLayer
-    && chipLayer.parent.children.indexOf(chipLayer)
-       > chipLayer.parent.children.indexOf(chipLayer.parent.querySelector(".glanes")));
+  check("no chip layer exists to cover rows", byId.rail.querySelectorAll(".gchip-layer, .gchip").length === 0);
+  const hoverLayer = byId.rail.querySelector(".hover-layer");
+  check("the hover layer paints above the lanes", !!hoverLayer
+    && hoverLayer.parent.children.indexOf(hoverLayer)
+       > hoverLayer.parent.children.indexOf(hoverLayer.parent.querySelector(".glanes")));
   const narrow = byId.rail.querySelectorAll(".gcar-wrap")
     .find((c) => c._listeners && c._listeners.mouseenter
       && c.querySelectorAll(".gcar-label").length === 0);
@@ -661,46 +663,100 @@ try {
     check("a car with no inline label exists to hover", false, "none found in the fixture");
   } else {
     narrow._listeners.mouseenter.forEach((fn) => fn({}));
-    const chip = chipLayer.querySelector(".gchip");
-    const name = chip && chip.querySelector(".gchip-name");
-    check("hovering an unlabelled chapter names it", !!name && String(name.textContent).trim().length > 0,
-      name ? name.textContent : "no chip");
-    // The chip must stay inside the plot: clamped left of the op-count column, right of the gutter.
-    const bg = chip && chip.querySelector(".gchip-bg");
-    const right = bg ? Number(bg.getAttribute("x")) + Number(bg.getAttribute("width")) : 0;
-    check("the chip stays inside the plot", bg && right <= plotEdge + 0.5,
-      `chip right ${right.toFixed(1)} vs plot edge ${plotEdge}`);
-    // Leaving retracts the hover chip. What may remain is the SELECTED chapter's pinned chip --
-    // an earlier test in this run clicks a car, and the name of the thing you picked is supposed to
-    // stay on screen.
-    // The chip must not carry a geometry transform of its own. It used to unfold out of the bar's
-    // rectangle, which read at pointer speed as the row rearranging itself under the question; it
-    // now fades at its final size. Asserted as an ABSENCE because the regression this guards is a
-    // re-introduced morph, and a morph is exactly what a transform on this node would be.
-    const hoverChip = chipLayer.querySelectorAll(".gchip")
-      .find((c) => !c.classList.contains("gchip-pinned"));
-    const moved = hoverChip
-      && (hoverChip.style.transform || hoverChip.style.getPropertyValue("--flip-from"));
-    check("the name arrives without moving the bar", !!hoverChip && !moved,
-      hoverChip ? `transform: ${moved}` : "no hover chip");
-
+    const read = byId.rail.querySelector(".axis-read");
+    const axis = byId.rail.querySelector(".gantt-axis");
+    check("hovering an unlabelled chapter reads it on the time axis",
+      !!read && String(read.textContent).trim().length > 0 && axis.classList.contains("reading"),
+      read ? read.textContent : "no axis reading");
+    check("the reading names its size in functions and saves, never ops",
+      !!read && !/\bops?\b|edit\(s\)/.test(read.textContent), read ? read.textContent : "");
+    check("two guides drop from the bar to the axis", hoverLayer.querySelectorAll(".read-guide").length === 2);
+    check("nothing on the plot grew to name it", byId.rail.querySelectorAll(".gchip").length === 0);
     narrow._listeners.mouseleave.forEach((fn) => fn({}));
-    // Leaving RETRACTS the hover chip along the way it came -- it is not deleted where it stands.
-    // Deleting it is what made the name read as thrown at the reader and then taken away: the only
-    // motion in the interaction pointed one way. What may also remain is the SELECTED chapter's
-    // pinned chip; an earlier test in this run clicks a car, and the name of the thing you picked is
-    // supposed to stay on screen.
-    const hoverChips = chipLayer.querySelectorAll(".gchip")
-      .filter((c) => !c.classList.contains("gchip-pinned"));
-    check("it retracts on leave rather than vanishing",
-      hoverChips.length === 1 && hoverChips[0].classList.contains("gchip-out"),
-      `${hoverChips.length} hover chip(s), classes ${hoverChips.map((c) => c.className).join("|")}`);
-    // ...and a hover that arrives mid-retreat cancels it, instead of leaving a trail of retreating
-    // chips behind a cursor swept along a dense lane.
-    narrow._listeners.mouseenter.forEach((fn) => fn({}));
-    const trailing = chipLayer.querySelectorAll(".gchip-out");
-    check("a new hover cancels the retreat in progress", trailing.length === 0,
-      `${trailing.length} retreating chip(s) left behind`);
+    check("the reading leaves with the cursor",
+      !axis.classList.contains("reading") && hoverLayer.children.length === 0);
+  }
+
+  // ── A checkpoint opens into a smaller Gantt chart of its functions over its saves ────────────
+  console.log("\na checkpoint, opened in place:");
+  {
+    // One segment of the fixture, given functions the way the kernel names them and a later
+    // checkpoint that stands on one of them, so the panel, the underline and the arcs all have
+    // something to draw.
+    const opened = JSON.parse(JSON.stringify(compose));
+    const segs = opened.intent.segments.filter((g) => (g.op_ids || []).length);
+    const target = segs[0], later = segs.find((g) => g.first_index > target.last_index) || segs[1];
+    const lo = target.first_index, hi = Math.max(target.first_index, target.last_index);
+    target.symbols = [
+      { symbol: "src/a.py::parse", file: "src/a.py", kind: "added", live: true, saves: [lo] },
+      { symbol: "src/a.py::render", file: "src/a.py", kind: "changed", live: true, saves: [lo, hi] },
+      { symbol: "src/b.py::__residue__::0", file: "src/b.py", kind: "changed", live: true, saves: [lo] },
+    ];
+    target.change_count = 3;
+    target.dependents = [{ ref: later.checkpoint, symbols: ["src/a.py::render"] }];
+    later.dependents = [];
+    feed({ type: "state", compose: opened });
+    const car = byId.rail.querySelectorAll(".gcar-wrap").find((w) => w.getAttribute("data-checkpoint") === target.checkpoint);
+    check("a checkpoint that later work stands on carries the amber underline at rest",
+      !!car && car.querySelectorAll(".gcar-builton").length === 1);
+    const laterCar = byId.rail.querySelectorAll(".gcar-wrap").find((w) => w.getAttribute("data-checkpoint") === later.checkpoint);
+    check("a checkpoint nothing stands on carries none", !!laterCar && laterCar.querySelectorAll(".gcar-builton").length === 0);
+    if (car) {
+      car._listeners.mouseenter.forEach((fn) => fn({}));
+      check("hovering it draws a line to what stands on it",
+        byId.rail.querySelector(".hover-layer").querySelectorAll(".dep-arc").length === 1
+          && /1 later checkpoint builds on it/.test(byId.rail.querySelector(".axis-read").textContent),
+        byId.rail.querySelector(".axis-read").textContent);
+      car._listeners.mouseleave.forEach((fn) => fn({}));
+      const laneYs = () => {
+        const out = new Map();
+        for (const n of byId.rail.querySelectorAll(".glane")) {
+          const hit = n.querySelectorAll(".glane-hit")[0];
+          if (hit) out.set(n.getAttribute("data-id"), Number(hit.getAttribute("y")));
+        }
+        return out;
+      };
+      const ownId = car.parent && car.parent.getAttribute ? car.parent.getAttribute("data-id") : null;
+      // An earlier test may have selected this very checkpoint, and a second click closes it:
+      // start from closed so the click under test is the one that opens it.
+      if (byId.rail.querySelectorAll(".cp-panel").length) {
+        car._listeners.click.forEach((fn) => fn(noopEv));
+      }
+      check("a closed checkpoint draws no panel", byId.rail.querySelectorAll(".cp-panel").length === 0);
+      const before = laneYs();
+      const fresh = byId.rail.querySelectorAll(".gcar-wrap").find((w) => w.getAttribute("data-checkpoint") === target.checkpoint);
+      fresh._listeners.click.forEach((fn) => fn(noopEv)); // open it
+      const panels = byId.rail.querySelectorAll(".cp-panel");
+      const panel = panels[0];
+      check("clicking a checkpoint opens its panel under its lane",
+        panels.length === 1 && panel.getAttribute("data-checkpoint") === target.checkpoint);
+      if (panels.length === 1) {
+        const rows = panel.querySelectorAll(".cp-row");
+        check("one row per named function, kernel bookkeeping left out", rows.length === 2,
+          `${rows.length} rows: ${rows.map((r) => r.querySelector(".cp-fn").textContent)}`);
+        check("one mark per function per save it changed in", panel.querySelectorAll(".cp-mark").length === (lo === hi ? 2 : 3),
+          `${panel.querySelectorAll(".cp-mark").length} marks`);
+        check("the function later work edits is marked and said",
+          panel.querySelectorAll(".cp-later").length === 1
+            && panel.querySelectorAll(".cp-kind").some((k) => /edited later/.test(k.textContent))
+            && panel.querySelectorAll(".cp-deps").length >= 2);
+        posted = [];
+        rows[0]._listeners.click.forEach((fn) => fn(noopEv));
+        const diff = posted.find((m) => m.type === "openChangeDiff");
+        check("a function row opens what this checkpoint did to it",
+          !!diff && diff.ref === target.checkpoint && diff.symbol === "src/a.py::parse" && diff.path === "src/a.py",
+          JSON.stringify(diff || null));
+        const after = laneYs();
+        const ownY = before.get(ownId);
+        const lower = [...before.keys()].filter((id) => before.get(id) > ownY);
+        check("the lanes below move down to make room, nothing is drawn over them",
+          lower.length > 0 && lower.every((id) => after.get(id) > before.get(id)),
+          `own ${ownId} at ${ownY}; ${lower.length} lane(s) below: ${lower.map((id) => before.get(id) + "->" + after.get(id)).join(" ")}`);
+        global.window.dispatchEvent({ type: "keydown", key: "Escape", preventDefault() {}, stopPropagation() {} });
+        check("Esc closes it", byId.rail.querySelectorAll(".cp-panel").length === 0);
+      }
+    }
+    feed({ type: "state", compose });
   }
 
   // ── A held confirm does not make the timeline unreadable ──────────────────────────────────────
@@ -730,9 +786,9 @@ try {
         .find((c) => c._listeners && c._listeners.mouseenter);
       car._listeners.mouseenter.forEach((fn) => fn({}));
       check("a chapter still highlights under a held confirm", car.classList.contains("gcar-hovered"));
-      const chip = byId.rail.querySelector(".gchip-layer").querySelector(".gchip-name");
-      check("a chapter still names itself under a held confirm",
-        !!chip && String(chip.textContent).trim().length > 0, chip ? chip.textContent : "no chip");
+      const read = byId.rail.querySelector(".axis-read");
+      check("a chapter still reads itself out under a held confirm",
+        !!read && String(read.textContent).trim().length > 0, read ? read.textContent : "no reading");
       check("the question survives the hover", byId.confirmBar.hidden === false);
       car._listeners.mouseleave.forEach((fn) => fn({}));
       check("the question survives the leave", byId.confirmBar.hidden === false);
@@ -821,8 +877,10 @@ try {
       check("the target lane is painted losing one way and gaining the other",
             /preview-losing/.test(out.cls) && /preview-gaining/.test(back.cls),
             `revert=${out.cls} | restore=${back.cls}`);
-      check("the op delta is signed, so the pair needs no arithmetic",
-            /−\d/.test(out.count) && /\+\d/.test(back.count), `revert="${out.count}" restore="${back.count}"`);
+      // The lane's count stays its count: "26 → 23 −3" was an op count, mostly kernel bookkeeping,
+      // and the preview read as a sum nobody could check. The confirm bar says how, in functions.
+      check("a preview never turns a lane's count into an op delta",
+            !/→|−|\+/.test(out.count) && !/→|−|\+/.test(back.count), `revert="${out.count}" restore="${back.count}"`);
       check("an affected chapter is drawn leaving one way and arriving the other",
             out.cars.length > 0 && back.cars.length > 0
               && out.cars.every((c) => /gcar-preview-out/.test(c))
@@ -830,8 +888,9 @@ try {
             `revert=[${out.cars}] restore=[${back.cars}]`);
       // No op count in the sentence any more (2026-10-19): it names the verb and the direction,
       // and the lanes that change; the panel beside it names the functions.
-      check("the sentence on the field names the verb and its direction",
-            /^Revert · work leaves/.test(out.say) && /^Restore · work comes back/.test(back.say),
+      check("the sentence on the field says it is a preview, and which way",
+            /^Preview: taking it out/.test(out.say) && /^Preview: putting it back/.test(back.say)
+              && /nothing has changed yet/.test(out.say),
             `revert="${out.say}" restore="${back.say}"`);
 
       // The seam between two changes that landed together: chapters are hoverable under a held

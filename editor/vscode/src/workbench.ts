@@ -234,6 +234,9 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
   <div id="strip">
     <div id="armedBanner" class="armed-banner" hidden></div>
     <div id="themeBanner" class="theme-banner" hidden></div>
+    <!-- A held revert or restore: the question, what it will do in words, and its answer. It used
+         to float over the bottom of the plot; here it pushes the map down and covers nothing. -->
+    <div id="confirmBar" class="confirm-bar" hidden></div>
   </div>
   <div id="main">
     <div id="rail"></div>
@@ -241,7 +244,6 @@ export class WorkbenchProvider implements vscode.WebviewViewProvider, vscode.Dis
          counted in the status line, clickable to scroll there. -->
     <button id="offscreenAbove" class="edge-glow edge-glow-top" hidden></button>
     <button id="offscreenBelow" class="edge-glow edge-glow-bottom" hidden></button>
-    <div id="confirmBar" class="confirm-bar" hidden></div>
     <div id="inspector"></div>
   </div>
   <!-- The status line. The sentence that names what the cursor is on and the refusal with its

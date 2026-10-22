@@ -86,6 +86,9 @@ html, body { margin: 0; height: 100%; background: var(--vscode-editor-background
   <div id="strip">
     <div id="armedBanner" class="armed-banner" hidden></div>
     <div id="themeBanner" class="theme-banner" hidden></div>
+    <!-- A held revert or restore: the question, what it will do in words, and its answer. It used
+         to float over the bottom of the plot; here it pushes the map down and covers nothing. -->
+    <div id="confirmBar" class="confirm-bar" hidden></div>
   </div>
   <div id="main">
     <div id="rail"></div>
@@ -93,7 +96,6 @@ html, body { margin: 0; height: 100%; background: var(--vscode-editor-background
          counted in the status line, clickable to scroll there. -->
     <button id="offscreenAbove" class="edge-glow edge-glow-top" hidden></button>
     <button id="offscreenBelow" class="edge-glow edge-glow-bottom" hidden></button>
-    <div id="confirmBar" class="confirm-bar" hidden></div>
     <div id="inspector"></div>
   </div>
   <div id="statusline">
@@ -108,8 +110,19 @@ html, body { margin: 0; height: 100%; background: var(--vscode-editor-background
   // sequence their replies, so anything driving this page has to answer with the seq the page
   // actually asked on. Without the record there is no way to reach those panels from outside.
   window.__posted = [];
+  window.__emits = {}; // a capture's recorded dry runs, by ref (the ledger fixtures carry them)
   window.acquireVsCodeApi = () => ({
-    postMessage(msg) { window.__posted.push(msg); console.log("[webview -> host]", msg); },
+    postMessage(msg) {
+      window.__posted.push(msg);
+      console.log("[webview -> host]", msg);
+      // Answer a dry run the way the host does, from the capture, so a preview can be looked at.
+      if (msg.type === "previewVerb") {
+        const ref = (msg.args || [])[0];
+        const result = window.__emits[ref];
+        if (result) setTimeout(() => window.dispatchEvent(new MessageEvent("message",
+          { data: { type: "previewResult", seq: msg.seq, result } })), 120);
+      }
+    },
     getState: () => _st,
     setState: (s) => { _st = s; },
   });
@@ -137,6 +150,7 @@ html, body { margin: 0; height: 100%; background: var(--vscode-editor-background
     .then((raw) => {
       // a capture may nest the compose under `compose` (the ledger fixtures do)
       window.__fixture = buildComposeFixture(raw.compose || raw);
+      window.__emits = raw.emits || {};
       // `?hues=1`: the real identity colours (src/color.ts, dark theme) instead of the fixture's
       // placeholder greys, so a capture shows what the panel shows
       // `?light=1`: VS Code "Light Modern" tokens and the light body class, so the second theme gets looked at
@@ -173,9 +187,13 @@ html, body { margin: 0; height: 100%; background: var(--vscode-editor-background
         return els.find((e) => (e.textContent || "").trim().startsWith(want)
           || ((e.closest(".glane") || {}).textContent || "").trim().startsWith(want));
       };
-      steps.forEach((sel, i) => setTimeout(() => {
+      // A step `hover:<selector>` rests the pointer on the element instead of clicking it.
+      steps.forEach((step, i) => setTimeout(() => {
+        const hover = step.startsWith("hover:");
+        const sel = hover ? step.slice(6) : step;
         const e = pick(sel); if (!e) { console.log("no match", sel); return; }
-        for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) e.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: 1, clientY: 1 }));
+        const types = hover ? ["mouseover", "mouseenter"] : ["pointerdown", "mousedown", "pointerup", "mouseup", "click"];
+        for (const type of types) e.dispatchEvent(new MouseEvent(type, { bubbles: type !== "mouseenter", clientX: 1, clientY: 1 }));
       }, 400 + i * 500));
       // `?flick=<px per frame>,<frames>`: grab the playhead at the now edge and drag it left that fast
       // for that many frames, then let go -- the gesture the spring, the notches and the coast answer

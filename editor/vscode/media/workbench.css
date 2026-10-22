@@ -237,9 +237,6 @@ body {
     grid-template-columns: 1fr;
     grid-template-rows: minmax(0, 1.6fr) minmax(120px, 1fr);
   }
-  .confirm-bar {
-    right: 8px;
-  }
   /* Stacked, the rail is the top row: the top glow spans it; the bottom edge belongs to the
      inspector sheet now, so that glow steps aside and the status line keeps its count. */
   .edge-glow {
@@ -810,80 +807,189 @@ svg.railsvg {
   font-variant-numeric: tabular-nums;
 }
 
-/* The checkpoint name chip: the hovered (or selected) chapter's full name, drawn over its row in
-   the lane's own hue. See `drawCarChip` for why this is an overlay rather than a bar that grows.
-   The whole layer is inert to the pointer -- a chip that could take a hover would sit between the
-   cursor and the bar it names, and moving onto it would read as leaving the bar, so the chip would
-   flicker itself away. */
-.gchip-layer,
-.gchip {
+/* ── Reading a checkpoint ────────────────────────────────────────────────────────────────────
+   Nothing grows on hover. Two faint guides drop from the hovered checkpoint's ends to the ruler,
+   the ruler brackets its extent and reads it out where the dates are, and amber lines run to the
+   later checkpoints that stand on it. All of it is inert to the pointer, so it never takes the
+   hover away from the bar it describes. */
+.hover-layer { pointer-events: none; }
+
+.read-guide {
+  stroke-width: 1px;
+  stroke-opacity: 0.35;
+  stroke-dasharray: 2 3;
+}
+
+.dep-arc {
+  fill: none;
+  stroke: var(--blast);
+  stroke-width: 1.25px;
+  stroke-opacity: 0.85;
+}
+
+.dep-arc.many { stroke-opacity: 0.4; stroke-width: 1px; }
+
+.dep-dot { fill: var(--blast); }
+
+.gcar-wrap.gcar-dependent .gcar {
+  stroke: var(--blast);
+  stroke-width: 1.4;
+  stroke-opacity: 1;
+}
+
+/* At rest: a live checkpoint that later work stands on carries a thin amber underline. */
+.gcar-builton {
+  fill: var(--blast);
+  fill-opacity: 0.8;
+}
+
+/* The ruler reads: a bracket of the checkpoint's extent, and its words where the dates are. The
+   dates step aside while the ruler speaks, for a hover or for the playhead. */
+.axis-span {
+  stroke-width: 3px;
+  stroke-linecap: round;
+  stroke-opacity: 0.9;
+}
+
+.axis-read {
+  fill: var(--fg);
+  font-size: 11px;
+  text-anchor: middle;
   pointer-events: none;
 }
 
-.gchip-bg {
-  stroke: var(--bg);
+.gantt-axis .axis-tick {
+  transition: opacity var(--dur-flick) var(--ease-out);
+}
+
+.gantt-axis.reading .axis-tick,
+.gantt-axis.scrub-reading .axis-tick {
+  opacity: 0;
+}
+
+.gantt-axis.reading .scrub-readout { display: none; }
+
+/* The playhead's notches: on the ruler and as a faint grid through the plot, only while it is
+   held or stepping. A deeper notch (a checkpoint boundary) is taller and a little brighter, and the
+   notch the playhead seats in flashes once. */
+.notch,
+.notch-grid {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-quick) var(--ease-out);
+}
+
+.notch {
+  stroke: var(--fg);
+  stroke-opacity: 0.45;
   stroke-width: 1px;
-  fill-opacity: 0.97;
 }
 
-/* The name FADES UP over the bar. It does not grow out of it.
+.notch.deep { stroke-opacity: 0.8; }
 
-   This used to be a container morph: frame 0 of the chip was the hovered bar's own rectangle, and
-   the capsule unfolded from that shape to its final geometry, folding back on leave. The intent was
-   that the reveal should read as the thing under the cursor becoming its own name. What it read as,
-   at pointer speed, was the row rearranging itself: a shape stretching sideways every time the
-   cursor crossed a bar, and a whole lane of them stretching in turn during a sweep. The reader is
-   trying to READ names; the geometry moving under the question is noise on top of the answer.
-
-   So nothing moves now. The capsule is already at its final size on the first frame and only its
-   opacity changes -- 120ms, below the threshold where an appearance reads as an event, and short
-   enough that a sweep along a lane reads as one label following the cursor rather than a queue of
-   animations finishing. The pointer-inert overlay, the lane's own hue, and the tick that keeps a
-   clamped chip pointing at its bar are unchanged: those carry the meaning, the morph never did. */
-.gchip {
-  animation: gchip-in 120ms var(--ease-out) both;
+.notch-grid {
+  stroke: var(--fg);
+  stroke-opacity: 0.05;
+  stroke-width: 1px;
 }
 
-.gchip-out {
-  animation: gchip-out 120ms var(--ease-in) both;
+.notch-grid.deep { stroke-opacity: 0.09; }
+
+.notching .notch,
+.notching .notch-grid {
+  opacity: 1;
 }
 
-@keyframes gchip-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+.notch.hit {
+  animation: notch-hit 220ms var(--ease-out);
 }
 
-@keyframes gchip-out {
-  from { opacity: 1; }
-  to   { opacity: 0; }
+@keyframes notch-hit {
+  0% { stroke: var(--accent); stroke-opacity: 1; stroke-width: 2.5px; }
+  100% { stroke-width: 1px; }
 }
 
-/* The selected chapter's chip is already on screen when the cursor arrives, so it does not animate
-   and it sits back a little -- present, but not competing with whatever is being hovered. */
-.gchip-pinned,
-.gchip-pinned .gchip-name {
-  animation: none;
-}
+/* ── A checkpoint, opened in place ───────────────────────────────────────────────────────────
+   A smaller Gantt chart under the lane: the flare joins the bar to it, rows are functions, columns
+   are saves, a mark is one function changing in one save. Ink and the lane's hue only. */
+.cp-flare { fill-opacity: 0.07; stroke: none; }
+.cp-ground { fill-opacity: 0.045; }
 
-.gchip-pinned {
-  opacity: 0.9;
-}
-
-.gchip-name {
+.cp-col {
+  fill: var(--faint);
   font-size: 10px;
-  font-weight: 600;
-  fill: #fff;
-  paint-order: stroke;
-  stroke: rgba(0, 0, 0, 0.45);
-  stroke-width: 2px;
-  stroke-linejoin: round;
+  text-anchor: middle;
 }
 
-.gchip-detail {
-  font-weight: 400;
-  fill-opacity: 0.78;
-  font-variant-numeric: tabular-nums;
+.cp-guide {
+  stroke: var(--fg);
+  stroke-opacity: 0.06;
+  stroke-width: 1px;
 }
+
+.cp-row { cursor: pointer; }
+.cp-row-hit { fill: var(--fg); fill-opacity: 0; transition: fill-opacity var(--dur-flick) var(--ease-out); }
+.cp-row:hover .cp-row-hit { fill-opacity: 0.05; }
+
+.cp-fn {
+  fill: var(--fg);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+}
+
+.cp-row:hover .cp-fn { text-decoration: underline; }
+.cp-row.out .cp-fn { fill: var(--faint); }
+.cp-row.out .cp-name { text-decoration: line-through; }
+.cp-file { fill: var(--faint); font-family: var(--vscode-font-family); font-size: 10.5px; }
+
+/* A held revert, read in the opened checkpoint: a function that leaves goes hollow and struck, one
+   that only loses this checkpoint's edits keeps its fill and says so, one coming back fills. */
+.cp-row.fate-out .cp-mark { fill-opacity: 0; stroke-width: 1.2px; stroke-dasharray: 2 2; }
+.cp-row.fate-out .cp-name { text-decoration: line-through; }
+.cp-row.fate-out .cp-kind,
+.cp-row.fate-edit .cp-kind { fill: var(--fg); }
+.cp-row.fate-edit .cp-mark { stroke-width: 1.2px; stroke-dasharray: 2 2; fill-opacity: 0.4; }
+.cp-row.fate-in .cp-kind { fill: var(--land); }
+
+.cp-mark { fill-opacity: 0.85; stroke-width: 0; }
+.cp-mark.out { fill-opacity: 0; stroke-width: 1.2px; }
+.cp-life { stroke-opacity: 0.35; stroke-width: 1.5px; }
+.cp-later { stroke: var(--blast); stroke-width: 2px; stroke-linecap: round; }
+
+.cp-kind {
+  fill: var(--faint);
+  font-size: 10.5px;
+  text-anchor: end;
+}
+
+.cp-kind.later { fill: var(--blast); }
+.cp-empty, .cp-more { fill: var(--faint); font-size: 11px; }
+.cp-deps { fill: var(--blast); font-size: 11px; }
+.cp-dep-link { cursor: pointer; text-decoration: underline; }
+
+/* Opening: the flare and ground unfold down from the bar, the rows arrive in order, and each
+   function's marks draw left to right in save order -- the checkpoint's own history replayed. */
+.cp-enter .cp-flare,
+.cp-enter .cp-ground {
+  transform-box: fill-box;
+  transform-origin: 50% 0;
+  animation: cp-unfold 200ms var(--ease-out) both;
+}
+
+.cp-enter .cp-row,
+.cp-enter .cp-col {
+  animation: cp-row-in 180ms var(--ease-out) both;
+}
+
+.cp-enter .cp-mark {
+  transform-box: fill-box;
+  transform-origin: 0 50%;
+  animation: cp-mark-in 160ms var(--ease-out) both;
+}
+
+@keyframes cp-unfold { from { transform: scaleY(0); opacity: 0; } to { transform: scaleY(1); opacity: 1; } }
+@keyframes cp-row-in { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+@keyframes cp-mark-in { from { opacity: 0; transform: scaleX(0.15); } to { opacity: 1; transform: none; } }
 
 /* Selection (sticky, click): an accent frame on the lane's label + swatch. */
 .glane.selected .glane-label {
@@ -1138,16 +1244,6 @@ svg.railsvg {
 .preview-context-pill.dir-out,
 .preview-context-pill.dir-in {
   color: var(--fg);
-  border-left: 3px solid transparent;
-  padding-left: 6px;
-}
-
-.preview-context-pill.dir-out {
-  border-left-color: var(--blast);
-}
-
-.preview-context-pill.dir-in {
-  border-left-color: var(--land);
 }
 
 /* ── The context strip ────────────────────────────────────────────────────────────────────────
@@ -1157,10 +1253,11 @@ svg.railsvg {
 #strip {
   flex: 0 0 auto;
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
   min-height: 26px;
-  padding: 2px 10px;
+  padding: 4px 10px;
   border-bottom: 1px solid var(--line);
   font-size: 12px;
   color: var(--fg);
@@ -1570,10 +1667,13 @@ svg.railsvg {
      past tense, so nothing about what happened depends on having watched it happen. (`.gcar` above
      already covers the dash drift -- it is on the cars, and `!important` outranks its specificity.) */
   .glane.settle-flash .gbar-track,
-  /* The name still appears on hover -- it is the content, not the flourish. Only the grow is cut,
-     and the retreat with it (`hideCarChip` removes the node outright under reduced motion). */
-  .gchip,
-  .gchip-out {
+  /* An opened checkpoint arrives whole, and a notch does not flash. */
+  .cp-enter .cp-flare,
+  .cp-enter .cp-ground,
+  .cp-enter .cp-row,
+  .cp-enter .cp-col,
+  .cp-enter .cp-mark,
+  .notch.hit {
     animation: none !important;
   }
   .gcar {
@@ -1983,24 +2083,16 @@ svg.railsvg {
    the only filled control and wears the verb's own status hue -- destructive red for revert, land
    green for restore -- so the weight of the click is visible before it happens. */
 .confirm-bar {
-  position: absolute;
-  left: 8px;
-  /* the rail column only: the inspector's track width, as #main's grid sets it, plus a gutter */
-  right: calc(clamp(240px, 32cqi, 340px) + 8px);
-  bottom: 8px;
-  z-index: 7;
+  /* a row of the context strip (#strip): it pushes the map down and never covers it */
   display: flex;
-  align-items: center;
-  gap: 12px;
-  background: linear-gradient(var(--tone-1), var(--tone-1)), var(--bg);
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 4px 12px;
+  background: var(--tone-1);
   border: none;
-  border-radius: 6px;
-  padding: 6px 8px 6px 12px;
+  border-radius: var(--r-ctl);
+  padding: 6px 8px 6px 10px;
   font-size: 12px;
-}
-
-#app.inspector-collapsed .confirm-bar {
-  right: 8px;
 }
 
 .confirm-bar[hidden] {
@@ -2070,6 +2162,22 @@ svg.railsvg {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* What a held revert or restore will do, one sentence per line: the change in ink, other
+   features in amber (also affected), what is left for the reader in amber with weight, and the
+   reassurance quiet. */
+.confirm-summary.words {
+  white-space: normal;
+  flex-basis: 100%;
+  order: 2;
+  display: grid;
+  gap: 1px;
+  padding-top: 2px;
+}
+.confirm-summary.words .pw.what { color: var(--fg); }
+.confirm-summary.words .pw.also { color: var(--blast); }
+.confirm-summary.words .pw.warn { color: var(--blast); font-weight: 600; }
+.confirm-summary.words .pw.quiet { color: var(--faint); }
 
 /* A refusal is not a summary of a proposal -- there is no proposal. It is the answer, so it reads
    at full strength rather than in the dim register a consequence line uses, and the bar wears the
