@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import dataclasses
 
-from ugh.core.identity import detect_splits_merges, link_residual, match_pair, snapshot
+from ugh.core.identity import link_residual, match_pair, snapshot
 from ugh.entities.extract import extract_file
 
 _BODY = """def {name}(nodes):
@@ -85,34 +85,6 @@ def test_exact_id_modified_and_unchanged():
         [_snap("foo", "x.py", "function", same)],
     )
     assert unchanged.modified == [] and unchanged.added == [] and unchanged.removed == []
-
-
-def test_split_detects_one_to_many():
-    """A function whose two halves are extracted into two new functions is a SPLIT, not add+delete."""
-    acc = ("    total = 0\n    accumulator = []\n    for n in items:\n"
-           "        total = total + n\n        accumulator.append(total)\n")
-    ddp = ("    seen = set()\n    unique = []\n    for x in items:\n"
-           "        if x not in seen:\n            seen.add(x)\n            unique.append(x)\n")
-    process = f"def process(items):\n{acc}{ddp}    return accumulator, unique"
-    a1 = f"def accumulate(items):\n{acc}    return accumulator"
-    a2 = f"def dedupe(items):\n{ddp}    return unique"
-    removed = [_snap("process", "m.py", "function", process)]
-    added = [_snap("accumulate", "m.py", "function", a1), _snap("dedupe", "m.py", "function", a2)]
-    splits, merges = detect_splits_merges(removed, added)
-    assert len(splits) == 1 and merges == [], (splits, merges)
-    assert splits[0]["from"] == "m.py::process"
-    assert set(splits[0]["to"]) == {"m.py::accumulate", "m.py::dedupe"}
-
-
-def test_unrelated_residuals_are_not_a_split():
-    """Two unrelated new functions in a file that lost one unrelated function must NOT be a split."""
-    removed = [_snap("teardown", "m.py", "function", "def teardown(self):\n    self.conn.close()\n    self.pool.drain()")]
-    added = [
-        _snap("parse", "m.py", "function", "def parse(text):\n    tokens = text.split()\n    return [t.lower() for t in tokens]"),
-        _snap("render", "m.py", "function", "def render(node):\n    html = node.tag\n    return f'<{html}>{node.body}</{html}>'"),
-    ]
-    splits, merges = detect_splits_merges(removed, added)
-    assert splits == [] and merges == [], (splits, merges)
 
 
 def test_imports_of_different_modules_do_not_link():

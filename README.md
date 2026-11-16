@@ -109,8 +109,8 @@ $ ugh revert cache.py::get_cached
 and every symbol in `rate_limit.py` and `retry.py` is byte for byte what it was before. `ugh restore
 cache.py::get_cached` puts it back.
 
-The same command works on a whole feature with `ugh revert <feature>`, or on a whole agent session
-with `ugh revert --session <name>`, once the edits have been grouped that way.
+The same command works on a whole feature with `ugh revert <feature>`, once the edits have been
+grouped that way.
 [docs/guide/workflows.md](docs/guide/workflows.md) covers when that grouping is reliable and when it
 isn't.
 

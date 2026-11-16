@@ -138,11 +138,11 @@ def atoms(repo: str | Path) -> list[IntentAtom]:
     return out
 
 
-def scope_bundles(atom_list: list[IntentAtom], all_ops: list[Op], declared=frozenset()) -> list[Bundle]:
+def scope_bundles(atom_list: list[IntentAtom], all_ops: list[Op]) -> list[Bundle]:
     """Rung 1: coalesce atoms that share a conventional-commit scope into one bundle -- but only
     the atoms within that scope that are also structurally connected (`order.components_in`,
-    restricted to the scope's own atoms' op-ids). Two same-scope atoms with no chain/reference/
-    declared edge between them (e.g. an unrelated CVE patch and a doc typo fix that coincidentally
+    restricted to the scope's own atoms' op-ids). Two same-scope atoms with no chain/reference
+    edge between them (e.g. an unrelated CVE patch and a doc typo fix that coincidentally
     both declared `fix(auth):`) become two separate same-scope bundles, not one false merge --
     a same-scope atom that connects to no other same-scope atom is its own singleton bundle,
     same shape as a scope-less singleton. Two atoms merge whenever *any* op of one shares a
@@ -167,7 +167,7 @@ def scope_bundles(atom_list: list[IntentAtom], all_ops: list[Op], declared=froze
     for scope, members in by_scope.items():
         scope_op_ids = frozenset().union(*(a.op_ids for a in members))
         op_component: dict[str, int] = {}
-        for idx, component in enumerate(order.components_in(scope_op_ids, all_ops, declared)):
+        for idx, component in enumerate(order.components_in(scope_op_ids, all_ops)):
             for op_id in component:
                 op_component[op_id] = idx
 
@@ -224,7 +224,7 @@ def feature_span(op_ids, op_leaf: dict[str, str]) -> set[str]:
 
 def tier(
     group_op_ids: frozenset[str], commit_shas: frozenset[str], all_ops: list[Op],
-    declared, op_leaf: dict[str, str],
+    op_leaf: dict[str, str],
 ) -> str:
     """`coupled | co-changed | thematic` for one group (KTD3). `commit_shas` is the set of
     distinct commits the group's atoms came from -- a single-commit group can only ever be
@@ -241,7 +241,7 @@ def tier(
     if len(span) < 2:
         return CO_CHANGED if len(commit_shas) <= 1 else THEMATIC
 
-    for component in order.components_in(group_op_ids, all_ops, declared):
+    for component in order.components_in(group_op_ids, all_ops):
         leaves = {op_leaf[oid] for oid in component if oid in op_leaf}
         if len(leaves) >= 2:
             return COUPLED

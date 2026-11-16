@@ -956,26 +956,26 @@ def test_render_collab_preview_sync_surfaces_degraded_recovery_loudly():
 
 
 def test_render_collab_preview_resolve_shows_the_three_step_remedy_and_oracle():
-    """A clean resolve feedforward: the two fork tips, the numbered fulfill/oracle/land steps, and
+    """A clean resolve feedforward: the two fork tips, the numbered edit/oracle/land steps, and
     the green-required oracle gate."""
     pv = {"verb": "resolve", "target": "api.py::route", "clean": True,
           "tips": ["0ee9a65f11aa", "5e6eaf5822bb"], "oracle_configured": True}
     text = "\n".join(render_collab_preview_lines(pv, color=False))
     assert "resolve" in text and "api.py::route" in text
     assert "0ee9a65f" in text and "5e6eaf58" in text
-    assert "fulfill your merged edit" in text
+    assert "take your merged edit" in text
     assert "run the oracle" in text
     assert "land it" in text
     assert "oracle: green required" in text
-    assert "fulfill + oracle + land · closes the fork on api.py::route · not auto-undoable" in text
+    assert "edit + oracle + land · closes the fork on api.py::route · not auto-undoable" in text
 
 
-def test_render_collab_preview_resolve_without_a_draft_renders_the_error_alone():
+def test_render_collab_preview_resolve_without_an_open_fork_renders_the_error_alone():
     pv = {"verb": "resolve", "target": "api.py::route", "clean": False,
-          "error": "no drafted reconciliation — run `ugh resolve api.py::route` first"}
+          "error": "no open fork for 'api.py::route'"}
     text = "\n".join(render_collab_preview_lines(pv, color=False))
-    assert "no drafted reconciliation" in text
-    assert "fulfill" not in text          # the step list is suppressed when the plan is unclean
+    assert "no open fork" in text
+    assert "take your merged edit" not in text  # the step list is suppressed when the plan is unclean
 
 
 def test_render_collab_preview_resolve_with_no_oracle_warns_it_lands_unverified():
@@ -1094,7 +1094,7 @@ def test_state_banner_renders_forks_with_symbol_and_resolve_remedy():
     # stored remedy is left stale on purpose: the banner derives `ugh resolve <symbol>` from the
     # symbol, so a forks.json committed before the remedy switch still shows the working command.
     states = {"forks": [{"symbol": "room.py::apply", "tips": ["a1b2c3d4e5", "f6a7b8c9d0"],
-                         "remedy": "ugh merge-op a1b2c3d4 f6a7b8c9"}], "rewrites": {"drafts": []}}
+                         "remedy": "ugh merge-op a1b2c3d4 f6a7b8c9"}]}
     text = "\n".join(_state_banner(states, color=False))
     assert "1 open fork" in text and "room.py::apply" in text
     assert "ugh resolve room.py::apply" in text
@@ -1108,7 +1108,7 @@ def test_state_banner_separates_cross_version_forks_from_divergent_edits():
     states = {"forks": [
         {"symbol": "room.py::apply", "tips": ["a1", "a2"], "cross_version": False},
         {"symbol": "blame.ts::render", "tips": ["b1", "b2"], "cross_version": True},
-    ], "rewrites": {"drafts": []}}
+    ]}
     text = "\n".join(_state_banner(states, color=False))
     assert "ugh resolve room.py::apply" in text          # the real divergence keeps its remedy
     assert "ugh resolve blame.ts::render" not in text    # the artifact must not get one
@@ -1116,20 +1116,10 @@ def test_state_banner_separates_cross_version_forks_from_divergent_edits():
     assert "1 open fork" in text                      # counted honestly: one is a real fork
 
 
-def test_state_banner_renders_merge_op_drafts_with_resolve_remedy():
-    states = {"forks": [], "rewrites": {"drafts": [
-        {"verb": "merge-op", "target": "room.py::apply", "draft_id": "rw-abcdef123456"}]}}
-    text = "\n".join(_state_banner(states, color=False))
-    assert "1 pending merge-op draft" in text and "room.py::apply" in text
-    assert "ugh resolve <symbol> --apply" in text
-
-
-def test_state_banner_is_empty_for_no_state_and_ignores_non_merge_op_drafts():
+def test_state_banner_is_empty_for_no_state():
     assert _state_banner(None, color=False) == []
     assert _state_banner({}, color=False) == []
-    # a non-merge-op draft (a plain edit) is not a fork resolution -> not surfaced as one
-    states = {"forks": [], "rewrites": {"drafts": [{"verb": "edit", "target": "x", "draft_id": "d1"}]}}
-    assert _state_banner(states, color=False) == []
+    assert _state_banner({"forks": []}, color=False) == []
 
 
 def test_render_rail_places_a_plan_ghost_row_on_its_feature_lane():

@@ -32,7 +32,6 @@ from pathlib import Path
 
 from tree_sitter import Parser
 
-from ugh.config import IdentityConstraints, load_identity_constraints
 from ugh.core import tiers
 from ugh.core.identity import Snap, link_residual, match_pair, snapshot
 from ugh.core.op import BOTTOM, Images, Op, _symbol_kind, is_bottom, make_op, salted_bottom
@@ -380,7 +379,7 @@ def _untangle(touched_ids: set[str], edges: list[EntityEdge]) -> list[frozenset[
 
 def _mine_one(
     gb: GitBinding, uf: _UnionFind, order: int, sha: str, parent: str | None, is_pending: bool = False,
-    constraints: IdentityConstraints | None = None, excluded_paths: set[str] | None = None,
+    excluded_paths: set[str] | None = None,
 ) -> list[_Touch]:
     """One commit's touched symbols -- the loop body `mine()` runs once per real commit, plus
     (when `include_dirty=True`) once more for the working tree's uncommitted state, diffed
@@ -396,7 +395,7 @@ def _mine_one(
     tier_cfg = tier_cfgs[sha]
     tier_cfg_parent = tier_cfgs.get(parent) if parent else None
     codebase_after = gb.tree_at(sha)
-    graph_after = build_entity_graph(codebase_after, edges_only=True)
+    graph_after = build_entity_graph(codebase_after)
     calls_by_src: dict[str, set[str]] = {}
     for e in graph_after.edges:
         if e.type in ("calls", "imports"):
@@ -576,7 +575,7 @@ def _mine_one(
         old_snaps = snapshot(old_entities, old_raw or b"")
         new_snaps = snapshot(new_entities, new_bytes or b"")
         by_id_before = {s.ent.id: s for s in old_snaps}
-        m = match_pair(old_snaps, new_snaps, constraints)
+        m = match_pair(old_snaps, new_snaps)
 
         for a in m.modified:
             b = by_id_before[a.ent.id]
@@ -667,7 +666,7 @@ def _mine_one(
                 emit_other(sym, _content_version(old_marker), _content_version(marker), marker)
 
     # Cross-file moves: a function cut from one file and pasted into another links by body.
-    cross_links, matched_r, matched_a = link_residual(commit_removed, commit_added, constraints)
+    cross_links, matched_r, matched_a = link_residual(commit_removed, commit_added)
     for old, new in cross_links:
         # `new.ent.file` was already touched this commit, so its bytes are already sitting in
         # `new_blobs` from the batched prefetch above -- a per-entity `blob_bytes` subprocess
@@ -766,7 +765,6 @@ def mine(
     _graph_mod.attach_persistent_refs_cache(repo)
     uf = _UnionFind()
     touches: list[_Touch] = []
-    constraints = load_identity_constraints(repo)  # U11 R14: identity split/join corrections
     excluded_paths: set[str] = set()  # a path renamed out of `.sgt/` stays excluded for the rest
     # of this call, e.g. a `.sgt/` -> `.sgt.bak/` migration -- otherwise a later plain delete of
     # the renamed destination mines an ungrounded prune (its "add" was never recorded). Per-call
@@ -781,7 +779,7 @@ def mine(
             if sha == treat_as_root:
                 parent = None
             touches.extend(
-                _mine_one(gb, uf, order, sha, parent, constraints=constraints, excluded_paths=excluded_paths)
+                _mine_one(gb, uf, order, sha, parent, excluded_paths=excluded_paths)
             )
             last_sha = sha
             if deadline is not None and time.monotonic() >= deadline:
@@ -793,7 +791,6 @@ def mine(
             _mine_one(
                 gb, uf, len(history), gb.working_tree_snapshot(), gb.head(), is_pending=True,
                 excluded_paths=excluded_paths,
-                constraints=constraints,
             )
         )
 

@@ -246,7 +246,7 @@ def _fuse(*weight_maps: dict) -> dict:
 
 
 def _leiden_graph(nodes: list[str], weights: dict[tuple[str, str], float]) -> ig.Graph:
-    """Build the weighted igraph a CPM partition runs over. Split out from `_leiden` so a caller
+    """Build the weighted igraph a CPM partition runs over. Split out from the partition so a caller
     sweeping the same graph across several resolutions (`tree._split_once`'s gamma binary search,
     up to `MAX_SEARCH_ITER` probes) builds it once instead of rebuilding a byte-identical `ig.Graph`
     per probe -- only `resolution_parameter` changes between them, never the nodes or edges."""
@@ -271,10 +271,6 @@ def _leiden_partition(g: ig.Graph, nodes: list[str], gamma: float) -> list[list[
         weights="weight", seed=SEED, n_iterations=-1,
     )
     return [[nodes[i] for i in comm] for comm in part]
-
-
-def _leiden(nodes: list[str], weights: dict[tuple[str, str], float], gamma: float) -> list[list[str]]:
-    return _leiden_partition(_leiden_graph(nodes, weights), nodes, gamma)
 
 
 def _augment_with_prior(
@@ -385,7 +381,7 @@ def _structural_edges_at(
 
     _extract.attach_persistent_cache(repo)
     _graph_mod.attach_persistent_refs_cache(repo)
-    edges = build_entity_graph(gb.tree_at(head), edges_only=True).edges
+    edges = build_entity_graph(gb.tree_at(head)).edges
     _extract.flush_persistent_cache()
     _graph_mod.flush_persistent_refs_cache()
     if refresh_cache:

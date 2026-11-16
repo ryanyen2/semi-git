@@ -705,17 +705,3 @@ def prior_boundaries(record: list[dict] | None) -> frozenset[str]:
     return frozenset(
         entry["commit_shas"][0] for entry in (record or []) if entry.get("commit_shas")
     )
-
-
-def deterministic_segments(repo: str | Path, op_leaf: dict[str, str]) -> dict[str, list[Segment]]:
-    """The whole offline pass: every feature's runs, cut into segments (rungs 0/1). The one entry
-    point a caller (`intent_view`, `theme_segment`'s fallback) needs when no LLM is available.
-    Features iterated in sorted id order for a stable projection. Deterministic given repo state:
-    when a prior `intent_segments` record exists, its chapter starts bias the cut (`SEAM_BONUS`
-    hysteresis) so a re-derivation doesn't flicker a near-threshold boundary the last build drew;
-    with no record it is byte-identical to a first, prior-free cut."""
-    from ugh import state
-
-    runs = feature_runs(repo, op_leaf)
-    record = state.load_json(repo, "intent_segments", default={})
-    return {fid: segment_runs(runs[fid], prior_boundaries(record.get(fid))) for fid in sorted(runs)}

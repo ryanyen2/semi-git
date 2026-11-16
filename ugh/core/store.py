@@ -59,19 +59,15 @@ _SGT_GITIGNORE = b"""\
 # Managed by ugh (Phase 1.2): the op store + committed tables travel on refs/ugh/state,
 # off the branch tree. Keeping them untracked fixes F1 (saves no longer dirty the tree)
 # and F10 (no metadata merge conflicts). Do not add tiers.json / oracle.json /
-# identity_constraints.json / .sgtignore here -- those stay tracked in the branch tree.
+# .sgtignore here -- those stay tracked in the branch tree.
 .gitignore
 ops/
-claims/
-proposals/
-reviews/
 pins/
 tree/
 authored/
 intent/
 ideal.json
 forks.json
-declared_edges.json
 exclusions.json
 """
 
@@ -239,8 +235,7 @@ class Store:
         regenerates it locally via `Store.init` before any `.sgt/` content exists, so tracking it
         buys nothing. The listed set mirrors `state_ref._TRAVELING_TABLES` +
         `_CONTENT_ADDRESSED_PREFIXES`; team-editable / correctness-critical config stays TRACKED and
-        is deliberately absent here: `oracle.json`, `identity_constraints.json`, `tiers.json`,
-        `.sgtignore` (the last read as-of each mined commit for LAW-0). Only written when absent, so
+        is deliberately absent here: `oracle.json`, `tiers.json`, `.sgtignore` (the last read as-of each mined commit for LAW-0). Only written when absent, so
         it never churns the tree on a re-init."""
         gitignore = self.sgt_dir / ".gitignore"
         if gitignore.exists():
@@ -401,9 +396,6 @@ class FsckReport:
     invalid_ideals: tuple[str, ...] = ()      # ref keys whose stored ideal isn't a valid ideal
     unreachable_witnesses: tuple[str, ...] = ()  # ref keys whose witness SHA no longer resolves
     mixed_versions: tuple[str, ...] = ()      # distinct miner_versions present, only when >1 (U10)
-    pending_land: tuple[str, ...] = ()        # a `land` crashed mid-flight; the ref it was advancing
-    # (U5/R7). Advisory: the next `ugh land` auto-recovers by rolling back to the journaled snapshot,
-    # so this names an interrupted-but-recoverable state rather than corruption -- never flips `ok`.
     op_index_stale: bool = False  # the `ugh.core.opindex` sidecar is out of date. Advisory, like
     # `mixed_versions` -- the next read self-heals via a rebuild, so this only surfaces that the
     # *next* read view pays that rebuild cost rather than the cheap incremental path.
@@ -480,10 +472,6 @@ def fsck(repo: str | Path) -> FsckReport:
 
     mixed = tuple(sorted(versions)) if len(versions) > 1 else ()
 
-    # A `land` crashed mid-flight leaves its journal behind (U5/R7); name the interrupted ref.
-    pending = state.load_json(repo, "land_pending", default=None)
-    pending_land = (pending["ref"],) if pending and pending.get("ref") else ()
-
     # Split chain gaps that sit exactly at an in-progress genesis-backfill's frontier (U5) out of
     # the confirmed set: a ref whose chunked backward walk (U3/U4) hasn't reached genesis yet
     # leaves its oldest-mined op referencing a predecessor version one chunk further back, which is
@@ -506,7 +494,6 @@ def fsck(repo: str | Path) -> FsckReport:
         invalid_ideals=tuple(sorted(invalid_ideals)),
         unreachable_witnesses=tuple(sorted(unreachable)),
         mixed_versions=mixed,
-        pending_land=pending_land,
         op_index_stale=opindex.is_stale(repo),
         pending_chain_gaps=tuple(pending_chain_gaps),
     )

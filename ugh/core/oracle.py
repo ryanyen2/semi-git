@@ -1,23 +1,15 @@
 """The oracle: async tiered build/test verdicts attached to ideals (ADR S6; plan U9, R13).
 
-Ordinary materialization (`lens.put`/`verbs.apply`) never touches this module -- that's the
-whole of R13's "async" requirement, satisfied by construction rather than by a background
-thread or queue: a verdict simply doesn't exist ("pending") until someone explicitly runs
-`ugh oracle run`. A verdict is keyed to the exact ideal it was run against (a hash of its sorted
-op-id set, `ideal_key`), never to a ref, so an edit that changes the ideal produces a new key and
-the old verdict silently stops applying -- no reset bookkeeping needed.
+Ordinary materialization (`lens.put`/`verbs.apply`) never touches this module: a verdict
+doesn't exist ("pending") until something explicitly runs it. A verdict is keyed to the exact ideal
+it was run against (a hash of its sorted op-id set, `ideal_key`), never to a ref, so an edit that
+changes the ideal produces a new key and the old verdict silently stops applying.
 
 `.sgt/oracle.json` (committed, team-shared -- see `ugh.config.load_oracle_config`) declares tier
-commands in run order. `.sgt/local/oracle.json` (gitignored) is the per-ideal verdict cache,
-following the same small-JSON-table convention as `lens.py`'s witness/ideal/declared files
-(plain `json.loads`/`write_text`, not `store.py`'s heavier content-addressed atomic writes). A
-verdict a teammate should see -- a proposal's -- is *published* explicitly (`publish`, D8) into the
-committed `.sgt/claims/` G-Set (`ugh.state`), carrying runner identity; the local cache stays
-private, so a red experiment never leaks into shared history.
+commands in run order. `.sgt/local/oracle.json` (gitignored) is the per-ideal verdict cache.
 
 `run`/`verdict_for`/`override` all take an explicit `ideal` (defaulting to the current ref's
-committed one) rather than always deriving "current" -- this is what lets U11 later gate landing
-a rewrite op on the verdict for a *candidate* ideal that isn't committed yet.
+committed one), so a *candidate* ideal that isn't committed yet can be gated on its verdict.
 """
 
 from __future__ import annotations

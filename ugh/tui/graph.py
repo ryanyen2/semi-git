@@ -615,12 +615,10 @@ _AMBER = "\x1b[33m"
 _TIER_BRACKETS = {"co-changed": ("[", "]"), "coupled": ("[", "]"), "thematic": ("(", ")")}
 
 # Shared "state" glyphs across BOTH graphs (the map and the rail), so a fork/merge/plan reads the
-# same everywhere: a plan step with no code yet, a fork (divergent edits to one symbol), and a
-# pending merge-op draft that would close one. Isolated here so a terminal that renders one poorly
-# is a one-line swap.
+# same everywhere: a plan step with no code yet and a fork (divergent edits to one symbol).
+# Isolated here so a terminal that renders one poorly is a one-line swap.
 _GHOST = "◇"
 _FORK = "⋔"
-_MERGE = "⋈"
 
 
 def _sgr(code: str, s: str, *, color: bool) -> str:
@@ -628,12 +626,11 @@ def _sgr(code: str, s: str, *, color: bool) -> str:
 
 
 def _state_banner(states: dict | None, *, color: bool) -> list[str]:
-    """Footer lines shared by both graphs: open forks (⋔ — divergent edits to one symbol) and
-    pending merge-op drafts (⋈) that would close one. `states` is `{"forks": [...], "rewrites":
-    {...}}` as the CLI builds from `forks_view`/`rewrite_view`; None/empty renders nothing, so the
-    default (stateless) call sites and their golden snapshots stay byte-identical.
+    """Footer lines shared by both graphs: open forks (⋔ — divergent edits to one symbol).
+    `states` is `{"forks": [...]}` as the CLI builds from `forks_view`; None/empty renders nothing,
+    so the default (stateless) call sites and their golden snapshots stay byte-identical.
 
-    Forks/drafts are symbol-scoped and their tips are excluded from every verb-visible ideal
+    Forks are symbol-scoped and their tips are excluded from every verb-visible ideal
     (`order.reduce_to_ideal`), so there is no reliable lane cell to paint -- the banner is the
     honest surface (it carries the symbol + the exact remedy), not a fabricated lane position."""
     if not states:
@@ -657,11 +654,6 @@ def _state_banner(states: dict | None, *, color: bool) -> list[str]:
                                 f"same commit, not edits — the store mixes miner versions:",
                         color=color))
         out.append(_dim("     →  `ugh check` shows the versions present", color=color))
-    drafts = [d for d in (states.get("rewrites") or {}).get("drafts", []) if d.get("verb") == "merge-op"]
-    if drafts:
-        out.append(_sgr(_AMBER, f" {_MERGE} {plural(len(drafts), 'pending merge-op draft')}:", color=color))
-        for d in drafts:
-            out.append(_dim(f"     {d.get('target', '?')}  →  ugh resolve <symbol> --apply", color=color))
     return out
 
 
@@ -1546,7 +1538,6 @@ def _render_sync_preview_lines(preview_view: dict, *, color: bool = True) -> lis
     ops_added = preview_view.get("ops_added", 0)
     forks = preview_view.get("forks", []) or []
     contradictions = preview_view.get("pin_contradictions", []) or []
-    cycles = preview_view.get("declared_cycles", []) or []
     tagline = _dim("fold in a teammate's work", color=color)
 
     lines: list[str] = [
@@ -1571,9 +1562,7 @@ def _render_sync_preview_lines(preview_view: dict, *, color: bool = True) -> lis
 
     for c in contradictions:
         lines.append(_paint("#ffaf00", f"   ⚠ pin contradiction: {c.get('detail', '')}", color=color))
-    for pair in cycles:
-        lines.append(_paint("#ffaf00", f"   ⚠ declared-edge cycle: {pair}", color=color))
-    if contradictions or cycles:
+    if contradictions:
         lines.append("")
 
     # R12 loudness: a degraded base or a lost-provenance tip fell back to weaker semantics. Never
@@ -1594,8 +1583,8 @@ def _render_sync_preview_lines(preview_view: dict, *, color: bool = True) -> lis
 
 def _render_resolve_preview_lines(preview_view: dict, *, color: bool = True) -> list[str]:
     """The `resolve <symbol>` feedforward: the three-step remedy `--apply` runs to close a fork --
-    fulfill the drafted reconciliation from the edited tree, run the oracle, land it. An unclean plan
-    (no open fork, or no drafted reconciliation yet) renders its `error` alone."""
+    take the edited tree's version, run the oracle, land it. An unclean plan (no open fork) renders
+    its `error` alone."""
     sym = preview_view.get("target", "")
 
     if not preview_view.get("clean", True):
@@ -1615,7 +1604,7 @@ def _render_resolve_preview_lines(preview_view: dict, *, color: bool = True) -> 
                      f"{_paint('#ffaf00', tips[0][:8], color=color)} "
                      f"{_dim('↔', color=color)} {_paint('#ffaf00', tips[1][:8], color=color)}")
         lines.append("")
-    lines.append(f"   {_paint('#5fafff', '1', color=color)} fulfill your merged edit from the tree")
+    lines.append(f"   {_paint('#5fafff', '1', color=color)} take your merged edit from the tree")
     lines.append(f"   {_paint('#5fafff', '2', color=color)} run the oracle on the reconciled candidate")
     lines.append(f"   {_paint('#5fafff', '3', color=color)} land it -- closes the fork on {sym}")
     lines.append("")
@@ -1626,7 +1615,7 @@ def _render_resolve_preview_lines(preview_view: dict, *, color: bool = True) -> 
         lines.append(_dim("   oracle: green required -- runs the tests on confirm before landing",
                           color=color))
     lines.append("")
-    lines.append(_dim(f" fulfill + oracle + land · closes the fork on {sym} · not auto-undoable",
+    lines.append(_dim(f" edit + oracle + land · closes the fork on {sym} · not auto-undoable",
                       color=color))
     return lines
 
@@ -1649,7 +1638,6 @@ def render_collab_preview_lines(preview_view: dict, *, color: bool = True) -> li
     branch = preview_view.get("target", "")
     forks = preview_view.get("forks", []) or []
     contradictions = preview_view.get("pin_contradictions", []) or []
-    cycles = preview_view.get("declared_cycles", []) or []
     advisory = preview_view.get("advisory")
 
     if not preview_view.get("clean", True):
@@ -1683,9 +1671,7 @@ def render_collab_preview_lines(preview_view: dict, *, color: bool = True) -> li
 
     for c in contradictions:
         lines.append(_paint("#ffaf00", f"   ⚠ pin contradiction: {c.get('detail', '')}", color=color))
-    for pair in cycles:
-        lines.append(_paint("#ffaf00", f"   ⚠ declared-edge cycle: {pair}", color=color))
-    if contradictions or cycles:
+    if contradictions:
         lines.append("")
 
     # The LAW-G gate: name what the confirm will (or won't) do. A fork short-circuits before the

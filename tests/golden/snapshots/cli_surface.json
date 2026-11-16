@@ -6,7 +6,7 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"checked\": 31,\n  \"bad_hash\": [],\n  \"corrupt\": [],\n  \"chain_gaps\": [],\n  \"invalid_ideals\": [],\n  \"unreachable_witnesses\": [],\n  \"mixed_versions\": [],\n  \"pending_land\": [],\n  \"op_index_stale\": false\n}\n"
+      "out": "{\n  \"ok\": true,\n  \"checked\": 31,\n  \"bad_hash\": [],\n  \"corrupt\": [],\n  \"chain_gaps\": [],\n  \"invalid_ideals\": [],\n  \"unreachable_witnesses\": [],\n  \"mixed_versions\": [],\n  \"op_index_stale\": false\n}\n"
     },
     "text": {
       "argv": [
@@ -237,7 +237,7 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"files\": 6,\n  \"symbols\": 15,\n  \"features\": 1,\n  \"coverage_fraction\": 0.3333333333333333,\n  \"oracle\": {\n    \"configured\": false,\n    \"status\": \"unconfigured\"\n  },\n  \"drift\": {\n    \"any\": false,\n    \"paths\": []\n  },\n  \"staged\": {\n    \"any\": false,\n    \"paths\": []\n  },\n  \"unmanaged\": [],\n  \"backstop_kept\": [],\n  \"never_recorded\": [],\n  \"forks\": {\n    \"open\": 0,\n    \"records\": []\n  },\n  \"sync_status\": {\n    \"complete\": true,\n    \"reached_genesis\": true,\n    \"history_rewritten\": false\n  }\n}\n"
+      "out": "{\n  \"files\": 6,\n  \"symbols\": 15,\n  \"features\": 1,\n  \"coverage_fraction\": 0.3333333333333333,\n  \"oracle\": {\n    \"configured\": false,\n    \"status\": \"unconfigured\"\n  },\n  \"drift\": {\n    \"any\": false,\n    \"paths\": []\n  },\n  \"unmanaged\": [],\n  \"backstop_kept\": [],\n  \"never_recorded\": [],\n  \"forks\": {\n    \"open\": 0,\n    \"records\": []\n  },\n  \"sync_status\": {\n    \"complete\": true,\n    \"reached_genesis\": true,\n    \"history_rewritten\": false\n  }\n}\n"
     },
     "text": {
       "argv": [

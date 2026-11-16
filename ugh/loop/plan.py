@@ -124,13 +124,6 @@ class PlanOwnershipError(Exception):
             f"take it over with `ugh plan adopt {session_id}` if that plan is now yours")
 
 
-def owner_of(repo: str | Path, session_id: str) -> str | None:
-    """The `claude_session_id` that intook `session_id`, or `None` when it has no owner (a plan
-    taken in from the CLI by a human, or by an agent that couldn't read its own session id)."""
-    record = _load_sessions(Path(repo)).get(session_id)
-    return (record or {}).get("claude_session_id")
-
-
 def _check_owner(record: dict, session_id: str, actor: str | None) -> None:
     """Guard for a destructive session write. Permissive by design in two directions, because
     over-refusing here would strand plans nobody could ever close:

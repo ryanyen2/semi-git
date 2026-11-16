@@ -2,7 +2,7 @@
 
 Source files are *derived* (`code(I)`), so sync never merges them textually -- it fetches the
 remote branch, unions the op store (near-free: `Store.add` unions provenance on any
-content-address collision, R8), reconciles the ideal, pins, declared edges, and feature tree, and
+content-address collision, R8), reconciles the ideal, pins, and feature tree, and
 then re-folds the working tree from the union. Footprint-disjoint work merges with zero
 interaction; a same-symbol chain fork is *surfaced* (with the `ugh resolve` remedy) rather than
 silently resolved -- the ADR's "the only possible conflict is chain
@@ -27,7 +27,7 @@ from . import materialize as _materialize
 from . import resolve as _resolve
 from . import state_ref as _state_ref
 from .ingest import MinerVersionMismatch  # re-exported: the CLI catches it distinctly (C6)
-from .land import _restore_local_caches, _snapshot_local_caches  # plan_sync's no-trace rollback
+from .caches import _restore_local_caches, _snapshot_local_caches
 
 __all__ = ["SyncReport", "SyncPlan", "sync", "plan_sync", "MinerVersionMismatch"]
 
@@ -44,10 +44,9 @@ class SyncReport:
     ops_added: int = 0
     forks: tuple[tuple[str, str, str], ...] = ()
     pin_contradictions: tuple[Contradiction, ...] = ()
-    declared_cycles: tuple[tuple[str, str], ...] = ()
     identity_events: tuple[dict, ...] = field(default_factory=tuple)
     # U7/R12: how the merge-base ideal was recovered for three-way resolve, and how theirs' tip was
-    # -- `log` | `trailers` | `mined` | `none`. `base_recovery == "none"` means the
+    # -- `trailers` | `mined` | `none`. `base_recovery == "none"` means the
     # base degraded to ∅ (union semantics); `theirs_recovery == "none"` is the tip footgun (ops but
     # no witnessed provenance). Either warrants a loud warning -- an unwitnessed claim was refused.
     base_recovery: str = "none"
@@ -58,9 +57,9 @@ class SyncReport:
 class SyncPlan:
     """The dry-run consequence of a `sync` (plan U19/D4): what folding in the teammate's branch
     *would* bring -- computed with `fetch -> ingest -> resolve` (no `materialize`, so the working
-    tree and local branch never move), then rolled back to leave no trace (R7). Unlike `land`, a
-    fork does not block a sync -- the fork-free part still merges and the fork surfaces as state --
-    so `forks` here is *what would surface*, not a blocker. `up_to_date` short-circuits when the
+    tree and local branch never move), then rolled back to leave no trace (R7). A fork does not
+    block a sync -- the fork-free part still merges and the fork surfaces as state -- so `forks`
+    here is *what would surface*, not a blocker. `up_to_date` short-circuits when the
     fetch finds nothing new."""
 
     remote: str
@@ -69,15 +68,14 @@ class SyncPlan:
     ops_added: int = 0
     forks: tuple[tuple[str, str, str], ...] = ()
     pin_contradictions: tuple[Contradiction, ...] = ()
-    declared_cycles: tuple[tuple[str, str], ...] = ()
     base_recovery: str = "none"
     theirs_recovery: str = "mined"
 
 
 def plan_sync(repo: str | Path, remote: str | None = None, branch: str | None = None) -> SyncPlan:
     """Dry-run a `sync` (D4): fetch the teammate's branch and run `ingest -> resolve` to compute what
-    the merge *would* bring in -- incoming op count, any same-symbol fork that would surface, pin/
-    declared-edge issues, and the recovery modes -- then roll the transactional local caches back so
+    the merge *would* bring in -- incoming op count, any same-symbol fork that would surface, pin
+    issues, and the recovery modes -- then roll the transactional local caches back so
     the preview leaves no trace (R7). Skips `materialize` entirely (the only stage that moves the
     working tree or the local branch), so a feedforward pane can show the consequence before the
     merge lands. Mirrors `sync`'s own `ops_added` so the preview predicts the report."""
@@ -92,17 +90,16 @@ def plan_sync(repo: str | Path, remote: str | None = None, branch: str | None = 
     try:
         # Phase 1.2: theirs' ops and tables are read from the fetched `refs/ugh/state` tip
         # (`theirs_state_sha`) when transport supplied one; `None` falls back to theirs' branch tree
-        # (pre-1.2 / fresh remote). See `ingest` for why the trailer/log ideal recovery still keys off
+        # (pre-1.2 / fresh remote). See `ingest` for why the trailer ideal recovery still keys off
         # `theirs_sha` (trailers live in the commit message, untouched by the move).
         ing = _ingest.ingest(
-            repo, gb, fetched.theirs_sha, fetched.ours_sha, branch=fetched.branch,
+            repo, gb, fetched.theirs_sha, fetched.ours_sha,
             theirs_state_sha=fetched.theirs_state_sha,
         )
         res = _resolve.resolve(repo, ing)
         return SyncPlan(
             remote=fetched.remote, branch=fetched.branch, ops_added=ing.ops_added,
             forks=res.forks, pin_contradictions=res.pin_contradictions,
-            declared_cycles=res.declared_cycles,
             base_recovery=ing.base_recovery, theirs_recovery=ing.theirs_recovery,
         )
     finally:
@@ -123,7 +120,7 @@ def sync(repo: str | Path, remote: str | None = None, branch: str | None = None)
     # Phase 1.2: theirs' ops/tables come from the fetched `refs/ugh/state` tip (`theirs_state_sha`);
     # `None` falls back to theirs' branch tree (pre-1.2 / fresh remote). See `plan_sync`.
     ing = _ingest.ingest(
-        repo, gb, fetched.theirs_sha, fetched.ours_sha, branch=fetched.branch,
+        repo, gb, fetched.theirs_sha, fetched.ours_sha,
         theirs_state_sha=fetched.theirs_state_sha,
     )
     res = _resolve.resolve(repo, ing)
@@ -134,7 +131,6 @@ def sync(repo: str | Path, remote: str | None = None, branch: str | None = None)
     # (attention needed) though the fork-free work still landed and the fork is now shared.
     merge_sha = _materialize.materialize(
         repo, gb, fetched.remote, fetched.branch, fetched.theirs_sha, ing, res,
-        theirs_state_sha=fetched.theirs_state_sha,
     )
 
     # Phase 1.2: publish the reconciled local mirror onto `refs/ugh/state` at sync's transaction
@@ -166,7 +162,7 @@ def sync(repo: str | Path, remote: str | None = None, branch: str | None = None)
         remote=fetched.remote, branch=fetched.branch, merged=not res.forks,
         fetched_sha=fetched.theirs_sha, merge_sha=merge_sha, ops_added=ing.ops_added,
         forks=res.forks,
-        pin_contradictions=res.pin_contradictions, declared_cycles=res.declared_cycles,
+        pin_contradictions=res.pin_contradictions,
         identity_events=tuple(res.tree_result.get("identity_events", [])),
         base_recovery=ing.base_recovery, theirs_recovery=ing.theirs_recovery,
         message=message,

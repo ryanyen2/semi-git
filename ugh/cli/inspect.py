@@ -123,7 +123,6 @@ def _fsck(repo: str, as_json: bool = False) -> int:
                 "invalid_ideals": list(report.invalid_ideals),
                 "unreachable_witnesses": list(report.unreachable_witnesses),
                 "mixed_versions": list(report.mixed_versions),
-                "pending_land": list(report.pending_land),
                 "op_index_stale": report.op_index_stale,
             }
         )
@@ -146,14 +145,12 @@ def _fsck(repo: str, as_json: bool = False) -> int:
     for gap in report.chain_gaps:
         print(f"    chain gap (advisory): {gap} has no producing op "
               f"(off-ref predecessor -- benign unless unexpected)")
-    for ref in report.pending_land:
-        print(f"    interrupted land on {ref!r} (advisory): a crash left it mid-flight")
     return 0 if report.ok else 1
 
 
 def _fsck_tree(repo: str, as_json: bool = False) -> int:
     """`ugh check --tree` (R2): classify every path where `code(current_ideal)` diverges from the
-    HEAD tree. Real `drift` is the only failing finding; unmanaged/backstop-kept/staged/unseeded
+    HEAD tree. Real `drift` is the only failing finding; unmanaged/backstop-kept/unseeded
     are planned divergence and reported for context."""
     from ugh.core.lens import fsck_tree, get
 
@@ -168,7 +165,7 @@ def _fsck_tree(repo: str, as_json: bool = False) -> int:
         print(f"    drift: {path} — `ugh log --refresh` to absorb HEAD's bytes, or `ugh save` to "
               f"enforce the ideal (opposite data-loss profiles)")
     for cls, label in (("backstop_kept", "backstop-kept"), ("unmanaged", "unmanaged"),
-                       ("staged", "staged candidate"), ("unseeded", "unseeded ref")):
+                       ("unseeded", "unseeded ref")):
         for path in result[cls]:
             print(f"    {label}: {path}")
     return 0 if not drift else 1
@@ -210,7 +207,7 @@ def _log_grid(repo: str, *, as_json: bool = False, frontier: int | None = None, 
     rebuilds features + checkpoints first (see `_map_for_view`); `--rebuild` refreshes with a full
     from-scratch recluster."""
     from ugh import state
-    from ugh.api import forks_view, grid_view, rewrite_view, segments_view
+    from ugh.api import forks_view, grid_view, segments_view
     from ugh.tui.graph import _state_banner, render_graph_lines, resolve_focus_group, theme_spans
 
     mv = _map_for_view(repo, refresh, color and not as_json, rebuild=rebuild)
@@ -220,7 +217,7 @@ def _log_grid(repo: str, *, as_json: bool = False, frontier: int | None = None, 
     # The loud fork banner (⋔ + per-symbol remedy) leads, exactly as `now`/`status` lead with it:
     # a fork is divergence to resolve, and bare `ugh log` is the view people actually look at.
     # Printed here once, so neither renderer below reports it a second time.
-    states = {"forks": forks_view(repo)["forks"], "rewrites": rewrite_view(repo)}
+    states = {"forks": forks_view(repo)["forks"]}
     for line in _state_banner(states, color=color):
         print(line)
     themes_raw = state.load_json(repo, "intent_themes", default={}) or {}
@@ -343,7 +340,7 @@ def _log_rail(repo: str, *, as_json: bool = False, color: bool = True, refresh: 
     the rail carries a ●/◆/○ topology column tying each save back to the commit graph. `--json`
     returns `grid_view` (the rail is a time-major rotation of the same cells); the text render
     reuses `render_rail_lines`."""
-    from ugh.api import grid_view, rewrite_view
+    from ugh.api import grid_view
     from ugh.store.gitbind import GitBinding
     from ugh.tui.graph import render_rail_lines
 
@@ -351,13 +348,10 @@ def _log_rail(repo: str, *, as_json: bool = False, color: bool = True, refresh: 
     gv = grid_view(repo)
     if as_json:
         return _emit_json(gv)
-    # The state block above already carries the loud fork banner (⋔ + per-symbol remedy); the rail's
-    # own footer only adds the pending merge-op drafts, so forks aren't reported twice.
-    states = {"forks": [], "rewrites": rewrite_view(repo)}
     topology = GitBinding(repo).graph_topology()
     for line in _state_block_lines(repo, color=color):
         print(line)
-    for line in render_rail_lines(mv, gv, color=color, states=states, topology=topology):
+    for line in render_rail_lines(mv, gv, color=color, topology=topology):
         print(line)
     return 0
 
@@ -593,8 +587,7 @@ def _status(repo: str, as_json: bool = False, full: bool = False, *, color: bool
         return _emit_json(view)
 
     # The block is `views.summary_lines`: a scalar header, then WHAT NEEDS YOU, then FOR
-    # INFORMATION. The split is the point -- 826 untracked files and one symlink used to print under
-    # the same `⚠` as a staged rewrite that blocks every materializing verb.
+    # INFORMATION.
     from ugh.tui.views import summary_lines
 
     for line in _state_banner({"forks": view["forks"]["records"]}, color=color):

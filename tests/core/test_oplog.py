@@ -3,9 +3,8 @@
 The log **subsumes** the old per-ref `ideal_journal` (single store, one pop per undo): every
 mutating verb appends a typed event, and `undo` pops the tail and applies its inverse uniformly.
 The ideal-edit undo behavior itself (save/revert/restore/rewrite) is proven byte-for-byte in
-`tests/test_porcelain.py`; this file covers the *unified* mechanism -- the append/tail/pop store,
-the per-kind inverse dispatch, feature-reorg undo (the previously-un-journaled gap), and the
-log-but-refuse contract for an already-shared `land`.
+`tests/test_porcelain.py`; this file covers the *unified* mechanism -- the append/tail store,
+the per-kind inverse dispatch, and feature-reorg undo (the previously-un-journaled gap).
 """
 
 from __future__ import annotations
@@ -24,21 +23,18 @@ from tests.laws import corpus
 
 
 # ---------------------------------------------------------------------------
-# store: append / tail / pop
+# store: append / tail
 # ---------------------------------------------------------------------------
 
 
-def test_append_tail_pop_roundtrip_is_per_ref_and_reverse_chronological(tmp_path):
+def test_append_tail_is_reverse_chronological(tmp_path):
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     get(repo)
-    oplog.append(repo, {"kind": "after", "snapshot": {}, "edge": ["a", "b"]})
-    oplog.append(repo, {"kind": "after", "snapshot": {}, "edge": ["c", "d"]})
+    oplog.append(repo, {"kind": "feature_reorg", "snapshot": {}, "verb": "a"})
+    oplog.append(repo, {"kind": "feature_reorg", "snapshot": {}, "verb": "b"})
 
     tail = oplog.tail(repo)
-    assert tail is not None and tail["edge"] == ["c", "d"]  # LIFO: newest is the tail
-    popped = oplog.pop(repo)
-    assert popped["edge"] == ["c", "d"]
-    assert oplog.tail(repo)["edge"] == ["a", "b"]  # the older event is now the tail
+    assert tail is not None and tail["verb"] == "b"  # LIFO: newest is the tail
 
 
 def test_undo_on_an_empty_log_reports_nothing_to_undo(tmp_path):
@@ -58,8 +54,8 @@ def test_drop_event_removes_the_target_and_never_clobbers_a_concurrent_append(tm
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     get(repo)
     key = oplog._ref_key(Path(repo))
-    a = {"kind": "after", "snapshot": {}, "edge": ["a", "b"]}
-    b = {"kind": "after", "snapshot": {}, "edge": ["c", "d"]}
+    a = {"kind": "feature_reorg", "snapshot": {}, "verb": "a"}
+    b = {"kind": "feature_reorg", "snapshot": {}, "verb": "b"}
     oplog.append(repo, a, ref_key=key)
     oplog.append(repo, b, ref_key=key)  # a concurrent append landing during undo's apply window
 
@@ -258,14 +254,6 @@ def test_feature_reorg_undo_restores_prior_label_and_membership(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# land: logged for provenance, inverse refused (KTD6 / journal=checked_out guard)
-# ---------------------------------------------------------------------------
-
-
-_BASE = "def foo():\n    return 1\n"
-
-
-# ---------------------------------------------------------------------------
 # preview: what undo will do, before it does it
 # ---------------------------------------------------------------------------
 
@@ -325,17 +313,6 @@ def test_preview_of_an_empty_log_says_so_without_raising(tmp_path):
     pv = oplog.preview(repo)
 
     assert pv["kind"] is None and pv["ok"] is True and pv["restored"] == []
-
-
-def test_preview_of_a_shared_land_reports_the_refusal(tmp_path):
-    repo = tmp_path / "repo"
-    _seed_two_symbols(repo)
-    oplog.append(repo, {"kind": "land", "branch": "main", "ops": []})
-
-    pv = oplog.preview(repo)
-
-    assert pv["ok"] is False and pv["kind"] == "land"
-    assert "shared branch" in pv["message"]
 
 
 def test_preview_writes_nothing(tmp_path):

@@ -74,8 +74,8 @@ def test_init_and_log_roundtrip(tmp_path, capsys):
 
 
 def test_log_human_rail_and_map_wire_state_projections(tmp_path, capsys):
-    # The rail (bare `ugh log`) and the map (`--map`) both build `states` from forks_view/
-    # rewrite_view and read grid_view ghosts. A clean repo has no forks/drafts/plans -> no banner,
+    # The rail (bare `ugh log`) and the map (`--map`) both build `states` from forks_view and read
+    # grid_view ghosts. A clean repo has no forks/plans -> no banner,
     # but the projections must still wire through without error and render the tree.
     _seed(tmp_path, 3)
     capsys.readouterr()
@@ -717,38 +717,6 @@ def test_verbs_is_exactly_the_surviving_surface():
 def test_bare_feature_grouping_prints_its_subhelp(capsys):
     assert main(["feature"]) == 0
     assert "rename" in capsys.readouterr().out
-
-
-def test_revert_keep_selects_which_frontier_dependents_to_retain(tmp_path, capsys):
-    """CLI plumbing for the interactive revert frontier (U3/R4): `--keep <id>` retains exactly the
-    named dependent, drafting a continuation hollow for its symbol, while `--keep ""` keeps none (a
-    plain revert, no hollow). Exercises the argparse `--keep` parsing that the core-level
-    `revert_keep_dependents` behavior (tests/core/test_rewrite.py) never sees."""
-    from ugh.core.store import Store
-
-    gb, _ = init_store(tmp_path)
-    (tmp_path / "a.py").write_text("def helper():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("add helper")
-    (tmp_path / "b.py").write_text(
-        "from a import helper\n\ndef user():\n    return helper() + 1\n", encoding="utf-8"
-    )
-    gb.commit_all("add user, depending on helper")
-    assert _in(tmp_path, ["init", "."]) == 0
-    capsys.readouterr()
-
-    ops = Store(tmp_path).all_ops()
-    helper_op = next(o for o in ops if "a.py::helper" in o.footprint)
-    user_op = next(o for o in ops if "b.py::user" in o.footprint)
-
-    # `--keep <user-op>`: retain the direct dependent -> exactly one continuation hollow.
-    assert _in(tmp_path, ["revert", helper_op.id, "--keep", user_op.id, "--json"]) == 0
-    kept = json.loads(capsys.readouterr().out)
-    assert kept["ok"] and len(kept["hollow_ids"]) == 1
-
-    # `--keep ""`: keep none -> a plain revert, no continuation hollow drafted.
-    assert _in(tmp_path, ["revert", helper_op.id, "--keep", "", "--json"]) == 0
-    none = json.loads(capsys.readouterr().out)
-    assert none["ok"] and none["hollow_ids"] == []
 
 
 # -- inline revert confirm gate (feedforward graph + `[y/N]` in the normal log flow) -------------

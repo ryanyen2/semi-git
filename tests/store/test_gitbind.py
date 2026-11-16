@@ -5,21 +5,8 @@ from ugh.store.gitbind import (
     GitBinding,
     _CatFileBatch,
     format_bookkeeping_trailer,
-    format_trailer,
     init_store,
-    new_node_id,
-    parse_node_id,
 )
-
-
-def test_trailer_roundtrip():
-    nid = new_node_id()
-    msg = f"feat: add redirect\n\n{format_trailer(nid)}"
-    assert parse_node_id(msg) == nid
-
-
-def test_parse_node_id_absent():
-    assert parse_node_id("just a message, no trailer") is None
 
 
 def test_init_store_creates_repo_and_sgt_dir(tmp_path):
@@ -34,21 +21,6 @@ def test_commit_shas_empty_then_one(tmp_path):
     (tmp_path / "f.txt").write_text("hello", encoding="utf-8")
     sha = gb.commit_all("feat: add f")
     assert gb.commit_shas() == [sha]
-
-
-def test_node_id_stable_across_amend(tmp_path):
-    gb, _ = init_store(tmp_path)
-    nid = new_node_id()
-    (tmp_path / "f.txt").write_text("v1", encoding="utf-8")
-    sha1 = gb.commit_all("feat: add f", node_id=nid)
-    assert gb.node_id_for_commit(sha1) == nid
-
-    # amend changes the SHA but preserves the message (and the trailer)
-    (tmp_path / "f.txt").write_text("v2", encoding="utf-8")
-    gb.stage_all()
-    sha2 = gb.amend_no_edit()
-    assert sha2 != sha1
-    assert gb.node_id_for_commit(sha2) == nid  # identity survives the rewrite
 
 
 def test_blob_bytes_reads_binary_content(tmp_path):

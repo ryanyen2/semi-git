@@ -24,9 +24,9 @@ class Ideal:
     op_ids: frozenset[str]
 
     @staticmethod
-    def from_ops(op_ids, ops: list[Op], declared: order.Declared = frozenset()) -> Ideal:
+    def from_ops(op_ids, ops: list[Op]) -> Ideal:
         ids = frozenset(op_ids)
-        if not order.is_valid_ideal(ops, ids, declared):
+        if not order.is_valid_ideal(ops, ids):
             # Bounded on purpose. This message is not developer-only: it travels up through
             # `_plan_removal`'s refusal into `--emit`'s `message`, which the TUI and the VS Code
             # workbench render verbatim to a person. Dumping every id in the ideal produced a wall

@@ -25,15 +25,12 @@ leaning on the fuzzy threshold. Deterministic and offline.
 
 from __future__ import annotations
 
-from collections import defaultdict
 from dataclasses import dataclass
 
-from ugh.config import IdentityConstraints
 from ugh.entities.extract import Entity
 
 _FUZZY = 0.80        # sem THRESHOLD: min token-Jaccard to call a rename/move
 _SIZE_RATIO = 0.50   # sem SIZE_RATIO_CUTOFF: reject pairs whose token counts differ > 2x
-_CONTAIN = 0.60      # min fraction of one body's tokens found in another (split/merge containment)
 
 
 @dataclass(frozen=True)
@@ -68,35 +65,6 @@ def _jaccard(a: frozenset[str], b: frozenset[str]) -> float:
     inter = len(a & b)
     union = len(a) + len(b) - inter
     return inter / union if union else 0.0
-
-
-def _pair(a: str, b: str) -> tuple[str, str]:
-    return tuple(sorted((a, b)))
-
-
-def _forced_links(
-    before: list[Snap], after: list[Snap], matched_b: set[str], matched_a: set[str],
-    force_link: frozenset[tuple[str, str]],
-) -> list[tuple[Snap, Snap]]:
-    """`identity join` (U11, R14): a durable, human-corrected pair that must link regardless of
-    what the hash/fuzzy tiers below would find on their own -- checked first so it always wins."""
-    if not force_link:
-        return []
-    by_before = {s.ent.id: s for s in before}
-    by_after = {s.ent.id: s for s in after}
-    links: list[tuple[Snap, Snap]] = []
-    for x, y in force_link:
-        b = by_before.get(x) or by_before.get(y)
-        a = by_after.get(y) if by_before.get(x) is not None else by_after.get(x)
-        if b is None or a is None or b.ent.id in matched_b or a.ent.id in matched_a:
-            continue
-        matched_b.add(b.ent.id)
-        matched_a.add(a.ent.id)
-        links.append((b, a))
-    return links
-
-
-_IMPORT_MARKER = "::__import__::"
 
 
 def _is_import(entity_id: str) -> bool:
@@ -135,24 +103,10 @@ def _link_pass(
     after: list[Snap],
     matched_b: set[str],
     matched_a: set[str],
-    constraints: IdentityConstraints | None = None,
 ) -> list[tuple[Snap, Snap]]:
     """Tiers 2 + 3 (content-hash then guarded fuzzy). Marks matched ids in place and
-    returns ``(old, new)`` rename/move links. Shared by the per-file and cross-file passes.
-
-    `constraints` (U11, R14's `identity split`/`identity join` escape hatch) is optional and
-    empty by default -- every existing caller is unaffected. `never_link` skips a would-be match
-    for that exact pair (trying the next hash-bucket candidate, or simply not linking in the
-    fuzzy tier); `force_link` links a human-corrected pair up front, before either heuristic
-    runs, so a false negative (two renamed entities the hashes/fuzzy score missed) still merges
-    into one chain."""
-    # Normalized to sorted pairs regardless of how the caller's constraints stored them --
-    # `ugh.config.load_identity_constraints` always sorts, but this stays correct for any
-    # caller (e.g. a test) that constructs `IdentityConstraints` directly with an unsorted pair.
-    never_link = frozenset(_pair(x, y) for x, y in (constraints.never_link if constraints else ()))
-    links = _forced_links(
-        before, after, matched_b, matched_a, constraints.force_link if constraints else frozenset()
-    )
+    returns ``(old, new)`` rename/move links. Shared by the per-file and cross-file passes."""
+    links: list[tuple[Snap, Snap]] = []
 
     # tiers 2 + 2b -- identical body then identical structure. Index unmatched before-entities
     # by each hash; match after-entities against content_hash first (exact bytes), then
@@ -170,15 +124,7 @@ def _link_pass(
             bucket = pool.get(h)
             if not bucket:
                 continue
-            idx = next(
-                (
-                    i
-                    for i, b in enumerate(bucket)
-                    if _pair(b.ent.id, a.ent.id) not in never_link
-                    and _may_link(b.ent.id, a.ent.id)
-                ),
-                None,
-            )
+            idx = next((i for i, b in enumerate(bucket) if _may_link(b.ent.id, a.ent.id)), None)
             if idx is None:
                 continue
             b = bucket.pop(idx)
@@ -200,9 +146,7 @@ def _link_pass(
         best: Snap | None = None
         best_score = 0.0
         for b in cands:
-            if b.ent.id in matched_b or _pair(b.ent.id, a.ent.id) in never_link:
-                continue
-            if not _may_link(b.ent.id, a.ent.id):
+            if b.ent.id in matched_b or not _may_link(b.ent.id, a.ent.id):
                 continue
             lo, hi = sorted((a.ntok, b.ntok))
             if hi and lo / hi < _SIZE_RATIO:
@@ -228,11 +172,8 @@ class Match:
     removed: list[Snap]               # unmatched before
 
 
-def match_pair(
-    before: list[Snap], after: list[Snap], constraints: IdentityConstraints | None = None
-) -> Match:
-    """Match the entities of one file across a commit (tiers 1 + 2 + 3). `constraints` is U11's
-    `identity split`/`identity join` escape hatch (optional; empty by default)."""
+def match_pair(before: list[Snap], after: list[Snap]) -> Match:
+    """Match the entities of one file across a commit (tiers 1 + 2 + 3)."""
     by_id_before = {s.ent.id: s for s in before}
     matched_b: set[str] = set()
     matched_a: set[str] = set()
@@ -247,81 +188,20 @@ def match_pair(
             if b.content_hash != a.content_hash:
                 modified.append(a)
 
-    links = _link_pass(before, after, matched_b, matched_a, constraints)
+    links = _link_pass(before, after, matched_b, matched_a)
     added = [s for s in after if s.ent.id not in matched_a]
     removed = [s for s in before if s.ent.id not in matched_b]
     return Match(modified=modified, links=links, added=added, removed=removed)
 
 
 def link_residual(
-    removed: list[Snap], added: list[Snap], constraints: IdentityConstraints | None = None
+    removed: list[Snap], added: list[Snap]
 ) -> tuple[list[tuple[Snap, Snap]], set[str], set[str]]:
     """Cross-file move detection: match a commit's leftover removals against its leftover
     additions (tiers 2 + 3 only -- surface ids never coincide across files). This is the
     safe generalization of sem's file-rename move pass: a function cut from one file and
-    pasted into another links by body, not by name. `constraints` is U11's escape hatch
-    (optional; empty by default)."""
+    pasted into another links by body, not by name."""
     matched_r: set[str] = set()
     matched_a: set[str] = set()
-    links = _link_pass(removed, added, matched_r, matched_a, constraints)
+    links = _link_pass(removed, added, matched_r, matched_a)
     return links, matched_r, matched_a
-
-
-def _contains(inner: frozenset[str], outer: frozenset[str]) -> float:
-    """Fraction of ``inner``'s tokens present in ``outer`` (directional overlap)."""
-    return len(inner & outer) / len(inner) if inner else 0.0
-
-
-def detect_splits_merges(
-    removed: list[Snap], added: list[Snap]
-) -> tuple[list[dict], list[dict]]:
-    """One-to-many / many-to-one body relationships among a commit's *residual* removals and
-    additions (the ones 1-1 linking above didn't consume). This is the lifecycle sem's pairwise
-    matcher can't express: a function that was *split* into several, or several that were *merged*
-    into one -- a within-file restructuring, keyed on token containment rather than equality.
-
-        SPLIT   one removed R whose tokens are spread across >= 2 added, each mostly a subset of R,
-                and R covered by their union.        R  ->  {A1, A2, ...}
-        MERGE   >= 2 removed each mostly a subset of one added A, and A covered by their union.
-                {R1, R2, ...}  ->  A
-
-    Same-file only (a split/merge is a local reshape, not a cross-file move -- those already linked
-    as 1-1 moves). Greedy and deterministic; an entity is consumed by at most one relationship.
-    Returns ``(splits, merges)`` of surface ids: split ``{"from": id, "to": [ids], "file": f}``,
-    merge ``{"from": [ids], "to": id, "file": f}``."""
-    by_file_add: dict[str, list[Snap]] = defaultdict(list)
-    by_file_rem: dict[str, list[Snap]] = defaultdict(list)
-    for a in added:
-        by_file_add[a.ent.file].append(a)
-    for r in removed:
-        by_file_rem[r.ent.file].append(r)
-    used_a: set[str] = set()
-    used_r: set[str] = set()
-
-    splits: list[dict] = []
-    for f, rem in by_file_rem.items():
-        adds = by_file_add.get(f, [])
-        for r in rem:
-            if r.ent.id in used_r or not r.tokens:
-                continue
-            kids = [a for a in adds if a.ent.id not in used_a and a.tokens
-                    and _contains(a.tokens, r.tokens) >= _CONTAIN]
-            if len(kids) >= 2 and _contains(r.tokens, frozenset().union(*(k.tokens for k in kids))) >= _CONTAIN:
-                splits.append({"from": r.ent.id, "to": [k.ent.id for k in kids], "file": f})
-                used_r.add(r.ent.id)
-                used_a.update(k.ent.id for k in kids)
-
-    merges: list[dict] = []
-    for f, adds in by_file_add.items():
-        rem = by_file_rem.get(f, [])
-        for a in adds:
-            if a.ent.id in used_a or not a.tokens:
-                continue
-            parents = [r for r in rem if r.ent.id not in used_r and r.tokens
-                       and _contains(r.tokens, a.tokens) >= _CONTAIN]
-            if len(parents) >= 2 and _contains(a.tokens, frozenset().union(*(p.tokens for p in parents))) >= _CONTAIN:
-                merges.append({"from": [p.ent.id for p in parents], "to": a.ent.id, "file": f})
-                used_a.add(a.ent.id)
-                used_r.update(p.ent.id for p in parents)
-
-    return splits, merges

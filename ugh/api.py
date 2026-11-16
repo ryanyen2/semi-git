@@ -13,8 +13,6 @@ Shapes (stable; additive changes only):
   structured attribution (D7: session/agent/plan per witnessing sha), intent.
 * ``state_view``        — the current ref's ideal: frontier, coverage, entity-granularity fraction,
   and the async oracle's verdict (U9).
-* ``rewrite_view``      — the U11 rewrite-verb review surface: pending drafts (hollow ops awaiting
-  fulfillment) and the currently staged candidate's oracle verdict, if any.
 * ``map_view``          — the U13 feature tree: every node's id/label/kind/parent/children/op_count,
   the roots, the cross-feature structural dependency edges, and the last build's Greene identity
   events (birth/death/merge/split/continuation).
@@ -31,7 +29,7 @@ Shapes (stable; additive changes only):
 * ``drift_view``        — the U14 "what extra happened" query: every op not predicted by any
   active plan session, with its kind, footprint, and current file/line spans.
 * ``sync_view``         — the U15 `ugh sync` result: ops merged in, forks surfaced (with the
-  `ugh resolve` remedy), pin contradictions, declared-edge cycles, and tree identity events.
+  `ugh resolve` remedy), pin contradictions, and tree identity events.
 * ``forks_view``        — the U20 open same-symbol forks recorded in committed `.sgt/forks.json`,
   each with its two tips and the `ugh resolve` remedy (divergence-as-state, C4).
 * ``intent_view``       — the U6 intent-clustering overlay: every commit-keyed `IntentAtom` (rung
@@ -239,22 +237,20 @@ def _coupling_rows(ops, op_leaf, removed_ids, after_ids) -> list[dict]:
 def _frontier_rows(repo, preview) -> list[dict]:
     """The per-dependent revert frontier (plan U3, R4): each op in the revert target's up-set
     classified on ONE axis, plus the target's read-only prerequisites. Three buckets, one
-    vocabulary shared with `_affected_rows` and `rewrite.revert_keep_dependents`:
+    vocabulary shared with `_affected_rows`:
 
     * ``blast``      -- a *direct* reference-edge dependent (its content names the reverted
-      symbol). Keeping it drafts a continuation hollow. ``toggleable``.
+      symbol). ``toggleable``.
     * ``carry``      -- a *transitive* dependent (in the up-set only via a chain through a direct
-      one). Keeping it repoints/carries mechanically (U5, free). ``toggleable``.
+      one). ``toggleable``.
     * ``foundation`` -- an upstream prerequisite the reverted core is built on (its downset). A
       revert cannot drop it, so it is read-only (``toggleable: false``), never in the kept-set.
 
-    Each row is ``{op_id, bucket, toggleable}``. This is the exact data the TUI checklist (U9) and
-    the CLI ``--keep`` consume; blast/carry are derived the same way `revert_keep_dependents`
-    splits its up-set, so the projection matches what apply does. ``[]`` for any non-revert verb
-    or a refused preview (``edit`` -- plan U4 -- will reuse this same block)."""
+    Each row is ``{op_id, bucket, toggleable}``. This is the data the TUI checklist (U9) consumes.
+    ``[]`` for any non-revert verb or a refused preview."""
     if preview.verb != "revert" or not preview.ok:
         return []
-    from ugh.core import lens, order, verbs
+    from ugh.core import order, verbs
     from ugh.core.ideal import Ideal
     from ugh.core.store import Store
 
@@ -267,21 +263,20 @@ def _frontier_rows(repo, preview) -> list[dict]:
     target, _ = verbs.resolve_target(Ideal.from_ops(preview.before_ids, ops), ops, preview.target)
     if target is None:
         return []
-    declared = lens._load_declared(repo)
     # The up-set, not `preview.removed`. Since the forward-subtraction default, a plain revert
     # keeps its dependents (splicing them where it can), so `removed` is usually just the target
     # and would make this list empty -- which read as "nothing depends on this" when the truth is
     # "everything that depends on this survives by default". The checklist's job is the opposite
-    # question: which dependents COULD you take down with it. That set is the up-set, the same one
-    # `--keep-dependents` operates on, so it is computed here directly.
-    upset = order.upset_in(target, preview.before_ids, ops, declared) - {target}
+    # question: which dependents COULD you take down with it. That set is the up-set, so it is
+    # computed here directly.
+    upset = order.upset_in(target, preview.before_ids, ops) - {target}
     direct = {b for a, b in order.reference_edges(ops) if a == target and b in upset}
 
     rows = [
         {"op_id": oid, "bucket": "blast" if oid in direct else "carry", "toggleable": True}
         for oid in sorted(upset)
     ]
-    foundation = order.downset_in(target, preview.before_ids, ops, declared) - {target}
+    foundation = order.downset_in(target, preview.before_ids, ops) - {target}
     rows += [{"op_id": oid, "bucket": "foundation", "toggleable": False} for oid in sorted(foundation)]
     return rows
 
@@ -375,8 +370,8 @@ def so_what_for(projected: dict, kept: frozenset = frozenset()) -> str:
     if verb == "resolve":
         sym = projected.get("target") or "the symbol"
         if not projected.get("clean", True):
-            return f"Can't resolve {sym} yet — {projected.get('error') or 'no drafted reconciliation'}."
-        return (f"Resolves the fork on {sym}: fulfills your merged edit, runs the oracle, then lands "
+            return f"Can't resolve {sym} yet — {projected.get('error') or 'no open fork'}."
+        return (f"Resolves the fork on {sym}: takes your merged edit, runs the oracle, then lands "
                 f"it (closes the fork). {undo}")
 
     if not projected.get("ok", True):
@@ -713,7 +708,6 @@ def _project_sync_preview(repo, plan) -> dict:
             {"kind": c.kind, "members": list(c.members), "detail": c.detail}
             for c in plan.pin_contradictions
         ],
-        "declared_cycles": [list(pair) for pair in plan.declared_cycles],
         "base_recovery": plan.base_recovery,
         "theirs_recovery": plan.theirs_recovery,
     }
@@ -734,30 +728,14 @@ def sync_preview_view(repo, remote: str | None = None, branch: str | None = None
 
 
 def resolve_apply_preview_view(repo, symbol: str) -> dict:
-    """The dry-run consequence of `ugh resolve <symbol> --apply` -- the three-step remedy it will run
-    (fulfill the drafted reconciliation from your edited tree, run the oracle, land it, closing the
-    fork). Reports `clean=False` with a reason when there's no open fork or no drafted reconciliation
-    yet (so the pane refuses before the apply path would). A pure read; the draft lookup mirrors the
-    `--apply` path's own."""
+    """The dry-run consequence of `ugh resolve <symbol> --apply`: take the edited tree's version,
+    run the oracle, commit it, closing the fork. `clean=False` with a reason when there is no open
+    fork for `symbol`. A pure read."""
     from ugh.config import load_oracle_config
-    from ugh.core import rewrite
-    from ugh.core.store import Store
     from ugh.tui.graph import render_collab_preview_lines
 
     fork = next((f for f in forks_view(repo)["forks"] if f["symbol"] == symbol), None)
-    store = Store(repo)
-    has_draft = any(
-        (h := store.get_hollow(hid)) is not None and symbol in h.footprint
-        for rec in rewrite.pending_drafts(repo).values()
-        for hid in rec["hollow_ids"]
-    )
-    if fork is None:
-        error = f"no open fork for {symbol!r} — `ugh status` lists the open forks"
-    elif not has_draft:
-        error = (f"no drafted reconciliation — run `ugh resolve {symbol}` first, then edit the "
-                 f"file to merge both versions")
-    else:
-        error = None
+    error = None if fork is not None else f"no open fork for {symbol!r} — `ugh status` lists the open forks"
     clean = error is None
 
     projected = {
@@ -779,51 +757,6 @@ def resolve_apply_preview_view(repo, symbol: str) -> dict:
     projected["so_what"] = so_what_for(projected)
     projected["summary"] = render_collab_preview_lines(projected, color=True)
     return projected
-
-
-def rewrite_view(repo) -> dict:
-    """U11's review surface: every registered-but-unfulfilled rewrite draft (`merge-op`/
-    `split-op`/`transplant`/`revert --keep-dependents`) with its hollow ops' symbol/kind/intent,
-    plus the currently staged candidate ideal (if `ugh advanced fulfill` has run) with its oracle
-    verdict -- the thing `ugh advanced commit` is gated on (R14). `None` for ``staged`` means nothing
-    is staged."""
-    from ugh.core import opindex, oracle, rewrite
-    from ugh.core.ideal import Ideal
-    from ugh.core.store import Store
-
-    store = Store(repo)
-
-    drafts = []
-    for draft_id, rec in sorted(rewrite.pending_drafts(repo).items()):
-        hollows = [store.get_hollow(hid) for hid in rec["hollow_ids"]]
-        drafts.append({
-            "draft_id": draft_id,
-            "verb": rec["verb"],
-            "target": rec["target"],
-            "message": rec.get("message", ""),
-            "hollow_ops": [
-                {"id": h.id, "symbol": next(iter(h.footprint)), "kind": h.kind, "intent": h.intent}
-                for h in hollows if h is not None
-            ],
-        })
-
-    staged_record = rewrite.staged_candidate(repo)
-    staged = None
-    if staged_record is not None:
-        # Ideal validity is footprint-level, so the footprint-only index suffices -- loading it
-        # only here keeps the common nothing-staged path from paying any op read at all
-        # (`Store.all_ops()`'s every-op images decode was the dominant cost of bare `ugh log`).
-        candidate = Ideal.from_ops(frozenset(staged_record["op_ids"]), opindex.index_ops(repo))
-        verdict = oracle.verdict_for(repo, candidate)
-        staged = {
-            "verb": staged_record["verb"],
-            "target": staged_record["target"],
-            "op_count": len(candidate.op_ids),
-            "oracle_verdict": verdict,
-            "oracle_status": oracle.overall_status(verdict),
-        }
-
-    return {"drafts": drafts, "staged": staged}
 
 
 def map_view(repo) -> dict:
@@ -1382,10 +1315,6 @@ def plan_view(repo, *, full: bool = False) -> dict:
     # actively *building* regardless of how long ago its last step was confirmed -- age alone must
     # not flag an agent mid-edit (or a fresh intake) as stalled.
     sessions_with_candidates = {g.session_id for g in checkpoint.matches}
-    # A plan whose Claude session also started a live `ugh session` matches against that session's
-    # work too (`match.joined_session_ops`), so its matched fraction counts work not yet landed.
-    from ugh.core import session as session_mod
-    joined_ids = {s.claude_session_id for s in session_mod.list_sessions(repo) if s.claude_session_id}
 
     def _files_for_ops(op_ids) -> list[dict]:
         symbols = {sym for op_id in op_ids if op_id in by_id for sym in by_id[op_id].footprint}
@@ -1409,7 +1338,6 @@ def plan_view(repo, *, full: bool = False) -> dict:
             "session_id": session_id, "plan_text": rec["plan_text"], "status": rec["status"],
             "created_ts": rec["created_ts"], "last_activity_ts": rec["last_activity_ts"],
             "claude_session_id": rec.get("claude_session_id"),
-            "matched_in_session": rec.get("claude_session_id") in joined_ids,
             "derived_status": derived_status,
             "pending_count": len(pending),
             "remaining_titles": [s["title"] for s in pending],
@@ -1569,7 +1497,6 @@ def sync_view(report) -> dict:
             {"kind": c.kind, "members": list(c.members), "detail": c.detail}
             for c in report.pin_contradictions
         ],
-        "declared_cycles": [list(pair) for pair in report.declared_cycles],
         "identity_events": list(report.identity_events),
     }
 
@@ -1643,7 +1570,6 @@ def fork_detail_view(repo, symbol: str) -> dict:
     separate frontier query per tip. `{"error": ...}` when the symbol has no open (resolvable) fork."""
     from ugh.core.fold import code
     from ugh.core.ideal import Ideal
-    from ugh.core.lens import _load_declared
     from ugh.core.order import downset
     from ugh.core.store import Store
 
@@ -1653,10 +1579,9 @@ def fork_detail_view(repo, symbol: str) -> dict:
         return {"error": f"no open fork for {symbol!r}", "symbol": symbol}
 
     ops = Store(repo).all_ops()
-    declared = _load_declared(repo)
     tips = []
     for tip in record["tips"]:
-        ideal = Ideal.from_ops(downset(tip, ops, declared), ops, declared)
+        ideal = Ideal.from_ops(downset(tip, ops), ops)
         materialized = code(ideal, ops)
         tips.append({
             "op_id": tip,
@@ -1681,7 +1606,7 @@ def _fold_ideal(repo, *, ref, at_commit_index, op_ids, current=False):
     -- because a revert is local ideal state, not commit history. Anything asking "what does the
     tree look like right now" wants this, not a ref."""
     from ugh.core.ideal import Ideal
-    from ugh.core.lens import _load_declared, current_ideal, ideal_for_ref
+    from ugh.core.lens import current_ideal, ideal_for_ref
     from ugh.core.store import Store
 
     given = [x for x in (ref, at_commit_index, op_ids, current or None) if x is not None]
@@ -1692,7 +1617,6 @@ def _fold_ideal(repo, *, ref, at_commit_index, op_ids, current=False):
 
     store = Store(repo)
     ops = store.all_ops()
-    declared = _load_declared(repo)
 
     if current:
         return current_ideal(repo), ops, None
@@ -1704,7 +1628,7 @@ def _fold_ideal(repo, *, ref, at_commit_index, op_ids, current=False):
     else:
         frontier_ids = frozenset(op_ids)
     try:
-        return Ideal.from_ops(frontier_ids, ops, declared), ops, None
+        return Ideal.from_ops(frontier_ids, ops), ops, None
     except ValueError as e:
         return None, None, {"forked": True, "message": str(e)}
 
@@ -1987,13 +1911,11 @@ def intent_view(repo) -> dict:
     acting on it -- this view never refuses to render, only `ugh intent revert` does. Fully
     sorted for a stable projection, like every other view in this module."""
     from ugh import state
-    from ugh.core import lens as _lens
     from ugh.core.store import Store
     from ugh.intent import group
     from ugh.lens.tree import load as load_tree
 
     all_ops = Store(repo).all_ops()
-    declared = _lens._load_declared(repo)
     tree_result = load_tree(repo)
     op_leaf = tree_result["op_leaf"] if tree_result else {}
 
@@ -2019,7 +1941,7 @@ def intent_view(repo) -> dict:
     for atom in atoms:
         span = group.feature_span(atom.op_ids, op_leaf)
         commit_shas = frozenset() if atom.commit_sha == group.UNWITNESSED else frozenset({atom.commit_sha})
-        tier = group.tier(atom.op_ids, commit_shas, all_ops, declared, op_leaf)
+        tier = group.tier(atom.op_ids, commit_shas, all_ops, op_leaf)
         # Plural on purpose: one commit's ops can come from several plans/chats (a save landing
         # work from two agent conversations, an op re-witnessed across merges) -- nothing in the
         # ledger is 1:1, so the projection must not collapse it either. Plan ids AND session ids:
@@ -2053,7 +1975,7 @@ def intent_view(repo) -> dict:
         stale_shas = member_shas - frozenset(atoms_by_sha)
         op_ids = frozenset().union(*(atoms_by_sha[sha].op_ids for sha in member_shas if sha in atoms_by_sha))
         span = group.feature_span(op_ids, op_leaf)
-        tier = group.tier(op_ids, member_shas, all_ops, declared, op_leaf)
+        tier = group.tier(op_ids, member_shas, all_ops, op_leaf)
         themes_out.append({
             "theme_id": theme_id,
             "label": entry["label"],
@@ -2342,14 +2264,14 @@ def _segments_out(repo, op_leaf, tree_result) -> list[dict]:
                 **_segment_symbols(s, by_id, op_commit, files_with_entities, head_op_ids,
                                    masks, tips),
             })
-    _segment_dependents(repo, out, idx_ops, by_id, head_op_ids)
+    _segment_dependents(out, idx_ops, by_id, head_op_ids)
     return out
 
 
 DEPENDENT_SYMBOL_CAP = 8
 
 
-def _segment_dependents(repo, segs, ops, by_id, live) -> None:
+def _segment_dependents(segs, ops, by_id, live) -> None:
     """What standing on each checkpoint looks like before anyone previews a revert: `dependents`,
     the later live checkpoints whose work reverting this one would rewrite or leave naming removed
     code (each with up to 8 shared names a reader sees), and `clean`, whether that revert takes the
@@ -2357,10 +2279,9 @@ def _segment_dependents(repo, segs, ops, by_id, live) -> None:
 
     Answered from the per-symbol chains once, never by planning a revert per checkpoint: the same
     rules `ugh.core.subtract.plan_subtraction` applies, on precomputed chains. Its removal is the
-    checkpoint's live ops, their declared dependents, every later op on a symbol the checkpoint
-    created, and the layout siblings of what that removes, to a fixpoint. A revert is outright
-    exactly when that removal is closed upward (no chain, `requires` or declared successor outside
-    it) and no collateral op in it owes an edit elsewhere -- otherwise it layers a rework over
+    checkpoint's live ops, every later op on a symbol the checkpoint created, and the layout
+    siblings of what that removes, to a fixpoint. A revert is outright exactly when that removal
+    is closed upward (no chain or `requires` successor outside it) and no collateral op in it owes an edit elsewhere -- otherwise it layers a rework over
     later work. Dependents are the checkpoints owning (a) collateral ops of that removal, (b) later
     edits on a symbol the removal subtracts from, (c) ops requiring a symbol it created.
 
@@ -2371,7 +2292,7 @@ def _segment_dependents(repo, segs, ops, by_id, live) -> None:
     current text; the byte-level sweep for names inside strings and callbacks
     (`_broken_references`) is not run, so such a dependent is missed. A checkpoint linked only
     through layout (gaps, anchors) makes `clean` false without becoming a dependent."""
-    from ugh.core import lens, order
+    from ugh.core import order
     from ugh.core.op import _symbol_kind
     from ugh.core.subtract import _born_symbols
 
@@ -2395,20 +2316,6 @@ def _segment_dependents(repo, segs, ops, by_id, live) -> None:
         for req in by_id[oid].requires:
             requirers.setdefault(req[0], set()).add(oid)
             version_users.setdefault(req, set()).add(oid)
-    declared_of: dict[str, set[str]] = {}
-    for a, b in lens._load_declared(repo):
-        if a in live and b in live:
-            declared_of.setdefault(a, set()).add(b)
-
-    def _declared_closure(seed) -> set[str]:
-        out, todo = set(seed), list(seed)
-        while todo:
-            for dep in declared_of.get(todo.pop(), ()):
-                if dep not in out:
-                    out.add(dep)
-                    todo.append(dep)
-        return out
-
     suffix_memo: dict[str, list[frozenset[int]]] = {}
 
     def _later_segs(sym: str, i: int) -> frozenset[int]:
@@ -2434,10 +2341,10 @@ def _segment_dependents(repo, segs, ops, by_id, live) -> None:
             seg["dependents"], seg["clean"] = [], None
             continue
         while True:  # plan_subtraction's removal + layout-sibling fixpoint
-            whole = _declared_closure(targets)
+            whole = set(targets)
             born = _born_symbols(whole, by_id)
             on_born = {o for sym in born for o in chains.get(sym, ())}
-            removal = _declared_closure(whole | on_born)
+            removal = whole | on_born
             also = set()
             for sym in _born_symbols(removal, by_id):
                 path, sep, name = sym.partition("::")
@@ -2455,7 +2362,6 @@ def _segment_dependents(repo, segs, ops, by_id, live) -> None:
 
         outright = True
         shared: dict[int, set[str]] = {}
-        declared_deps: set[int] = set()
         x_syms = {sym for t in whole for sym in by_id[t].footprint} | born
         for r in removal:
             op = by_id[r]
@@ -2475,21 +2381,17 @@ def _segment_dependents(repo, segs, ops, by_id, live) -> None:
                 if owes and _named(sym):
                     for d in _later_segs(sym, i):
                         shared.setdefault(d, set()).add(sym)  # (b)
-            if declared_of.get(r, set()) - removal:
-                outright = False
             if r not in targets and r in seg_of:
                 names = {sym for sym in op.footprint if _named(sym) and sym in x_syms}
                 if names:
                     shared.setdefault(seg_of[r], set()).update(names)  # (a)
-                elif r not in on_born:
-                    declared_deps.add(seg_of[r])  # taken whole by a declared edge, nothing shared
         for sym in born:
             if not _named(sym):
                 continue
             for o in requirers.get(sym, set()) - removal:
                 if o in seg_of:
                     shared.setdefault(seg_of[o], set()).add(sym)  # (c)
-        deps = [d for d in (set(shared) | declared_deps) if d != x and d in standing]
+        deps = [d for d in shared if d != x and d in standing]
         deps.sort(key=lambda d: (segs[d]["first_index"], segs[d]["checkpoint"]))
         seg["dependents"] = [
             {"ref": segs[d]["checkpoint"],
@@ -2501,8 +2403,7 @@ def _segment_dependents(repo, segs, ops, by_id, live) -> None:
 
 def segments_view(repo) -> list[dict]:
     """Just the feature-scoped intent segments (`_segments_out`), without the atoms/themes
-    machinery `intent_view` also builds (`Store(repo).all_ops()`, `group.atoms`, the declared-ops
-    load) -- the cheap read the graph/timeline layouts use so drawing the chunk-car atom doesn't
+    machinery `intent_view` also builds (`Store(repo).all_ops()`, `group.atoms`) -- the cheap read the graph/timeline layouts use so drawing the chunk-car atom doesn't
     pay for the cross-feature theme projection it deliberately no longer draws."""
     from ugh.lens.tree import load as load_tree
 
@@ -3213,14 +3114,7 @@ def status_view(repo) -> dict:
 
     from ugh.core.lens import materialization_skips
 
-    divergent = _drift_paths_by_hash(repo, path_hashes)
-    # A live stage (U6) deliberately leaves an uncommitted rewrite candidate on the working tree, so
-    # a path whose disk bytes differ from the committed ideal is that candidate -- planned
-    # divergence, classified `staged` and never `drift`. `fsck_tree` has drawn this distinction
-    # since U6; this projection is the one every *surface* reads, and without the same rule the
-    # workbench called a staged candidate "Working changes" and offered a Save that `put` refuses.
-    staged_paths = divergent if state_mod.load_json(repo, "staged", default=None) is not None else []
-    drift = [] if staged_paths else divergent
+    drift = _drift_paths_by_hash(repo, path_hashes)
     # `path_hashes` stands in for the materialized dict: the skips read consults it for path
     # MEMBERSHIP only (which tracked paths the ideal doesn't cover). `None` as `all_ops`: the
     # backstop read folds the *maximal* ideal -- let it load (path-restricted) images itself
@@ -3241,7 +3135,6 @@ def status_view(repo) -> dict:
             "status": overall_status(st["oracle_verdict"]) if st["oracle_configured"] else "unconfigured",
         },
         "drift": {"any": bool(drift), "paths": drift},
-        "staged": {"any": bool(staged_paths), "paths": staged_paths},
         # R3/R4: paths a materializing verb refuses to touch -- symlinks (unmanaged) and files the
         # current ideal dropped whose live bytes no valid ideal can regenerate (backstop-kept).
         "unmanaged": skips["unmanaged"],

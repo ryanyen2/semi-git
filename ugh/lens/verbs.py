@@ -233,16 +233,13 @@ def resolve_feature(repo: str | Path, ref: str) -> tuple[frozenset[str], str, st
     return op_ids, feature_id, nodes[feature_id].get("label", feature_id)
 
 
-def plan_revert_feature(repo: str | Path, ref: str, *,
-                        take_dependents: bool = False) -> core_verbs.VerbPreview:
+def plan_revert_feature(repo: str | Path, ref: str) -> core_verbs.VerbPreview:
     """Resolve `ref` to a feature's op-set X, then plan its removal through the same
-    `core.verbs._plan_removal` every revert shape uses: the safe default subtracts X from
-    shared symbols at their tips and keeps interleaved later work; `take_dependents` is the
-    explicit old `I \\ upset_in_many(X)` demolition."""
+    `core.verbs._plan_removal` every revert shape uses: it subtracts X from shared symbols at
+    their tips and keeps interleaved later work."""
     repo = Path(repo)
     ops = opindex.index_ops(repo)  # previews never materialize bytes -- footprints suffice
     ideal = kernel_lens.current_ideal(repo)
-    declared = kernel_lens._load_declared(repo)
 
     resolved = resolve_feature(repo, ref)
     if resolved is None:
@@ -253,53 +250,7 @@ def plan_revert_feature(repo: str | Path, ref: str, *,
         return core_verbs._preview("revert", feature_id, ideal.op_ids, ideal.op_ids, ops,
                                     message=f"feature {label!r} has no ops in the current ideal; no change")
 
-    return core_verbs._plan_removal(repo, "revert", feature_id, op_ids, ops, ideal, declared,
-                                    take_dependents=take_dependents)
-
-
-def plan_revert_lane_to_commit(
-    repo: str | Path, ref: str, commit_index: int, keep: tuple[str, ...] = (),
-) -> core_verbs.VerbPreview:
-    """`revert <lane> --to <commit>` (plan U11/R9): truncate a lane at a commit boundary -- drop the
-    lane's ops *after* `commit_index` (and everything built on them), keeping the lane's shape at or
-    before it. `keep` names other lanes whose ops must survive even where the up-set would otherwise
-    sweep them: their op-sets are subtracted from the removal before validating, so `_validated`
-    refuses (rather than silently dropping) if that would leave an invalid ideal. Reuses
-    `plan_revert_feature`'s exact `upset_in` + `Ideal.from_ops` algebra -- only the *seed* op-set
-    (the lane's post-`commit_index` ops) is new; the coupling a truncation cuts through surfaces in
-    the preview via U4's `_coupling_rows`, unchanged."""
-    from ugh.api import history_view
-
-    repo = Path(repo)
-    ops = opindex.index_ops(repo)  # previews never materialize bytes -- footprints suffice
-    ideal = kernel_lens.current_ideal(repo)
-    declared = kernel_lens._load_declared(repo)
-
-    resolved = resolve_feature(repo, ref)
-    if resolved is None:
-        return core_verbs._preview("revert", ref, ideal.op_ids, ideal.op_ids, ops, ok=False,
-                                    message=f"feature {ref!r} not found; run `ugh log --refresh`")
-    op_ids, feature_id, label = resolved
-    # `@c<N>` (commit-index) notation, deliberately distinct from the `@<seg_index>` checkpoint
-    # notation the graph/log show -- `revert --to` truncates at a *global commit* boundary, not a
-    # per-feature checkpoint, and the two number-spaces must not be misread for each other.
-    target = f"{feature_id}@c{commit_index}"
-
-    ci = {o["id"]: o["commit_index"] for o in history_view(repo, full=True)["ops"]}
-    seed = {oid for oid in op_ids if oid in ideal.op_ids and ci.get(oid, -1) > commit_index}
-    if not seed:
-        live = sorted({ci[oid] for oid in op_ids if oid in ideal.op_ids and oid in ci})
-        where = f" (its ops are at commit {', '.join(map(str, live))})" if live else ""
-        return core_verbs._preview("revert", target, ideal.op_ids, ideal.op_ids, ops,
-                                    message=f"{label!r} has no ops after commit {commit_index}; no change{where}")
-
-    removal = set(order.upset_in_many(seed, ideal.op_ids, ops, declared))
-    for keep_ref in keep:  # a kept lane's ops survive even where the up-set would sweep them
-        kept = resolve_feature(repo, keep_ref)
-        if kept is not None:
-            removal -= set(kept[0])
-    after = ideal.op_ids - frozenset(removal)
-    return core_verbs._validated("revert", target, ideal.op_ids, after, ops, declared)
+    return core_verbs._plan_removal(repo, "revert", feature_id, op_ids, ops, ideal)
 
 
 def plan_restore_feature(repo: str | Path, ref: str) -> core_verbs.VerbPreview:
@@ -313,7 +264,6 @@ def plan_restore_feature(repo: str | Path, ref: str) -> core_verbs.VerbPreview:
     repo = Path(repo)
     ops = opindex.index_ops(repo)  # previews never materialize bytes -- footprints suffice
     ideal = kernel_lens.current_ideal(repo)
-    declared = kernel_lens._load_declared(repo)
 
     resolved = resolve_feature(repo, ref)
     if resolved is None:
@@ -326,13 +276,13 @@ def plan_restore_feature(repo: str | Path, ref: str) -> core_verbs.VerbPreview:
 
     # When the journal holds the revert of this same feature, reverse it exactly rather than
     # re-deriving an inverse the downset cannot express (see `core.verbs._plan_restore_via_journal`).
-    exact = core_verbs._plan_restore_via_journal(repo, feature_id, op_ids, ops, ideal, declared)
+    exact = core_verbs._plan_restore_via_journal(repo, feature_id, op_ids, ops, ideal)
     if exact is not None:
         return exact
 
     # Ahead of `ideal_for_ref` too -- reconstructing the provenance ideal is real work the exact
     # path never needs, the same reason `core.verbs.plan_restore_op_set` defers it.
     source = kernel_lens.ideal_for_ref(repo, "HEAD")
-    after = ideal.op_ids | order.downset_in_many(op_ids, source.op_ids, ops, declared)
+    after = ideal.op_ids | order.downset_in_many(op_ids, source.op_ids, ops)
     return core_verbs._named(
-        core_verbs._validated("restore", feature_id, ideal.op_ids, after, ops, declared), op_ids)
+        core_verbs._validated("restore", feature_id, ideal.op_ids, after, ops), op_ids)

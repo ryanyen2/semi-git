@@ -1,4 +1,4 @@
-"""The order `<=` over ops, from three edge sources (ADR S3.3; plan R3, R4, R10).
+"""The order `<=` over ops, from two edge sources (ADR S3.3; plan R3, R4, R10).
 
     1. chain edges     -- same symbol: op A's after_version matches op B's before_version.
                            Ops touching one symbol are totally ordered along its chain (unless
@@ -7,11 +7,8 @@
                            produced that version precedes B. Mined def/use, resolved to the
                            *specific* version B saw when mined (ugh.core.mine records this),
                            not merely "some op that ever touched this symbol".
-    3. declared edges   -- an explicit `(A, B)` pair meaning A <= B (`ugh after`, U8's escape
-                           hatch for edges the analyzer can't see). Passed in by the caller; this
-                           module doesn't own where declared edges are persisted.
 
-All three collapse into one predecessor/successor adjacency; `upset`/`downset` are BFS over it.
+Both collapse into one predecessor/successor adjacency; `upset`/`downset` are BFS over it.
 Validity (R3) is two independent checks: downward-closure over that adjacency, and fork-freedom
 (no two in-ideal ops share a `(symbol, before_version)` -- the ADR's "the only possible conflict
 is chain divergence"). Fork-freedom is *not* implied by downward-closure: a fork's two tips have
@@ -26,10 +23,9 @@ from collections import OrderedDict
 from ugh.core.op import Op, _symbol_kind
 
 Edge = tuple[str, str]  # (A, B) meaning A <= B: A must be in the ideal whenever B is
-Declared = frozenset[Edge]
 
 # Bounded LRU memo for `reduce_to_ideal` (U8). Its result is a pure function of the *present-op* id
-# set and `declared`: grounding and fork-freedom only ever read ops *in* `ideal_ids` (a path from a
+# set: grounding and fork-freedom only ever read ops *in* `ideal_ids` (a path from a
 # forked tip to an ideal op through a missing op leaves that op ungrounded, so it is gone before
 # fork-freeing runs), and every op is content-addressed, so a set of *materialized* ids fixes the
 # answer. `reduce_to_ideal` intersects `ideal_ids` with the present ops before keying, so an id that
@@ -37,16 +33,16 @@ Declared = frozenset[Edge]
 # gitignored ideal table) does not collide with a hit computed while it was still present.
 # Bounded (not `functools.lru_cache`, whose args must be hashable and which never evicts by size)
 # so a long-running MCP/TUI session over an append-only store doesn't accumulate an entry per save.
-_REDUCE_CACHE: "OrderedDict[tuple, frozenset[str]]" = OrderedDict()
+_REDUCE_CACHE: "OrderedDict[frozenset, frozenset[str]]" = OrderedDict()
 _REDUCE_CACHE_MAX = 64
 
 # `is_valid_ideal`'s memo, same soundness argument as `_REDUCE_CACHE`: once every id in the set is
-# verified present, grounding and fork-freedom are pure functions of the (content-addressed) id set
-# plus `declared`. The O(ops) presence check re-runs on every call -- only the grounding + fork
+# verified present, grounding and fork-freedom are pure functions of the (content-addressed) id
+# set. The O(ops) presence check re-runs on every call -- only the grounding + fork
 # scan is skipped -- so a swapped-out store can never resurrect a stale True. Every
 # `Ideal.from_ops` re-validates its op set, and one command constructs the same handful of ideals
-# through several views; this makes each distinct (ids, declared) pay the full check once.
-_VALID_CACHE: "OrderedDict[tuple, bool]" = OrderedDict()
+# through several views; this makes each distinct id set pay the full check once.
+_VALID_CACHE: "OrderedDict[frozenset, bool]" = OrderedDict()
 _VALID_CACHE_MAX = 64
 
 # `frontier`'s memo (see its docstring): id-set -> {symbol: tip op id}. The returned dict is
@@ -114,16 +110,12 @@ def _chain_ref_edges(ops: list[Op]) -> frozenset[Edge]:
     return edges
 
 
-def _adjacency(
-    ops: list[Op], declared: Declared = frozenset()
-) -> tuple[dict[str, frozenset[str]], dict[str, frozenset[str]]]:
-    """(predecessors, successors) over the union of all three edge sources. Edges naming an op
-    id outside `ops` are dropped rather than raising -- a caller building an adjacency for a
-    smaller universe (e.g. one commit's worth of ops) shouldn't have to pre-filter `declared`."""
+def _adjacency(ops: list[Op]) -> tuple[dict[str, frozenset[str]], dict[str, frozenset[str]]]:
+    """(predecessors, successors) over the union of both edge sources."""
     ids = {op.id for op in ops}
     predecessors: dict[str, set[str]] = {op.id: set() for op in ops}
     successors: dict[str, set[str]] = {op.id: set() for op in ops}
-    for a, b in _chain_ref_edges(ops) | declared:
+    for a, b in _chain_ref_edges(ops):
         if a in ids and b in ids and a != b:
             predecessors[b].add(a)
             successors[a].add(b)
@@ -145,11 +137,8 @@ def _reachable(start: str, adjacency: dict[str, frozenset[str]]) -> frozenset[st
     return frozenset(seen)
 
 
-def components_in(
-    op_ids, ops: list[Op], declared: Declared = frozenset(),
-) -> list[frozenset[str]]:
-    """Connected components of `op_ids` under the *undirected* union of chain/reference/declared
-    edges, restricted to edges whose both endpoints are in `op_ids`. Unlike every other function
+def components_in(op_ids, ops: list[Op]) -> list[frozenset[str]]:
+    """Connected components of `op_ids` under the *undirected* union of chain/reference edges, restricted to edges whose both endpoints are in `op_ids`. Unlike every other function
     in this module, this makes no downward-closure assumption about `op_ids` -- it never calls
     `_ordered_chains`/`_grounded`, so it has no ideal-validity precondition an arbitrary commit's
     or scope-bundle's op-set (not a valid ideal) can violate. Answers "are these ops linked at
@@ -157,7 +146,7 @@ def components_in(
     which requires a genuine ideal to mean anything)."""
     ids = frozenset(op_ids)
     adjacency: dict[str, set[str]] = {oid: set() for oid in ids}
-    for a, b in _chain_ref_edges(ops) | declared:
+    for a, b in _chain_ref_edges(ops):
         if a in ids and b in ids and a != b:
             adjacency[a].add(b)
             adjacency[b].add(a)
@@ -174,28 +163,28 @@ def components_in(
     return components
 
 
-def upset(op_id: str, ops: list[Op], declared: Declared = frozenset()) -> frozenset[str]:
+def upset(op_id: str, ops: list[Op]) -> frozenset[str]:
     """`op_id` and everything that builds on it, over the *whole* op universe -- `↑X` in the
     ADR's set language.
 
     VALUE-COLLISION CAVEAT: this resolves chain edges via `_adjacency`'s bare
     `(symbol, after_version)` producer map, which picks *one* producer on a collision (e.g. a
     revert landing back on an earlier version's exact bytes) rather than checking existentially.
-    U8's `revert`/`pin` verbs therefore do NOT use this; they use the collision-safe,
+    U8's `revert` verb therefore does NOT use this; they use the collision-safe,
     ideal-relative `upset_in` below (which reasons existentially, the way `is_valid_ideal` and
     `frontier` were hardened in U7.5). This universe-level form is kept for `tests/core/test_order.py`
     and any future caller whose input is known collision-free; harden it the same way before
     using it on inputs that can revert to an earlier version's exact bytes."""
-    _, successors = _adjacency(ops, declared)
+    _, successors = _adjacency(ops)
     return _reachable(op_id, successors)
 
 
-def downset(op_id: str, ops: list[Op], declared: Declared = frozenset()) -> frozenset[str]:
+def downset(op_id: str, ops: list[Op]) -> frozenset[str]:
     """`op_id` and everything it builds on, over the whole op universe -- `↓X`.
 
-    Same value-collision caveat as `upset` above; U8's `restore`/`cherry-pick` verbs use the
-    collision-safe, ideal-relative `downset_in` below instead."""
-    predecessors, _ = _adjacency(ops, declared)
+    Same value-collision caveat as `upset` above; U8's `restore` verb uses the collision-safe,
+    ideal-relative `downset_in` below instead."""
+    predecessors, _ = _adjacency(ops)
     return _reachable(op_id, predecessors)
 
 
@@ -266,7 +255,7 @@ def resolvable_forks(
     return out
 
 
-def parked_forks(ideal_ids, ops: list[Op], declared: Declared = frozenset()) -> list[tuple[str, str, str]]:
+def parked_forks(ideal_ids, ops: list[Op]) -> list[tuple[str, str, str]]:
     """The `(symbol, op_a, op_b)` fork triples `reduce_to_ideal` silently drops: `fork_free` grounds
     `ideal_ids` first, then removes both tips of every same-`(symbol, before)` collision among the
     *grounded* ops. Reporting forks on the grounded set (not the raw `ideal_ids`) is the point --
@@ -279,10 +268,10 @@ def parked_forks(ideal_ids, ops: list[Op], declared: Declared = frozenset()) -> 
     are neutralized by `fork_free` and carry no user-facing remedy, so recording them only inflates
     the open-fork count with work that doesn't exist."""
     by_id = {op.id: op for op in ops}
-    return resolvable_forks(forks(ops, _grounded(ideal_ids, ops, declared)), by_id)
+    return resolvable_forks(forks(ops, _grounded(ideal_ids, ops)), by_id)
 
 
-def fork_free(ideal_ids, ops: list[Op], declared: Declared = frozenset()) -> frozenset[str]:
+def fork_free(ideal_ids, ops: list[Op]) -> frozenset[str]:
     """The largest fork-free subset of `ideal_ids`: drop every forked symbol's *two* tips together
     with their up-sets. Neither tip can be included without deciding which side wins, so nothing
     transitively built on either can be either. A downward-closed `ideal_ids` minus these
@@ -305,12 +294,12 @@ def fork_free(ideal_ids, ops: list[Op], declared: Declared = frozenset()) -> fro
     tips = {tip for _sym, tip_a, tip_b in forks(ops, ideal_ids) for tip in (tip_a, tip_b)}
     if not tips:
         return frozenset(ideal_ids)
-    return _grounded(set(ideal_ids) - tips, ops, declared)
+    return _grounded(set(ideal_ids) - tips, ops)
 
 
-def reduce_to_ideal(ideal_ids, ops: list[Op], declared: Declared = frozenset()) -> frozenset[str]:
+def reduce_to_ideal(ideal_ids, ops: list[Op]) -> frozenset[str]:
     """One maximal *valid ideal* contained in a raw provenance-derived op set: ground it (keep only
-    ops all of whose chain/reference/declared prerequisites are also present -- downward-closure),
+    ops all of whose chain/reference prerequisites are also present -- downward-closure),
     then drop forked tips and their up-sets (fork-freedom). One pass suffices, in that order:
     `fork_free` removes only upward-closed up-sets, and removing an upward-closed set from a
     downward-closed one leaves it downward-closed, so grounding survives fork-freeing.
@@ -343,62 +332,23 @@ def reduce_to_ideal(ideal_ids, ops: list[Op], declared: Declared = frozenset()) 
     this filter the same `ideal_ids` maps to a result computed against the *old* universe, which then
     fails `Ideal.from_ops` against the new one."""
     present = {op.id for op in ops}
-    key = (frozenset(ideal_ids) & present, declared)
+    key = frozenset(ideal_ids) & present
     cached = _REDUCE_CACHE.get(key)
     if cached is not None:
         _REDUCE_CACHE.move_to_end(key)
         return cached
-    result = fork_free(_grounded(key[0], ops, declared), ops, declared)
+    result = fork_free(_grounded(key, ops), ops)
     _REDUCE_CACHE[key] = result
     if len(_REDUCE_CACHE) > _REDUCE_CACHE_MAX:
         _REDUCE_CACHE.popitem(last=False)
     return result
 
 
-def find_declared_cycles(ops: list[Op], declared: Declared) -> list[tuple[str, str]]:
-    """Declared edges (`ugh after`) that lie on a cycle in the full chain+reference+declared
-    adjacency -- e.g. two clones each declare an edge that, unioned, contradicts the other.
-    Iterative DFS over `_adjacency`'s successors, tracking the current path to find back-edges;
-    every declared edge on a detected cycle is returned (sorted, for deterministic output). An
-    empty result means the union is still a valid partial order. Used by `ugh sync` (U15) to
-    surface which `after` declarations need retracting rather than committing a cyclic union."""
-    _, successors = _adjacency(ops, declared)
-    ids = sorted(successors.keys())
-
-    WHITE, GRAY, BLACK = 0, 1, 2
-    color = {op_id: WHITE for op_id in ids}
-    cyclic_edges: set[tuple[str, str]] = set()
-
-    for start in ids:
-        if color[start] != WHITE:
-            continue
-        color[start] = GRAY
-        path = [start]
-        stack = [iter(sorted(successors.get(start, ())))]
-        while stack:
-            nxt = next(stack[-1], None)
-            if nxt is None:
-                color[path.pop()] = BLACK
-                stack.pop()
-                continue
-            if color[nxt] == GRAY:
-                idx = path.index(nxt)
-                cycle_nodes = path[idx:] + [nxt]
-                for a, b in zip(cycle_nodes, cycle_nodes[1:]):
-                    if (a, b) in declared:
-                        cyclic_edges.add((a, b))
-            elif color[nxt] == WHITE:
-                color[nxt] = GRAY
-                path.append(nxt)
-                stack.append(iter(sorted(successors.get(nxt, ()))))
-    return sorted(cyclic_edges)
-
-
-def _grounded(ideal_ids, ops: list[Op], declared: Declared = frozenset()) -> frozenset[str]:
+def _grounded(ideal_ids, ops: list[Op]) -> frozenset[str]:
     """The largest *well-founded* downward-closed subset of `ideal_ids`: ops reachable from chain
     heads (`before_version` None) by actual production. An op joins once every one of its
-    before_versions is None or already produced by a grounded op, every `requires` version is
-    produced by a grounded op, and every declared predecessor is grounded.
+    before_versions is None or already produced by a grounded op, and every `requires` version is
+    produced by a grounded op.
 
     Grounding -- not mere existence of *some* producer -- is the correct downward-closure. The
     existential check alone accepts an originless cycle (e.g. `{modify, revert}` lifted out of
@@ -411,36 +361,25 @@ def _grounded(ideal_ids, ops: list[Op], declared: Declared = frozenset()) -> fro
     OR-group, not a fixed single edge.
 
     Computed as a single Kahn's-algorithm topological pass, O(ops + edges): each distinct
-    `(symbol, version)` or declared-predecessor requirement is a *key* shared by every op that
-    needs it, resolved the instant any op in its producer group grounds; an op's indegree is its
-    count of distinct unresolved keys. A key with no producer, or a declared predecessor outside
-    `ideal_ids`, simply never resolves -- so ops that depend on it (directly or via a cycle) are
-    correctly left ungrounded, same as the fixpoint this replaces. Previously a `while changed:`
+    `(symbol, version)` requirement is a *key* shared by every op that needs it, resolved the
+    instant any op in its producer group grounds; an op's indegree is its count of distinct
+    unresolved keys. A key with no producer simply never resolves -- so ops that depend on it
+    (directly or via a cycle) are correctly left ungrounded, same as the fixpoint this replaces. Previously a `while changed:`
     loop rescanning every remaining op each pass -- O(ops^2) on a long, mostly-linear chain."""
     ideal_set = set(ideal_ids)
     by_id = {op.id: op for op in ops if op.id in ideal_set}
-    declared_preds: dict[str, set[str]] = {}
-    for a, b in declared:
-        if b in by_id:
-            declared_preds.setdefault(b, set()).add(a)
 
     # producer_of[key] = every in-ideal op producing that (symbol, version) pair as its
     # footprint `after` -- a group, not a single op, per the after-value-collision note above.
     producer_of: dict[tuple, set[str]] = {}
     for op_id, op in by_id.items():
         for sym, (_before, after) in op.footprint.items():
-            producer_of.setdefault(("v", sym, after), set()).add(op_id)
-
-    def group_of(key: tuple) -> set[str]:
-        if key[0] == "d":
-            return {key[1]} if key[1] in by_id else set()
-        return producer_of.get(key, set())
+            producer_of.setdefault((sym, after), set()).add(op_id)
 
     needed: dict[str, set[tuple]] = {}
     for op_id, op in by_id.items():
-        keys = {("v", sym, before) for sym, (before, _after) in op.footprint.items() if before is not None}
-        keys.update(("v", sym, ver) for sym, ver in op.requires)
-        keys.update(("d", p) for p in declared_preds.get(op_id, ()))
+        keys = {(sym, before) for sym, (before, _after) in op.footprint.items() if before is not None}
+        keys.update(op.requires)
         needed[op_id] = keys
 
     key_dependents: dict[tuple, set[str]] = {}
@@ -450,7 +389,7 @@ def _grounded(ideal_ids, ops: list[Op], declared: Declared = frozenset()) -> fro
 
     producer_dependents: dict[str, set[tuple]] = {}
     for key in key_dependents:
-        for member in group_of(key):
+        for member in producer_of.get(key, ()):
             producer_dependents.setdefault(member, set()).add(key)
 
     indegree = {op_id: len(keys) for op_id, keys in needed.items()}
@@ -468,26 +407,24 @@ def _grounded(ideal_ids, ops: list[Op], declared: Declared = frozenset()) -> fro
     return frozenset(grounded)
 
 
-def is_valid_ideal(ops: list[Op], ideal_ids, declared: Declared = frozenset()) -> bool:
-    """R3: downward-closed under chain+reference+declared edges, and fork-free. Every op id in
+def is_valid_ideal(ops: list[Op], ideal_ids) -> bool:
+    """R3: downward-closed under chain+reference edges, and fork-free. Every op id in
     `ideal_ids` must also exist in `ops` -- referencing an unknown op is never valid.
 
     Downward-closure is checked by *grounding* (`_grounded`): every op must bottom out at a chain
     head through real production, so the check reasons about which `(symbol, version)` pairs the
     ideal produces rather than picking one canonical producer op -- immune to the after-value
     collision (add->modify->revert) that a graph-edge form mis-resolves, and rejecting an
-    originless cycle that a purely-existential check would wrongly accept. Declared edges fold
-    into the same grounding (an op grounds only once its declared predecessors do)."""
+    originless cycle that a purely-existential check would wrongly accept."""
     ids = frozenset(ideal_ids)
     if not ids <= {op.id for op in ops}:
         return False
-    key = (ids, declared)
-    cached = _VALID_CACHE.get(key)
+    cached = _VALID_CACHE.get(ids)
     if cached is not None:
-        _VALID_CACHE.move_to_end(key)
+        _VALID_CACHE.move_to_end(ids)
         return cached
-    result = _grounded(ids, ops, declared) == ids and is_fork_free(ops, ids)
-    _VALID_CACHE[key] = result
+    result = _grounded(ids, ops) == ids and is_fork_free(ops, ids)
+    _VALID_CACHE[ids] = result
     if len(_VALID_CACHE) > _VALID_CACHE_MAX:
         _VALID_CACHE.popitem(last=False)
     return result
@@ -587,20 +524,19 @@ def frontier(ideal_ids, ops: list[Op]) -> dict[str, str]:
     return dict(result)
 
 
-def upset_in(target: str, ideal_ids, ops: list[Op], declared: Declared = frozenset()) -> frozenset[str]:
+def upset_in(target: str, ideal_ids, ops: list[Op]) -> frozenset[str]:
     """`target` and everything in the (fork-free) ideal `ideal_ids` that transitively builds on it
     -- `revert(target) = ideal \\ upset_in(target, ideal)`. The collision-safe, ideal-relative
     counterpart to `upset`: the up-set is exactly what stops being grounded once `target` is
     removed, i.e. `ideal \\ _grounded(ideal - {target})`. Grounding (not existential production)
     is what makes reverting a chain head remove the whole chain rather than leave an originless
-    modify->revert cycle behind, and what keeps a declared successor or an op that only `target`
-    could reach out of the result. The complement `_grounded(...)` is a valid ideal by
+    modify->revert cycle behind. The complement `_grounded(...)` is a valid ideal by
     construction (well-founded, and fork-free as a subset of a fork-free ideal), so
     `ideal \\ upset_in(...)` never needs a further validity check."""
-    return upset_in_many({target}, ideal_ids, ops, declared)
+    return upset_in_many({target}, ideal_ids, ops)
 
 
-def upset_in_many(removed, ideal_ids, ops: list[Op], declared: Declared = frozenset()) -> frozenset[str]:
+def upset_in_many(removed, ideal_ids, ops: list[Op]) -> frozenset[str]:
     """The set generalization of `upset_in` (which is the single-target case): everything in
     `ideal_ids` that stops being grounded once *all* of `removed` is taken out -- `ideal \\
     _grounded(ideal - removed)`. Used by U8's three-way sync resolve: `removed` is the base ops one
@@ -608,21 +544,20 @@ def upset_in_many(removed, ideal_ids, ops: list[Op], declared: Declared = frozen
     being resurrected. Collision-safe (grounding, not graph adjacency), and the complement is a
     valid downward-closed ideal by construction, so the subtraction needs no further check."""
     ids = set(ideal_ids)
-    return frozenset(ids - _grounded(ids - set(removed), ops, declared))
+    return frozenset(ids - _grounded(ids - set(removed), ops))
 
 
-def downset_in(target: str, ideal_ids, ops: list[Op], declared: Declared = frozenset()) -> frozenset[str]:
+def downset_in(target: str, ideal_ids, ops: list[Op]) -> frozenset[str]:
     """`target` and everything it builds on, within the (fork-free) source ideal `ideal_ids` --
-    `restore/cherry-pick(target) = current_ideal | downset_in(target, source_ideal)`. Chain
-    prerequisites come from `_ordered_chains` (positional order, immune to the after-value
-    collision that `downset`'s adjacency mis-resolves); `requires` and declared prerequisites are
-    closed transitively. Reference prerequisites include *every* in-ideal producer of a required
+    `restore(target) = current_ideal | downset_in(target, source_ideal)`. Chain prerequisites come
+    from `_ordered_chains` (positional order, immune to the after-value collision that `downset`'s
+    adjacency mis-resolves); `requires` prerequisites are closed transitively. Reference prerequisites include *every* in-ideal producer of a required
     version -- a safe over-approximation when a dependency itself was reverted to earlier bytes
     (two producers of one version); the final `Ideal.from_ops` still rejects any union that forks."""
-    return downset_in_many({target}, ideal_ids, ops, declared)
+    return downset_in_many({target}, ideal_ids, ops)
 
 
-def downset_in_many(targets, ideal_ids, ops: list[Op], declared: Declared = frozenset()) -> frozenset[str]:
+def downset_in_many(targets, ideal_ids, ops: list[Op]) -> frozenset[str]:
     """The set generalization of `downset_in`: everything any of `targets` builds on, within
     `ideal_ids`. Reachability closures distribute over union, so this equals
     `∪ downset_in(t)` exactly -- but pays the by-id / chain / producer index construction once
@@ -650,5 +585,4 @@ def downset_in_many(targets, ideal_ids, ops: list[Op], declared: Declared = froz
                 stack.extend(chains[sym][:i])
         for req in op.requires:  # reference prerequisites
             stack.extend(producers.get(req, ()))
-        stack.extend(a for a, b in declared if b == oid)  # declared prerequisites
     return frozenset(result)

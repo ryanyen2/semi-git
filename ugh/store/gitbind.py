@@ -1,10 +1,4 @@
-"""Binding between the semantic DAG and the underlying git repo.
-
-A node's persistent identity lives in a commit trailer (``Sgt-Node-Id: <id>``),
-which survives ``git commit --amend`` and rebase the way Gerrit's Change-Id does
-(origin R2). Commits not mapped to any node are detected as out-of-band changes
-(origin R4) so the graph never silently drifts from git.
-"""
+"""Binding between the operation-ideal kernel and the underlying git repo."""
 
 from __future__ import annotations
 
@@ -15,19 +9,13 @@ import re
 import subprocess
 import tempfile
 import threading
-import uuid
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 
-TRAILER_KEY = "Sgt-Node-Id"
-
 # The kernel's witness trailer (plan U6): one line per op a materializing commit's tree
 # embodies. Multi-valued like `Co-Authored-By` -- a commit can witness many ops at once.
 OP_TRAILER_KEY = "Sgt-Op"
-
-# D1's append-only land-log trailer: the shared-branch commit sha a log entry records landing.
-LANDED_SHA_KEY = "Sgt-Landed-Sha"
 
 # Marks a commit ugh made for its OWN mechanics -- the materialization behind a revert, a restore,
 # or an undo -- rather than work the developer did. History is append-only, so undoing is a forward
@@ -72,24 +60,6 @@ class FileChange:
     new_ranges: tuple[tuple[int, int], ...]
 
 
-def new_node_id() -> str:
-    """A short, stable node identity."""
-    return uuid.uuid4().hex[:12]
-
-
-def format_trailer(node_id: str) -> str:
-    return f"{TRAILER_KEY}: {node_id}"
-
-
-def parse_node_id(commit_message: str) -> str | None:
-    """Return the node id embedded in a commit message trailer, if any."""
-    for line in commit_message.splitlines():
-        stripped = line.strip()
-        if stripped.startswith(f"{TRAILER_KEY}:"):
-            return stripped.split(":", 1)[1].strip()
-    return None
-
-
 def format_op_trailers(op_ids) -> str:
     return "\n".join(f"{OP_TRAILER_KEY}: {oid}" for oid in op_ids)
 
@@ -124,15 +94,6 @@ def parse_op_ids(commit_message: str) -> list[str]:
         for line in commit_message.splitlines()
         if (stripped := line.strip()).startswith(f"{OP_TRAILER_KEY}:")
     ]
-
-
-def parse_landed_sha(commit_message: str) -> str | None:
-    """The landed commit sha embedded in a D1 log entry's trailer, if any."""
-    for line in commit_message.splitlines():
-        stripped = line.strip()
-        if stripped.startswith(f"{LANDED_SHA_KEY}:"):
-            return stripped.split(":", 1)[1].strip()
-    return None
 
 
 def _hunk_new_range(header: str) -> tuple[int, int] | None:
@@ -627,27 +588,9 @@ class GitBinding:
     def commit_message(self, sha: str) -> str:
         return self._git("log", "-1", "--format=%B", sha).stdout
 
-    def node_id_for_commit(self, sha: str) -> str | None:
-        return parse_node_id(self.commit_message(sha))
-
-    def file_at(self, sha: str, path: str) -> str | None:
-        """The text of ``path`` as recorded at ``sha``, or None (absent / binary / unreadable).
-
-        Reads raw bytes first (not through ``_git``'s ``text=True`` decode, which raises on
-        invalid UTF-8 instead of the None this method's contract promises) and decodes
-        ourselves so a binary blob degrades to None instead of crashing the caller.
-        """
-        raw = self.blob_bytes(sha, path)
-        if raw is None:
-            return None
-        try:
-            return raw.decode("utf-8")
-        except UnicodeDecodeError:
-            return None
-
     def blob_bytes(self, sha: str, path: str) -> bytes | None:
-        """Raw bytes of ``path`` at ``sha`` (absent -> None). Unlike ``file_at``, never decodes
-        as text -- the safe way to read a path that might be binary. Served by the repo's
+        """Raw bytes of ``path`` at ``sha`` (absent -> None). Never decodes as text -- the safe
+        way to read a path that might be binary. Served by the repo's
         persistent ``cat-file --batch`` process, not a subprocess spawn per call."""
         return self.blob_bytes_many([(sha, path)])[0]
 
@@ -1042,9 +985,9 @@ class GitBinding:
     def stage_all(self) -> None:
         self._git("add", "-A")
 
-    def commit_all(self, message: str, node_id: str | None = None, trailers: str | None = None) -> str:
-        """Stage everything and commit, embedding the node-id trailer when given, plus any
-        additional pre-formatted trailer block (e.g. `Sgt-Op:` lines, U6's witness commits).
+    def commit_all(self, message: str, trailers: str | None = None) -> str:
+        """Stage everything and commit, embedding any pre-formatted trailer block (e.g. `Sgt-Op:`
+        lines, U6's witness commits).
 
         `--allow-empty`: since Phase 1.2 moved ugh's `.sgt/` state onto `refs/ugh/state` (off the
         branch tree, gitignored), a witness commit's payload is its `Sgt-Op:` trailers -- not a tree
@@ -1053,8 +996,6 @@ class GitBinding:
         HEAD to carry the current ideal's trailers. An empty tree delta is therefore legitimate."""
         self.stage_all()
         parts = [message]
-        if node_id is not None:
-            parts.append(format_trailer(node_id))
         if trailers:
             parts.append(trailers)
         full = "\n\n".join(parts)
@@ -1062,14 +1003,6 @@ class GitBinding:
         head = self.head()
         if head is None:
             raise GitError("commit succeeded but HEAD is unresolved")
-        return head
-
-    def amend_no_edit(self) -> str:
-        """Amend HEAD keeping its message (and thus its node-id trailer)."""
-        self._git("commit", "-q", "--amend", "--no-edit")
-        head = self.head()
-        if head is None:
-            raise GitError("amend succeeded but HEAD is unresolved")
         return head
 
     # -- sync transport (U15) -----------------------------------------------

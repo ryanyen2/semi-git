@@ -284,9 +284,6 @@ through the real steps one confirmation at a time, and never guesses at a merge 
 3. **Fulfill from working tree** saves your edit as the content for that placeholder.
 4. **Land** commits the result, checked against your build and test checks like any other commit.
 
-There is a lower-level command, `ugh pin`, that this wizard does not use and does not offer,
-because it has no command-line entry point of its own.
-
 ### Hovers, diagnostics, and inlay hints
 
 Hovering a symbol shows its feature's label and id, the reason it was grouped that way, its number

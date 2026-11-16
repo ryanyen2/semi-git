@@ -1,15 +1,9 @@
-"""Assemble extracted entities into a connected graph and reduce it for display.
+"""Assemble extracted entities into a connected graph.
 
 Edges are *containment* (a class contains its methods) plus *calls/imports* (a reference
-resolves to a defining entity, file-aware so cross-file edges follow imports — mirroring the
-dependency inference in ``ugh/effects``). The graph is connected wherever the code is, which
-is the whole point: the feature forest dissolves because real code is linked.
-
-For display we expose the **transitive reduction** of the calls/imports edges (KTD8): edges
-implied by a longer path are dropped so the map shows direct relationships only. Reduction is
-defined on a DAG, so cycles (mutual recursion, circular imports) are collapsed via SCC and
-their internal edges kept intact. Containment edges are always kept. The full edge set is
-retained alongside the reduced one for queries.
+resolves to a defining entity, file-aware so cross-file edges follow imports). The graph is
+connected wherever the code is, which is the whole point: the feature forest dissolves because
+real code is linked.
 """
 
 from __future__ import annotations
@@ -41,9 +35,7 @@ class EntityEdge:
 @dataclass
 class EntityGraph:
     entities: list[Entity]
-    edges: list[EntityEdge]  # full set
-    reduced_edges: list[EntityEdge]  # transitive reduction (calls/imports) + containment
-    components: list[list[str]]  # weakly-connected component membership (entity ids)
+    edges: list[EntityEdge]
 
 
 # -- reference extraction ----------------------------------------------------
@@ -242,102 +234,8 @@ def _innermost_owner(line: int, file_ents: list[Entity]) -> Entity | None:
     return best
 
 
-# -- transitive reduction ----------------------------------------------------
-def _sccs(nodes: list[str], succ: dict[str, set[str]]) -> dict[str, int]:
-    """Tarjan SCC (iterative). Returns node -> component-id."""
-    index: dict[str, int] = {}
-    low: dict[str, int] = {}
-    on_stack: set[str] = set()
-    stack: list[str] = []
-    comp: dict[str, int] = {}
-    counter = 0
-    ncomp = 0
-
-    for root in nodes:
-        if root in index:
-            continue
-        work = [(root, iter(sorted(succ.get(root, ()))))]
-        index[root] = low[root] = counter
-        counter += 1
-        stack.append(root)
-        on_stack.add(root)
-        while work:
-            v, it = work[-1]
-            advanced = False
-            for w in it:
-                if w not in index:
-                    index[w] = low[w] = counter
-                    counter += 1
-                    stack.append(w)
-                    on_stack.add(w)
-                    work.append((w, iter(sorted(succ.get(w, ())))))
-                    advanced = True
-                    break
-                if w in on_stack:
-                    low[v] = min(low[v], index[w])
-            if advanced:
-                continue
-            if low[v] == index[v]:
-                while True:
-                    w = stack.pop()
-                    on_stack.discard(w)
-                    comp[w] = ncomp
-                    if w == v:
-                        break
-                ncomp += 1
-            work.pop()
-            if work:
-                low[work[-1][0]] = min(low[work[-1][0]], low[v])
-    return comp
-
-
-def _dag_reachable_without(u: str, v: str, succ: dict[str, set[str]]) -> bool:
-    """Is ``v`` reachable from ``u`` ignoring the direct ``u->v`` edge? (DAG)"""
-    seen: set[str] = set()
-    stack = [w for w in succ.get(u, ()) if w != v]
-    while stack:
-        cur = stack.pop()
-        if cur == v:
-            return True
-        if cur in seen:
-            continue
-        seen.add(cur)
-        stack.extend(succ.get(cur, ()))
-    return False
-
-
-def _transitive_reduction(ref_edges: list[EntityEdge]) -> list[EntityEdge]:
-    """Reduce calls/imports edges: collapse SCCs, reduce the acyclic condensation."""
-    nodes = sorted({e.src for e in ref_edges} | {e.dst for e in ref_edges})
-    succ: dict[str, set[str]] = {n: set() for n in nodes}
-    for e in ref_edges:
-        succ[e.src].add(e.dst)
-    comp = _sccs(nodes, succ)
-
-    # Condensation adjacency (between distinct SCCs only).
-    cond: dict[int, set[int]] = {}
-    for e in ref_edges:
-        cu, cv = comp[e.src], comp[e.dst]
-        if cu != cv:
-            cond.setdefault(cu, set()).add(cv)
-    # Edges of the condensation DAG that survive transitive reduction.
-    kept_cond: set[tuple[int, int]] = set()
-    for cu, dsts in cond.items():
-        for cv in dsts:
-            if not _dag_reachable_without(cu, cv, cond):
-                kept_cond.add((cu, cv))
-
-    out: list[EntityEdge] = []
-    for e in ref_edges:
-        cu, cv = comp[e.src], comp[e.dst]
-        # Keep intra-SCC (cycle) edges intact; keep inter-SCC edges on surviving condensation edges.
-        if cu == cv or (cu, cv) in kept_cond:
-            out.append(e)
-    return out
-
-
 # -- assembly ----------------------------------------------------------------
-def build_entity_graph(codebase: dict[str, str], *, edges_only: bool = False) -> EntityGraph:
+def build_entity_graph(codebase: dict[str, str]) -> EntityGraph:
     entities = extract_codebase(codebase)
     by_id = {e.id: e for e in entities}
     ents_by_file: dict[str, list[Entity]] = {}
@@ -384,63 +282,4 @@ def build_entity_graph(codebase: dict[str, str], *, edges_only: bool = False) ->
             seen_refs.add(key)
             ref_edges.append(EntityEdge(owner.id, target, etype))
 
-    edges = contains + ref_edges
-    if edges_only:
-        # Skip the transitive reduction (Tarjan SCC + reachability) and component labeling --
-        # callers that only read `.edges`/`.entities` (the miner, `cluster.signals`) pay neither.
-        reduced_edges: list[EntityEdge] = []
-        components: list[list[str]] = []
-    else:
-        reduced_edges = contains + _transitive_reduction(ref_edges)
-        components = _components([e.id for e in entities], edges)
-    return EntityGraph(entities, edges, reduced_edges, components)
-
-
-def owning_nodes(
-    entities: list[Entity], spans_by_file: dict[str, list[dict]]
-) -> dict[str, str | None]:
-    """Map each entity -> the feature node that owns the plurality of its lines (else None).
-
-    ``spans_by_file`` is ``attribute()``'s per-file blame spans as dicts (``start``/``end``/
-    ``node_id``). Plurality (most owned lines wins, ties broken by node id for determinism)
-    is robust to a decorator or blank line at the def boundary. Entities in files with no
-    blame — untracked code, all TypeScript — resolve to None and render dim (R3/R5).
-    """
-    out: dict[str, str | None] = {}
-    for e in entities:
-        spans = spans_by_file.get(e.file)
-        if not spans:
-            out[e.id] = None
-            continue
-        counts: dict[str, int] = {}
-        for sp in spans:
-            nid = sp.get("node_id")
-            if nid is None:
-                continue
-            lo, hi = max(sp["start"], e.start_line), min(sp["end"], e.end_line)
-            if lo <= hi:
-                counts[nid] = counts.get(nid, 0) + (hi - lo + 1)
-        out[e.id] = max(counts, key=lambda k: (counts[k], k)) if counts else None
-    return out
-
-
-def _components(node_ids: list[str], edges: list[EntityEdge]) -> list[list[str]]:
-    """Weakly-connected components (union-find), each a sorted list of entity ids."""
-    parent = {n: n for n in node_ids}
-
-    def find(x: str) -> str:
-        while parent[x] != x:
-            parent[x] = parent[parent[x]]
-            x = parent[x]
-        return x
-
-    def union(a: str, b: str) -> None:
-        if a in parent and b in parent:
-            parent[find(a)] = find(b)
-
-    for e in edges:
-        union(e.src, e.dst)
-    groups: dict[str, list[str]] = {}
-    for n in node_ids:
-        groups.setdefault(find(n), []).append(n)
-    return [sorted(g) for g in sorted(groups.values(), key=lambda g: sorted(g)[0])]
+    return EntityGraph(entities, contains + ref_edges)

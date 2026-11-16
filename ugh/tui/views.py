@@ -940,11 +940,6 @@ def summary_lines(view: dict, *, color: bool = True, full: bool = False,
         needs.append((f"{plural(n_drift, 'file')} {agrees(n_drift, 'differs', 'differ')}"
                       " from the recorded state",
                       "ugh save", view["drift"]["paths"], None))
-    if view.get("staged", {}).get("any"):
-        n_staged = len(view["staged"]["paths"])
-        needs.append((f"{plural(n_staged, 'file')} {agrees(n_staged, 'holds', 'hold')}"
-                      " a staged rewrite — edits blocked",
-                      None, view["staged"]["paths"], None))
     if view.get("backstop_kept"):
         needs.append((f"{plural(len(view['backstop_kept']), 'unreproducible file')} kept on disk",
                       "ugh check --tree", view["backstop_kept"], None))

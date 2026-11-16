@@ -126,28 +126,3 @@ def load_oracle_config(repo_path: str | Path = ".") -> OracleConfig | None:
     tiers = tuple(OracleTier(name=t["name"], command=t["command"]) for t in body.get("tiers", []))
     return OracleConfig(tiers=tiers)
 
-
-@dataclass(frozen=True)
-class IdentityConstraints:
-    """A durable, team-shared correction to the tiered matcher (`ugh.core.identity`), written by
-    the `identity split`/`identity join` rewrite verbs (plan U11, R14): pairs of surface ids the
-    matcher must never link as a rename/move (``never_link``), or must always link even where the
-    hash/fuzzy tiers alone wouldn't find them (``force_link``). Each pair is stored order-
-    independently (as a sorted tuple) since a rename's before/after side is a modeling detail,
-    not part of the constraint itself."""
-
-    never_link: frozenset[tuple[str, str]] = frozenset()
-    force_link: frozenset[tuple[str, str]] = frozenset()
-
-
-def load_identity_constraints(repo_path: str | Path = ".") -> IdentityConstraints:
-    """Read the committed `.sgt/identity_constraints.json`. Empty (never `None`) if the file is
-    absent, so every caller treats "no constraints" the same as "empty constraints" -- unlike
-    `load_oracle_config`, no caller needs an absence check of its own."""
-    payload = state.load_json(repo_path, "identity_constraints")
-    if payload is None:
-        return IdentityConstraints()
-    return IdentityConstraints(
-        never_link=frozenset(tuple(sorted(pair)) for pair in payload.get("never_link", [])),
-        force_link=frozenset(tuple(sorted(pair)) for pair in payload.get("force_link", [])),
-    )

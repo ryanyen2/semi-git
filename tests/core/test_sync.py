@@ -3,8 +3,8 @@
 Op-store union is nearly free (git's own file merge dedups by content-addressed path); the real
 surface under test is what isn't free: same-symbol chain forks must be *surfaced* with a concrete
 remedy rather than silently resolved, a same-id op independently mined on both clones must end up
-with both sides' provenance (git's `-X ours` alone would drop one), pins/declared-edges/the
-feature tree must reconcile across the union, and a second `sync` must be a no-op.
+with both sides' provenance (git's `-X ours` alone would drop one), pins/the feature tree must
+reconcile across the union, and a second `sync` must be a no-op.
 
 Two-clone fixtures are built directly with `GitBinding`/`lens` (no `tests/laws/corpus.py` case
 fits a bare-remote-plus-two-working-clones shape) but follow the same hermetic discipline: real
@@ -158,10 +158,7 @@ def test_forks_view_and_fork_detail_view_over_a_real_fork(tmp_path):
 
 def test_resolve_cli_lands_a_fork_with_a_manual_override_when_no_oracle_is_configured(tmp_path):
     """The guided `ugh resolve <sym> --apply` must be completable on the common path where no test
-    runner is configured. The land gate's own refusal names "land with an override", so the verb
-    forwards `--override pass` to `land()` (and skips the pointless pre-land `oracle.run` that would
-    otherwise reset the verdict to pending). Regression: before the override forwarding, an
-    unconfigured oracle left the guided verb with no way to close a fork it had drafted."""
+    runner is configured: the oracle refusal names `--override pass`, and the verb records it."""
     from ugh.api import forks_view
     from ugh.cli.resolve import _resolve
 
@@ -174,8 +171,6 @@ def test_resolve_cli_lands_a_fork_with_a_manual_override_when_no_oracle_is_confi
     symbol = report.forks[0][0]  # main.py::foo
     assert forks_view(b)["open"] == 1
 
-    # draft the reconciliation, then hand-merge both sides into the working tree
-    assert _resolve(str(b), symbol, apply=False, as_json=False) == 0
     (b / "main.py").write_text(
         "def foo():\n    return 999 + 42\n\n\ndef bar():\n    return 2\n", encoding="utf-8"
     )

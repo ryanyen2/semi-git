@@ -169,17 +169,14 @@ class Op:
     # one entry per SHA carrying >=1 non-None field; appendable; excluded from the id like provenance
     intent: str | None = None  # advisory label/rationale only; excluded from the id
     miner_version: str = MINER_VERSION
-    off_chain: bool = False  # R18: a hollow plan-intake op, not yet fulfilled. Lifecycle/storage
-    # state (which store directory holds it), not content -- excluded from the id so fulfillment
-    # (which flips this to False and splices real images) doesn't need to re-derive an identity
-    # a human's concurrent edit could have already reserved.
+    off_chain: bool = False  # R18: a hollow plan-intake op. Lifecycle/storage state (which store
+    # directory holds it), not content -- excluded from the id.
     derived: bool = False  # S4/U27: touches a generated/vendored file (e.g. a lockfile) --
     # advisory only, like intent/provenance/attribution, so review surfaces can collapse it;
     # excluded from the id since re-tagging a path derived/not-derived is not a content change.
     resolves: frozenset[str] = frozenset()  # D5: op id(s) of the fork tip(s) this op reconciles
-    # (structured counterpart to the free-text `intent` a `merge-op` hollow already carries) --
-    # advisory only, like intent/attribution; excluded from the id since which fork an op resolves
-    # is not itself part of its content.
+    # (`ugh resolve`) -- advisory only, like intent/attribution; excluded from the id since which
+    # fork an op resolves is not itself part of its content.
 
 
 def compute_id(

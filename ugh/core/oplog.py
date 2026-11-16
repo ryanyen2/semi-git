@@ -20,21 +20,6 @@ on undo -- the simplest robust inverse:
   * `feature_reorg` -- a snapshot of `tree`/`pins`/`authored_features` before the reorg
                        (merge/split/rename/move are byte-neutral for `code(I)`, so restoring the
                        three metadata artifacts is the whole inverse).
-  * `after`         -- a snapshot of the declared-edge OR-Set before the edge was added.
-  * `land`/`propose`-- provenance-only: logged, but `apply_inverse` REFUSES. A shared-out mutation
-                       already left the local clone (mirrors the `journal=checked_out` guard,
-                       `ugh/core/sync/land.py:207`), so its inverse is never applied.
-
-**`land` is undoable or not depending on where HEAD was, and that is deliberate but easy to
-misread.** A land of the *checked-out* branch journals an ordinary `ideal_edit` (via `record_ideal`
-with `journal=True`), so `ugh undo` rewinds it like any other local edit -- the shared ref moved,
-but so did this clone's HEAD, and undoing produces a normal forward edit on top. A land of a branch
-that is *not* checked out appends `kind="land"` instead, and undo refuses: this clone's tree was
-restored and the only thing that changed is a ref other people read. So "can I undo a land?" has
-one answer per case, not one answer overall -- read the two branches around
-`ugh/core/sync/land.py:317` together, and note that `kind="propose"` is accepted here defensively
-but is never actually appended (`propose land` delegates to `sync.land` and inherits its
-journaling).
 
 This is distinct from `ugh.api.oplog_view`, which projects the *content* op-DAG (the mined ops),
 not this user-action history.
@@ -90,21 +75,6 @@ def tail(repo: str | Path, *, ref_key: str | None = None) -> dict | None:
     key = ref_key if ref_key is not None else _ref_key(repo)
     stack = load(repo).get(key, []) if key is not None else []
     return stack[-1] if stack else None
-
-
-def pop(repo: str | Path, *, ref_key: str | None = None) -> dict | None:
-    """Remove and return the newest event for `ref_key`, or None if the log is empty."""
-    repo = Path(repo)
-    with locked_section(repo):
-        table = load(repo)
-        key = ref_key if ref_key is not None else _ref_key(repo)
-        stack = table.get(key, []) if key is not None else []
-        if not stack:
-            return None
-        event = stack.pop()
-        table[key] = stack
-        save(repo, table)
-        return event
 
 
 def _drop_event(repo: str | Path, key: str | None, event: dict) -> bool:
@@ -165,8 +135,8 @@ def _casualty_symbols(repo: str | Path, op_ids: frozenset[str]) -> str:
 @dataclass(frozen=True)
 class UndoOutcome:
     """What one `undo` did. `status` selects the report: `empty` (nothing to undo), `ideal_edit`
-    (an ideal was restored -- `ideal` carries the `lens.UndoResult`), `reorg`/`after` (a metadata
-    snapshot was restored), or `refused` (a shared-out land/propose whose inverse is not applied)."""
+    (an ideal was restored -- `ideal` carries the `lens.UndoResult`), `reorg` (a metadata snapshot
+    was restored), or `refused` (undo would drop work committed after the edit)."""
 
     status: str
     message: str
@@ -198,15 +168,10 @@ def preview(repo: str | Path, *, force: bool = False) -> dict:
         return _preview(None, True, "nothing to undo")
 
     kind = event.get("kind", "ideal_edit")
-    if kind in ("land", "propose"):
-        return _preview(kind, False, f"cannot undo `{kind}` -- it advanced a shared branch that "
-                                     f"already left this clone")
     if kind == "feature_reorg":
         verb = event.get("verb", "reorg")
         return _preview(kind, True, f"restores the feature grouping from before the {verb} "
                                     f"(no code changes)")
-    if kind == "after":
-        return _preview(kind, True, "retracts the declared order edge (no code changes)")
 
     # `ideal` is the state this event restores; `result` is what the edit left behind. They are
     # different sets and only `ideal` answers "what will I get back".
@@ -254,9 +219,7 @@ def _symbols_for(repo: str | Path, op_ids: frozenset[str]) -> list[str]:
 
 def undo(repo: str | Path, force: bool = False) -> UndoOutcome:
     """Pop the current ref's tail event and apply its inverse (KTD6). Reverse-chronological: each
-    call reverses exactly one event. A shared-out `land`/`propose` is *refused* (and left in place,
-    so the provenance record survives -- there is no way past it without a rebase). Absorbs current
-    reality first (R9).
+    call reverses exactly one event. Absorbs current reality first (R9).
 
     Two Phase-0 guards protect against the snapshot inverse destroying work (0.2):
       * an `ideal_edit` entry a crashed verb left unapplied (`applied=False`, F6) is *discarded*
@@ -283,13 +246,6 @@ def undo(repo: str | Path, force: bool = False) -> UndoOutcome:
         break
 
     kind = event["kind"]
-    if kind in ("land", "propose"):
-        return UndoOutcome(
-            "refused",
-            f"cannot undo `{kind}` -- it advanced a shared branch that already left this clone; "
-            f"undo only reverses local, not-yet-shared operations",
-            kind=kind,
-        )
 
     # F3 guard (0.2c): the ideal_edit inverse re-materializes an absolute snapshot of the prior
     # ideal, dropping any op present now but absent from the edit's own `result` -- i.e. work mined
@@ -316,8 +272,7 @@ def undo(repo: str | Path, force: bool = False) -> UndoOutcome:
 
 def apply_inverse(repo: str | Path, event: dict) -> UndoOutcome:
     """Apply one event's inverse, dispatching on `kind`. A snapshot kind restores its artifacts; an
-    ideal_edit re-materializes its prior ideal; a land/propose refuses (its caller in `undo`
-    short-circuits before reaching here, so this is defensive)."""
+    ideal_edit re-materializes its prior ideal."""
     from ugh.core import lens
 
     kind = event["kind"]
@@ -327,9 +282,4 @@ def apply_inverse(repo: str | Path, event: dict) -> UndoOutcome:
     if kind == "feature_reorg":
         _restore(repo, event.get("snapshot", {}))
         return UndoOutcome("reorg", f"reverted feature {event.get('verb', 'reorg')}", kind=kind)
-    if kind == "after":
-        _restore(repo, event.get("snapshot", {}))
-        return UndoOutcome("after", "retracted the declared edge", kind=kind)
-    if kind in ("land", "propose"):
-        raise ValueError(f"a shared-out `{kind}` cannot be inverted (already left this clone)")
     raise ValueError(f"unknown oplog event kind {kind!r}")

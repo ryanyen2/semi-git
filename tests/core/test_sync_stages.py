@@ -8,7 +8,6 @@ stages in isolation -- the pieces that reuse into `land`/`propose` later (U23/U2
 
 from __future__ import annotations
 
-from dataclasses import replace
 from pathlib import Path
 
 from ugh.core import lens, order, sync
@@ -36,7 +35,6 @@ def test_resolve_advances_the_fork_free_part_and_surfaces_the_fork(tmp_path):
     all_ops = [ours, theirs]
     ing = Ingested(
         ours_pins=Pins(), theirs_pins=Pins(),
-        ours_declared_orset=lens.DeclaredORSet(), theirs_declared_orset=lens.DeclaredORSet(),
         ours_tree=None,
         ours_ideal=Ideal.from_ops({ours.id}, all_ops),
         theirs_ideal_ids=frozenset({theirs.id}),
@@ -75,32 +73,6 @@ def test_ingest_unions_the_op_store_in_memory_without_touching_disk(tmp_path):
     union_ids = {op.id for op in ing.all_ops}
     assert union_ids > before_ids  # theirs' baz op(s) are present in the in-memory union
     assert ing.ops_added == len(union_ids - before_ids) > 0
-
-
-def test_resolve_reports_a_declared_cycle_but_still_produces_an_ideal(tmp_path):
-    """`resolve` drops the cyclic declared edges from the ideal it folds, reports them, and keeps
-    the full union (cycles included) in the declared OR-Set so the retraction target still travels."""
-    a, b = _two_clones(tmp_path, _BASE)
-    _edit_and_commit(a, "main.py", "def foo():\n    return 1\n\n\ndef bar():\n    return 200\n", "A: bump bar")
-    _push(a)
-
-    gb = GitBinding(b)
-    fetched = fetch(Path(b), gb, "origin", "main")
-    ing = ingest(Path(b), gb, fetched.theirs_sha, fetched.ours_sha)
-    foo_id = next(op.id for op in ing.all_ops if "main.py::foo" in op.footprint)
-    bar_id = next(op.id for op in ing.all_ops if "main.py::bar" in op.footprint)
-    ing = replace(
-        ing,
-        ours_declared_orset=lens.DeclaredORSet(adds=frozenset({(foo_id, bar_id, "t1")})),
-        theirs_declared_orset=lens.DeclaredORSet(adds=frozenset({(bar_id, foo_id, "t2")})),  # -> cycle
-    )
-
-    res = resolve(Path(b), ing)
-
-    assert not res.forks
-    assert res.merged_ideal is not None
-    assert len(res.declared_cycles) > 0
-    assert res.declared_orset.live() == frozenset({(foo_id, bar_id), (bar_id, foo_id)})
 
 
 def test_sync_materializes_exactly_the_ideal_algebra(tmp_path):
@@ -188,7 +160,7 @@ def test_u7_squash_tip_recovers_via_mining(tmp_path):
     trailers, and the in-tree `.sgt/ideal.json` recovery rung (C5) is gone with the op store's move
     off the branch tree -- so a squash where ugh never ran to push the log ref recovers by *mining*
     the divergent range (coarser, but LAW-0 reproducible), never from a tree-resident ideal record
-    that would reintroduce F10. The recovery ladder is now log -> trailers -> mine."""
+    that would reintroduce F10. The recovery ladder is now trailers -> mine."""
     remote = _init_bare(tmp_path)
     a = _clone(remote, tmp_path / "a")
     lens.init(a)
@@ -267,10 +239,6 @@ def test_u7_forged_trailers_are_rejected(tmp_path):
     assert forged not in ing.theirs_ideal_ids  # the forged id never enters theirs' ideal
 
 
-# -- D1: the land log as a rung-0 base/tip recovery method ---------------------------------------
-
-
-
 # -- U8: three-way resolve -- fork protection and base=∅ equivalence -----------------------------
 
 def _resolve_ingested(tmp_path, all_ops, ours_ids, theirs_ids, base_ids, theirs_recovery="trailers"):
@@ -279,7 +247,6 @@ def _resolve_ingested(tmp_path, all_ops, ours_ids, theirs_ids, base_ids, theirs_
     revert there (an op absent from it) drives the three-way subtraction."""
     return Ingested(
         ours_pins=Pins(), theirs_pins=Pins(),
-        ours_declared_orset=lens.DeclaredORSet(), theirs_declared_orset=lens.DeclaredORSet(),
         ours_tree=None,
         ours_ideal=Ideal.from_ops(ours_ids, all_ops),
         theirs_ideal_ids=frozenset(theirs_ids),
@@ -306,30 +273,6 @@ def test_u8_fork_tips_survive_base_subtraction(tmp_path):
 
     assert len(res.forks) == 1  # the fork survives subtraction and is surfaced, not deleted
     assert res.merged_ideal.op_ids == frozenset({a0.id})  # both tips parked at the ancestor
-
-
-def test_u8_log_recovered_theirs_revert_travels_no_resurrection(tmp_path):
-    """F25: a teammate who *landed* a revert and pushed ships their full ideal via the D1 land-log,
-    so U7 recovers theirs' tip as `"log"`. That is a full ideal exactly like `trailers`,
-    so the three-way subtraction must honor a revert absent from it -- else the reverted op is re-added
-    from our own side (silent resurrection). Drives `theirs_recovery="log"` (the helper defaults
-    `"trailers"`) and asserts the revert does not come back. Regression guard for `resolve.py:83`."""
-    a0 = make_op({"foo": (None, "v1")}, {"foo": b"1"})
-    baz = make_op({"baz": (None, "b1")}, {"baz": b"9"})  # base carried baz; theirs landed its revert
-    all_ops = [a0, baz]
-
-    ing = _resolve_ingested(
-        tmp_path, all_ops,
-        ours_ids={a0.id, baz.id},   # we still carry baz
-        theirs_ids={a0.id},         # theirs' log-recovered full ideal dropped baz (they reverted it)
-        base_ids={a0.id, baz.id},   # baz was in the recovered merge-base
-        theirs_recovery="log",
-    )
-    res = resolve(tmp_path, ing)
-
-    assert not res.forks
-    assert baz.id not in res.merged_ideal.op_ids  # the landed+pushed revert traveled -- no resurrection
-    assert res.merged_ideal.op_ids == frozenset({a0.id})
 
 
 def test_u8_empty_base_reproduces_the_plain_union(tmp_path):

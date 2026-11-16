@@ -43,26 +43,6 @@ def _op_with(ops, sym: str, needle: bytes):
     )
 
 
-def test_revert_take_dependents_removes_exactly_the_upset(tmp_path):
-    """With `take_dependents=True` (explicit, never the default), revert of a mid-chain op
-    removes that op and every op that builds on it (`↑X`), the preview names exactly what was
-    removed, and the fold reverts to the pre-op bytes -- the pre-2026-08-09 behavior."""
-    repo = _foo_chain(tmp_path / "repo", 3)
-    get(repo)
-    ops = Store(repo).all_ops()
-    mid = _op_with(ops, "a.py::foo", b"return 2")  # add(1) -> mid(2) -> tip(3)
-    tip = _op_with(ops, "a.py::foo", b"return 3")
-
-    preview = verbs.revert(repo, mid.id, emit=True, take_dependents=True)
-    assert preview.ok
-    assert preview.removed == {mid.id, tip.id}  # exactly ↑mid
-    assert "a.py::foo" in preview.affected_symbols
-
-    verbs.revert(repo, mid.id, take_dependents=True)  # apply
-    materialized = code(get(repo), Store(repo).all_ops())
-    assert materialized["a.py"] == b"def foo():\n    return 1\n"
-
-
 def test_default_revert_of_overlapping_midchain_keeps_later_work_and_reports(tmp_path):
     """The safe default never demolishes: subtracting a mid-chain op whose lines the tip also
     rewrote is a conflict, so the symbol is KEPT byte-identical and reported for a manual edit --
@@ -165,78 +145,6 @@ def test_restore_by_symbol_resolves_a_ghost_with_no_live_frontier_tip(tmp_path):
     materialized = code(get(repo), Store(repo).all_ops())
     # Byte-correct: the symbol is back, as one of its two committed versions (never a fork).
     assert materialized["a.py"] in (b"def foo():\n    return 1\n", b"def foo():\n    return 2\n")
-
-
-def test_cherry_pick_of_an_independent_op_splices_cleanly(tmp_path):
-    """cherry-pick `↓X` from a branch whose X shares the base but adds an independent symbol
-    splices into the other branch's ideal without forking."""
-    repo = tmp_path / "repo"
-    gb, _ = init_store(repo)
-    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("base foo")
-    base_branch = gb.symbolic_ref().rsplit("/", 1)[-1]
-
-    gb._git("checkout", "-q", "-b", "feature")
-    (repo / "a.py").write_text("def foo():\n    return 1\n\n\ndef bar():\n    return 2\n", encoding="utf-8")
-    gb.commit_all("feature: add independent bar")
-    get(repo)  # mine feature
-    bar_op = _op_with(Store(repo).all_ops(), "a.py::bar", b"return 2")
-
-    gb._git("checkout", "-q", base_branch)
-    main_ideal = get(repo)
-    assert bar_op.id not in main_ideal.op_ids
-
-    preview = verbs.cherry_pick(repo, bar_op.id, "feature", emit=True)
-    assert preview.ok and not preview.forked
-    assert bar_op.id in preview.added
-
-    verbs.cherry_pick(repo, bar_op.id, "feature")  # apply
-    materialized = code(get(repo), Store(repo).all_ops())
-    assert b"def foo" in materialized["a.py"] and b"def bar" in materialized["a.py"]
-
-
-def test_cherry_pick_into_a_diverged_chain_surfaces_the_fork_and_refuses(tmp_path):
-    """AE2: cherry-picking one branch's diverged edit of a symbol into the other branch's ideal
-    would fork that symbol's chain -- the verb surfaces it (`forked`) and refuses to commit."""
-    repo = corpus.CORPUS["diverged_chain"].build(tmp_path / "repo")
-    corpus.checkout(repo, "release")
-    release_ideal = get(repo)
-    corpus.checkout(repo, "main")
-    get(repo)
-    ops = Store(repo).all_ops()
-    release_tip = release_ideal.frontier(ops)["slugify.py::slugify"]
-
-    head_before = corpus.commit_shas(repo)[-1]
-    preview = verbs.cherry_pick(repo, release_tip, "release", emit=True)
-    assert not preview.ok
-    assert preview.forked
-    assert preview.after_ids == preview.before_ids  # nothing changed
-
-    # A wrapper call (non-emit) on a refused plan also commits nothing; apply() raises.
-    verbs.cherry_pick(repo, release_tip, "release")
-    assert corpus.commit_shas(repo)[-1] == head_before
-    import pytest
-    with pytest.raises(verbs.VerbError):
-        verbs.apply(repo, preview)
-
-
-def test_pin_to_an_older_version_removes_the_induced_upset(tmp_path):
-    """pin a symbol to an older version: the preview shows the induced up-set removal (the ops
-    after that version), and the fold reverts to the pinned bytes."""
-    repo = _foo_chain(tmp_path / "repo", 3)
-    get(repo)
-    ops = Store(repo).all_ops()
-    add = _op_with(ops, "a.py::foo", b"return 1")
-    mid = _op_with(ops, "a.py::foo", b"return 2")
-    tip = _op_with(ops, "a.py::foo", b"return 3")
-    v1 = add.footprint["a.py::foo"][1]  # the "return 1" version
-
-    preview = verbs.pin(repo, "a.py::foo", v1, emit=True)
-    assert preview.ok
-    assert preview.removed == {mid.id, tip.id}  # everything after v1
-
-    verbs.pin(repo, "a.py::foo", v1)  # apply
-    assert code(get(repo), Store(repo).all_ops())["a.py"] == b"def foo():\n    return 1\n"
 
 
 def test_emit_and_plan_are_side_effect_free(tmp_path):
@@ -601,19 +509,19 @@ def test_a_name_that_stopped_resolving_is_still_answered_by_the_journal(tmp_path
 
 
 def test_restore_brings_back_a_dependent_the_revert_swept(tmp_path):
-    """The direction gap, in miniature. `revert --keep-dependents=False`... i.e. the explicit
-    `take_dependents` demolition removes `↑mid` = {mid, tip}; `↓mid` = {add, mid} can never
-    return `tip`, because tip is a *dependent* of the target, not a prerequisite of it. The
-    algebraic restore therefore left the chain's head permanently gone while printing a bare ✓."""
+    """The direction gap, in miniature. Reverting the chain's head removes every later edit of the
+    symbol it created; `↓add` = {add} can never return them, because they are *dependents* of the
+    target, not prerequisites of it. The algebraic restore therefore left the chain permanently
+    gone while printing a bare ✓."""
     repo = _foo_chain(tmp_path / "repo", 3)
     original = get(repo).op_ids
     ops = Store(repo).all_ops()
-    mid = _op_with(ops, "a.py::foo", b"return 2")
+    add = _op_with(ops, "a.py::foo", b"return 1")
 
-    verbs.revert(repo, mid.id, take_dependents=True)
+    verbs.revert(repo, add.id)
     assert get(repo).op_ids != original
 
-    verbs.restore(repo, mid.id)
+    verbs.restore(repo, add.id)
     assert get(repo).op_ids == original
     assert code(get(repo), Store(repo).all_ops())["a.py"] == b"def foo():\n    return 3\n"
 
@@ -790,15 +698,15 @@ def test_restore_does_not_resurrect_what_a_later_revert_removed(tmp_path):
     repo = _foo_chain(tmp_path / "repo", 3)
     get(repo)
     ops = Store(repo).all_ops()
-    v2 = _op_with(ops, "a.py::foo", b"return 2")
+    v1 = _op_with(ops, "a.py::foo", b"return 1")
     v3 = _op_with(ops, "a.py::foo", b"return 3")
 
-    verbs.revert(repo, v2.id, take_dependents=True)  # sweeps v2 and v3 together
-    verbs.restore(repo, v2.id)
+    verbs.revert(repo, v1.id)  # sweeps the whole chain together
+    verbs.restore(repo, v1.id)
     assert v3.id in get(repo).op_ids  # the exact inverse does bring the swept dependent back
 
     verbs.revert(repo, v3.id)  # ... and now a later edit takes v3 out on purpose
-    verbs.restore(repo, v2.id)  # reversing the *first* revert again
+    verbs.restore(repo, v1.id)  # reversing the *first* revert again
 
     assert v3.id not in get(repo).op_ids
     assert code(get(repo), Store(repo).all_ops())["a.py"] == b"def foo():\n    return 2\n"

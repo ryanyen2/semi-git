@@ -363,17 +363,6 @@ def test_confirm_match_stamps_the_session_onto_the_matched_ops_provenance(tmp_pa
     assert stored.attribution == (Attribution(sha="shaX", session="s1"),)
 
 
-def test_stamp_drift_stamps_the_session_onto_named_ops(tmp_path):
-    """`stamp_drift` is the sibling writer for drift ops a caller explicitly names -- same
-    mechanism, no checkpoint required."""
-    store = Store(tmp_path)
-    op = store.add(make_op({"a.py::bar": (None, "v1")}, {"a.py::bar": b"body"}, provenance=("shaY",)))
-
-    match_mod.stamp_drift(tmp_path, "s2", [op.id])
-
-    assert store.get(op.id).attribution == (Attribution(sha="shaY", session="s2"),)
-
-
 # -- session_coverage / auto-close (file-level "looks built", not a name-exact match) --------------
 
 def test_session_coverage_flags_work_that_landed_under_a_different_name(tmp_path):

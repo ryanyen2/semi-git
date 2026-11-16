@@ -4,8 +4,8 @@ call/fallback shape exactly -- same model/effort tier, same "ground the prompt i
 own ids, never a name from thin air" instruction, same `None`-on-any-exception contract so a
 caller degrades cleanly with no key, no network, or a malformed response.
 
-Deliberately no cache (unlike `ugh.repair.api_backend.ApiBackend`): free-form queries have a
-low repeat-hit rate, so the cache would mostly hold dead weight.
+Deliberately no cache: free-form queries have a low repeat-hit rate, so the cache would mostly
+hold dead weight.
 
 **Discipline:** this module only ever names candidate refs. It never computes an op-set delta
 and never touches the ideal algebra -- the caller re-runs its own `plan_*` on each candidate to
@@ -82,7 +82,7 @@ def _vocab(repo: Path, verb: str):
 
 
 def _context(repo: Path, verb: str) -> str:
-    """Compact, no-file-bytes context (mirrors `ugh.repair.context`): known features plus the op/
+    """Compact, no-file-bytes context: known features plus the op/
     symbol vocabulary a candidate `ref` can be drawn from."""
     features, pool, op_header, sym_header = _vocab(repo, verb)
     feature_lines = "\n".join(f"{n['id']}: {n['label']}" for n in features)

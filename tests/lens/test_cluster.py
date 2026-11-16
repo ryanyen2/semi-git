@@ -190,7 +190,7 @@ def test_fuse_sums_overlapping_and_disjoint_keys():
 def test_leiden_splits_two_disjoint_dense_pairs_into_two_communities():
     nodes = ["a", "b", "c", "d"]
     weights = {("a", "b"): 5.0, ("c", "d"): 5.0}
-    parts = cluster._leiden(nodes, weights, gamma=0.1)
+    parts = cluster._leiden_partition(cluster._leiden_graph(nodes, weights), nodes, gamma=0.1)
     membership = {n: i for i, part in enumerate(parts) for n in part}
     assert membership["a"] == membership["b"]
     assert membership["c"] == membership["d"]

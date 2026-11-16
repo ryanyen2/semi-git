@@ -49,8 +49,7 @@ _EXEMPT_LINE_MARKERS = (
     "moved to",
     "->",
     # Prose that names an internal operation while stating it has no CLI entry point. That is
-    # honest documentation of an absence, not an instruction to run something -- the guide's note
-    # about `ugh pin` is the case this exists for.
+    # honest documentation of an absence, not an instruction to run something.
     "no command-line entry point",
     "has no cli entry point",
 )

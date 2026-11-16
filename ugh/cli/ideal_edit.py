@@ -1,6 +1,5 @@
 """Exact ideal-edit verbs (plan U8, flipped onto the kernel in U10): `revert` (`I \\ ↑X`) and
-`restore` (`I ∪ ↓X`), with `--emit` previews and chain-fork surfacing (AE2). `revert
---keep-dependents` (plan U11) instead drafts a continuation hollow per dependent."""
+`restore` (`I ∪ ↓X`), with `--emit` previews and chain-fork surfacing (AE2)."""
 
 from __future__ import annotations
 
@@ -134,20 +133,6 @@ def register(subs, parent) -> None:
     # `--emit` (machine dry-run: VS Code/MCP) and `--yes` (non-tty apply) stay functional but hidden
     # -- on a tty the consequence pane is the default confirm step, so a human never types them.
     r.add_argument("--emit", action="store_true", help=argparse.SUPPRESS)
-    r.add_argument("--keep-dependents", action="store_true", dest="keep_dependents")
-    r.add_argument("--keep", help="comma-separated dependent op-ids to keep (from the --emit "
-                                  "frontier); implies --keep-dependents. Empty = keep none. "
-                                  "With --to, names other LANES to preserve instead.")
-    r.add_argument("--to", type=int, metavar="COMMIT", dest="to",
-                   help="scrub <lane> back to its state as of commit <COMMIT> (a grid column "
-                        "index from `ugh log`); drops that lane's ops after it and their up-set.")
-    r.add_argument("--take-dependents", action="store_true", dest="take_dependents",
-                   help="the old blanket removal: also remove everything that builds on the "
-                        "target, later work included. The default instead subtracts the target "
-                        "from shared code at its tip and keeps later work.")
-    r.add_argument("--repair", action="store_true")
-    r.add_argument("--intent")
-    r.add_argument("--session")
     r.add_argument("--yes", action="store_true", help=argparse.SUPPRESS)
     r.add_argument("--out", default=None, metavar="DIR",
                    help="with --emit: materialize the previewed result onto DIR as raw "
@@ -166,43 +151,7 @@ def register(subs, parent) -> None:
 
 
 def _cmd_revert(args) -> int:
-    if args.session:
-        return _revert_session(".", args.session, args.emit, args.as_json, args.yes)
-    if args.to is not None:
-        # `ugh revert <lane> --to <commit>` (plan U11): the timeline-scrub edit. In this mode
-        # `--keep a,b` reinterprets its tokens as other LANE refs to preserve (not op-ids), since
-        # truncation removes a lane's post-<commit> up-set rather than toggling named dependents.
-        keep = tuple(tok for tok in (t.strip() for t in (args.keep or "").split(",")) if tok)
-        return _revert_lane_to_commit(".", args.ref, args.to, keep, args.emit, args.as_json, args.yes)
-    if args.keep_dependents or args.keep is not None:
-        # `--keep a,b` (from the --emit frontier) keeps exactly those toggleable dependents; a bare
-        # `--keep-dependents` keeps them all (keep=None); `--keep ""` keeps none (a plain revert).
-        keep = None if args.keep is None else frozenset(
-            tok for tok in (t.strip() for t in args.keep.split(",")) if tok
-        )
-        if not args.yes and not args.as_json:
-            # Every other revert shape previews and applies only on `--yes`, and that is what the
-            # tutorial teaches. This one used to mutate on sight: it writes continuation hollows
-            # into the store and registers a draft before printing anything. A pilot participant
-            # added the flag while still deciding whether to use it, got a `✓` and a draft id, and
-            # was then handed a `ugh fulfill` command that rewrote six files. A flag must not be
-            # able to turn a preview into an action.
-            #
-            # `--json` keeps applying immediately, like every other verb here: it is the machine
-            # contract VS Code and the MCP server depend on, and a caller passing it is not a
-            # person who mistook a flag for a dry run.
-            print("  `--keep-dependents` drafts a continuation hollow per kept dependent and "
-                  "records them in ugh's state.")
-            print("  It does not edit your files, but it is a mutation and it cannot be previewed "
-                  "in this shape.")
-            print(f"\n  not applied. to go ahead:  ugh revert {' '.join(args.ref)} "
-                  f"--keep-dependents --yes")
-            print("  to see what a plain removal would do instead, drop the flag:  "
-                  f"ugh revert {' '.join(args.ref)}")
-            return 2
-        return _revert_keep_dependents(".", args.ref, args.intent, args.repair, args.as_json, keep=keep)
-    return _kernel_edit_verb(".", "revert", args.ref, args.emit, args.as_json, args.yes,
-                             take_dependents=args.take_dependents, out=args.out)
+    return _kernel_edit_verb(".", "revert", args.ref, args.emit, args.as_json, args.yes, out=args.out)
 
 
 def _cmd_restore(args) -> int:
@@ -214,8 +163,7 @@ def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict
                       *, yes: bool = False, focus_fid: str | None = None,
                       out: str | None = None) -> int:
     """Shared tail for the ideal-edit verbs: `--emit` renders the preview projection; otherwise
-    apply the edit (when the preview is ok) and render the plain result view. Identical on both
-    the revert/restore and the `--session` paths. `extra` (e.g. the intent overlay's `tier`) is
+    apply the edit (when the preview is ok) and render the plain result view. `extra` (e.g. the intent overlay's `tier`) is
     merged into `view` unconditionally in both branches, before either the JSON or plain-text
     emission call -- so it's visible on both output paths, not JSON only.
 
@@ -611,28 +559,9 @@ def _subtraction_report(preview) -> list[str]:
     return lines
 
 
-def _revert_lane_to_commit(
-    repo: str, ref_tokens: list[str], commit_index: int, keep: tuple[str, ...],
-    emit: bool, as_json: bool, yes: bool = False,
-) -> int:
-    """`ugh revert <lane> --to <commit>` (plan U11): resolve <lane> to a feature, drop exactly its
-    ops after commit <commit> (plus their up-set), and preserve any lane named in `--keep`. Routed
-    through the same `_emit_verb_result` tail as every other ideal edit, so the `--emit` preview
-    carries the U4 coupling rows and apply goes through `ugh.core.verbs.apply`."""
-    from ugh.core.lens import get
-    from ugh.lens import verbs as lens_verbs
-
-    if not ref_tokens:
-        print("usage: ugh revert <lane> --to <commit> [--keep <lane>,...] [--json]")
-        return 2
-    get(repo)  # mine-on-contact before planning the edit (R9)
-    preview = lens_verbs.plan_revert_lane_to_commit(repo, " ".join(ref_tokens), commit_index, keep=keep)
-    return _emit_verb_result(repo, preview, emit, as_json, yes=yes)
-
-
 def _kernel_edit_verb(
     repo: str, cmd: str, ref_tokens: list[str], emit: bool, as_json: bool, yes: bool = False,
-    take_dependents: bool = False, out: str | None = None,
+    out: str | None = None,
 ) -> int:
     """revert/restore (plan U8, flipped onto the kernel in U10): exact ideal edits (`I \\ ↑X` /
     `I ∪ ↓X`) with `--emit` previews and chain-fork surfacing (AE2). Both verbs' targets
@@ -674,8 +603,7 @@ def _kernel_edit_verb(
         themed = _resolve_theme(repo, theme_target)
         if themed is not None:
             op_ids, label = themed
-            preview = (verbs.plan_revert_op_set(repo, label, op_ids,
-                                                take_dependents=take_dependents)
+            preview = (verbs.plan_revert_op_set(repo, label, op_ids)
                        if cmd == "revert" else
                        verbs.plan_restore_op_set(repo, label, op_ids))
             # `yes` is keyword-only; passing it positionally lands it in `extra` and the apply
@@ -700,8 +628,7 @@ def _kernel_edit_verb(
                 return _no_checkpoint_match(cmd, target, miss, as_json)
         if resolved is not None:
             op_ids, label = resolved
-            preview = (verbs.plan_revert_op_set(repo, target, op_ids,
-                                                take_dependents=take_dependents)
+            preview = (verbs.plan_revert_op_set(repo, target, op_ids)
                        if cmd == "revert" else
                        verbs.plan_restore_op_set(repo, target, op_ids))
             # The feedforward focus is the feature the checkpoint's ops belong to (all ops in one
@@ -713,13 +640,11 @@ def _kernel_edit_verb(
             return _emit_verb_result(repo, preview, emit, as_json, extra={"checkpoint": label},
                                      yes=yes, focus_fid=focus_fid, out=out)
 
-    from functools import partial
-
     from ugh.lens import verbs as lens_verbs
 
     if cmd == "revert":
-        plan_single = partial(verbs.plan_revert, take_dependents=take_dependents)
-        plan_feature = partial(lens_verbs.plan_revert_feature, take_dependents=take_dependents)
+        plan_single = verbs.plan_revert
+        plan_feature = lens_verbs.plan_revert_feature
     else:
         plan_single = verbs.plan_restore
         plan_feature = lens_verbs.plan_restore_feature
@@ -777,8 +702,7 @@ def _kernel_edit_verb(
                 by_label = resolve_checkpoint_label(repo, target)
                 if by_label is not None:
                     op_ids, chapter = by_label
-                    preview = (verbs.plan_revert_op_set(repo, target, op_ids,
-                                                        take_dependents=take_dependents)
+                    preview = (verbs.plan_revert_op_set(repo, target, op_ids)
                                if cmd == "revert" else
                                verbs.plan_restore_op_set(repo, target, op_ids))
                     from ugh.lens.tree import load as load_tree
@@ -1146,9 +1070,9 @@ def _resolve_via_ledger(repo: str, cmd: str, target: str, emit: bool, as_json: b
     if cmd != "revert":
         return None
     from ugh.core import verbs
-    from ugh.intent import align, rationale
+    from ugh.intent import rationale
 
-    phrase = set(align._content_words(target))
+    phrase = set(rationale._content_words(target))
     if not phrase:
         return None
     recs = list(rationale.load_rationale(repo).values())
@@ -1157,7 +1081,7 @@ def _resolve_via_ledger(repo: str, cmd: str, target: str, emit: bool, as_json: b
     for r in recs:  # the live, landed reasons -- mirror recall's filter (skip superseded/open/reasonless)
         if r["id"] in dead or r.get("open") or not r.get("reason"):
             continue
-        score = align.topic_overlap(phrase, align._content_words(r["reason"]))
+        score = rationale.topic_overlap(phrase, rationale._content_words(r["reason"]))
         if score:
             scored.append((score, r["ts"], r))
     if not scored:
@@ -1281,49 +1205,6 @@ def _resolve_via_intent(repo: str, cmd: str, target: str, as_json: bool, yes: bo
     return 2
 
 
-def _revert_session(repo: str, name: str, emit: bool, as_json: bool, yes: bool = False) -> int:
-    """`ugh revert --session <name>` (plan U31, S7): addressing by provenance -- resolves a
-    session name to the op-set it landed (`ugh.core.session.ops_by_session`, reading structured
-    attribution rather than the session record, so it still works long after the session itself is
-    gone) and previews/applies the exact same grouped `I \\ (∪ upset_in(x))` edit `revert <feature>`
-    already runs, through the identical `verbs.apply` path."""
-    from ugh.core import verbs
-    from ugh.core.lens import get
-
-    get(repo)  # mine-on-contact before resolving the session's ops (R9)
-    preview = verbs.plan_revert_session(repo, name)
-
-    return _emit_verb_result(repo, preview, emit, as_json, yes=yes)
-
-
-def _revert_keep_dependents(
-    repo: str, ref_tokens: list[str], intent: str | None, do_repair: bool, as_json: bool,
-    keep: frozenset[str] | None = None,
-) -> int:
-    """`revert <ref> --keep-dependents` (plan U11, R14): removes the target's up-set but drafts
-    a continuation hollow per direct reference-dependent, so its symbol stays live. `keep` (from
-    `--keep`, plan U3/R4) narrows that to a caller-chosen frontier of dependent op-ids; `None`
-    keeps them all. `--repair` (plan U6) hands the draft straight to the LLM-backed repair loop
-    instead of printing it -- the one-command happy path, symmetric with how `--keep-dependents`
-    already routes to `rewrite`."""
-    from ugh.core import rewrite
-    from ugh.core.lens import get
-
-    if not ref_tokens:
-        print("usage: ugh revert <ref> --keep-dependents [--keep <id>,<id>] [--repair]")
-        return 2
-    get(repo)
-    draft = rewrite.revert_keep_dependents(repo, " ".join(ref_tokens), intent=intent, keep=keep)
-    if not do_repair or not draft.ok:
-        return _print_draft(draft, as_json)
-
-    from ugh.repair.api_backend import ApiBackend
-    from ugh.repair.loop import repair
-
-    result = repair(repo, draft, ApiBackend(repo))
-    return _print_repair_result(result, as_json)
-
-
 def _print_verb_view(view: dict) -> int:
     from ugh.tui.graph import plural
     icon = "✓" if view["ok"] else "✗"
@@ -1338,9 +1219,8 @@ def _print_verb_view(view: dict) -> int:
         print(f"    removed {plural(len(view['removed']), 'edit')}{sym_note}")
     if view["added"]:
         print(f"    added {len(view['added'])} edit(s){sym_note}")
-    # The dependent frontier: what reverting *lands on*. blast = a direct dependent that must be
-    # re-drafted (a hollow to fulfill); carry = a transitive dependent that repoints mechanically;
-    # foundation = an upstream prerequisite a revert cannot drop. This is the "where does it lead".
+    # The dependent frontier: what reverting *lands on*. blast = a direct dependent; carry = a
+    # transitive dependent; foundation = an upstream prerequisite a revert cannot drop.
     frontier = view.get("frontier") or []
     if frontier:
         buckets: dict[str, int] = {}
@@ -1391,39 +1271,3 @@ def _print_verb_diff(files: dict, max_lines: int = 60) -> None:
                 return
             print(f"      {line}")
             shown += 1
-
-
-def _print_draft(draft, as_json: bool) -> int:
-    """The `revert --keep-dependents` draft (a `ugh.core.rewrite.RewriteDraft`)."""
-    if as_json:
-        return _emit_json({
-            "ok": draft.ok, "verb": draft.verb, "target": draft.target,
-            "draft_id": draft.draft_id, "hollow_ids": list(draft.hollow_ids),
-            "message": draft.message,
-        })
-    icon = "✓" if draft.ok else "✗"
-    print(f"{icon} [{draft.verb}] {draft.target}" + (f" — {draft.message}" if draft.message else ""))
-    if not draft.ok:
-        return 1
-    if draft.draft_id:
-        print(f"    draft: {draft.draft_id}")
-        for hid in draft.hollow_ids:
-            print(f"    hollow: {hid[:12]}")
-    return 0
-
-
-def _print_repair_result(result, as_json: bool) -> int:
-    """The `revert --keep-dependents --repair` result (a `ugh.repair.loop.RepairResult`)."""
-    if as_json:
-        return _emit_json({
-            "ok": result.ok, "sha": result.sha, "attempts": result.attempts,
-            "oracle_rounds": result.oracle_rounds, "message": result.message,
-        })
-    icon = "✓" if result.ok else "✗"
-    print(f"{icon} repair" + (f" — {result.message}" if result.message else ""))
-    if result.ok:
-        print(f"    landed {result.sha[:12]} ({result.attempts} attempt(s), "
-              f"{result.oracle_rounds} oracle round(s))")
-    if result.cost_line:
-        print(f"    {result.cost_line}")
-    return 0 if result.ok else 1

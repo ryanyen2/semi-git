@@ -2,19 +2,18 @@
 
 Before this module, `.sgt/` layout knowledge was scattered across a dozen modules, each
 hand-rolling its own path and `json.loads`/`write_text`, with no schema versioning. That is a
-problem specific to ugh: `sync` reads committed artifacts (pins, declared, tree) not just from the
+problem specific to ugh: `sync` reads committed artifacts (pins, tree) not just from the
 working tree but from *arbitrary historical git blobs* -- a teammate's ref tip can be any vintage
 (`gb.blob_bytes(theirs_sha, ...)`). So an on-disk format is never retired from the read path; once
 a new schema ships, every reader must keep parsing every schema any ugh version ever committed,
-forever. Designing that in now -- before the collaboration artifacts (committed `ideal.json`,
-`forks.json`, claims, proposals; U20-U24) exist -- is cheap; retrofitting it later is not.
+forever. Designing that in early is cheap; retrofitting it later is not.
 
 Every JSON artifact's payload is wrapped in a uniform envelope, `{"schema": <int>, "data": <body>}`.
 A payload lacking that envelope is implicitly v0 (the pre-U17 shape, byte-for-byte what is committed
 in every real repo's history today). `load_*` accept v0 *and* v1 (dispatch on the envelope); `dump`/
 `save_json` emit the current version. The same decoder serves a working-tree read and a
-blob-at-SHA read, so the historical-blob dispatch that `sync`'s `_pins_at`/`_declared_at` did ad hoc
-per artifact now lives in exactly one place (`load_blob_json`).
+blob-at-SHA read, so the historical-blob dispatch that `sync`'s `_pins_at` did ad hoc per artifact
+now lives in exactly one place (`load_blob_json`).
 
 Only the small JSON tables route through here. The content-addressed op store (`.sgt/ops/`,
 `.sgt/local/hollow/`) keeps its own atomic-write + fsck codec in `ugh.core.store` -- it is not a
@@ -71,13 +70,11 @@ class _Artifact:
     # where encode/parse time scales with the artifact and nothing diffs the file by eye.
 
 
-# The registry: logical name -> layout. New collaboration artifacts (U20-U24: committed
-# `ideal.json`, `forks.json`, `claims/`, `proposals/`) get their slot added here, all
-# `committed=True`, and inherit the envelope + blob dispatch for free.
+# The registry: logical name -> layout. A committed artifact inherits the envelope + blob dispatch
+# for free.
 _ARTIFACTS: dict[str, _Artifact] = {
     # committed, team-shared -- read from arbitrary-vintage historical blobs by `sync`.
     "oracle_config": _Artifact(("oracle.json",), committed=True),
-    "identity_constraints": _Artifact(("identity_constraints.json",), committed=True, sort_keys=False),
     "pins": _Artifact(("pins", "pins.json"), committed=True, sort_keys=False),
     "tree": _Artifact(("tree", "tree.json"), committed=True),
     # committed recovery record of a witness commit's own ideal (op-id list) -- survives a
@@ -93,10 +90,6 @@ _ARTIFACTS: dict[str, _Artifact] = {
     # membership + witness-topo LWW label + carried af- id), so it travels and is read from
     # historical blobs like every committed slot.
     "authored_features": _Artifact(("authored", "features.json"), committed=True, sort_keys=False),
-    # committed OR-Set of declared order edges (`ugh after`/`ugh after --retract`, U21/D6): adds
-    # carry a unique tag, retraction tombstones observed tags, live = adds minus tombstoned.
-    # `ugh.core.lens` resolves this down to the plain live edge set every consumer expects.
-    "declared_orset": _Artifact(("declared_edges.json",), committed=True),
     # committed three-tier file-boundary overrides (`ugh tiers set`, U27/D4): explicit
     # entity/opaque/ignored patterns, the escape hatch over the built-in grammar-presence
     # default. Read from historical blobs at mining time (`ugh.core.tiers.load_tiers_at`) so
@@ -166,15 +159,12 @@ _ARTIFACTS: dict[str, _Artifact] = {
     # store `ugh undo` walks. It began (U26) as the ideal-edit journal -- `record_ideal` still
     # pushes the outgoing ideal (+ witness) as one `ideal_edit` event before each overwrite -- and
     # U8 *subsumed* it into this one log so every mutating verb's inverse is here (feature-reorg
-    # snapshots, `after`, land/propose provenance), one pop per undo. Kept at the same slot/path so
+    # snapshots), one pop per undo. Kept at the same slot/path so
     # historical local journals still load; an entry with no `kind` is read as `ideal_edit`. Never
     # travels.
     "ideal_journal": _Artifact(("local", "ideal_journal.json"), committed=False),
-    "drafts": _Artifact(("local", "drafts.json"), committed=False),
-    "staged": _Artifact(("local", "staged.json"), committed=False),
     "label_cache": _Artifact(("local", "label_cache.json"), committed=False, sort_keys=False, newline=False),
     "intent_cache": _Artifact(("local", "intent_cache.json"), committed=False, sort_keys=False, newline=False),
-    "repair_cache": _Artifact(("local", "repair_cache.json"), committed=False, sort_keys=False, newline=False),
     "plan_sessions": _Artifact(("local", "plan_sessions.json"), committed=False),
     "plan_matches": _Artifact(("local", "plan_matches.json"), committed=False),
     # local, gitignored raw conversation-turn capture (`ugh.intent.turns`, intent-ledger M1):
@@ -203,20 +193,6 @@ _ARTIFACTS: dict[str, _Artifact] = {
     # stint derivation (P2) reads instead of a batch aligner. Verbatim conversation, so local
     # forever like `intent_turns`; compact -- it grows with every save.
     "intent_manifests": _Artifact(("local", "manifests.json"), committed=False, compact=True),
-    # local, gitignored record of scratch-tree sessions (`ugh session start`, U30/D5): name ->
-    # branch/scratch path/target branch/base op-ids/owning pid/start time. Per-clone, never
-    # travels -- a session's scratch tree is a `git worktree` of *this* clone's object store.
-    "sessions": _Artifact(("local", "sessions.json"), committed=False),
-    # local, gitignored transactional-land journal (`ugh land`, U5/R7): `{ref, snapshot}` written
-    # before the candidate tree is materialized and cleared on every landing/non-landing exit. A
-    # crash mid-land leaves it behind, so the next `land` finds it and rolls the working tree back
-    # to `snapshot`; `fsck` names the interrupted state. Per-clone, never travels.
-    "land_pending": _Artifact(("local", "land_pending.json"), committed=False),
-    # local, gitignored resume manifest for the v2->v3 op-store migration (`ugh migrate ops-v3`,
-    # U10): written before the crossing (the old->new id map + recovered current ideal), cleared
-    # after. Its presence means a migration is in flight, so a crashed `--apply` resumes from the
-    # stored map rather than recomputing it against half-pruned op files. Per-clone, never travels.
-    "migration_manifest": _Artifact(("local", "migration_manifest.json"), committed=False),
     # local, gitignored footprint-only sidecar over the op store (`ugh.core.opindex`): every op's
     # payload minus `images`, so read-only projection views skip `Store.all_ops()`'s per-op images
     # hex-decode (85%+ of the store's on-disk bytes) entirely. Self-healing (rebuilt on staleness),
@@ -262,16 +238,6 @@ _ARTIFACTS: dict[str, _Artifact] = {
     # authoritative, per-clone, never travels.
     "fused_snapshot": _Artifact(("local", "fused_snapshot.json"), committed=False),
 }
-
-
-# -- directory layout -----------------------------------------------------------------------------
-
-def sgt_dir(repo: str | Path) -> Path:
-    return Path(repo) / SGT_DIR
-
-
-def subdir(repo: str | Path, *parts: str) -> Path:
-    return Path(repo).joinpath(SGT_DIR, *parts)
 
 
 # -- artifact paths -------------------------------------------------------------------------------
@@ -365,15 +331,3 @@ def save_json_if_changed(repo: str | Path, name: str, body) -> bool:
         return False
     _atomic_write_text(p, text)
     return True
-
-
-def claims_dir(repo: str | Path) -> Path:
-    return subdir(repo, "claims")
-
-
-def proposals_dir(repo: str | Path) -> Path:
-    return subdir(repo, "proposals")
-
-
-def reviews_dir(repo: str | Path) -> Path:
-    return subdir(repo, "reviews")

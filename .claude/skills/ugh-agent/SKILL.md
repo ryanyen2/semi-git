@@ -70,7 +70,7 @@ ugh status --json
 ```
 
 It reports the counts, whether there is unsaved work, and what needs a human decision: open forks,
-working-tree drift, a staged rewrite, a git history rewrite.
+working-tree drift, a git history rewrite.
 
 Check for a `.sgt/` directory before you rely on any of it. If there is no `.sgt/`, use plain git
 and stop reading here.

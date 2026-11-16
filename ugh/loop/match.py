@@ -260,39 +260,15 @@ class _UnionFind:
             self._parent[ra] = rb
 
 
-def joined_session_ops(repo: str | Path, claude_ids) -> dict[str, list]:
-    """claude_session_id -> the new ops of every live `ugh session` that Claude Code session started
-    (`Session.claude_session_id`), for the ids in `claude_ids` only. An agent that plans on the main
-    repo and builds in a session would otherwise read "0 of 5" until it lands: the plan is recorded
-    here, its work lives in the scratch tree's own store. Mines each joined scratch on contact
-    (`new_op_ids`); a plan no live session shares a Claude id with costs nothing."""
-    from ugh.core import opindex
-    from ugh.core import session as session_mod
-
-    out: dict[str, list] = {}
-    for s in session_mod.list_sessions(repo):
-        if s.claude_session_id in claude_ids:
-            ids = session_mod.new_op_ids(s)
-            out.setdefault(s.claude_session_id, []).extend(
-                op for op in opindex.index_ops(s.scratch) if op.id in ids)
-    return out
-
-
 def compute_checkpoint(repo: str | Path) -> CheckpointResult:
     """Offline over the main repo (callers `get()` first, R9). See module docstring for the
-    per-session grouping / global-drift reconciliation. A plan joined to live `ugh session`s by its
-    `claude_session_id` also matches against their new ops (`joined_session_ops`, which mines those
-    scratch trees); those ops are never main's drift."""
+    per-session grouping / global-drift reconciliation."""
     repo = Path(repo)
     store = Store(repo)
     from ugh.core import opindex
 
     ops = opindex.index_ops(repo)  # footprint-overlap matching only -- never reads op.images
     sessions = _load_sessions(repo)
-    joined = joined_session_ops(repo, {
-        rec.get("claude_session_id") for rec in sessions.values()
-        if rec["status"] == "active" and rec.get("claude_session_id")
-    })
 
     groups: list[CheckpointGroup] = []
     matched_op_ids: set[str] = set()
@@ -304,9 +280,6 @@ def compute_checkpoint(repo: str | Path) -> CheckpointResult:
             continue
         baseline = frozenset(rec["baseline_op_ids"])
         new_ops = [op for op in ops if op.id not in baseline and op.id not in already_matched]
-        drift_pool = new_ops
-        new_ops = new_ops + [op for op in joined.get(rec.get("claude_session_id"), ())
-                             if op.id not in already_matched]
         pending_steps = [s for s in rec["steps"] if s["status"] == "pending"]
         hollows = {s["hollow_id"]: store.get_hollow(s["hollow_id"]) for s in pending_steps}
 
@@ -353,7 +326,7 @@ def compute_checkpoint(repo: str | Path) -> CheckpointResult:
         # carry real content (an entity, a nested method, or a whole file) and matched no step
         # count as drift.
         drift_candidates.update(
-            op.id for op in drift_pool if op.id not in edge_ops and not _is_ordering_only(op.footprint)
+            op.id for op in new_ops if op.id not in edge_ops and not _is_ordering_only(op.footprint)
         )
 
     drift_op_ids = tuple(sorted(drift_candidates - matched_op_ids))
@@ -491,9 +464,3 @@ def _stamp_session(store: Store, session_id: str, op_ids) -> None:
         if entries:
             store.attribute(op_id, entries)
 
-
-def stamp_drift(repo: str | Path, session_id: str, op_ids) -> None:
-    """The sibling writer to `confirm_match` for drift ops a caller explicitly names: stamp the
-    naming session onto each op's structured provenance (D7). `compute_checkpoint` stays pure --
-    stamping is never done inside it, only by an explicit call here."""
-    _stamp_session(Store(Path(repo)), session_id, op_ids)

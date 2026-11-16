@@ -328,9 +328,32 @@ def _fold_plan_matches(repo: str) -> dict | None:
             "drift_op_ids": list(result.drift_op_ids), "auto_closed": auto_closed}
 
 
+def _resolve_op(repo, ops, ref: str) -> tuple[str | None, str]:
+    """Resolve `ref` against the whole store: `<ref>:<file::symbol>` resolves that ref's own
+    frontier tip for the symbol; otherwise `ref` is an exact op-id or an unambiguous prefix."""
+    from ugh.core import lens
+
+    if ":" in ref:
+        branch, _, sym = ref.partition(":")
+        if "::" in sym:
+            tip = lens.ideal_for_ref(repo, branch).frontier(ops).get(sym)
+            if tip is None:
+                return None, f"symbol {sym!r} is not live on {branch!r}"
+            return tip, ""
+    ids = {op.id for op in ops}
+    if ref in ids:
+        return ref, ""
+    matches = sorted(oid for oid in ids if oid.startswith(ref))
+    if len(matches) == 1:
+        return matches[0], ""
+    if matches:
+        return None, f"ambiguous op-id prefix {ref!r}: {matches[:5]}"
+    return None, f"{ref!r} is not a known op id (use <ref>:<file::symbol> to resolve on another branch)"
+
+
 def _resolve_prefix(ref: str, known: set[str], kind: str) -> tuple[str | None, str]:
     """Resolve `ref` to a full id in `known` -- exact, else unique prefix -- mirroring
-    `rewrite._resolve_op` for ids that aren't ops (a pending hollow). The `--resolve-plan` output
+    `_resolve_op` for ids that aren't ops (a pending hollow). The `--resolve-plan` output
     prints truncated ids, so a user pasting one back must resolve, not be rejected for not being a
     verbatim full id (and a silently-wrong key must never reach `plan_matches.json`)."""
     if ref in known:
@@ -352,7 +375,6 @@ def _confirm_plan_match(repo: str, hollow_refs: list[str], op_refs: list[str], a
     would resurface as drift on the next checkpoint."""
     from pathlib import Path
 
-    from ugh.core.rewrite import _resolve_op
     from ugh.core.store import Store
     from ugh.loop import plan as plan_mod
     from ugh.loop.match import confirm_match
@@ -755,7 +777,7 @@ def _undo(repo: str, as_json: bool, *, force: bool = False, emit: bool = False) 
                   "if you want them back")
         return 0
 
-    # A metadata-snapshot kind (feature reorg / declared edge).
+    # A metadata-snapshot kind (feature reorg).
     if as_json:
         return _emit_json({"ok": True, "undone": True, "kind": outcome.kind, "message": outcome.message})
     print(f"✓ undo: {outcome.message}")

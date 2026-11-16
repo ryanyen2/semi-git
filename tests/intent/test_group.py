@@ -202,7 +202,7 @@ def test_coupled_when_requires_edge_crosses_feature_boundary(tmp_path):
     ops = Store(tmp_path).all_ops()
     all_op_ids = frozenset(op.id for op in ops)
 
-    result = group.tier(all_op_ids, frozenset({"c1", "c2"}), ops, frozenset(), op_leaf)
+    result = group.tier(all_op_ids, frozenset({"c1", "c2"}), ops, op_leaf)
     assert result == group.COUPLED
 
 
@@ -217,7 +217,7 @@ def test_co_changed_same_commit_spans_features_no_dep_edge(tmp_path):
     ops = Store(tmp_path).all_ops()
     all_op_ids = frozenset(op.id for op in ops)
 
-    result = group.tier(all_op_ids, frozenset({"c1"}), ops, frozenset(), op_leaf)
+    result = group.tier(all_op_ids, frozenset({"c1"}), ops, op_leaf)
     assert result == group.CO_CHANGED
 
 
@@ -233,7 +233,7 @@ def test_thematic_multi_commit_scope_bundle_spans_features_no_dep_edge(tmp_path)
     ops = Store(tmp_path).all_ops()
     all_op_ids = frozenset(op.id for op in ops)
 
-    result = group.tier(all_op_ids, frozenset({"c1", "c2"}), ops, frozenset(), op_leaf)
+    result = group.tier(all_op_ids, frozenset({"c1", "c2"}), ops, op_leaf)
     assert result == group.THEMATIC
 
 
@@ -269,7 +269,7 @@ def test_tier_does_not_crash_on_a_group_missing_its_chain_head(tmp_path):
     bar_op = _op_for(tmp_path, "b.py::bar")
 
     group_op_ids = frozenset({modify_op.id, bar_op.id})  # missing modify_op's chain head
-    result = group.tier(group_op_ids, frozenset({"c1", "c2"}), ops, frozenset(), op_leaf)
+    result = group.tier(group_op_ids, frozenset({"c1", "c2"}), ops, op_leaf)
     assert result in (group.CO_CHANGED, group.THEMATIC, group.COUPLED)  # must not raise
 
 
@@ -284,8 +284,8 @@ def test_tier_is_stable_across_repeated_computation(tmp_path):
     ops = Store(tmp_path).all_ops()
     all_op_ids = frozenset(op.id for op in ops)
 
-    first = group.tier(all_op_ids, frozenset({"c1"}), ops, frozenset(), op_leaf)
-    second = group.tier(all_op_ids, frozenset({"c1"}), ops, frozenset(), op_leaf)
+    first = group.tier(all_op_ids, frozenset({"c1"}), ops, op_leaf)
+    second = group.tier(all_op_ids, frozenset({"c1"}), ops, op_leaf)
     assert first == second
 
 

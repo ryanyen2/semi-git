@@ -35,6 +35,11 @@ def _mine_fully(repo) -> None:
     raise AssertionError(f"{repo}: backfill did not reach genesis after 10 get() chunks")
 
 
+def _segments(repo, op_leaf: dict[str, str]) -> dict:
+    runs = segment.feature_runs(repo, op_leaf)
+    return {fid: segment.segment_runs(runs[fid]) for fid in sorted(runs)}
+
+
 def _save_tree(repo, leaves: dict[str, list[str]]) -> dict[str, str]:
     nodes = {fid: _leaf(members, fid) for fid, members in leaves.items()}
     ops = Store(repo).all_ops()
@@ -170,8 +175,8 @@ def test_segmentation_is_deterministic(tmp_path):
     _mine_fully(tmp_path)
 
     op_leaf = _save_tree(tmp_path, {"F-A": ["a.py::foo", "b.py::bar"]})
-    first = segment.deterministic_segments(tmp_path, op_leaf)
-    second = segment.deterministic_segments(tmp_path, op_leaf)
+    first = _segments(tmp_path, op_leaf)
+    second = _segments(tmp_path, op_leaf)
     assert first == second
 
 
@@ -196,7 +201,7 @@ def _feature_with_two_segments(tmp_path):
     tree.save(tmp_path, {"nodes": nodes, "roots": ["F-A"],
                          "op_leaf": tree.assign_ops_to_leaves(nodes, ops),
                          "max_depth": 0, "cannot_link_moves": [], "identity_events": []})
-    return segment.deterministic_segments(tmp_path, op_leaf)["F-A"]
+    return _segments(tmp_path, op_leaf)["F-A"]
 
 
 def test_resolve_checkpoint_by_feature_id_and_index(tmp_path):
@@ -413,7 +418,7 @@ def _granularity_fixture(tmp_path):
 
     _mine_fully(tmp_path)
     op_leaf = _save_tree(tmp_path, leaves)
-    return segment.deterministic_segments(tmp_path, op_leaf)
+    return _segments(tmp_path, op_leaf)
 
 
 def test_granularity_metric_median_cars_per_feature(tmp_path):

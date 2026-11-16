@@ -2,9 +2,8 @@
 
 `ugh` versions *features* (effect bundles). This package adds the orthogonal, read-only
 *entity* view: functions/classes/methods parsed straight from the working tree with
-tree-sitter, connected by containment + calls/imports. It never authors code and never
-touches the effect log — features paint onto these entities as a colored overlay (see
-``ugh/effects/attribute.py`` + ``ugh/api.py``).
+tree-sitter, connected by containment + calls/imports. It never authors code; features paint
+onto these entities as a colored overlay (see ``ugh/api.py``).
 """
 
 from __future__ import annotations

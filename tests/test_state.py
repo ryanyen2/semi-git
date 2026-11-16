@@ -240,20 +240,20 @@ def test_concurrent_locked_section_writers_lose_no_update(tmp_path):
     import threading
     from ugh.core.store import Store, locked_section
     Store(tmp_path).init()
-    state.save_json(tmp_path, "drafts", {"items": []})
+    state.save_json(tmp_path, "suggestions", {"items": []})
     barrier = threading.Barrier(2)
 
     def _append(tag):
         barrier.wait()
         for _ in range(50):
             with locked_section(tmp_path):
-                body = state.load_json(tmp_path, "drafts", default={"items": []})
+                body = state.load_json(tmp_path, "suggestions", default={"items": []})
                 body["items"].append(tag)
-                state.save_json(tmp_path, "drafts", body)
+                state.save_json(tmp_path, "suggestions", body)
 
     a = threading.Thread(target=_append, args=("a",))
     b = threading.Thread(target=_append, args=("b",))
     a.start(); b.start(); a.join(); b.join()
 
-    items = state.load_json(tmp_path, "drafts")["items"]
+    items = state.load_json(tmp_path, "suggestions")["items"]
     assert items.count("a") == 50 and items.count("b") == 50  # no lost update

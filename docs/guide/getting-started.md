@@ -100,7 +100,7 @@ litellm proxy serving Claude models, and pick the model with `UGH_MODEL`. The de
 | --- | --- |
 | `.sgt/ops/` | The op store, committed to git along with your code. |
 | `.sgt/tree/` | The feature tree from `ugh log --tree`, also committed. |
-| `.sgt/local/` | Working state for this checkout only, and not committed. Holds the current state, drafts, staged rewrites, and sessions. |
+| `.sgt/local/` | Working state for this checkout only, and not committed. Holds the current state, the undo journal, plans, and caches. |
 | `.git/` | Ordinary git, where `ugh` commits the files it builds from that state. |
 
 The directory is `.sgt/` because the tool used to be called sgt. Every op store ever committed sits

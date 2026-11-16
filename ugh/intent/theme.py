@@ -335,7 +335,6 @@ def build_themes(repo: str | Path) -> dict[str, dict]:
     kept out of every read/sync path. Content-hash caching (U4) makes a post-sync rebuild cheap:
     atoms unchanged by the sync hit the cache; only genuinely new atoms cost a live call."""
     from ugh.core import opindex
-    from ugh.core.lens import _load_declared
     from ugh.intent.group import atoms as _atoms
     from ugh.intent.group import scope_bundles
 
@@ -343,8 +342,7 @@ def build_themes(repo: str | Path) -> dict[str, dict]:
     themer = IntentThemer(repo)
     all_atoms = _atoms(repo)
     all_ops = opindex.index_ops(repo)  # footprint/provenance only -- themes never reads .images
-    declared = _load_declared(repo)
-    bundles = scope_bundles(all_atoms, all_ops, declared)
+    bundles = scope_bundles(all_atoms, all_ops)
 
     themes: dict[str, dict] = {}
     scopeless: list[IntentAtom] = []

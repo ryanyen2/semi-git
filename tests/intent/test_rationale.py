@@ -207,3 +207,12 @@ def test_auto_retire_overlap_needs_full_coverage(tmp_path):
                                      predicted_symbols=["a.py::foo", "a.py::bar"], ts=100.0)
     assert rationale.auto_retire_open(tmp_path, now=100.0) == []  # a.py::bar never landed
     assert rid in {r["id"] for r in rationale.open_intents(tmp_path)}
+
+
+def test_content_words_keeps_topical_tokens_drops_fillers_and_shorts():
+    w = rationale._content_words("make the search better, fix the bug")
+    assert "search" in w          # a real topic word survives
+    assert "make" not in w        # dev-filler stopword dropped
+    assert "better" not in w      # dev-filler stopword dropped
+    assert "bug" not in w         # too short (< 4) -- contentless, correctly no anchor
+    assert "the" not in w         # too short

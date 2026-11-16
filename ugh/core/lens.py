@@ -102,7 +102,7 @@ class ExclusionORSet:
     durable: `ideal(ref) = reduce(provenance-in-ancestry − exclusions.live())`, so a later git
     history rewrite that re-mines the same content under a new sha (rebase/cherry-pick) can no
     longer resurrect a reverted op through provenance -- the exclusion subtracts it regardless
-    (F11/F20). Mirrors `DeclaredORSet`; per-ref, local (never travels -- that is 1.2/Phase 4)."""
+    (F11/F20)."""
 
     adds: frozenset[tuple[str, str]] = frozenset()  # (op_id, tag)
     tombstones: frozenset[str] = frozenset()  # tombstoned tags
@@ -117,7 +117,7 @@ class ExclusionORSet:
         return hashlib.sha256(",".join(sorted(self.live())).encode()).hexdigest()[:16]
 
     def union(self, other: ExclusionORSet) -> ExclusionORSet:
-        """Merge two clones' OR-Sets by tag (Phase 1.2 §E), exactly like `DeclaredORSet.union`: a
+        """Merge two clones' OR-Sets by tag (Phase 1.2 §E): a
         concurrent revert (an add carrying a tag the other side never saw) survives, and a restore
         (a tombstone) travels. Never merges by bare op-id -- that is what makes the shared exclusion
         log a CRDT rather than a lossy last-writer-wins set."""
@@ -295,83 +295,6 @@ def _save_ideal_journal(repo: Path, journal: dict[str, list[dict]]) -> None:
     state.save_json(repo, "ideal_journal", journal)
 
 
-Edge = tuple[str, str]  # (a, b) meaning a <= b
-
-
-@dataclass(frozen=True)
-class DeclaredORSet:
-    """The declared order edges as an OR-Set (U21/D6): each `add` carries a globally-unique tag, a
-    `remove` tombstones the tags it locally observes, and the *live* edge set is every edge value
-    with at least one non-tombstoned tag. This is what makes a retraction durable, travelling state
-    -- a concurrent add elsewhere (a tag this clone never saw) survives the retraction, and a
-    resolved retraction stays resolved after sync, unlike the pre-U21 flat G-Set which could only
-    ever grow. Two clones' OR-Sets merge by tag (`union`), never by bare edge value."""
-
-    adds: frozenset[tuple[str, str, str]] = frozenset()  # (a, b, tag)
-    tombstones: frozenset[str] = frozenset()  # tombstoned tags
-
-    def live(self) -> frozenset[Edge]:
-        """Every edge value that still has an un-tombstoned tag -- what `order` actually consumes."""
-        dead = self.tombstones
-        return frozenset((a, b) for (a, b, tag) in self.adds if tag not in dead)
-
-    def union(self, other: DeclaredORSet) -> DeclaredORSet:
-        return DeclaredORSet(self.adds | other.adds, self.tombstones | other.tombstones)
-
-
-def _orset_from_body(body: dict | None) -> DeclaredORSet:
-    if body is None:
-        return DeclaredORSet()
-    return DeclaredORSet(
-        adds=frozenset((a, b, tag) for a, b, tag in body.get("adds", [])),
-        tombstones=frozenset(body.get("tombstones", [])),
-    )
-
-
-def load_declared_orset(repo: Path) -> DeclaredORSet:
-    """The declared-edge OR-Set from the working tree (empty when the file doesn't exist yet)."""
-    return _orset_from_body(state.load_json(repo, "declared_orset"))
-
-
-def declared_orset_at(gb: GitBinding, sha: str) -> DeclaredORSet:
-    """A teammate's declared-edge OR-Set as committed at `sha` -- the historical-blob read `sync`
-    unions by tag."""
-    return _orset_from_body(state.load_blob_json(gb, sha, "declared_orset"))
-
-
-def save_declared_orset(repo: Path, orset: DeclaredORSet) -> None:
-    """Persist the OR-Set."""
-    state.save_json(repo, "declared_orset", {
-        "adds": sorted([a, b, tag] for a, b, tag in orset.adds),
-        "tombstones": sorted(orset.tombstones),
-    })
-
-
-def declare_after(repo: Path, a: str, b: str) -> None:
-    """`ugh after a b`: add the edge `a <= b` with a fresh, globally-unique tag (OR-Set add)."""
-    from ugh.core import oplog
-
-    snap = oplog.snapshot(repo, ["declared_orset"])  # inverse: the OR-Set before the add
-    # Record the inverse for `undo` (U8) *before* mutating, so a failed edge write is still
-    # recoverable. Best-effort like the D1 land log: `after` runs on repos that may lack a HEAD/ref
-    # (a bare `.sgt` dir in a unit test), so a failed append must never break the edge add.
-    try:
-        oplog.append(repo, {"kind": "after", "snapshot": snap, "edge": [a, b]})
-    except Exception:  # noqa: BLE001 -- provenance logging is never load-bearing for the mutation
-        pass
-    orset = load_declared_orset(repo)
-    save_declared_orset(repo, orset.union(DeclaredORSet(adds=frozenset({(a, b, uuid.uuid4().hex)}))))
-
-
-def _load_declared(repo: Path) -> frozenset[Edge]:
-    """The *live* declared order edges (`ugh after a b` -> `(a, b)` meaning `a <= b`, U8's escape
-    hatch for ordering the analyzer can't infer) -- the OR-Set resolved down to the plain edge set
-    every consumer (`order`'s validity + up/down-sets, `sync`'s cycle detection) expects. Repo-
-    global, not per-ref: an edge is a fact about two ops' content, independent of the checked-out
-    ref."""
-    return load_declared_orset(repo).live()
-
-
 def _ref_key(gb: GitBinding) -> str | None:
     """This ref's stable key in the witness table: its symbolic name, or the raw HEAD sha in
     detached-HEAD state (each detached position tracked independently)."""
@@ -389,7 +312,7 @@ def current_ref_key(repo: str | Path) -> str | None:
 # The ideal machinery's expensive derivations -- grounding + fork-freedom (`is_valid_ideal`,
 # re-run by `Ideal.from_ops` on every construction) and provenance-set reduction
 # (`order.reduce_to_ideal`) -- are pure functions of the *content-addressed id set* they're
-# given (with the default empty declared-edge set these read paths use). A CLI command is a
+# given. A CLI command is a
 # fresh process, so the kernel's in-process memos never carry across commands, and every command
 # re-paid the same O(ops) derivations for the same unchanged ideals. These stamps persist the
 # digest of each id set that passed validation (and each reduction's dropped-set) so the *next*
@@ -441,9 +364,7 @@ def _derive_record(repo: Path, st: dict) -> None:
 
 def _validated_from_ops(repo: Path, ids, ops: list) -> Ideal:
     """`Ideal.from_ops` with the persisted validity stamp: a stamped digest skips grounding +
-    fork-freedom (fixed by the content-addressed ids, default declared edges only -- callers
-    passing explicit declared edges must use `Ideal.from_ops` directly), while presence is
-    checked live either way. An unstamped set takes the full check and earns its stamp."""
+    fork-freedom (fixed by the content-addressed ids), while presence is checked live either way. An unstamped set takes the full check and earns its stamp."""
     ids = frozenset(ids)
     st = _derive_state(repo)
     digest = _ids_digest(ids)
@@ -457,7 +378,7 @@ def _validated_from_ops(repo: Path, ids, ops: list) -> Ideal:
 
 
 def _reduced_ideal_ids(repo: Path, raw_ids, ops: list) -> frozenset[str]:
-    """`order.reduce_to_ideal` (default declared edges) with the persisted dropped-set stamp:
+    """`order.reduce_to_ideal` with the persisted dropped-set stamp:
     the reduction of a given present-op id set is fixed by content addressing, so only the
     (usually tiny) dropped set is stored and the result is `present-filtered ids - dropped`."""
     present = {op.id for op in ops}
@@ -1318,13 +1239,6 @@ def put(repo: str | Path, ideal: Ideal, message: str = "ugh: materialize ideal",
     reduced, and materialized exactly as before."""
     repo = Path(repo)
     gb = GitBinding(repo)
-    # A staged rewrite candidate deliberately leaves the tree dirty (U6). `put`'s `get()` would
-    # re-mine those un-landed bytes and its fold would clobber them, committing a mixture -- so any
-    # materializing edit refuses while a stage is live.
-    if state.load_json(repo, "staged", default=None) is not None:
-        raise DirtyWorkingTreeError(
-            "a rewrite candidate is staged -- another materializing edit would overwrite it"
-        )
     get(repo)  # absorb any dirty tree / foreign commit first (R9)
     store = Store(repo)
     all_ops = store.all_ops()
@@ -1369,12 +1283,9 @@ def put(repo: str | Path, ideal: Ideal, message: str = "ugh: materialize ideal",
 
 
 def commit_materialized(repo: str | Path, ideal: Ideal, message: str) -> str:
-    """Commit an `ideal` whose `code(I)` bytes are *already* on the working tree -- the rewrite
-    staging path (U6). Unlike `put`, this neither re-mines the deliberately-dirty staged tree nor
-    re-materializes: the staged bytes `stage` wrote are authoritative, so it just commits with the
-    op trailers. The caller (`rewrite.land`) owns the staleness check that guarantees the tree still
-    equals the staged candidate, so the commit can never capture a mixture. (Phase 1.2 removed the
-    in-tree `.sgt/ideal.json` recovery write here too; see `put`.)"""
+    """Commit an `ideal` whose `code(I)` bytes are *already* on the working tree (`ugh resolve`).
+    Unlike `put`, this neither re-mines the tree nor re-materializes: it just commits with the op
+    trailers."""
     repo = Path(repo)
     gb = GitBinding(repo)
     sha = gb.commit_all(message, trailers=format_op_trailers(sorted(ideal.op_ids)))
@@ -1686,7 +1597,7 @@ def materialization_skips(
     }
 
 
-_TREE_CLASSES = ("drift", "unmanaged", "backstop_kept", "staged", "unseeded")
+_TREE_CLASSES = ("drift", "unmanaged", "backstop_kept", "unseeded")
 
 
 def fsck_tree(repo: str | Path) -> dict[str, list[str]]:
@@ -1694,8 +1605,7 @@ def fsck_tree(repo: str | Path) -> dict[str, list[str]]:
     every divergent path. Only `drift` is a real finding -- bytes at HEAD that ugh never absorbed
     (`get` to absorb, or `put` to enforce the ideal, with opposite data-loss profiles). The rest
     are planned divergence: `unmanaged` (a symlink), `backstop_kept` (a path the ideal dropped
-    whose HEAD bytes no valid ideal can regenerate), `staged` (an in-progress rewrite candidate),
-    or `unseeded` (a ref this lens never tracked -- a fresh clone or detached HEAD, not drift)."""
+    whose HEAD bytes no valid ideal can regenerate), or `unseeded` (a ref this lens never tracked -- a fresh clone or detached HEAD, not drift)."""
     repo = Path(repo)
     gb = GitBinding(repo)
     result: dict[str, list[str]] = {k: [] for k in _TREE_CLASSES}
@@ -1708,7 +1618,6 @@ def fsck_tree(repo: str | Path) -> dict[str, list[str]]:
     materialized = code(ideal, all_ops)
     key = _ref_key(gb) or head
     seeded = key in _load_ideal_table(repo)
-    staged_active = state.load_json(repo, "staged", default=None) is not None
 
     candidates = set(materialized) | set(_tracked_paths(repo))
     reproducible: dict[str, bytes] | None = None
@@ -1717,25 +1626,12 @@ def fsck_tree(repo: str | Path) -> dict[str, list[str]]:
             continue
         mat = materialized.get(path)
         head_bytes = gb.blob_bytes(head, path)
-        # A live stage (U6) deliberately leaves an uncommitted rewrite candidate on the working
-        # tree; a path whose *disk* bytes differ from the committed ideal is that candidate --
-        # planned divergence classified `staged`, never `drift`. Checked before the HEAD comparison
-        # because a stage's committed ideal still equals HEAD, so the mat-vs-HEAD test below can
-        # never see the candidate (it lives only on disk).
-        if staged_active and not _writes_through_symlink(repo, path):
-            full = repo / path
-            on_disk = full.read_bytes() if full.is_file() else None
-            if on_disk != mat:
-                result["staged"].append(path)
-                continue
         if mat == head_bytes:
             continue  # the ideal reproduces HEAD's bytes exactly -- no divergence
         if _writes_through_symlink(repo, path):
             result["unmanaged"].append(path)
         elif not seeded:
             result["unseeded"].append(path)
-        elif staged_active:
-            result["staged"].append(path)
         elif mat is None and head_bytes is not None:
             if reproducible is None:
                 # `None`, not `all_ops`: the reproducibility read folds the *maximal* ideal,

@@ -1,5 +1,5 @@
 """`ugh sync [remote] [branch]` (plan U15, R19/AE4): fetch a teammate's work, union the op
-store, reconcile pins/declared-edges/the feature tree, and surface any same-symbol chain fork
+store, reconcile pins and the feature tree, and surface any same-symbol chain fork
 (with the `ugh resolve` remedy) instead of doing a textual merge. `push` lives alongside it."""
 
 from __future__ import annotations
@@ -66,12 +66,6 @@ def _push(repo: str, remote: str | None, branch: str | None, as_json: bool) -> i
         return 1
     except (GitError, ValueError) as e:
         return _fail_json(str(e), as_json)
-
-    # D1: best-effort push of the land log ref, so teammates can use it for base recovery too. The
-    # branch push above is the one that must succeed; this is advisory transport, not correctness.
-    from ugh.core.sync import log as _log
-    log_ref = _log.log_ref(branch)
-    gb.push_ref(remote, f"{log_ref}:{log_ref}")
 
     if as_json:
         return _emit_json({"ok": True, "remote": remote, "branch": branch, "pushed_sha": sha})
@@ -225,6 +219,4 @@ def _sync(repo: str, remote: str | None, branch: str | None, as_json: bool) -> i
         print(f"    ⚠ {len(report.pin_contradictions)} pin contradiction(s):")
         for c in report.pin_contradictions:
             print(f"      {c.detail}")
-    if report.declared_cycles:
-        print(f"    ⚠ {len(report.declared_cycles)} declared-edge cycle(s): {report.declared_cycles}")
     return 1 if report.forks else 0

@@ -73,7 +73,7 @@ If the symbol already has a *different* live version (you reverted, kept working
 old one back), `restore` does not silently do nothing and does not fork: it explains that only one
 version of a symbol can be live, names both versions by the save each came from, and prints the
 two ways forward — swap (`ugh revert <live>` then `ugh restore <ghost>`) or reconcile
-(`ugh resolve <symbol>`, which combines them through the merge-op flow).
+(`ugh resolve <symbol>`, which combines them).
 
 The target here was a `file::symbol` name. It can also be an op id, a feature, or one of a
 feature's checkpoints:
@@ -169,7 +169,8 @@ ugh status
 Bob resolves it:
 
 ```bash
-ugh resolve main.py::foo          # the guided one-liner: drafts the merge, then --apply lands it
+# edit main.py so foo holds the version you want, then:
+ugh resolve main.py::foo --apply
 ```
 
 `resolve --apply` runs your build and test checks against the reconciled version first and refuses

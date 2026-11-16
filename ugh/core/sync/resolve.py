@@ -6,13 +6,12 @@ tips are surfaced as durable state. The construction removes each forked symbol'
 up-sets from the union -- a downward-closed set minus an upward-closed set is still downward-closed,
 so the remainder is a valid ideal *by construction* (the forked tips, and everything transitively
 built on either of them, are the only ops excluded; the common ancestor below the fork and every
-unrelated chain proceed). A cyclic declared union folds without the offending edges (they travel
-and are reported for `ugh after` retraction, never raised), pins union structurally with
-contradictions reported, and the feature tree is rebuilt from the fork-free union (Greene-matched
-against ours' own last tree so our feature ids stay stable).
+unrelated chain proceed). Pins union structurally with contradictions reported, and the feature
+tree is rebuilt from the fork-free union (Greene-matched against ours' own last tree so our feature
+ids stay stable).
 
-`propose` validation (U24) reuses `ingest -> resolve` as a dry run, so this stage takes its inputs
-explicitly and produces its outputs without persisting anything.
+`plan_sync` reuses `ingest -> resolve` as a dry run, so this stage takes its inputs explicitly and
+produces its outputs without persisting anything.
 """
 
 from __future__ import annotations
@@ -35,8 +34,6 @@ from .ingest import Ingested
 class Resolution:
     forks: tuple[tuple[str, str, str], ...]
     merged_ideal: Ideal | None = None
-    declared_orset: lens.DeclaredORSet | None = None
-    declared_cycles: tuple[tuple[str, str], ...] = ()
     unioned_pins: Pins | None = None
     pin_contradictions: tuple[Contradiction, ...] = ()
     tree_result: dict | None = None
@@ -55,20 +52,7 @@ def resolve(repo: Path, ing: Ingested) -> Resolution:
     theirs = ing.theirs_ideal_ids
     union_ids = ours | theirs
 
-    # Declared edges union as an OR-Set by tag (U21/D6): the live edge set is every edge value with
-    # a surviving (non-tombstoned) tag, so a retraction on one side travels while a concurrent add
-    # on the other survives. `order` still consumes the plain live edge set (`fold-time` cycle
-    # exclusion is unchanged -- it runs over the live edges).
-    declared_orset = ing.ours_declared_orset.union(ing.theirs_declared_orset)
-    declared = declared_orset.live()
-
     fork_triples = order.forks(ing.all_ops, union_ids)
-
-    # A cyclic declared union can never be honored -- fold without the offending edges (report them
-    # for `ugh after` retraction) rather than letting `Ideal.from_ops` raise on it. The full union
-    # (cycles included) still travels to disk, so the retraction target is visible on both clones.
-    declared_cycles = order.find_declared_cycles(ing.all_ops, declared)
-    usable_declared = declared - set(declared_cycles)
 
     # Three-way subtraction (U8/R10-R11): a blind `ours ∪ theirs` resurrects anything a teammate
     # reverted -- the op is still in the *other* side's ideal, so the union re-adds it. An op present
@@ -79,15 +63,13 @@ def resolve(repo: Path, ing: Ingested) -> Resolution:
     base = ing.base_ideal_ids
     # The subtraction needs each side's *full* ideal against `base`. Ours always is (it's
     # `current_ideal`, so `base - ours` is a genuine ours-side revert). Theirs' revert shows as an op
-    # *absent* from its ideal only when U7 recovered a full ideal (`log`/`trailers`).
-    # `log` is a teammate's landed+pushed ideal carried by the D1 land-log -- a full ideal exactly
-    # like the trailers path, so a revert they landed must subtract too (F25: omitting it let
-    # the reverted op silently resurrect from our side). A `mined` recovery is theirs' *divergent*
+    # *absent* from its ideal only when U7 recovered a full ideal (`trailers`). A `mined` recovery is
+    # theirs' *divergent*
     # set (theirs kept `base` and added on top; a revert there rode in as a BOTTOM op via the union,
     # not as an absence), and `none` is unknown -- so for those we do not infer a theirs-side revert,
     # leaving today's union semantics for theirs.
     removed_seed = set(base - ours)
-    if ing.theirs_recovery in ("log", "trailers"):
+    if ing.theirs_recovery == "trailers":
         removed_seed |= base - theirs
 
     # Shared exclusion CRDT (Phase 1.2 §E): union both clones' per-ref revert records by tag, then
@@ -101,7 +83,7 @@ def resolve(repo: Path, ing: Ingested) -> Resolution:
     live_excl = merged_exclusions.get(ref_key, lens.ExclusionORSet()).live() if ref_key else set()
     removed_seed |= set(live_excl)
 
-    removals = set(order.upset_in_many(removed_seed, union_ids, ing.all_ops, usable_declared))
+    removals = set(order.upset_in_many(removed_seed, union_ids, ing.all_ops))
 
     # Divergence-as-state (D5/C4) survives subtraction: a fork-recorded tip present in `base` but
     # dropped on one side would otherwise be swept into `removed_seed`'s up-set and silently deleted.
@@ -111,8 +93,8 @@ def resolve(repo: Path, ing: Ingested) -> Resolution:
     if fork_triples:
         protected: set[str] = set()
         for _sym, tip_a, tip_b in fork_triples:
-            protected |= order.upset(tip_a, ing.all_ops, usable_declared)
-            protected |= order.upset(tip_b, ing.all_ops, usable_declared)
+            protected |= order.upset(tip_a, ing.all_ops)
+            protected |= order.upset(tip_b, ing.all_ops)
         removals -= protected
 
     # `reduce_to_ideal` restores the grounding pass whose absence crashed today's resolve on an
@@ -120,7 +102,7 @@ def resolve(repo: Path, ing: Ingested) -> Resolution:
     # only the well-founded remainder -- a valid ideal by construction.
     merged_seed = set(union_ids) - removals
     merged_ideal = Ideal.from_ops(
-        order.reduce_to_ideal(merged_seed, ing.all_ops, usable_declared), ing.all_ops, usable_declared
+        order.reduce_to_ideal(merged_seed, ing.all_ops), ing.all_ops
     )
 
     # Witness-topo tie-break (D6): the git DAG supplies the causal order over pin witnesses, so a
@@ -149,8 +131,6 @@ def resolve(repo: Path, ing: Ingested) -> Resolution:
     return Resolution(
         forks=tuple(surfaced_forks),
         merged_ideal=merged_ideal,
-        declared_orset=declared_orset,
-        declared_cycles=tuple(declared_cycles),
         unioned_pins=unioned_pins,
         pin_contradictions=tuple(pin_contradictions),
         tree_result=tree_result,

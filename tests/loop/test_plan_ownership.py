@@ -58,7 +58,7 @@ def test_another_agent_cannot_close_or_abandon_your_plan(repo):
 
     # And nothing was destroyed by the refused call.
     assert session.session_id in plan_mod.active_sessions(repo)
-    assert plan_mod.owner_of(repo, session.session_id) == "agent-A"
+    assert plan_mod._load_sessions(repo)[session.session_id]["claude_session_id"] == "agent-A"
 
 
 def test_another_agent_cannot_confirm_into_your_plan(repo):
@@ -115,7 +115,7 @@ def test_adopt_transfers_ownership_without_destroying_progress(repo):
 
     ok, previous = plan_mod.adopt(repo, session.session_id, "agent-B")
     assert ok and previous == "agent-A"
-    assert plan_mod.owner_of(repo, session.session_id) == "agent-B"
+    assert plan_mod._load_sessions(repo)[session.session_id]["claude_session_id"] == "agent-B"
 
     after = plan_mod._load_sessions(repo)[session.session_id]["steps"]
     assert [s["hollow_id"] for s in after] == [s["hollow_id"] for s in before]

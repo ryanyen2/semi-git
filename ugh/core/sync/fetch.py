@@ -15,7 +15,6 @@ from pathlib import Path
 from ugh.core import lens
 from ugh.store.gitbind import GitBinding, GitError
 
-from . import log as _log
 from . import state_ref as _state_ref
 
 
@@ -54,23 +53,13 @@ def fetch(repo: Path, gb: GitBinding, remote: str | None, branch: str | None) ->
     if theirs_sha is None:
         raise GitError(f"fetch of {remote}/{branch} produced no FETCH_HEAD")
 
-    # D1: best-effort secondary fetch of the land log ref, so base recovery can use it on this
-    # clone too. An older remote that has never pushed the ref simply yields nothing to recover.
-    log_ref = _log.log_ref(branch)
-    gb.fetch_ref(remote, f"{log_ref}:{log_ref}")
-
     # Phase 1.2: fetch the repo-global `refs/ugh/state` into a *scratch* ref (force-updated each
     # fetch), leaving our authoritative local `refs/ugh/state` untouched -- so even the dry-run
     # `plan_sync` leaves no trace on it (R7), and our own publish history is never clobbered. A remote
     # without the ref (pre-1.2 / fresh) yields nothing, so `theirs_state_sha` stays `None` and
     # `ingest` falls back to theirs' branch tree (still carrying that state during the transition).
-    #
-    # We deliberately do NOT `materialize_into_local` here: `ingest` reads theirs' ops and tables
-    # straight from the ref tree at `theirs_state_sha`, while reading *ours* from the on-disk mirror.
-    # Materializing theirs' tables in would overwrite our live local tables (ideal/tree/pins/...) and
-    # collapse the two sides `ingest` must reconcile. Theirs' ops land on disk the normal way, through
-    # `materialize`'s `Store.add`. (The fresh-clone bootstrap in `_clone` *does* materialize -- there
-    # is no live local state there to clobber.)
+    # `ingest` reads theirs' ops and tables straight from the ref tree at `theirs_state_sha`;
+    # theirs' ops land on disk through `materialize`'s `Store.add`.
     got_state = gb.fetch_ref(remote, f"+{_state_ref.STATE_REF}:{_state_ref.FETCH_STATE_REF}")
     theirs_state_sha = gb.rev_parse(_state_ref.FETCH_STATE_REF) if got_state else None
 

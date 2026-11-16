@@ -132,15 +132,15 @@ def _resolve(symbol="api.py::route", clean=True, error=None):
 
 def test_a_clean_resolve_spells_out_the_three_step_remedy():
     assert so_what_for(_resolve()) == (
-        "Resolves the fork on api.py::route: fulfills your merged edit, runs the oracle, "
+        "Resolves the fork on api.py::route: takes your merged edit, runs the oracle, "
         "then lands it (closes the fork). Not auto-undoable — review carefully."
     )
 
 
-def test_a_resolve_with_no_draft_reports_why_it_cannot_run_yet():
-    pview = _resolve(clean=False, error="no drafted reconciliation")
+def test_a_resolve_with_no_open_fork_reports_why_it_cannot_run():
+    pview = _resolve(clean=False, error="no open fork")
     assert so_what_for(pview) == (
-        "Can't resolve api.py::route yet — no drafted reconciliation."
+        "Can't resolve api.py::route yet — no open fork."
     )
 
 

@@ -155,18 +155,6 @@ def test_downset_of_mid_chain_op_is_itself_and_its_prerequisites():
     assert downset(ops[2].id, ops) == frozenset({ops[0].id, ops[1].id, ops[2].id})
 
 
-def test_downset_includes_declared_edge_ancestors():
-    a = make_op({"a.py::a": (None, "v0")}, {"a.py::a": b"a"})
-    b = make_op({"b.py::b": (None, "v0")}, {"b.py::b": b"b"})  # unrelated by chain/reference
-    ops = [a, b]
-    declared = frozenset({(a.id, b.id)})  # `ugh after b a` -- a must precede b
-    assert downset(b.id, ops) == frozenset({b.id})  # unrelated without the declared edge
-    assert downset(b.id, ops, declared) == frozenset({a.id, b.id})
-    assert is_valid_ideal(ops, {b.id})  # valid on its own
-    assert not is_valid_ideal(ops, {b.id}, declared)  # but not once a is declared a prerequisite
-    assert is_valid_ideal(ops, {a.id, b.id}, declared)
-
-
 def test_frontier_is_the_chain_tip_for_a_full_ideal():
     ops = _chain("a.py::foo", 4)
     ideal_ids = {op.id for op in ops}
@@ -277,15 +265,6 @@ def test_upset_in_many_equals_per_op_union_and_stays_valid_on_an_or_supported_se
         assert is_valid_ideal(ops, ideal - many)  # and the complement is always a valid ideal
 
 
-def test_upset_in_cascades_a_declared_successor():
-    a = make_op({"a.py::a": (None, "v0")}, {"a.py::a": b"a"})
-    b = make_op({"b.py::b": (None, "v0")}, {"b.py::b": b"b"})  # independent of a by chain/reference
-    ops = [a, b]
-    declared = frozenset({(a.id, b.id)})  # a <= b
-    assert upset_in(a.id, {a.id, b.id}, ops) == {a.id}  # no edge, b survives
-    assert upset_in(a.id, {a.id, b.id}, ops, declared) == {a.id, b.id}  # declared edge pulls b
-
-
 def test_downset_in_walks_chain_order_through_a_revert_collision():
     sym = "a.py::foo"
     add, mod, rev = _revert_chain(sym)
@@ -327,15 +306,6 @@ def test_components_in_finds_no_edge_when_the_producer_op_is_excluded():
     assert set(comps) == {frozenset({add.id}), frozenset({tip.id})}
 
 
-def test_components_in_includes_declared_edges():
-    a = make_op({"a.py::a": (None, "v0")}, {"a.py::a": b"a"})
-    b = make_op({"b.py::b": (None, "v0")}, {"b.py::b": b"b"})  # unrelated by chain/reference
-    ops = [a, b]
-    declared = frozenset({(a.id, b.id)})
-    assert set(components_in({a.id, b.id}, ops)) == {frozenset({a.id}), frozenset({b.id})}
-    assert components_in({a.id, b.id}, ops, declared) == [frozenset({a.id, b.id})]
-
-
 def test_components_in_empty_set_is_empty():
     ops = _chain("a.py::foo", 2)
     assert components_in(frozenset(), ops) == []
@@ -357,8 +327,8 @@ def test_revert_of_mid_chain_op_removes_its_upset_exactly(n):
 
 
 def test_reduce_to_ideal_is_memoized_correct_and_bounded():
-    """U8: `reduce_to_ideal` is memoized by `(ideal_ids, declared)` (its result is a pure function
-    of those over content-addressed ops). The memo returns the identical result, agrees with a
+    """U8: `reduce_to_ideal` is memoized by its present id set (its result is a pure function
+    of that over content-addressed ops). The memo returns the identical result, agrees with a
     fresh computation, and is size-bounded so a long-running process over an append-only store never
     accumulates one entry per save."""
     from ugh.core import order
@@ -372,7 +342,7 @@ def test_reduce_to_ideal_is_memoized_correct_and_bounded():
     order._REDUCE_CACHE.clear()
     r1 = order.reduce_to_ideal(ids, ops)
     assert r1 == frozenset({root.id})              # fork tips dropped, root kept
-    assert (frozenset(ids), frozenset()) in order._REDUCE_CACHE
+    assert frozenset(ids) in order._REDUCE_CACHE
     r2 = order.reduce_to_ideal(ids, ops)
     assert r2 is r1                                 # the cached object, not a recomputation
 

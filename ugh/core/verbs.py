@@ -6,12 +6,9 @@ gated `apply` (materialize via the lens, persist the edit, advance the witness).
 what `--emit` previews without touching disk; `apply` is the only writer.
 
     revert(X)      = I \\ ↑X                 remove X and everything that builds on it
-    pin(sym, v)    = truncate sym's chain at version v (revert the op after v)
     restore(X)     = reverse the recorded revert of X where the journal holds one (exact), else
                      I ∪ ↓X                 re-add X and its prerequisites (an approximation --
                      see `_plan_restore_via_journal` for why the union alone is not an inverse)
-    cherry-pick(X) = I ∪ ↓X, X from another ref; refuses if the union forks a chain (AE2)
-    after(a, b)    = record a declared edge a ≤ b (feeds later verbs' closures)
 
 Up/down-sets are computed with `order.upset_in`/`downset_in` -- the collision-safe, ideal-relative
 forms (existential closure / fork-free ordered chains), never the universe-level `upset`/`downset`
@@ -53,7 +50,6 @@ class VerbPreview:
     affected_symbols: tuple[str, ...]  # symbols whose frontier tip moves
     forked: bool = False
     message: str = ""
-    declared_edge: tuple[str, str] | None = None  # (a, b) for `after`; None otherwise
     new_ops: tuple[Op, ...] = ()  # forward-subtraction ops (splices/prunes) `apply` must store
     subtracted_symbols: tuple[str, ...] = ()  # shared symbols spliced at their tip
     pruned_symbols: tuple[str, ...] = ()  # target-introduced symbols bottomed at their tip
@@ -107,32 +103,31 @@ def resolve_target(ideal: Ideal, ops: list[Op], ref: str) -> tuple[str | None, s
     return None, f"{ref!r} is neither an op-id in the ideal nor a live symbol"
 
 
-def _load(repo: str | Path) -> tuple[list[Op], Ideal, frozenset[tuple[str, str]]]:
-    """(all stored ops, current committed ideal, declared edges) -- the pure plan-time inputs.
+def _load(repo: str | Path) -> tuple[list[Op], Ideal]:
+    """(all stored ops, current committed ideal) -- the pure plan-time inputs.
     Footprint-only (`opindex.index_ops`, never `Store.all_ops`'s images decode): every consumer
     in this module is a plan/preview built from footprints, frontiers, and order math alone --
     nothing here materializes bytes."""
     from ugh.core import opindex
 
     repo = Path(repo)
-    return opindex.index_ops(repo), lens.current_ideal(repo), lens._load_declared(repo)
+    return opindex.index_ops(repo), lens.current_ideal(repo)
 
 
 def _preview(
     verb: str, target: str, before_ids, after_ids, ops: list[Op], *,
     ok: bool = True, forked: bool = False, message: str = "",
-    declared_edge: tuple[str, str] | None = None,
 ) -> VerbPreview:
     before_ids, after_ids = frozenset(before_ids), frozenset(after_ids)
     fb, fa = order.frontier(before_ids, ops), order.frontier(after_ids, ops)
     affected = tuple(sorted(s for s in set(fb) | set(fa) if fb.get(s) != fa.get(s)))
     return VerbPreview(
         ok=ok, verb=verb, target=target, before_ids=before_ids, after_ids=after_ids,
-        affected_symbols=affected, forked=forked, message=message, declared_edge=declared_edge,
+        affected_symbols=affected, forked=forked, message=message,
     )
 
 
-def _invalid_ideal_reason(after_ids, ops: list[Op], declared) -> str:
+def _invalid_ideal_reason(after_ids, ops: list[Op]) -> str:
     """Why `Ideal.from_ops` refused, in the reader's terms. F39's second collateral defect: that
     exception carries `sorted(ids)` -- the whole *proposed* set, thousands of 64-hex ids on a real
     repository and never the offending one -- and the refusal used to print it verbatim. Name the
@@ -144,7 +139,7 @@ def _invalid_ideal_reason(after_ids, ops: list[Op], declared) -> str:
         more = f" (+{len(forked) - 1} more symbol(s))" if len(forked) > 1 else ""
         return (f"would leave two live versions of {sym}: {a[:8]} and {b[:8]} both claim the same "
                 f"next version, refused{more}")
-    ungrounded = sorted(ids - order._grounded(ids, ops, declared))
+    ungrounded = sorted(ids - order._grounded(ids, ops))
     if ungrounded:
         more = f" (+{len(ungrounded) - 1} more)" if len(ungrounded) > 1 else ""
         by_id = {op.id: op for op in ops}
@@ -171,23 +166,19 @@ def _fork_conflicts(before_ids, after_ids, ops: list[Op]) -> tuple[dict, ...]:
     return tuple(out[s] for s in sorted(out))
 
 
-def _validated(
-    verb: str, target: str, before_ids, after_ids, ops: list[Op],
-    declared: frozenset[tuple[str, str]],
-) -> VerbPreview:
+def _validated(verb: str, target: str, before_ids, after_ids, ops: list[Op]) -> VerbPreview:
     """Build a preview whose `after_ids` is checked through `Ideal.from_ops` -- a fork or
     downward-closure violation becomes a refusal (`ok=False, forked=True`), never a bad commit."""
     try:
-        Ideal.from_ops(after_ids, ops, declared)
+        Ideal.from_ops(after_ids, ops)
     except ValueError:
         return replace(_preview(verb, target, before_ids, before_ids, ops, ok=False, forked=True,
-                                message=_invalid_ideal_reason(after_ids, ops, declared)),
+                                message=_invalid_ideal_reason(after_ids, ops)),
                        conflicts=_fork_conflicts(before_ids, after_ids, ops))
     return _preview(verb, target, before_ids, after_ids, ops)
 
 
-def _with_layout_siblings(added, ops: list[Op], before_ids, source_ids,
-                          declared: frozenset[tuple[str, str]]):
+def _with_layout_siblings(added, ops: list[Op], before_ids, source_ids):
     """`added` plus the layout ops (gap/anchor) of every entity it brings back. Layout facts ride
     with the entity in both directions: `plan_subtraction` removes an entity's trailing gap and
     anchor along with it (F35), so restoring the entity has to bring them back, or the fold has no
@@ -206,7 +197,7 @@ def _with_layout_siblings(added, ops: list[Op], before_ids, source_ids,
 
     by_id = {op.id: op for op in ops}
     grounded = order.frontier(before_ids | added, ops)
-    reach = {oid: order.downset_in(oid, source_ids, ops, declared)
+    reach = {oid: order.downset_in(oid, source_ids, ops)
              for oid in layout_ops_of(added, by_id, source_ids)}
     pick: dict[str, str] = {}
     for oid in sorted(reach, key=lambda o: (-len(reach[o]), o)):
@@ -343,14 +334,14 @@ def _matching_revert_event(
                     and _entity_core(event_ids, ops) == core
                 ) or (
                     tag is not None
-                    and event_ids  # never the `revert --to <commit>` boundary form
+                    and event_ids
                     and event.get("target") == tag
                     and _still_in_effect(event, live)
                 ):
                     return event, frozenset(later_removed)
             # Newer than the event we are looking for, so what it took out is a later decision.
-            # Every edit counts here, not just reverts: a pin or the undo of a restore removes work
-            # just as deliberately.
+            # Every edit counts here, not just reverts: the undo of a restore removes work just as
+            # deliberately.
             prior, result = _event_op_ids(event, "ideal"), _event_op_ids(event, "result")
             if prior is not None and result is not None:
                 later_removed |= prior - result
@@ -403,7 +394,7 @@ def ops_removed_by_named_revert(repo: str | Path, name: str) -> frozenset[str] |
     """
     from ugh.core import oplog
 
-    _ops, ideal, _declared = _load(repo)
+    _ops, ideal = _load(repo)
     try:
         key = oplog._ref_key(Path(repo))
         events = oplog.load(Path(repo)).get(key, []) if key else []
@@ -417,7 +408,7 @@ def ops_removed_by_named_revert(repo: str | Path, name: str) -> frozenset[str] |
         if event.get("verb") != "revert" or event.get("target") != name:
             continue
         if not _event_op_ids(event, "target_ops"):
-            continue  # `revert <lane> --to <commit>` names a boundary, not an op-set
+            continue
         if not _still_in_effect(event, ideal.op_ids):
             continue
         prior, result = _event_op_ids(event, "ideal"), _event_op_ids(event, "result")
@@ -429,7 +420,6 @@ def ops_removed_by_named_revert(repo: str | Path, name: str) -> frozenset[str] |
 
 def _plan_restore_via_journal(
     repo: str | Path, tag: str, target_ids, ops: list[Op], ideal: Ideal,
-    declared: frozenset[tuple[str, str]],
 ) -> VerbPreview | None:
     """Reverse a recorded revert exactly, or return None to let the caller fall back.
 
@@ -445,14 +435,11 @@ def _plan_restore_via_journal(
 
     Every decline returns None so the caller degrades to the algebraic union, which is the
     behaviour it had before -- including its refusals. Reversing a revert *through* work layered
-    on top of it needs re-addition as a forward merge at the tip (`core.rewrite.merge_op` is that
-    primitive, already CLI-wired as `ugh resolve` for the sibling fork case), the dual of how
-    `subtract` removes; extending it to a splice one hop down is a different change than this.
+    on top of it needs re-addition as a forward merge at the tip, the dual of how `subtract`
+    removes; extending it to a splice one hop down is a different change than this.
     """
     target_ids = frozenset(target_ids)
     if not target_ids:
-        # `revert <lane> --to <commit>` records `target_ops: []` (it names a commit boundary, not
-        # an op-set), so an empty lookup would match it and reverse an edit nobody asked about.
         return None
     found = _matching_revert_event(Path(repo), target_ids, ops, tag, ideal.op_ids)
     if found is None:
@@ -488,7 +475,7 @@ def _plan_restore_via_journal(
         peel = introduced & current
         after = (current - peel) | removed
         already = after == current
-        preview = None if already else _validated("restore", tag, current, after, ops, declared)
+        preview = None if already else _validated("restore", tag, current, after, ops)
     except Exception:  # noqa: BLE001 -- a journal that no longer describes the store falls back
         # Well-formed ids can still name ops the store no longer holds (a pruned or rewritten
         # history), and planning against those raises from inside the planner rather than
@@ -505,31 +492,21 @@ def _plan_restore_via_journal(
 
 # -- plans (pure) ---------------------------------------------------------------------------------
 
-def _plan_removal(
-    repo: str | Path, verb: str, tag: str, target_ids, ops, ideal, declared, *,
-    take_dependents: bool,
-) -> VerbPreview:
-    """The one removal planner behind every revert shape. Default: semantic removal plus forward
+def _plan_removal(repo: str | Path, verb: str, tag: str, target_ids, ops, ideal) -> VerbPreview:
+    """The one removal planner behind every revert shape: semantic removal plus forward
     subtraction (`ugh.core.subtract`) -- later work layered above the target inside shared
-    symbols survives, mechanically spliced where clean, reported where not. `take_dependents`
-    is the old blanket `ideal \\ ↑X`: X and everything that loses grounding, demolition
-    included -- explicit, never the default (the 2026-08-09 study-testbed demolition)."""
-    if take_dependents:
-        after = ideal.op_ids - order.upset_in_many(target_ids, ideal.op_ids, ops, declared)
-        out = _validated(verb, tag, ideal.op_ids, after, ops, declared)
-        return replace(out, target_ops=frozenset(target_ids))
-
+    symbols survives, mechanically spliced where clean, reported where not."""
     from ugh.core.subtract import plan_subtraction
 
-    plan = plan_subtraction(repo, target_ids, ops, ideal.op_ids, declared, tag=tag)
+    plan = plan_subtraction(repo, target_ids, ops, ideal.op_ids, tag=tag)
     if not plan.ok:
         return _preview(verb, tag, ideal.op_ids, ideal.op_ids, ops, ok=False, message=plan.message)
     all_ops = ops + list(plan.new_ops)
     try:
-        Ideal.from_ops(plan.after_ids, all_ops, declared)
+        Ideal.from_ops(plan.after_ids, all_ops)
     except ValueError:
         return replace(_preview(verb, tag, ideal.op_ids, ideal.op_ids, ops, ok=False, forked=True,
-                                message=_invalid_ideal_reason(plan.after_ids, all_ops, declared)),
+                                message=_invalid_ideal_reason(plan.after_ids, all_ops)),
                        conflicts=_fork_conflicts(ideal.op_ids, plan.after_ids, all_ops))
     base = _preview(verb, tag, ideal.op_ids, plan.after_ids, all_ops, message=plan.message)
     return VerbPreview(
@@ -541,35 +518,16 @@ def _plan_removal(
     )
 
 
-def plan_revert(repo: str | Path, target: str, *, take_dependents: bool = False) -> VerbPreview:
-    ops, ideal, declared = _load(repo)
+def plan_revert(repo: str | Path, target: str) -> VerbPreview:
+    ops, ideal = _load(repo)
     op_id, err = resolve_target(ideal, ops, target)
     if err:
         return _preview("revert", target, ideal.op_ids, ideal.op_ids, ops, ok=False, message=err)
-    return _plan_removal(repo, "revert", target, {op_id}, ops, ideal, declared,
-                         take_dependents=take_dependents)
-
-
-def plan_pin(repo: str | Path, symbol: str, version: str) -> VerbPreview:
-    ops, ideal, declared = _load(repo)
-    tag = f"{symbol}@{version[:8]}"
-    seq = order._ordered_chains(ideal.op_ids, ops).get(symbol)
-    if not seq:
-        return _preview("pin", tag, ideal.op_ids, ideal.op_ids, ops, ok=False,
-                        message=f"symbol {symbol!r} is not in the ideal")
-    by_id = {op.id: op for op in ops}
-    idx = next((i for i, oid in enumerate(seq) if by_id[oid].footprint[symbol][1] == version), None)
-    if idx is None:
-        return _preview("pin", tag, ideal.op_ids, ideal.op_ids, ops, ok=False,
-                        message=f"version {version!r} not found in {symbol}'s chain")
-    if idx == len(seq) - 1:
-        return _preview("pin", tag, ideal.op_ids, ideal.op_ids, ops, message="already at the tip; no change")
-    after = ideal.op_ids - order.upset_in(seq[idx + 1], ideal.op_ids, ops, declared)
-    return _validated("pin", tag, ideal.op_ids, after, ops, declared)
+    return _plan_removal(repo, "revert", target, {op_id}, ops, ideal)
 
 
 def plan_restore(repo: str | Path, target: str) -> VerbPreview:
-    ops, ideal, declared = _load(repo)
+    ops, ideal = _load(repo)
     source = lens.provenance_ideal_for_ref(repo, "HEAD")  # still holds the reverted ops
     op_id, err = resolve_target(source, ops, target)
     source_ids = source.op_ids
@@ -599,67 +557,30 @@ def plan_restore(repo: str | Path, target: str) -> VerbPreview:
                 op_id, err, source_ids = matches[0], "", frozenset(ids)
     if err:
         return _preview("restore", target, ideal.op_ids, ideal.op_ids, ops, ok=False, message=err)
-    exact = _plan_restore_via_journal(repo, target, {op_id}, ops, ideal, declared)
+    exact = _plan_restore_via_journal(repo, target, {op_id}, ops, ideal)
     if exact is not None:
         return exact
-    added = _with_layout_siblings(order.downset_in(op_id, source_ids, ops, declared),
-                                  ops, ideal.op_ids, source_ids, declared)
+    added = _with_layout_siblings(order.downset_in(op_id, source_ids, ops),
+                                  ops, ideal.op_ids, source_ids)
     return _named(
-        _validated("restore", target, ideal.op_ids, ideal.op_ids | added, ops, declared), {op_id})
+        _validated("restore", target, ideal.op_ids, ideal.op_ids | added, ops), {op_id})
 
 
-def plan_cherry_pick(repo: str | Path, target: str, source_ref: str) -> VerbPreview:
-    ops, ideal, declared = _load(repo)
-    source = lens.ideal_for_ref(repo, source_ref)
-    op_id, err = resolve_target(source, ops, target)
-    if err:
-        return _preview("cherry-pick", target, ideal.op_ids, ideal.op_ids, ops, ok=False,
-                        message=f"in {source_ref}: {err}")
-    after = ideal.op_ids | order.downset_in(op_id, source.op_ids, ops, declared)
-    return _validated("cherry-pick", target, ideal.op_ids, after, ops, declared)
-
-
-def plan_revert_session(repo: str | Path, name: str, *, take_dependents: bool = False) -> VerbPreview:
-    """Resolve a session name (plan U31, S7: addressing by provenance) to the op-set it landed --
-    `ugh.core.session.ops_by_session`, which reads structured attribution and so still resolves
-    long after the session record itself is gone -- then the exact ideal edit
-    `I \\ upset_in_many(X)`: one grounding pass for the whole set, not one per op (which cost
-    O(|X|·|ops|) and could also under-remove an op OR-supported by two removed targets, leaving
-    an invalid after-set for `_validated` to refuse instead of this valid maximal edit)."""
-    from ugh.core import session as session_mod
-
-    ops, ideal, declared = _load(repo)
-    all_session_ops = session_mod.ops_by_session(repo, name)
-    if not all_session_ops:
-        return _preview("revert", name, ideal.op_ids, ideal.op_ids, ops, ok=False,
-                        message=f"no op carries session {name!r} attribution")
-    op_ids = all_session_ops & ideal.op_ids
-    if not op_ids:
-        return _preview("revert", name, ideal.op_ids, ideal.op_ids, ops,
-                        message=f"session {name!r}'s ops are not in the current ideal; no change")
-
-    return _plan_removal(repo, "revert", name, op_ids, ops, ideal, declared,
-                         take_dependents=take_dependents)
-
-
-def plan_revert_op_set(repo: str | Path, tag: str, op_ids: frozenset[str], *,
-                       take_dependents: bool = False) -> VerbPreview:
+def plan_revert_op_set(repo: str | Path, tag: str, op_ids: frozenset[str]) -> VerbPreview:
     """Revert an already-resolved op-set X as the exact ideal edit `I \\ upset_in_many(X)` --
-    the fully-generic form `plan_revert_session` and `lens.verbs.plan_revert_feature`
-    each specialize with their own resolution step (session attribution / feature `op_leaf`).
-    `ugh.intent.group.resolve_group` is a third resolution step (a theme or commit-sha's atom
+    the fully-generic form `lens.verbs.plan_revert_feature` specializes with its own resolution
+    step (feature `op_leaf`). `ugh.intent.group.resolve_group` is another resolution step (a theme or commit-sha's atom
     union, plan U8): the LLM only ever decides *which* op-set this is; the actual removal is this
     same collision-safe up-set union and `Ideal.from_ops` fork validation every other revert path
     uses, so a wrong theme boundary is a mis-default the caller sees and can subset around, never
     a silent destructive edit. `tag` is a human-facing label for the preview only."""
-    ops, ideal, declared = _load(repo)
+    ops, ideal = _load(repo)
     op_ids = frozenset(op_ids) & ideal.op_ids
     if not op_ids:
         return _preview("revert", tag, ideal.op_ids, ideal.op_ids, ops,
                         message=f"{tag}: none of its ops are in the current ideal; no change")
 
-    return _plan_removal(repo, "revert", tag, op_ids, ops, ideal, declared,
-                         take_dependents=take_dependents)
+    return _plan_removal(repo, "revert", tag, op_ids, ops, ideal)
 
 
 def _revert_scaffolding_over(requested: frozenset[str], ideal, ops: list[Op]) -> frozenset[str]:
@@ -728,13 +649,13 @@ def plan_restore_op_set(repo: str | Path, tag: str, op_ids: frozenset[str]) -> V
 
     Ops already in the ideal are dropped from X first, so a live checkpoint reports `no change`
     rather than an apply it did not make. `tag` is a human-facing label for the preview only."""
-    ops, ideal, declared = _load(repo)
+    ops, ideal = _load(repo)
     requested = frozenset(op_ids)
     # Tried before everything below: when the journal holds the revert this reverses, it names the
     # ops that revert minted outright, so neither the scaffolding heuristic nor the fork-dropping
     # loop has to infer them from an advisory `intent` string. Ahead of `ideal_for_ref` too --
     # reconstructing the provenance ideal is real work this path never needs.
-    exact = _plan_restore_via_journal(repo, tag, requested, ops, ideal, declared)
+    exact = _plan_restore_via_journal(repo, tag, requested, ops, ideal)
     if exact is not None:
         return exact
     source = lens.ideal_for_ref(repo, "HEAD")
@@ -749,14 +670,14 @@ def plan_restore_op_set(repo: str | Path, tag: str, op_ids: frozenset[str]) -> V
         masking = _revert_scaffolding_over(requested, ideal, ops)
         if masking:
             return _named(
-                _validated("restore", tag, ideal.op_ids, ideal.op_ids - masking, ops, declared),
+                _validated("restore", tag, ideal.op_ids, ideal.op_ids - masking, ops),
                 requested)
         return _named(_preview("restore", tag, ideal.op_ids, ideal.op_ids, ops,
                                message=f"nothing of {tag} has been removed \u2014 there is nothing "
                                        f"to restore."), requested)
 
-    added = _with_layout_siblings(order.downset_in_many(op_ids, source.op_ids, ops, declared),
-                                  ops, ideal.op_ids, source.op_ids, declared)
+    added = _with_layout_siblings(order.downset_in_many(op_ids, source.op_ids, ops),
+                                  ops, ideal.op_ids, source.op_ids)
     # The closure and the layout siblings are drawn from the provenance ideal, which is the ideal
     # as it was RECORDED -- so on a re-mined record they reach the superseded spelling of anchors
     # and residues the same way the requested set did. Same filter, same reason (see `_restorable`),
@@ -765,7 +686,7 @@ def plan_restore_op_set(repo: str | Path, tag: str, op_ids: frozenset[str]) -> V
     # Dropping a step the ideal already holds can leave whatever was built on it without footing;
     # keep only what still bottoms out, so the refusal below is about real conflicts rather than
     # about the hole this filter just made.
-    candidate = order._grounded(ideal.op_ids | added, ops, declared)
+    candidate = order._grounded(ideal.op_ids | added, ops)
 
     # A revert does not only remove: it synthesizes stand-in ops to hold the layout the removal
     # would otherwise have torn out (`ugh.core.subtract`). Re-admitting the originals then puts two
@@ -793,7 +714,7 @@ def plan_restore_op_set(repo: str | Path, tag: str, op_ids: frozenset[str]) -> V
             break
         candidate -= drop
 
-    plan = _validated("restore", tag, ideal.op_ids, candidate, ops, declared)
+    plan = _validated("restore", tag, ideal.op_ids, candidate, ops)
     # A plan that came out empty means the same thing as an empty one computed earlier -- every
     # requested op is either live or a superseded spelling of something live -- so it says the same
     # sentence. Without this it reached the caller as a successful restore of nothing, which reads
@@ -807,8 +728,7 @@ def plan_restore_op_set(repo: str | Path, tag: str, op_ids: frozenset[str]) -> V
 # -- apply (the only writer) ----------------------------------------------------------------------
 
 def apply(repo: str | Path, preview: VerbPreview, message: str | None = None) -> str:
-    """Materialize a plan and persist it. Refuses a not-ok plan. For `after`, persists the
-    declared edge (no commit) and returns "". Otherwise: `get()` absorbs current reality (R9;
+    """Materialize a plan and persist it. Refuses a not-ok plan. `get()` absorbs current reality (R9;
     raises `DirtyWorkingTreeError` if the working tree holds unabsorbed edits the target would
     clobber), the edited ideal is materialized + committed via `lens.put`, and `record_ideal`
     advances the ref's persisted ideal + witness to the post-commit truth (so the edit survives
@@ -816,10 +736,6 @@ def apply(repo: str | Path, preview: VerbPreview, message: str | None = None) ->
     if not preview.ok:
         raise VerbError(preview.message or f"{preview.verb} refused")
     repo = Path(repo)
-    if preview.verb == "after":
-        assert preview.declared_edge is not None
-        lens.declare_after(repo, *preview.declared_edge)  # OR-Set add with a fresh tag (U21/D6)
-        return ""
     if preview.new_ops:
         # Forward-subtraction ops (safe revert's splices/prunes) exist only in the preview until
         # here; store them first so `Ideal.from_ops` below sees their producers.
@@ -827,8 +743,7 @@ def apply(repo: str | Path, preview: VerbPreview, message: str | None = None) ->
         for op in preview.new_ops:
             store.add(op)
     if preview.after_ids == preview.before_ids:
-        # An ok no-op edit (e.g. `revert <lane> --to <last-commit>`, `pin` already at the tip,
-        # `restore` of an already-present op): nothing changed, so there is nothing to materialize.
+        # An ok no-op edit (e.g. `restore` of an already-present op): nothing changed, so there is nothing to materialize.
         # Committing an unchanged tree would fail (`git commit` with no diff), so return the current
         # HEAD unchanged rather than a spurious empty commit.
         from ugh.store.gitbind import GitBinding
@@ -854,16 +769,8 @@ def apply(repo: str | Path, preview: VerbPreview, message: str | None = None) ->
 
 # -- thin wrappers (plan, then preview or apply) --------------------------------------------------
 
-def revert(repo: str | Path, target: str, *, emit: bool = False, message: str | None = None,
-           take_dependents: bool = False) -> VerbPreview:
-    preview = plan_revert(repo, target, take_dependents=take_dependents)
-    if preview.ok and not emit:
-        apply(repo, preview, message)
-    return preview
-
-
-def pin(repo: str | Path, symbol: str, version: str, *, emit: bool = False, message: str | None = None) -> VerbPreview:
-    preview = plan_pin(repo, symbol, version)
+def revert(repo: str | Path, target: str, *, emit: bool = False, message: str | None = None) -> VerbPreview:
+    preview = plan_revert(repo, target)
     if preview.ok and not emit:
         apply(repo, preview, message)
     return preview
@@ -871,13 +778,6 @@ def pin(repo: str | Path, symbol: str, version: str, *, emit: bool = False, mess
 
 def restore(repo: str | Path, target: str, *, emit: bool = False, message: str | None = None) -> VerbPreview:
     preview = plan_restore(repo, target)
-    if preview.ok and not emit:
-        apply(repo, preview, message)
-    return preview
-
-
-def cherry_pick(repo: str | Path, target: str, source_ref: str, *, emit: bool = False, message: str | None = None) -> VerbPreview:
-    preview = plan_cherry_pick(repo, target, source_ref)
     if preview.ok and not emit:
         apply(repo, preview, message)
     return preview

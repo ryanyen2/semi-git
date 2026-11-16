@@ -1,21 +1,5 @@
 """Persistence layer: git binding for the operation-ideal kernel (`ugh.core`)."""
 
-from ugh.store.gitbind import (
-    TRAILER_KEY,
-    GitBinding,
-    GitError,
-    format_trailer,
-    init_store,
-    new_node_id,
-    parse_node_id,
-)
+from ugh.store.gitbind import GitBinding, GitError, init_store
 
-__all__ = [
-    "TRAILER_KEY",
-    "GitBinding",
-    "GitError",
-    "format_trailer",
-    "init_store",
-    "new_node_id",
-    "parse_node_id",
-]
+__all__ = ["GitBinding", "GitError", "init_store"]

@@ -1,8 +1,5 @@
-"""CLI dispatch tests for `ugh revert <lane> --to <commit>` (plan U11): the timeline-scrub
-truncation edit. The plan-level algebra -- which ops the up-set removes, the `--keep` strand-guard,
-the `no change` no-op -- is pinned in tests/lens/test_feature_verbs.py; this file is the thin CLI
-layer: `--to` routes to `plan_revert_lane_to_commit`, `--emit` projects the preview (carrying U4's
-coupling rows), and a bare apply lands the smaller ideal through the shared `verbs.apply` spine.
+"""CLI dispatch tests for `ugh revert` / `ugh restore`: the feedforward confirm gate, handle
+resolution, the subtraction reports, and the refusals a reader sees.
 """
 
 from __future__ import annotations
@@ -45,61 +42,9 @@ def _spanning_lane(repo):
     return None, None, None
 
 
-def test_revert_to_commit_applies_a_truncation(tmp_path, capsys):
-    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
-    get(repo)
-    lane, cut, _ = _spanning_lane(repo)
-    assert lane is not None
-
-    before = current_ideal(repo).op_ids
-    rc = _in(repo, ["revert", lane, "--to", str(cut), "--json"])
-    assert rc == 0
-    out = json.loads(capsys.readouterr().out)
-    assert out["ok"] and out["verb"] == "revert"
-    assert out["removed"]  # the truncation actually removed post-cut ops
-
-    after = current_ideal(repo).op_ids
-    assert after < before  # the ideal shrank to the truncated shape
-    assert set(out["removed"]) == before - after
-
-    # idempotent: re-running the same truncation on the now-truncated ideal is a no-op
-    assert _in(repo, ["revert", lane, "--to", str(cut), "--json"]) == 0
-    again = json.loads(capsys.readouterr().out)
-    assert again["ok"] and not again["removed"]
-
-
-def test_revert_to_commit_emit_projects_the_preview_with_coupling(tmp_path, capsys):
-    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
-    get(repo)
-    lane, cut, _ = _spanning_lane(repo)
-    assert lane is not None
-
-    before = current_ideal(repo).op_ids
-    rc = _in(repo, ["revert", lane, "--to", str(cut), "--emit", "--json"])
-    assert rc == 0
-    out = json.loads(capsys.readouterr().out)
-    assert out["ok"]
-    assert "coupling" in out  # U4's coupling rows flow through the truncation preview unchanged
-    assert current_ideal(repo).op_ids == before  # --emit is pure: nothing applied
-
-
-def test_revert_to_commit_is_a_no_op_past_the_last_commit(tmp_path, capsys):
-    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
-    get(repo)
-    lane, _, last = _spanning_lane(repo)
-    assert lane is not None
-
-    before = current_ideal(repo).op_ids
-    rc = _in(repo, ["revert", lane, "--to", str(last), "--json"])
-    assert rc == 0
-    out = json.loads(capsys.readouterr().out)
-    assert out["ok"] and not out["removed"]
-    assert current_ideal(repo).op_ids == before
-
-
 # ── feedforward confirm gate (plain-text revert) ─────────────────────────────────────────────────
 # A bare `ugh revert <feature>` (no --json) draws the feedforward graph, then gates on [y/N].
-# --yes skips the prompt; a non-tty stdin refuses to apply (exit 2). --json/--emit are covered above.
+# --yes skips the prompt; a non-tty stdin refuses to apply (exit 2).
 
 
 def _revertable_feature(repo):
@@ -722,7 +667,7 @@ def test_a_refused_restore_reports_its_reason_not_that_the_op_is_unknown(tmp_pat
     ideal = get(repo)
     ops = {o.id: o for o in Store(repo).all_ops()}
     live = sorted(i for i in ideal.op_ids if "mod.py::only" in ops[i].footprint)
-    assert _in(repo, ["revert", live[0], "--take-dependents", "--yes"]) == 0
+    assert _in(repo, ["revert", live[0], "--yes"]) == 0
     capsys.readouterr()
 
     after = current_ideal(repo)
@@ -751,7 +696,7 @@ def test_a_refused_restore_names_the_symbol_rather_than_dumping_the_proposed_set
     ideal = get(repo)
     ops = {o.id: o for o in Store(repo).all_ops()}
     live = sorted(i for i in ideal.op_ids if "mod.py::only" in ops[i].footprint)
-    assert _in(repo, ["revert", live[0], "--take-dependents", "--yes"]) == 0
+    assert _in(repo, ["revert", live[0], "--yes"]) == 0
     capsys.readouterr()
 
     after = current_ideal(repo)
@@ -856,15 +801,15 @@ def test_a_whole_entity_revert_still_warns_about_surviving_references(tmp_path):
 
     repo = _string_reference_repo(tmp_path)
     get(repo)
-    ops, ideal, declared = core_verbs._load(repo)
+    ops, ideal = core_verbs._load(repo)
     helper_add = next(o.id for o in ops if o.footprint.get("m.py::helper", (0,))[0] is None)
     mid = order._ordered_chains(ideal.op_ids, ops)["m.py::shared"][1]
 
     # The control: with a splice to perform, the byte sweep sees it.
-    both = plan_subtraction(repo, {helper_add, mid}, ops, ideal.op_ids, declared, tag="t")
+    both = plan_subtraction(repo, {helper_add, mid}, ops, ideal.op_ids, tag="t")
     assert both.broken_references == ("m.py::user",), both.broken_references
 
-    alone = plan_subtraction(repo, {helper_add}, ops, ideal.op_ids, declared, tag="t")
+    alone = plan_subtraction(repo, {helper_add}, ops, ideal.op_ids, tag="t")
     assert alone.broken_references == ("m.py::user",), (
         "removing helper outright leaves `user` naming it and says nothing: "
         f"{alone.broken_references}")
@@ -897,9 +842,9 @@ def test_a_common_name_in_another_file_is_not_a_surviving_reference(tmp_path):
     corpus._commit(repo, "one", 1)
     get(repo)
 
-    ops, ideal, declared = core_verbs._load(repo)
+    ops, ideal = core_verbs._load(repo)
     label_add = next(o.id for o in ops if o.footprint.get("events.py::label", (0,))[0] is None)
-    plan = plan_subtraction(repo, {label_add}, ops, ideal.op_ids, declared, tag="t")
+    plan = plan_subtraction(repo, {label_add}, ops, ideal.op_ids, tag="t")
 
     assert plan.broken_references == (), (
         "a bare `label` in another file is a different `label`: "
@@ -929,10 +874,10 @@ def test_a_function_removed_from_a_package_init_is_still_named_by_its_importers(
     corpus._commit(repo, "two", 2)
     get(repo)
 
-    ops, ideal, declared = core_verbs._load(repo)
+    ops, ideal = core_verbs._load(repo)
     shell_add = next(o.id for o in ops
                      if o.footprint.get("shop/pages/__init__.py::shell", (0,))[0] is None)
-    plan = plan_subtraction(repo, {shell_add}, ops, ideal.op_ids, declared, tag="t")
+    plan = plan_subtraction(repo, {shell_add}, ops, ideal.op_ids, tag="t")
 
     assert plan.broken_references == (
         "shop/pages/monthly.py::render", "shop/pages/yearly.py::render"), plan.broken_references

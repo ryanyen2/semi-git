@@ -7,8 +7,8 @@ symbol and gets swept, silently, with a preview that counts ops rather than cons
 
 The safe plan partitions instead:
 
-- **Semantic removal R**: X, plus later edits of any symbol X *introduced*, plus declared-edge
-  dependents, to a fixpoint -- all within `upset_in_many(X)`, the maximal blast radius. A mere
+- **Semantic removal R**: X, plus later edits of any symbol X *introduced* -- all within
+  `upset_in_many(X)`, the maximal blast radius. A mere
   reference dependent (code that calls something removed) is deliberately NOT removed: when it
   is a rework of a shared symbol, the tip splice subtracts the stale call lines mechanically;
   when it is its own surviving symbol, it is reported as a broken reference for a human edit --
@@ -62,29 +62,18 @@ def _born_symbols(op_ids, by_id) -> set[str]:
     return out
 
 
-def _semantic_closure(target_ids, blast, by_id, declared_dependents_of) -> set[str]:
-    """The ops a removal has to take with it: the targets, every up-set op that touches a symbol
-    the *targets* created, and declared dependents, transitively through the declared edges.
+def _semantic_closure(target_ids, blast, by_id) -> set[str]:
+    """The ops a removal has to take with it: the targets and every up-set op that touches a
+    symbol the *targets* created.
 
     A symbol born by an op that only joined this closure is not the target's: an op that touched
     one target-born symbol and, in the same save, created an unrelated helper used to drag every
     later user of that helper in too (the grain defect measured on the bikecount study repo,
-    review 2026-10-19 §2). Membership now grows through declared dependents only; births are the
-    targets' own. `target_ids` here already holds the targets' declared dependents (closed in
-    `plan_subtraction`): an `after(a, b)` edge is the user naming b, so b is taken whole."""
-    removal = set(target_ids)
+    review 2026-10-19 §2). Births are the targets' own."""
     born = _born_symbols(target_ids, by_id)
-    changed = True
-    while changed:
-        changed = False
-        declared = set().union(*(declared_dependents_of.get(rid, set()) for rid in removal)) \
-            if removal else set()
-        for oid in blast - removal:
-            op = by_id[oid]
-            if any(sym in born for sym in op.footprint) or oid in declared:
-                removal.add(oid)
-                changed = True
-    return removal
+    return set(target_ids) | {
+        oid for oid in blast if any(sym in born for sym in by_id[oid].footprint)
+    }
 
 
 def _broken_references(
@@ -402,7 +391,7 @@ def _prune_emptied_paths(
 
 
 def plan_subtraction(
-    repo: str | Path, target_ids, ops: list[Op], ideal_ids, declared, *, tag: str,
+    repo: str | Path, target_ids, ops: list[Op], ideal_ids, *, tag: str,
 ) -> SubtractionPlan:
     repo = Path(repo)
     by_id = {op.id: op for op in ops}
@@ -412,11 +401,6 @@ def plan_subtraction(
         return SubtractionPlan(ok=True, after_ids=live,
                                message=f"{tag}: none of its ops are in the current ideal; no change")
 
-    declared_dependents_of: dict[str, set[str]] = {}
-    for a, b in declared:
-        if a in live and b in live:
-            declared_dependents_of.setdefault(a, set()).add(b)
-
     # An entity's `__residue__`/`__anchor__` ops are its *siblings*, not its dependents, so no up-set
     # reaches them. Reverting the op that introduced `mod.py::only` used to leave that entity's
     # trailing gap live and orphaned, and `fold._fold_file` appends an orphaned gap at the end of the
@@ -424,21 +408,12 @@ def plan_subtraction(
     # next, and `put()` refused every save there from then on, `ugh undo` included (F35). Pull the
     # layout facts in as *targets* rather than pruning them forward, so they ride the same exclusion
     # the entity does and `ugh restore` brings gap, anchor and entity back together.
-    def _declared_closure(seed) -> frozenset[str]:
-        out, todo = set(seed), list(seed)
-        while todo:
-            for dep in declared_dependents_of.get(todo.pop(), ()):
-                if dep not in out:
-                    out.add(dep)
-                    todo.append(dep)
-        return frozenset(out)
-
     while True:
-        # The targets and their declared dependents are taken whole; everything else in the
-        # removal is collateral and is subtracted only where it owes.
-        whole = _declared_closure(targets)
-        blast = set(order.upset_in_many(targets, live, ops, declared))
-        removal = _semantic_closure(whole, blast, by_id, declared_dependents_of)
+        # The targets are taken whole; everything else in the removal is collateral and is
+        # subtracted only where it owes.
+        whole = targets
+        blast = set(order.upset_in_many(targets, live, ops))
+        removal = _semantic_closure(whole, blast, by_id)
         also = layout_ops_of(removal, by_id, live) - removal
         if not also:
             break
@@ -470,11 +445,11 @@ def plan_subtraction(
     # that up-set: a target whose up-set holds a collateral op with an unowed edit is not
     # excludable either, and both go forward to be spliced where they owe.
     def _excludable(oid: str) -> bool:
-        up = order.upset_in(oid, live, ops, declared)
+        up = order.upset_in(oid, live, ops)
         return up <= removal and all(_owes_nothing_elsewhere(u) for u in up)
 
     excludable = {oid for oid in removal if _excludable(oid)}
-    excluded = order.upset_in_many(excludable, live, ops, declared) if excludable else frozenset()
+    excluded = order.upset_in_many(excludable, live, ops) if excludable else frozenset()
     survivors = live - excluded
     forward = removal - excluded
 
