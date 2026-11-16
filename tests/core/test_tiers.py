@@ -72,48 +72,6 @@ def test_entity_override_on_ungrammared_path_is_a_content_noop(tmp_path):
     assert before_version == prior_after_version
 
 
-def test_ignoring_a_live_path_refuses_and_names_revert(tmp_path):
-    """D4's second safety guard: `ugh tiers set` refuses to mark a currently-covered path
-    `ignored` -- that would silently stop tracking live content -- and names `ugh revert` as
-    the remedy. Once the path's ops are reverted out of the ideal, the same call succeeds."""
-    from ugh.cli.tiers import _tiers_set
-    from ugh.core import verbs
-    from ugh.core.lens import get as get_ideal
-    from ugh.core.op import is_content_bearing
-
-    gb, _ = init_store(tmp_path)
-    (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("add foo")
-
-    get(tmp_path)  # mine-on-contact, so the ideal covers a.py
-
-    code_before = _tiers_set(str(tmp_path), "a.py", "ignored", as_json=True)
-    assert code_before == 1
-
-    # a single-function file mines an entity op *and* residue ops (the head/tail gaps around it)
-    # -- all of them content-bearing and covering "a.py", so every one has to be reverted, not
-    # just the entity op, before the path is no longer live. Re-check the ideal after each revert:
-    # reverting one op's upset may also remove a sibling from the ideal.
-    def _live_a_py_ops():
-        ideal = get_ideal(tmp_path)
-        ops = Store(tmp_path).all_ops()
-        return [
-            op for op in ops if op.id in ideal.op_ids
-            and any(sym == "a.py" or sym.startswith("a.py::") for sym in op.footprint)
-            and any(is_content_bearing(sym) for sym in op.footprint)
-        ]
-
-    remaining = _live_a_py_ops()
-    while remaining:
-        preview = verbs.plan_revert(tmp_path, remaining[0].id)
-        assert preview.ok
-        verbs.apply(tmp_path, preview)
-        remaining = _live_a_py_ops()
-
-    code_after = _tiers_set(str(tmp_path), "a.py", "ignored", as_json=True)
-    assert code_after == 0
-
-
 def test_divergent_working_tier_maps_mine_to_byte_identical_ops(tmp_path):
     """LAW-0: tier resolution reads `.sgt/tiers.json`/`.sgtignore` from the mined commit's own
     tree, never the working tree -- so two replicas with divergent *uncommitted* tier maps

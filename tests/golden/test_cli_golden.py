@@ -9,7 +9,7 @@ Two things are being locked:
      parser as an argparse package; these snapshots are the contract that its text and (especially)
      `--json` output do not drift for any pre-existing verb. `--json` is the machine surface the
      VSCode extension / TUI consume (R21), so its byte-stability is the one that must not move.
-  2. **Provenance exclusion, proven end to end.** Op ids appear verbatim in `log`/`state`/`map`/…
+  2. **Provenance exclusion, proven end to end.** Op ids appear verbatim in `log`/`map`/…
      output; because these fixtures are byte-identical across independent builds (provenance is
      excluded from `compute_id`), the ids -- and therefore this whole snapshot -- are stable. A
      later unit that adds structured provenance (U22) must keep every id here unchanged.
@@ -39,7 +39,6 @@ import pytest
 from ugh import cli
 from ugh.api import map_view
 from ugh.core.lens import get
-from ugh.core.store import Store
 from tests.laws import corpus
 
 _SNAPSHOTS = pathlib.Path(__file__).resolve().parent / "snapshots"
@@ -83,24 +82,8 @@ def _both(repo: pathlib.Path, argv: list[str]) -> dict:
     return {"text": _capture(repo, argv), "json": _capture(repo, [*argv, "--json"])}
 
 
-def _op_id(repo: pathlib.Path, symbol: str) -> str:
-    """A stored op's id by a symbol in its footprint -- deterministic (content-addressed)."""
-    return sorted(op.id for op in Store(repo).all_ops() if symbol in op.footprint)[0]
-
-
 def _feature_ids(repo: pathlib.Path) -> list[str]:
     return [n["id"] for n in map_view(repo)["nodes"] if n.get("kind") == "feature"]
-
-
-def _slugify_tips(repo: pathlib.Path) -> tuple[str, str]:
-    """`diverged_chain`'s main-vs-release fork tips for the same symbol -- the merge-op/transplant
-    fixture (mirrors tests/core/test_rewrite.py)."""
-    corpus.checkout(repo, "release")
-    release = get(repo)
-    corpus.checkout(repo, "main")
-    main = get(repo)
-    ops = Store(repo).all_ops()
-    return main.frontier(ops)["slugify.py::slugify"], release.frontier(ops)["slugify.py::slugify"]
 
 
 def capture_cli_surface(root: str) -> dict:
@@ -130,37 +113,17 @@ def capture_cli_surface(root: str) -> dict:
 
     # -- read surface (one mined + mapped linear_history repo; read verbs are idempotent) -------
     rf = fresh(mapped=True)
-    feat = _feature_ids(rf)[0]
     views["help"] = _capture(rf, ["help"])
-    # U14: the grid (`ugh log`) is the only inspection surface -- `status`/`map` collapsed onto
-    # `ugh log --summary`/`--tree`, `blame` demoted under `advanced`; state/history/fsck stay rare
-    # under `advanced` (U2/KTD2). `checkpoint`/`drift` folded into `save` (U12).
     for key, argv in (
-        ("log", ["log"]), ("now", ["now"]), ("state", ["advanced", "state"]),
-        ("status", ["log", "--summary"]),
-        ("map", ["log", "--tree"]), ("history", ["advanced", "history"]),
-        ("fsck", ["advanced", "fsck"]),
+        ("log", ["log"]), ("status", ["log", "--summary"]), ("map", ["log", "--tree"]),
+        ("check", ["check"]),
     ):
         views[key] = _both(rf, argv)
-    views["blame"] = _both(rf, ["advanced", "blame", "a.py"])
     views["plan_status"] = _both(rf, ["plan", "status"])
-    views["split_preview"] = _both(fresh(mapped=True), ["feature", "regroup", "split", feat])
-    views["preview_revert_feature"] = _both(fresh(mapped=True), ["advanced", "preview", "revert", feat])
     views["revert_emit"] = _both(fresh(), ["revert", "--emit", "c.py::qux"])  # --emit writes nothing
-
-    # -- diff needs two refs (diverged_chain: main vs release) ---------------------------------
-    dc = corpus.CORPUS["diverged_chain"].build(root / "diff")
-    corpus.checkout(dc, "release")
-    get(dc)
-    corpus.checkout(dc, "main")
-    get(dc)
-    views["diff"] = _both(dc, ["diff", "main", "release"])
 
     # -- deterministic error / refusal surfaces (fail before mutating; safe to re-run) ----------
     views["revert_unknown"] = _both(fresh(), ["revert", "nope::nothing"])
-    views["oracle_run_no_config"] = _both(fresh(), ["advanced", "oracle", "run"])
-    views["fulfill_no_draft"] = _both(fresh(), ["advanced", "fulfill", "no-such-draft", "--from-tree"])
-    views["commit_nothing_staged"] = _both(fresh(), ["advanced", "commit"])
     # A genuinely dirty tree: since Phase 1.2 gitignores `.sgt/`, a fresh repo's tree is clean and
     # `sync` would sail past the guard into a real fetch -- so dirty a *tracked* source file to
     # exercise the clean-tree refusal the view is named for.
@@ -175,36 +138,11 @@ def capture_cli_surface(root: str) -> dict:
     views["revert"] = both_isolated(lambda r: ["revert", "c.py::qux", "--yes"], mapped=True)
     views["restore"] = both_isolated(lambda r: ["restore", "c.py::qux", "--yes"],
                                      prep=["revert", "c.py::qux", "--yes"], mapped=True)
-    # oracle override's --json carries a wall-clock `ts`; only its (deterministic) text is frozen.
-    views["oracle_override"] = {
-        "text": _capture(fresh(), ["advanced", "oracle", "override", "--status", "pass", "--reason", "manual"])
-    }
     views["rename"] = both_isolated(
         lambda r: ["feature", "rename", _feature_ids(r)[0], "Renamed Feature"], mapped=True
     )
-    views["move"] = both_isolated(
-        lambda r: ["feature", "regroup", "move", _op_id(r, "c.py::qux"), "--to", _feature_ids(r)[0]], mapped=True
-    )
-    views["merge"] = both_isolated(_merge_argv, mapped=True)
-    views["identity_split"] = both_isolated(
-        lambda r: ["advanced", "identity", "split", _op_id(r, "a.py::foo"), _op_id(r, "c.py::qux")]
-    )
 
-    def _fork_repo() -> pathlib.Path:
-        seq[0] += 1
-        repo = corpus.CORPUS["diverged_chain"].build(root / f"f{seq[0]}")
-        return repo
-
-    def both_fork(argv_fn) -> dict:
-        rt, rj = _fork_repo(), _fork_repo()
-        return {"text": _capture(rt, argv_fn(rt)), "json": _capture(rj, [*argv_fn(rj), "--json"])}
-
-    views["merge_op"] = both_fork(lambda r: ["advanced", "merge-op", *_slugify_tips(r)])
-    views["transplant"] = both_fork(lambda r: ["advanced", "transplant", _slugify_tips(r)[1], "--onto", "main"])
-
-    # -- porcelain daily-loop verbs (U26/D3): switch/save/undo -------------------------------------
-    views["switch"] = both_isolated(lambda r: ["switch", "release"], case="diverged_chain")
-    views["switch_unknown_branch"] = _both(fresh(), ["switch", "no-such-branch"])
+    # -- porcelain daily-loop verbs (U26/D3): save/undo --------------------------------------------
 
     def _dirty_repo() -> pathlib.Path:
         seq[0] += 1
@@ -238,7 +176,6 @@ def capture_cli_surface(root: str) -> dict:
 
     # -- usage / unknown-verb fall-throughs -----------------------------------------------------
     views["unknown_verb"] = _capture(rf, ["not-a-verb"])
-    views["preview_bad_arity"] = _capture(rf, ["advanced", "preview", "merge", "only-one-arg"])
 
     return views
 
@@ -259,12 +196,6 @@ def _redact_witness_sha(capture: dict) -> dict:
     else:
         out = _WITNESS_SHA_TEXT_RE.sub(r"\1<witness-sha>", out)
     return {**capture, "out": out}
-
-
-def _merge_argv(repo: pathlib.Path) -> list[str]:
-    fids = _feature_ids(repo)
-    absorbed = fids[1] if len(fids) > 1 else fids[0]  # single-feature tree -> self-merge surface
-    return ["feature", "regroup", "merge", fids[0], absorbed]
 
 
 def _dump(views: dict) -> str:

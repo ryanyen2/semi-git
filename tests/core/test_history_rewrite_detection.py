@@ -6,7 +6,7 @@ afterwards -- deliberately, since that is what keeps an explicit revert durable 
 --hard` / `commit --amend` / `branch -f`, the recorded ideal still names ops from commits that no
 longer exist: every count over-reports and a later `save` can dead-end.
 
-`ugh advanced resync` has always been the fix. What was missing was any way for the user to learn
+`ugh check --repair` is the fix. What was missing was any way for the user to learn
 that: the desync presented as ordinary working-tree drift, so the surfaces suggested `ugh save`,
 which finds nothing new, prints "nothing to save", and exits 0 -- reporting success while the
 discrepancy stays. These tests pin the detection, the routing, and that it clears.
@@ -121,20 +121,21 @@ def test_resync_clears_it_and_corrects_the_counts(repo):
 
 
 def test_the_surfaces_name_resync_and_not_save(repo, capsys, monkeypatch):
-    """The user-facing half. `ugh log --summary` and `ugh now` must both route to `resync`; the
-    generic "`ugh save` absorbs them" drift advice must not be what they see here."""
+    """The user-facing half. `ugh log --summary` and `ugh log --rail` must both route to
+    `check --repair`; the generic "`ugh save` absorbs them" drift advice must not be what they see
+    here."""
     _reset_hard(repo, "HEAD~2")
     monkeypatch.chdir(repo)
     capsys.readouterr()
 
     assert main(["log", "--summary", "--no-color"]) == 0
     summary = capsys.readouterr().out
-    assert "ugh advanced resync" in summary
+    assert "ugh check --repair" in summary
     assert "ugh save` absorbs" not in summary
 
-    assert main(["now", "--no-color"]) == 0
-    now = capsys.readouterr().out
-    assert "ugh advanced resync" in now
+    assert main(["log", "--rail", "--no-color"]) == 0
+    rail = capsys.readouterr().out
+    assert "ugh check --repair" in rail
 
 
 def test_next_action_ranks_resync_above_a_plain_save(repo):
@@ -144,7 +145,7 @@ def test_next_action_ranks_resync_above_a_plain_save(repo):
     lens.get(repo)
     action = api.now_view(repo)["next_action"]
     assert action["kind"] == "resync"
-    assert action["command"] == "ugh advanced resync"
+    assert action["command"] == "ugh check --repair"
 
 
 def test_saving_re_authored_work_after_a_backward_move_is_not_a_rewrite(repo):

@@ -41,28 +41,3 @@ def test_bad_kind_or_empty_op_set_refuses(tmp_path):
         suggest.add(tmp_path, "nonsense", ["F-a"], ["op1"])
     with pytest.raises(ValueError):
         suggest.add(tmp_path, "merge", ["F-a"], [])
-
-
-def test_suggestion_view_projects_the_open_queue(tmp_path):
-    from ugh.api import suggestion_view
-
-    assert suggestion_view(tmp_path) == {"count": 0, "suggestions": []}
-    suggest.add(tmp_path, "conflict", ["F-a", "F-b"], ["op1"], "dual membership")
-    v = suggestion_view(tmp_path)
-    assert v["count"] == 1
-    s = v["suggestions"][0]
-    assert s["kind"] == "conflict" and s["features"] == ["F-a", "F-b"] and s["rationale"] == "dual membership"
-
-
-def test_cli_list_and_dismiss(tmp_path, capsys, monkeypatch):
-    from ugh.cli.suggestions import _suggestions
-
-    r = suggest.add(tmp_path, "merge", ["F-a", "F-b"], ["op1"], "couple")
-    monkeypatch.chdir(tmp_path)
-
-    assert _suggestions(".", "list", [], as_json=False) == 0
-    assert r.id in capsys.readouterr().out
-
-    assert _suggestions(".", "dismiss", [r.id], as_json=False) == 0
-    assert "dismissed 1" in capsys.readouterr().out
-    assert suggest.all_records(tmp_path) == []

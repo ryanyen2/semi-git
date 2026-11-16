@@ -17,7 +17,6 @@ from ugh.core.lens import (
     _load_declared,
     declare_after,
     load_declared_orset,
-    retract_after,
     save_declared_orset,
 )
 from ugh.core.store import Store
@@ -40,30 +39,6 @@ def test_declare_after_makes_an_edge_live(tmp_path):
     orset = load_declared_orset(repo)
     assert len(orset.adds) == 2
     assert orset.live() == frozenset({("opA", "opB")})
-
-
-def test_retract_tombstones_locally_observed_tags(tmp_path):
-    repo = _repo(tmp_path)
-    declare_after(repo, "opA", "opB")
-    declare_after(repo, "opC", "opD")
-    tombstoned = retract_after(repo, "opA", "opB")
-    assert len(tombstoned) == 1
-    assert _load_declared(repo) == frozenset({("opC", "opD")})  # only the retracted edge is gone
-
-
-def test_concurrent_add_survives_a_retraction(tmp_path):
-    """OR-Set's defining property (why not a plain delete): retracting the tags one clone observes
-    must not kill a concurrent add elsewhere carrying a tag that clone never saw."""
-    repo = _repo(tmp_path)
-    # ours: one observed add of the edge.
-    declare_after(repo, "opA", "opB")
-    ours = load_declared_orset(repo)
-    # theirs: an independent add of the *same value* with a tag we haven't seen.
-    theirs = DeclaredORSet(adds=frozenset({("opA", "opB", "theirs-tag")}))
-    # we retract every tag we locally observe, then the two OR-Sets merge (sync).
-    retract_after(repo, "opA", "opB")
-    merged = load_declared_orset(repo).union(theirs)
-    assert merged.live() == frozenset({("opA", "opB")})  # theirs' unseen tag keeps the edge alive
 
 
 def test_retraction_travels_when_the_tag_is_shared(tmp_path):

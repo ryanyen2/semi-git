@@ -207,26 +207,23 @@ def _check_miner_versions(ours_ops: list[Op], theirs_ops: list[Op]) -> None:
     """Refuse the sync unless both stores share one miner version (C6/R12): a union across versions
     is exactly the mixed-version store `fsck` flags. Post-U9 *either* side can be behind -- an
     un-migrated clone carries v2 ops while its binary is v3 -- so both stores are checked, and which
-    side to migrate is named. A pre-v3 store is fixed by `ugh migrate ops-v3` (not an ugh upgrade);
-    a store *newer* than this binary means this side must upgrade ugh first."""
+    side is behind is named. A store *newer* than this binary means this side must upgrade ugh
+    first."""
     ours = {op.miner_version for op in ours_ops if op.miner_version != MINER_VERSION}
     theirs = {op.miner_version for op in theirs_ops if op.miner_version != MINER_VERSION}
     if not ours and not theirs:
         return
     foreign = sorted(ours | theirs)
     if all(v < MINER_VERSION for v in foreign):
-        # A pre-v3 store on one (or both) side(s): a re-key migration, not an ugh upgrade, is the fix.
         side = "ours" if ours else "theirs"
         raise MinerVersionMismatch(
             f"refusing to union op stores across miner versions: the {side} store carries "
-            f"{', '.join(foreign)} but this ugh mines {MINER_VERSION}. Run `ugh migrate ops-v3` on "
-            f"the {side} clone to re-key it to v3, then sync again -- and on a team, migrate the "
-            f"shared branch's landing clone first, then have the other clones re-sync after."
+            f"{', '.join(foreign)} but this ugh mines {MINER_VERSION}."
         )
     raise MinerVersionMismatch(
         f"refusing to union op stores across miner versions: theirs carries {', '.join(foreign)}, "
         f"this ugh mines {MINER_VERSION} -- theirs was mined by a newer ugh. Upgrade ugh on our side, "
-        f"then run `ugh migrate ops-v3` and sync again."
+        f"then sync again."
     )
 
 

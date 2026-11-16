@@ -111,7 +111,7 @@ def _close(repo: str, sub: str, session_id: str, as_json: bool, actor: str | Non
         print(f"✓ plan session {session_id} closed (completed)")
     else:
         print(f"✓ abandoned plan session {session_id} -- its unfinished steps are recorded as "
-              "open intents (ugh intent open)")
+              "open intents")
     return 0
 
 

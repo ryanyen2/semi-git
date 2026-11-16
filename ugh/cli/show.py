@@ -2,9 +2,8 @@
 
 Every id in ugh's output is a token the user is expected to type back somewhere: the `f-` handle on
 a graph node, the bare hex off `--ops`, a `f-x:slug` checkpoint, a `file::name` symbol. But choosing
-the verb that accepts a given token required already knowing what *kind* of thing it was --
-`feature why` for an op, `intent show` for a feature, `advanced state` for the ideal -- which is
-backwards when the token is exactly the thing you don't recognize.
+the verb that accepts a given token required already knowing what *kind* of thing it was, which
+is backwards when the token is exactly the thing you don't recognize.
 
 This verb takes any of them and reads out identity, extent, consequence, and next steps. It is
 read-only and offline (no LLM, no mining), because its job is to be the thing a cautious user runs
@@ -44,8 +43,8 @@ def _cmd_show(args) -> int:
     They could have been two verbs -- and briefly were, when a `show` that reads a file at a past
     frontier and a `show` that explains an id landed from different directions. But a user does not
     hold two concepts here: they are pointing at something and asking to see it. `--at` is the same
-    time modifier `ugh log --at` and `ugh advanced fold --at` already use, so "add `--at` to look at
-    the past" is one idea that composes across the tool rather than a second verb to learn."""
+    time modifier `ugh log --at` already uses, so "add `--at` to look at the past" is one idea that
+    composes across the tool rather than a second verb to learn."""
     selection = " ".join(args.sel)
     if args.at is not None:
         from .inspect import _show_at
@@ -106,8 +105,8 @@ def _print_show(view: dict) -> None:
     if elided > 0:
         # Say what isn't shown *and* how to see it. Stopping silently at the cap reads as "that was
         # all of them"; naming a count with no way to reach it is the same problem one step later --
-        # nothing else lists a symbol's saves (`log --focus` lists a feature's checkpoints, `advanced
-        # blame` a file's symbols), so without the flag those saves were unreachable from the CLI.
+        # nothing else lists a symbol's saves (`log --focus` lists a feature's checkpoints), so
+        # without the flag those saves were unreachable from the CLI.
         print(f"               (+{elided} older save(s) — `--saves {view['save_count']}` for all)")
 
     _print_consequences(view["consequences"])

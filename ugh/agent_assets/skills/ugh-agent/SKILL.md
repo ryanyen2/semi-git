@@ -38,8 +38,8 @@ features:    "drop"  "waitlist" "clash"          ops that change together
 ```
 
 Two things this buys you that a diff cannot, and they are the reason to reach for ugh at all: the
-recorded **reason** a symbol is the way it is (`ugh_recall`), and the exact **cost of removing**
-something — the count of later ops built on top that would come out with it (`ugh_show`).
+recorded **reason** a symbol is the way it is, and the exact **cost of removing** something — the
+count of later ops built on top that would come out with it. `ugh_show` answers both.
 
 `ugh log --map` draws this as one lane per feature, foundations at the top, over a shared
 commit-time axis. A lane's glyphs (`▁▂▃▄▅▆▇█`, dim `·` for quiet) read as *how busy* that stretch
@@ -66,48 +66,38 @@ Before your first edit, run this. It works in any harness that has a shell, so i
 MCP being wired up:
 
 ```bash
-ugh now --json
+ugh status --json
 ```
 
-It prints what was asked for, whether there is unsaved work, what needs a human decision, what was
-recently done, and the one suggested next action.
+It reports the counts, whether there is unsaved work, and what needs a human decision: open forks,
+working-tree drift, a staged rewrite, a git history rewrite.
 
-Check for a `.sgt/` directory before you rely on any of it. In a repo that was never `ugh init`ed,
-`ugh now` still exits 0 and returns an empty-but-valid payload, so an empty result does not tell you
-whether the repo is untracked or simply clean. If there is no `.sgt/`, use plain git and stop
-reading here.
+Check for a `.sgt/` directory before you rely on any of it. If there is no `.sgt/`, use plain git
+and stop reading here.
 
-Use it rather than assembling the same picture yourself. Measured on a 290-commit repo, `ugh_now` is
-about 530 tokens, and reading `ugh_now` plus `ugh_log` plus `ugh_status` together costs about 5,200.
-You would spend most of that on detail you are not going to act on.
+Two states mean **stop and tell the human** rather than working around them:
 
-Two lines in the brief mean **stop and tell the human** rather than working around them:
-
-- `BLOCKED: a paused git merge/cherry-pick/revert` — the tree holds conflict markers, `ugh save`
-  refuses outright, and anything you record now is recorded against a half-merged tree.
-- `BLOCKED: git history moved backward` — someone ran `reset --hard`, `amend`, or `branch -f`, so
-  ugh's recorded state names commits that no longer exist. Every count you read is inflated until
-  `ugh advanced resync` runs.
+- a paused git merge/cherry-pick/revert — the tree holds conflict markers, `ugh save` refuses
+  outright, and anything you record now is recorded against a half-merged tree.
+- git history moved backward — someone ran `reset --hard`, `amend`, or `branch -f`, so ugh's
+  recorded state names commits that no longer exist. Every count you read is inflated until
+  `ugh check --repair` runs.
 
 Neither is yours to fix silently. Say what you found and what fixes it.
 
 ## Which read answers which question
 
 Reach for the narrowest one. Costs measured on that same 290-commit repo, and the shape matters
-more than the exact number: the first three stay flat as history grows, the last does not.
+more than the exact number: they stay flat as history grows.
 
 | You want to know | Use | Cost |
 |---|---|---|
-| Why is this code the way it is | `ugh_recall` | ~10 tokens + matches |
 | What happened outside the plan | `ugh_drift` | ~10 tokens |
-| Where am I, is anyone mid-something | `ugh_now` | ~530 tokens, flat |
-| What needs a human right now | `ugh_now` | ~530 tokens, flat |
-| What is this id, what would a revert cost | `ugh_show` | ~720 tokens |
+| What is this id, what would a revert cost, why is it here | `ugh_show` | ~720 tokens |
 | What did this file look like back then | `ugh_show` with `at` | small |
+| Which thing matches a description | `ugh_find` | small |
 | What happened recently | `ugh_log` | ~1,400 tokens, capped at 30 ops |
-| Scalars: coverage, oracle, working-tree drift | `ugh_status` | ~3,300 tokens |
 
-`ugh_status` is the one to think twice about: four times the brief for a question you rarely have.
 There is no `ugh_grid` tool on purpose — the grid is one cell per feature-and-commit, meant to be
 *drawn* by a UI, and it measured about 129,000 tokens on that repo and grows with history. If you
 truly need the raw join, shell out to `ugh log --json` and page it yourself.
@@ -117,10 +107,9 @@ fast. That is one warm-up, not a per-call cost, so it is not a reason to avoid a
 
 ## Read before you write
 
-ugh's best feature for you is `ugh_recall`: pass the symbols you are about to touch and it returns
-the recorded reasons behind them, plus intents someone stated but never landed. A constraint you
-would otherwise rediscover by breaking it is usually sitting right there. Do this before editing
-anything unfamiliar.
+Before editing anything unfamiliar, run `ugh_show` on the symbols you are about to touch: its
+`asked` attribute carries the words that produced that code, and a constraint you would otherwise
+rediscover by breaking it is usually sitting right there.
 
 Before proposing anything destructive, run `ugh_show` on the target. It reports how many edits a
 revert would remove and how many of those are *later work built on top* — the number that decides
@@ -129,7 +118,7 @@ run it freely. Then state that number to the human instead of the bare command.
 
 ## What is yours and what is theirs
 
-Yours: reading (`ugh_show`, `ugh_recall`, `ugh_log`, `ugh_now`, `ugh_drift`), the plan loop
+Yours: reading (`ugh_show`, `ugh_find`, `ugh_log`, `ugh_drift`), the plan loop
 (`ugh_plan_intake` → work → `ugh_checkpoint` → `ugh_plan_done`), and **`ugh_save`**. See the
 `ugh-plan` skill for the loop and for how ownership works when several agents share a repo.
 
@@ -139,7 +128,7 @@ feature born from the work — so write the sentence you would have put in a com
 pass along the *user's* words too: `prompt` takes the ask that drove this work, verbatim as you
 received it (their words, not your paraphrase), and `claude_session_id` takes your session UUID
 (read `$CLAUDE_CODE_SESSION_ID` via Bash; never `$CLAUDE_CODE_BRIDGE_SESSION_ID`, which can carry a
-parent's id). Together they let `ugh why` and the checkpoint history answer with what the user
+parent's id). Together they let `ugh show` and the checkpoint history answer with what the user
 actually asked for — and let the conversation that produced a checkpoint be found and resumed from
 it later. The same two fields ride `ugh_revert`/`ugh_restore` when the user asked for the removal
 or return in so many words. The verb is additive and `ugh undo` reverses it, which is what makes it
@@ -148,12 +137,11 @@ the loop ugh exists to remove.
 
 Theirs, and deliberately not exposed to you as tools:
 
-- **`ugh land`, `ugh sync`, `ugh propose land`, `ugh resolve`** change *shared* state and are gated
-  behind an interactive confirmation in the terminal. Running them through a shell skips that gate —
-  and unlike a save, these are not reversed by `ugh undo`.
-- **The feature verbs** (`ugh feature regroup merge|split|move`, `ugh feature rename`) set labels
-  and regroupings that permanently override ugh's generated ones. That is a judgement a human makes
-  looking at the graph.
+- **`ugh sync`, `ugh resolve`** change *shared* state and are gated behind an interactive
+  confirmation in the terminal. Running them through a shell skips that gate — and unlike a save,
+  these are not reversed by `ugh undo`.
+- **`ugh feature rename`** sets a label that permanently overrides ugh's generated one. That is a
+  judgement a human makes looking at the graph.
 
 When one of these is the right next step, say so and hand it over with the exact command. That is
 more useful than doing it, because they can see the consequence in the terminal that you cannot.
@@ -169,9 +157,9 @@ full (`asked.asks[].text`).
 
 Two rules follow from it. **Quote it, do not paraphrase it.** When you tell somebody what a piece of
 work was for, their own sentence is the answer, and a paraphrase of a paraphrase is how a record
-stops being trustworthy. **Read it before you edit from a chapter** -- `ugh_checkpoint_context`
-carries the same words with the blast radius beside them -- because the fastest way to undo somebody
-else's decision is to re-derive their intent from the code instead of reading what they asked for.
+stops being trustworthy. **Read it before you edit from a chapter**, because the fastest way to
+undo somebody else's decision is to re-derive their intent from the code instead of reading what
+they asked for.
 
 An empty `asked` is not a hint to invent one. It means this work predates the prompt hook or was
 saved outside a conversation, and saying so is the honest answer.
@@ -183,20 +171,20 @@ into a transcript it renders as noise and costs tokens for the escape codes.
 
 - Reading it yourself: use `--json`, or the MCP tool, and summarize in your own words.
 - Showing it to them: only output that is already narrow — `ugh show` (plain text, no colour, so no
-  flag needed), or `ugh now --no-color` / `ugh log --summary --no-color`.
+  flag needed), or `ugh log --summary --no-color`.
 - Never paste `ugh log --map` or the rail into a transcript. They are wide, tall, and meant to be
   read live in a terminal. Point at the command instead and let them run it.
 
-When you name a command, name one that runs. ugh's verbs were reorganised: several moved under
-`ugh advanced` or `ugh feature`, and a few became `ugh log` modes. An unrecognised verb exits
-non-zero and prints the command that replaced it, so a wrong guess is recoverable — but it still
-costs a round trip, and a wrong command in a message *to the human* costs their trust. `--no-color`
-is not universal either: `ugh now` and `ugh log` take it, `ugh show` does not need it.
+When you name a command, name one that runs. An unrecognised verb exits non-zero and prints the
+closest real verbs, so a wrong guess is recoverable — but it still costs a round trip, and a wrong
+command in a message *to the human* costs their trust. `--no-color` is not universal either:
+`ugh log` and `ugh status` take it, `ugh show` does not need it.
 
 ## When there is no MCP
 
 In a harness with only a shell (Codex, a bare CLI runner), every read above has a `--json`
-equivalent: `ugh show <sel> --json`, `ugh now --json`, `ugh log --json`, `ugh log --summary --json`.
+equivalent: `ugh show <sel> --json`, `ugh find "<words>" --json`, `ugh log --json`,
+`ugh status --json`.
 The plan loop is `ugh plan intake|status|resume|adopt|done|abandon`, and matching happens on the
 human's `ugh save`. See `references/cli-fallback.md` for the tool-to-command mapping.
 
@@ -206,5 +194,5 @@ human's `ugh save`. See `references/cli-fallback.md` for the tool-to-command map
 - `references/costs.md` — the measurements above, how they were taken, and how to re-take them when
   they go stale.
 - The `ugh-plan` skill — the plan loop and session ownership.
-- The `ugh-workflow` skill — choosing between ugh's look-alike verbs (four shapes of revert, feature
-  verbs versus op verbs, land versus propose).
+- The `ugh-workflow` skill — choosing between ugh's look-alike verbs (the shapes of revert, revert
+  versus undo, sync versus push).

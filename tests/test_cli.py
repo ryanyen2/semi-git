@@ -105,9 +105,9 @@ def _seed_resolvable_fork(tmp_path, symbol="a.py::foo"):
     ])
 
 
-def test_log_and_now_surface_a_loud_non_blocking_fork_banner(tmp_path, capsys):
-    """A genuine open fork renders the red `⋔` banner on both `ugh log` and `ugh now`, naming the
-    symbol and its `ugh resolve` remedy -- and neither verb changes its exit code (non-blocking)."""
+def test_log_surfaces_a_loud_non_blocking_fork_banner(tmp_path, capsys):
+    """A genuine open fork renders the red `⋔` banner on `ugh log`, naming the symbol and its
+    `ugh resolve` remedy -- and the verb does not change its exit code (non-blocking)."""
     _seed(tmp_path, 2)
     _seed_resolvable_fork(tmp_path)
     capsys.readouterr()
@@ -115,10 +115,6 @@ def test_log_and_now_surface_a_loud_non_blocking_fork_banner(tmp_path, capsys):
     assert _in(tmp_path, ["log", "--no-color"]) == 0
     log_out = capsys.readouterr().out
     assert "⋔" in log_out and "ugh resolve a.py::foo" in log_out
-
-    assert _in(tmp_path, ["now", "--no-color"]) == 0
-    now_out = capsys.readouterr().out
-    assert "⋔" in now_out and "ugh resolve a.py::foo" in now_out
 
 
 def test_log_focus_unknown_group_falls_through_to_the_map(tmp_path, capsys):
@@ -146,22 +142,6 @@ def test_log_json_full_is_machine_readable(tmp_path, capsys):
     assert any("a.py::foo" in [f["symbol"] for f in op["footprint"]] for op in payload["ops"])
 
 
-def test_state_shows_frontier_and_coverage(tmp_path, capsys):
-    _seed(tmp_path, 1)
-    assert _in(tmp_path, ["advanced", "state", "--json"]) == 0
-    payload = json.loads(capsys.readouterr().out)
-    assert payload["covered_paths"] == ["a.py"]
-    assert payload["oracle_configured"] is False
-    assert payload["oracle_verdict"] is None
-
-
-def test_state_json_full_shows_frontier(tmp_path, capsys):
-    _seed(tmp_path, 1)
-    assert _in(tmp_path, ["advanced", "state", "--json", "--full"]) == 0
-    payload = json.loads(capsys.readouterr().out)
-    assert "a.py::foo" in payload["frontier"]
-
-
 def test_log_json_limit_and_offset_flags(tmp_path, capsys):
     _seed(tmp_path, 3)  # a.py::foo v1/v2/v3, at least 3 distinct ops
     capsys.readouterr()
@@ -178,24 +158,6 @@ def test_log_json_limit_and_offset_flags(tmp_path, capsys):
     rest = json.loads(capsys.readouterr().out)
     assert len(rest["ops"]) == total - 1
     assert rest["ops"][0]["id"] != first_page["ops"][0]["id"]
-
-
-def test_history_json_cli_matches_view_at_default_and_full(tmp_path, capsys):
-    """R21: `ugh history --json` (and `--full`) is byte-identical to `ugh.api.history_view` at
-    the same mode -- the compact default gained CLI-side limit/offset forwarding in this diff,
-    so it needs its own guardrail alongside `log`/`state`/`compose`'s existing ones."""
-    from ugh.api import history_view
-    from ugh.core.lens import get
-
-    _seed(tmp_path, 2)
-    get(tmp_path)  # mine before computing the expected payload directly
-    capsys.readouterr()
-
-    assert _in(tmp_path, ["advanced", "history", "--json"]) == 0
-    assert capsys.readouterr().out.rstrip("\n") == json.dumps(history_view(str(tmp_path)), indent=2)
-
-    assert _in(tmp_path, ["advanced", "history", "--json", "--full"]) == 0
-    assert capsys.readouterr().out.rstrip("\n") == json.dumps(history_view(str(tmp_path), full=True), indent=2)
 
 
 def test_revert_emit_previews_without_writing(tmp_path, capsys):
@@ -439,47 +401,13 @@ def test_restore_nl_offline_reports_clear_message(tmp_path, monkeypatch, capsys)
     assert "✗" in out and "OPENAI_API_KEY" in out
 
 
-def test_diff_between_refs(tmp_path, capsys):
-    gb = _seed(tmp_path, 1)
-    base = gb.symbolic_ref().rsplit("/", 1)[-1]
-    gb._git("checkout", "-q", "-b", "feature")
-    (tmp_path / "b.py").write_text("def bar():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("feature: add bar")
-    _in(tmp_path, ["log"])  # mine feature
-    gb._git("checkout", "-q", base)
-    capsys.readouterr()  # drain the priming `log` output
-
-    assert _in(tmp_path, ["diff", "--json", base, "feature"]) == 0
-    payload = json.loads(capsys.readouterr().out)
-    assert "b.py::bar" in payload["by_symbol"]
-
-
-def test_fsck_reports_clean_store(tmp_path, capsys):
+def test_check_reports_clean_store(tmp_path, capsys):
     _seed(tmp_path, 1)
     _in(tmp_path, ["log"])  # mine, so the store isn't empty
     capsys.readouterr()  # drain the priming `log` output
-    assert _in(tmp_path, ["advanced", "fsck", "--json"]) == 0
+    assert _in(tmp_path, ["check", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["ok"] is True and payload["checked"] >= 1
-
-
-def test_oracle_run_with_no_config_warns(tmp_path, capsys):
-    _seed(tmp_path, 1)
-    assert _in(tmp_path, ["advanced", "oracle", "run"]) == 0
-    assert "no oracle configured" in capsys.readouterr().out
-
-
-def test_oracle_override_then_state_shows_verdict(tmp_path, capsys):
-    _seed(tmp_path, 1)
-    assert _in(tmp_path, ["advanced", "oracle", "override", "--status", "pass", "--reason", "manual check"]) == 0
-    capsys.readouterr()
-
-    assert _in(tmp_path, ["advanced", "state", "--json"]) == 0
-    payload = json.loads(capsys.readouterr().out)
-    # No `.sgt/oracle.json` -> not "configured", so state doesn't surface the override either
-    # (a repo can still call `oracle override` without any tier config; `state` only surfaces
-    # the verdict once an oracle is declared, per R13's "no config" degrade).
-    assert payload["oracle_configured"] is False
 
 
 def _no_client(*args, **kwargs):
@@ -702,93 +630,6 @@ def test_resolve_plan_confirm_resolves_truncated_refs_to_full_ids(tmp_path, caps
                           "--confirm-op", "deadbeef", "--json"]) == 1  # unknown op ref fails cleanly
 
 
-def test_history_json_lists_commits_and_places_ops_on_the_axis(tmp_path, capsys):
-    _seed(tmp_path, n=2)
-    capsys.readouterr()
-    assert _in(tmp_path, ["advanced", "history", "--json", "--full"]) == 0
-    view = json.loads(capsys.readouterr().out)
-    assert [c["index"] for c in view["commits"]] == [0, 1]
-    assert view["ops"]
-    assert all(op["commit_index"] in (0, 1) for op in view["ops"])
-
-
-def test_compose_json_matches_the_api_view_byte_for_byte(tmp_path, capsys):
-    """R21: `ugh compose --json` is byte-identical to `ugh.api.compose_view` -- no CLI-side
-    reshaping of the workbench's single-call refresh."""
-    from ugh.api import compose_view
-
-    _seed(tmp_path, n=2)
-    capsys.readouterr()
-    assert _in(tmp_path, ["advanced", "compose", "--json"]) == 0
-    out = capsys.readouterr().out
-    assert out.rstrip("\n") == json.dumps(compose_view(str(tmp_path)), indent=2)
-
-
-def test_compose_text_summarizes_status_and_oracle(tmp_path, capsys):
-    _seed(tmp_path, n=1)
-    capsys.readouterr()
-    assert _in(tmp_path, ["advanced", "compose"]) == 0
-    out = capsys.readouterr().out
-    assert "1 file, 4 symbols, 0 features" in out   # each count inflected, no "(s)" placeholder
-    assert "oracle: unconfigured" in out
-
-
-def test_fold_at_commit_index_returns_that_frontiers_files(tmp_path, capsys):
-    _seed(tmp_path, n=2)  # a.py::foo v1 (index 0), then v2 (index 1)
-    capsys.readouterr()
-
-    assert _in(tmp_path, ["advanced", "fold", "--at", "0", "--json"]) == 0
-    early = json.loads(capsys.readouterr().out)
-    assert early["files"]["a.py"] == "def foo():\n    return 1\n"
-
-    assert _in(tmp_path, ["advanced", "fold", "--at", "1", "--json"]) == 0
-    later = json.loads(capsys.readouterr().out)
-    assert later["files"]["a.py"] == "def foo():\n    return 2\n"
-    assert later["op_count"] > early["op_count"]
-
-
-def test_fold_at_ref_folds_head(tmp_path, capsys):
-    _seed(tmp_path, n=1)
-    capsys.readouterr()
-    assert _in(tmp_path, ["advanced", "fold", "--at", "HEAD"]) == 0
-    out = capsys.readouterr().out
-    assert "a.py" in out and "oracle verdict: pending" in out
-
-
-def test_fold_at_bad_op_id_set_reports_forked_not_a_crash(tmp_path, capsys):
-    _seed(tmp_path, n=2)
-    capsys.readouterr()
-    assert _in(tmp_path, ["advanced", "history", "--json", "--full"]) == 0
-    hist = json.loads(capsys.readouterr().out)
-    non_root = next(o["id"] for o in hist["ops"] if o["commit_index"] > 0)
-
-    assert _in(tmp_path, ["advanced", "fold", "--at", f"op:{non_root}"]) == 1
-    assert "fold --at" in capsys.readouterr().out
-
-
-def test_split_without_apply_previews_groups_and_writes_nothing(tmp_path, capsys):
-    gb, _ = init_store(tmp_path)
-    (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    (tmp_path / "b.py").write_text("def bar():\n    return 2\n", encoding="utf-8")
-    gb.commit_all("add foo and bar")
-    assert _in(tmp_path, ["log", "--tree", "--refresh"]) == 0  # U14: `map` is now a `log` mode
-    capsys.readouterr()
-    tree_before = (tmp_path / ".sgt" / "tree" / "tree.json").read_text()
-
-    # feature ids are now content-addressed (`f-<founding op>`, U21) rather than a hardcoded `F0`,
-    # so the target is derived from the built tree; a manual split still mints the next `F<n>`.
-    from ugh.lens.tree import load as _load_tree
-    feature_id = next(nid for nid, nd in _load_tree(tmp_path)["nodes"].items() if not nd["children"])
-
-    # `ugh split <feature>` with no `--apply` *is* the preview -- there is no separate
-    # `ugh preview split` path (removed: it duplicated this exact read, see `_preview_verb`).
-    assert _in(tmp_path, ["feature", "regroup", "split", feature_id, "--json"]) == 0
-    view = json.loads(capsys.readouterr().out)
-    assert view["ok"] is True
-    assert view["applied"] is False
-    assert (tmp_path / ".sgt" / "tree" / "tree.json").read_text() == tree_before  # preview writes nothing
-
-
 def test_map_rebuild_forces_a_full_recluster(tmp_path, capsys):
     """`ugh log --tree --rebuild` (the former `ugh map --rebuild`, folded into `log` in U14) is the
     escape hatch out of dirty-subtree splicing (Phase 2): it must at least run without error and
@@ -836,27 +677,10 @@ def test_tree_drops_phantom_empty_member_leaves():
     assert "1 feature" in out  # not the inflated view["feature_count"] of 2
 
 
-def test_preview_unknown_verb_or_bad_arity_prints_usage(tmp_path, capsys):
-    _seed(tmp_path, n=1)
-    capsys.readouterr()
-    assert _in(tmp_path, ["advanced", "preview", "not-a-verb"]) == 2
-    assert "usage: ugh preview" in capsys.readouterr().out
-    assert _in(tmp_path, ["advanced", "preview", "merge", "only-one-arg"]) == 2
-    assert "usage: ugh preview" in capsys.readouterr().out
-
-
-def test_preview_split_is_no_longer_a_verb(tmp_path, capsys):
-    """Removed: bare `ugh split <feature>` already previews without `--apply` (see above)."""
-    _seed(tmp_path, n=1)
-    capsys.readouterr()
-    assert _in(tmp_path, ["advanced", "preview", "split", "whatever"]) == 2
-    assert "usage: ugh preview" in capsys.readouterr().out
-
-
 def test_help_mentions_kernel_verbs(capsys):
     main(["help"])
     out = capsys.readouterr().out
-    assert "revert" in out and "restore" in out and "oracle" in out and "fsck" in out
+    assert "revert" in out and "restore" in out and "check" in out
     assert "--json" in out
 
 
@@ -865,74 +689,34 @@ def test_help_mentions_agentic_loop_verbs(capsys):
     # `save` (U12), so help advertises the loop, not those (now-removed) verbs.
     main(["help"])
     out = capsys.readouterr().out
-    assert "advanced" in out
     assert "plan" in out and "resolve-plan" in out
-
-
-def test_help_mentions_history_and_preview_verbs(capsys):
-    # `history`/`preview` moved under the `advanced` grouping; help lists them there.
-    main(["help"])
-    out = capsys.readouterr().out
-    assert "advanced" in out
-    assert "history" in out and "preview" in out
 
 
 def test_unknown_verb_is_an_error_not_a_help_dump(capsys):
     """An unrecognized verb used to print the full help and return 0, which reads as success to any
     caller -- the same silent-no-op class the workbench fixed. It is now an error naming the token.
-    The detailed contract (moved-verb hints, did-you-mean) lives in `test_cli_unknown_verb.py`."""
+    The detailed contract (did-you-mean) lives in `test_cli_unknown_verb.py`."""
     assert main(["nonsense"]) == 2
     captured = capsys.readouterr()
     assert "unknown verb" in captured.err
     assert "ugh —" not in captured.out
 
 
-def test_verbs_is_exactly_the_spine_groupings_and_collaboration_set():
-    """R12/KTD8/KTD9 (U14): the grid is the only inspection surface, so the top-level `_VERBS` is
-    the daily spine + `log` + the two groupings + the unchanged collaboration/setup verbs.
-    `map`/`graph`/`episodes` collapsed onto `ugh log` render modes; `blame`/`edit`/`commit`/
-    `fulfill` demoted under `advanced`. `intent` stays top-level (its subcommands don't map to a
-    `log` mode; re-promoted in c4f9966/KTD8).
-
-    Three spellings live at the top level because collapsing or burying them cost a user something
-    the collapse was never meant to cost. `status` is the first word a git user types, and answering
-    it with the help text taught nothing; it is a thin alias onto `log --summary`'s own handler, so
-    it adds a spelling and no concept. `why` answers "why is this code like this" for an op, a
-    symbol, *or* a commit sha -- only the `--for` closure form is feature-scoped -- so living at
-    `feature why` meant the natural spelling printed help instead of the prompt that produced the
-    commit. `show` is where you point at a thing to see it: an id when you do not yet know what kind
-    of thing you are holding, or a file plus `--at` to read it as it was -- and a verb for "I don't
-    know what this is" cannot sit behind a grouping you would have to guess."""
+def test_verbs_is_exactly_the_surviving_surface():
+    """The top-level verbs after the phase-1 deletion: the daily spine, `log`/`status`/`show`/`find`
+    to read, `plan`, `feature rename`, `check`, the collaboration and setup verbs, and the hidden
+    `intent` hook entry point."""
     from ugh.cli import _VERBS
 
     assert _VERBS == {
-        "save", "log", "undo", "revert", "restore", "resolve",
-        "switch", "diff", "intent", "now",  # `now` = state-of-actions orient (state block + what-next)
-        "status",  # alias of `log --summary` (same handler, cannot drift)
-        "why",  # selector-scoped, not feature-scoped: `ugh why <sha>` is its most-reached form
-        "show",  # "show me this thing": an id, or a file + `--at` for how it was
-        # `find` is the way in when you do not hold an id at all. Every other
-        # verb here takes one, which assumes you already know what the thing is
-        # called -- the assumption that fails for exactly the person the tool is
-        # for, someone reading history they did not write.
-        "find",
-        "plan",  # checkpoint/drift folded into `save` (U12)
-        "feature", "advanced",
-        "sync", "land", "push", "propose", "session", "init", "mcp",
+        "save", "log", "status", "undo", "revert", "restore", "resolve", "show", "find", "plan",
+        "feature", "check", "sync", "push", "init", "mcp", "intent",
     }
 
 
-def test_grouping_verbs_resolve(tmp_path, capsys):
-    """Happy path: a bare grouping prints its own subhelp and exits cleanly, and a re-homed verb
-    resolves at its new path."""
+def test_bare_feature_grouping_prints_its_subhelp(capsys):
     assert main(["feature"]) == 0
-    assert main(["feature", "regroup"]) == 0
-    assert main(["advanced"]) == 0
-    _seed(tmp_path, 1)
-    _in(tmp_path, ["log"])  # mine so the store isn't empty
-    capsys.readouterr()
-    assert _in(tmp_path, ["advanced", "fsck", "--json"]) == 0
-    assert json.loads(capsys.readouterr().out)["ok"] is True
+    assert "rename" in capsys.readouterr().out
 
 
 def test_revert_keep_selects_which_frontier_dependents_to_retain(tmp_path, capsys):
@@ -1103,35 +887,6 @@ def test_rename_non_tty_keeps_immediate_apply(tmp_path, monkeypatch, capsys):
     assert load_pins(tmp_path).labels[fid] == "Renamed"
 
 
-def test_split_on_a_tty_applies_when_the_pane_confirms(tmp_path, monkeypatch, capsys):
-    from ugh.cli import _common
-    from ugh.tui.consequence import Decision
-
-    fid = _feature_repo(tmp_path)
-    monkeypatch.setattr(_common, "maybe_confirm", lambda *a, **k: Decision(True))
-    capsys.readouterr()
-
-    # No --apply: on a tty the pane *is* the confirm, so a confirm splits.
-    assert _in(tmp_path, ["feature", "regroup", "split", fid]) == 0
-    assert "split" in capsys.readouterr().out
-    from ugh.lens.tree import load as _load_tree
-    leaves = [nid for nid, nd in _load_tree(tmp_path)["nodes"].items() if not nd["children"]]
-    assert len(leaves) == 2  # actually split
-
-
-def test_split_non_tty_still_prints_the_preview_only(tmp_path, monkeypatch, capsys):
-    from ugh.cli import _common
-
-    fid = _feature_repo(tmp_path)
-    monkeypatch.setattr(_common, "maybe_confirm", lambda *a, **k: None)
-    tree_before = (tmp_path / ".sgt" / "tree" / "tree.json").read_text()
-    capsys.readouterr()
-
-    assert _in(tmp_path, ["feature", "regroup", "split", fid]) == 0
-    assert "preview only" in capsys.readouterr().out
-    assert (tmp_path / ".sgt" / "tree" / "tree.json").read_text() == tree_before  # nothing applied
-
-
 # -- P0 repair: verb spellings a developer actually types -----------------------------------------
 
 def test_status_is_a_top_level_verb_matching_log_summary(tmp_path, capsys):
@@ -1142,63 +897,6 @@ def test_status_is_a_top_level_verb_matching_log_summary(tmp_path, capsys):
     status_out = capsys.readouterr().out
     assert _in(tmp_path, ["log", "--summary", "--json"]) == 0
     assert json.loads(status_out) == json.loads(capsys.readouterr().out)
-
-
-def test_why_is_a_top_level_verb_and_answers_for_a_commit_sha(tmp_path, capsys):
-    """"Why is this code like this" is a question about a selector, not about features. `ugh why`
-    lived under `feature why`, so pasting a commit sha printed the help text."""
-    gb = _seed(tmp_path)
-    sha = gb.head()
-    assert _in(tmp_path, ["why", sha]) == 0
-    assert sha[:8] in capsys.readouterr().out
-
-
-def test_why_names_every_selector_it_tried_when_nothing_resolves(tmp_path, capsys):
-    _seed(tmp_path)
-    assert _in(tmp_path, ["why", "definitely-not-a-thing"]) != 0
-    err = capsys.readouterr()
-    assert "commit" in (err.out + err.err)  # not just "op-id / live symbol"
-
-
-def test_switch_refuses_a_non_branch_instead_of_detaching_head(tmp_path, capsys):
-    """`switch` passed its argument straight to `git checkout`, so a sha silently detached HEAD --
-    and a later `ugh save` then commits onto no branch at all."""
-    gb = _seed(tmp_path)
-    sha = gb.head()
-    head_before = gb.symbolic_ref()
-
-    assert _in(tmp_path, ["switch", sha]) != 0
-
-    out = capsys.readouterr()
-    assert "not a local branch" in (out.out + out.err)
-    assert gb.symbolic_ref() == head_before  # HEAD never moved
-
-
-def test_switch_still_moves_to_a_real_branch(tmp_path, capsys):
-    gb = _seed(tmp_path)
-    import subprocess
-    subprocess.run(["git", "-C", str(tmp_path), "branch", "side"], check=True, capture_output=True)
-
-    assert _in(tmp_path, ["switch", "side"]) == 0
-    assert gb.symbolic_ref() == "refs/heads/side"
-
-
-def test_intent_align_is_a_dry_run_that_writes_nothing_by_default(tmp_path, capsys):
-    """The alignment pipeline has sat unwired since it was written: on a young corpus it scores
-    confidently on too little evidence, and a wrong ALIGN record becomes a wrong answer from
-    `ugh why`. Making it *look at* a repo costs nothing and is the only way to find out whether a
-    corpus is mature enough -- the judgment its author deliberately left open."""
-    _seed(tmp_path)
-    before = (tmp_path / ".sgt" / "local" / "rationale.json")
-    before_bytes = before.read_bytes() if before.is_file() else None
-
-    assert _in(tmp_path, ["intent", "align", "--json"]) == 0
-
-    out = json.loads(capsys.readouterr().out)
-    assert out["applied"] is False
-    assert {"sessions", "episodes", "candidates", "aligned", "reviewed"} <= set(out)
-    after = before.read_bytes() if before.is_file() else None
-    assert after == before_bytes  # a dry run leaves the ledger byte-identical
 
 
 def test_show_prints_a_file_as_it_was_at_a_past_point(tmp_path, capsys):

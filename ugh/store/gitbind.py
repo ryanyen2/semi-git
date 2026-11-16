@@ -126,10 +126,6 @@ def parse_op_ids(commit_message: str) -> list[str]:
     ]
 
 
-def format_landed_sha(sha: str) -> str:
-    return f"{LANDED_SHA_KEY}: {sha}"
-
-
 def parse_landed_sha(commit_message: str) -> str | None:
     """The landed commit sha embedded in a D1 log entry's trailer, if any."""
     for line in commit_message.splitlines():
@@ -1096,22 +1092,6 @@ class GitBinding:
         proc = self._git("status", "--porcelain", "--", ".", ":(exclude).sgt", check=False)
         return proc.returncode != 0 or bool(proc.stdout.strip())
 
-    def dirty_source_paths(self) -> list[str]:
-        """The paths `has_dirty_source` counts (outside `.sgt/`: modified, deleted, staged or
-        untracked), worktree-relative. Empty on a git error -- a display read, never a guard."""
-        proc = self._git("status", "--porcelain", "-z", "--", ".", ":(exclude).sgt", check=False)
-        if proc.returncode != 0:
-            return []
-        paths, rename_source = [], False
-        for entry in proc.stdout.split("\x00"):
-            if rename_source:  # `-z` puts a rename's or copy's old path in the next entry
-                rename_source = False
-                continue
-            if len(entry) > 3:
-                paths.append(entry[3:])
-                rename_source = entry[0] in "RC"
-        return paths
-
     def dirty_source_digest(self) -> str | None:
         """A content hash of every uncommitted non-`.sgt` source change: the `git diff HEAD` patch
         (all tracked worktree changes, staged or not) plus each untracked source file's bytes. This
@@ -1164,33 +1144,6 @@ class GitBinding:
     def fetch(self, remote: str, branch: str) -> None:
         self._git("fetch", remote, branch)
 
-    # -- index surgery (Phase 1.2 `ugh migrate state-ref`) ------------------
-    def tracked_paths(self, *pathspecs: str) -> list[str]:
-        """Repo-relative paths currently tracked in the index under `pathspecs` (default: all).
-        The migration uses this to find the `.sgt/**` files a pre-1.2 repo still tracks so it can
-        untrack exactly those and no more."""
-        proc = self._git("ls-files", "-z", "--", *pathspecs, check=False)
-        if proc.returncode != 0:
-            return []
-        return [p for p in proc.stdout.split("\x00") if p]
-
-    def rm_cached(self, paths: list[str]) -> None:
-        """Remove `paths` from the index but keep the working-tree files (`git rm --cached`). With
-        `.sgt/.gitignore` in place this is what actually untracks the moved state -- gitignore alone
-        never drops an already-tracked file. `--ignore-unmatch` makes a re-run over an
-        already-untracked set a no-op (idempotent resume)."""
-        if paths:
-            self._git("rm", "-r", "--cached", "-q", "--ignore-unmatch", "--", *paths)
-
-    def commit_staged(self, message: str) -> str | None:
-        """Commit exactly what is staged in the index (no `git add`, no `--allow-empty`), returning
-        the new HEAD -- or None when nothing is staged, so an idempotent re-run creates no empty
-        commit. Used for the single intentional migration commit that records the untracking."""
-        if self._git("diff", "--cached", "--quiet", check=False).returncode == 0:
-            return None  # nothing staged
-        self._git("commit", "-q", "-m", message)
-        return self.head()
-
     def fetch_ref(self, remote: str, refspec: str) -> bool:
         """Best-effort `git fetch <remote> <refspec>` for an arbitrary ref (D1's land log lives
         outside `refs/heads/`, so it needs its own refspec rather than `fetch`'s plain branch
@@ -1198,29 +1151,6 @@ class GitBinding:
         just nothing to recover from yet. Returns whether the fetch succeeded."""
         proc = self._git("fetch", remote, refspec, check=False)
         return proc.returncode == 0
-
-    def local_branch_exists(self, branch: str) -> bool:
-        """Whether `branch` names an existing *local* branch (`refs/heads/<branch>`). `ugh switch`
-        gates on this: its argument goes straight to `git checkout`, so a commit sha or tag would
-        silently detach HEAD, and a `ugh save` on a detached HEAD commits onto no branch at all --
-        work that vanishes from every branch the moment the user switches away."""
-        return self._git(
-            "show-ref", "--verify", "--quiet", f"refs/heads/{branch}", check=False
-        ).returncode == 0
-
-    def local_branches(self) -> list[str]:
-        """Every local branch name, sorted -- the candidate list `ugh switch` shows when its
-        argument doesn't name one."""
-        proc = self._git("for-each-ref", "--format=%(refname:short)", "refs/heads/", check=False)
-        if proc.returncode != 0:
-            return []
-        return sorted(b for b in proc.stdout.split("\n") if b.strip())
-
-    def checkout_branch(self, branch: str) -> None:
-        """Move HEAD to an existing `branch`, materializing its committed tree -- the git mechanism
-        behind `ugh switch` (U26). ugh mines-on-contact on either side of it so the op store never
-        drifts; creating a branch stays raw git (`ugh git checkout -b`)."""
-        self._git("checkout", branch)
 
     def push(self, remote: str, branch: str) -> str:
         """`git push <remote> <branch>` with no force of any kind (C7). A non-fast-forward
@@ -1238,18 +1168,6 @@ class GitBinding:
             raise GitError("push succeeded but HEAD is unresolved")
         return head
 
-    def push_head_as(self, remote: str, branch: str) -> None:
-        """`git push <remote> HEAD:refs/heads/<branch>`: publish HEAD's commit under a fresh
-        remote branch name, without creating or checking out a local branch of that name -- the
-        mechanism behind `ugh propose publish`'s PR branch (plan U32). Non-forcing, like `push`;
-        a rejection (the remote branch already diverged) surfaces as a plain `GitError`."""
-        proc = self._git("push", remote, f"HEAD:refs/heads/{branch}", check=False)
-        if proc.returncode != 0:
-            raise GitError(
-                f"git push {remote} HEAD:refs/heads/{branch} failed "
-                f"({proc.returncode}): {proc.stderr.strip()}"
-            )
-
     def push_ref(self, remote: str, refspec: str) -> bool:
         """Best-effort `git push <remote> <refspec>` for an arbitrary ref (D1's land log). Never
         forces and swallows failure -- the branch push it accompanies is the one that must
@@ -1257,38 +1175,6 @@ class GitBinding:
         push succeeded."""
         proc = self._git("push", remote, refspec, check=False)
         return proc.returncode == 0
-
-    # -- worktrees: session scratch trees (plan U30, D5) --------------------
-    def worktree_add(self, path: str | Path, branch: str, base_sha: str) -> None:
-        """`git worktree add -b <branch> <path> <base_sha>`: a real, isolated working directory
-        sharing this repo's object store, checked out on a fresh branch off `base_sha` -- the
-        mechanism behind `ugh session start`'s "ephemeral materialization of a base ideal into a
-        scratch tree" (no daemon, no separate clone; git's own worktree bookkeeping owns it)."""
-        self._git("worktree", "add", "-q", "-b", branch, str(path), base_sha)
-
-    def worktree_remove(self, path: str | Path, force: bool = False) -> None:
-        """`git worktree remove [--force] <path>`. `force` is needed when the scratch tree has
-        uncommitted edits -- a crashed session's abandoned work (`ugh session gc`)."""
-        args = ["worktree", "remove"]
-        if force:
-            args.append("--force")
-        self._git(*args, str(path))
-
-    def delete_branch(self, branch: str) -> None:
-        """`git branch -D <branch>` -- unconditional, because the only caller (`session gc`) has
-        already decided the branch is disposable: it refuses to reap a session with unlanded
-        commits unless `--force` was passed, and it force-removes the worktree either way. `-d`
-        would refuse here on any branch git still considers unmerged, which is most landed
-        sessions, and leave the ref behind -- `gc` used to say "reaped session" while
-        `ugh-session/<name>` stayed in `git branch` forever."""
-        self._git("branch", "-D", branch)
-
-    # -- land: off-ref commit construction + branch-record CAS (plan U23, C9) ----------------
-    def write_tree(self) -> str:
-        """The tree object id of the current index (`git write-tree`). `land` stages its
-        materialized union (`stage_all`) then captures the tree here to build a commit *off* any
-        ref (`commit_tree`) -- nothing is visible until the CAS advances the branch onto it."""
-        return self._git("write-tree").stdout.strip()
 
     def commit_tree(
         self, tree: str, parents: list[str], message: str, trailers: str | None = None
@@ -1405,18 +1291,6 @@ class GitBinding:
         if head is None:
             raise GitError("merge commit succeeded but HEAD is unresolved")
         return head
-
-    # -- transactional land: snapshot / restore (plan U5, R7) ----------------
-    def restore_worktree_to(self, commit_ish: str) -> None:
-        """Roll the working tree and index back to `commit_ish`, then drop any untracked file the
-        rolled-back work left behind -- *except* under `.sgt/`, whose op store is monotone
-        (content-addressed, append-only) and must survive a rollback (R7). `land` snapshots its
-        clean pre-land HEAD and calls this on every non-landing exit (red gate, open fork, lost
-        CAS, contention, crash recovery), so a land that does not land leaves no trace. Safe
-        because `land` requires a clean tree at entry: any untracked file present at restore time
-        was created by the candidate materialization, not by the user."""
-        self._git("reset", "--hard", commit_ish)  # restore tracked files (source + `.sgt` metadata)
-        self._git("clean", "-fd", "-e", ".sgt")    # remove candidate-created untracked source only
 
 
 def init_store(repo_path: str | Path) -> tuple[GitBinding, Path]:

@@ -24,25 +24,6 @@ def _ancestry(edges):
     return lambda a, b: a == b or (a, b) in edges
 
 
-# -- happy path -----------------------------------------------------------------------------------
-
-
-def test_create_rename_add_remove_reads_back(tmp_path):
-    f = authored.create(["m1", "m2"], "Auth")
-    assert f.id.startswith("af-")
-    assert f.live_members() == frozenset({"m1", "m2"})
-
-    f = authored.rename(f, "Authentication")
-    f = authored.add_member(f, "m3")
-    f = authored.remove_member(f, "m1")
-
-    authored.save_authored(tmp_path, {f.id: f})
-    loaded = authored.load_authored(tmp_path)[f.id]
-    assert loaded.label == "Authentication"
-    assert loaded.live_members() == frozenset({"m2", "m3"})
-    assert loaded.id == f.id  # carried verbatim through persistence
-
-
 # -- rule 1: membership OR-Set --------------------------------------------------------------------
 
 
@@ -52,19 +33,6 @@ def test_concurrent_add_of_different_members_unions():
     theirs = authored.add_member(base, "m3")
     merged = authored.merge_feature(ours, theirs)
     assert merged.live_members() == frozenset({"m1", "m2", "m3"})
-
-
-def test_delete_wins_only_if_it_observed_the_add():
-    base = authored.create(["m1"], "F")
-    # Replica A deletes (tombstones every tag it locally observed). Replica B concurrently adds m2,
-    # whose tag A never saw. OR-Set semantics: m1's observed add is tombstoned and gone; m2's
-    # concurrent add survives the delete.
-    deleted = authored.delete(base)
-    added = authored.add_member(base, "m2")
-    merged = authored.merge_feature(deleted, added)
-    assert merged.live_members() == frozenset({"m2"})
-    # Commutative in this scenario too.
-    assert authored.merge_feature(added, deleted).live_members() == frozenset({"m2"})
 
 
 # -- rule 2: witness-topological LWW label --------------------------------------------------------
@@ -106,28 +74,3 @@ def test_af_id_is_carried_not_content_derived(tmp_path):
     # The id survives a save/load round-trip verbatim (a rebuild reads it, never re-mints it).
     authored.save_authored(tmp_path, {a.id: a})
     assert authored.load_authored(tmp_path)[a.id].id == a.id
-
-
-# -- integration: commutativity + idempotence (LAW-U) ---------------------------------------------
-
-
-def test_merge_is_commutative_and_idempotent():
-    seed = authored.create(["m1", "m2"], "Base", witness="sha0")
-    # A: renames + adds a member. B: renames differently + removes a member. Plus a solo feature on
-    # each side that the other has never seen.
-    a = authored.rename(authored.add_member(seed, "m3"), "Alpha", witness="sha_a")
-    b = authored.remove_member(authored.rename(seed, "Beta", witness="sha_b"), "m1")
-    ours = {seed.id: a, "af-onlyours": authored.create(["x"], "OnlyOurs")}
-    theirs = {seed.id: b, "af-onlytheirs": authored.create(["y"], "OnlyTheirs")}
-    is_anc = _ancestry(set())  # concurrent -> label decided by the deterministic hash tie-break
-
-    ab = authored.merge(ours, theirs, is_ancestor=is_anc)
-    ba = authored.merge(theirs, ours, is_ancestor=is_anc)
-    assert ab == ba  # commutative
-
-    assert authored.merge(ab, ab, is_ancestor=is_anc) == ab  # idempotent
-
-    # sanity: the shared feature carries the union of both member edits and keeps its id.
-    shared = ab[seed.id]
-    assert shared.id == seed.id
-    assert shared.live_members() == frozenset({"m2", "m3"})  # m1 removed by B, m3 added by A

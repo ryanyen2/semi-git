@@ -86,22 +86,6 @@ def add_member(feature: AuthoredFeature, member: str) -> AuthoredFeature:
     return replace(feature, member_adds=feature.member_adds | {(member, uuid.uuid4().hex)})
 
 
-def remove_member(feature: AuthoredFeature, member: str) -> AuthoredFeature:
-    """OR-Set remove: tombstone every tag *currently observed locally* for `member`. A concurrent
-    add elsewhere, with a tag this clone hasn't seen, is not tombstoned and survives the sync."""
-    observed = frozenset(tag for (m, tag) in feature.member_adds if m == member)
-    return replace(feature, member_tombstones=feature.member_tombstones | observed)
-
-
-def delete(feature: AuthoredFeature) -> AuthoredFeature:
-    """Delete the feature by tombstoning every member tag observed locally (the feature goes to zero
-    live members). Modeled as an OR-Set remove of the whole membership, so a concurrent add on
-    another clone -- a tag this delete never saw -- survives, and the delete wins only over what it
-    observed."""
-    observed = frozenset(tag for (_m, tag) in feature.member_adds)
-    return replace(feature, member_tombstones=feature.member_tombstones | observed)
-
-
 # -- merge (reuses the exact existing primitives) -------------------------------------------------
 
 

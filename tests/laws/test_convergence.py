@@ -34,13 +34,12 @@ from pathlib import Path
 import pytest
 
 from ugh import state
-from ugh.core import lens, oracle, sync, verbs
-from ugh.core.ideal import Ideal
+from ugh.core import lens, sync, verbs
 from ugh.core.lens import get
 from ugh.core.store import Store
 from ugh.lens import tree
 from ugh.lens.pins import Pins, load_pins, save_pins
-from ugh.store.gitbind import GitBinding, parse_op_ids
+from ugh.store.gitbind import GitBinding
 from tests.conftest import _clone, _init_bare, _push
 from tests.laws import corpus
 
@@ -343,58 +342,6 @@ def _configure_oracle(repo, command: str) -> None:
     holds and the config rides in the branch tree every worktree/clone shares."""
     state.save_json(repo, "oracle_config", {"tiers": [{"name": "gate", "command": command}]})
     GitBinding(repo).commit_all("configure oracle")
-
-
-def _detach_and_add(repo, symbol: str) -> None:
-    """Detach HEAD at the current branch tip and commit a new op there (a session's local work that
-    diverges from the shared branch tip), so `land` has something to advance the branch with."""
-    GitBinding(repo)._git("checkout", "-q", "--detach")
-    _edit_and_commit(repo, "main.py", _BASE + f"\n\ndef {symbol}():\n    return 0\n", f"add {symbol}")
-
-
-def _landed_verdict_status(repo, land_sha: str) -> str:
-    """The recorded oracle status for exactly the op-set the land commit witnesses (its `Sgt-Op:`
-    trailers) -- proof the tip advanced to a *verified* op-set, keyed the same way `land` gated it."""
-    landed_ids = frozenset(parse_op_ids(GitBinding(repo).commit_message(land_sha)))
-    landed_ideal = Ideal.from_ops(landed_ids, Store(repo).all_ops())
-    return oracle.overall_status(oracle.verdict_for(repo, landed_ideal))
-
-
-def test_law_g_shared_tip_advances_only_on_an_oracle_green(tmp_path):
-    """LAW-G: a shared branch record only ever advances to an oracle-green op-set. Enforcement is
-    land-mediated (the U20 contract note): `ugh sync` advances a branch *ungated* by design, so the
-    guarantee lives in `ugh land`, whose CAS advances `refs/heads/<branch>` only after the exact
-    resulting op-set passes the oracle (LAW-G). This asserts both directions -- (a) with a passing
-    oracle the shared tip advances to the green op-set, and (b) with no oracle *or* a red oracle the
-    land refuses and the shared tip does not move -- so `refs/heads/main` never points at an
-    unverified op-set."""
-    # (a) green oracle -> the shared tip advances, and to a verified op-set.
-    _remote, (a,) = _replicas(tmp_path / "green", _BASE, 1)
-    _configure_oracle(a, "exit 0")
-    _detach_and_add(a, "baz")
-    before = GitBinding(a).rev_parse("refs/heads/main")
-    report = sync.land(a, branch="main")
-    after = GitBinding(a).rev_parse("refs/heads/main")
-    assert report.landed
-    assert after != before  # the shared tip advanced...
-    assert _landed_verdict_status(a, after) == "pass"  # ...to an oracle-green op-set (LAW-G)
-
-    # (b1) no oracle -> land refuses; the shared tip does not move (a green verdict cannot exist).
-    _remote2, (c,) = _replicas(tmp_path / "nooracle", _BASE, 1)
-    _detach_and_add(c, "baz")
-    before_c = GitBinding(c).rev_parse("refs/heads/main")
-    report_c = sync.land(c, branch="main")
-    assert not report_c.landed and "oracle" in report_c.blocked_reason
-    assert GitBinding(c).rev_parse("refs/heads/main") == before_c  # tip frozen -- ungated advance refused
-
-    # (b2) red oracle -> same refusal, tip frozen.
-    _remote3, (e,) = _replicas(tmp_path / "red", _BASE, 1)
-    _configure_oracle(e, "exit 1")
-    _detach_and_add(e, "baz")
-    before_e = GitBinding(e).rev_parse("refs/heads/main")
-    report_e = sync.land(e, branch="main")
-    assert not report_e.landed
-    assert GitBinding(e).rev_parse("refs/heads/main") == before_e  # tip frozen -- red op-set refused
 
 
 # --- LAW-L: locality (GREEN) -------------------------------------------------------------------

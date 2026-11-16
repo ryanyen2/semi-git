@@ -1,7 +1,7 @@
 """`ugh undo` over the unified operation log (plan U8, R7).
 
 `tests/test_porcelain.py` covers `undo` over the ideal-edit journal alone; this file proves the
-*unified* walk-back: a mixed sequence of mutating verbs (save, revert, feature rename, edit) each
+*unified* walk-back: a mixed sequence of mutating verbs (save, revert, feature rename) each
 appends one event, and repeated `undo` pops them one at a time, reverse-chronologically, restoring
 the prior state at every step -- the "arbitrarily far back" (= sequential-undo depth) promise.
 """
@@ -31,8 +31,8 @@ def _in(repo, argv):
 
 def _seed(repo):
     """`a.py` (foo, bar -- independent) + `m.py` (helper, then user -- user calls helper, each its
-    own commit so `helper` is a single-symbol op `edit` can target), an oracle that trivially
-    compiles both files, and a seeded ideal table so later edits journal."""
+    own commit), an oracle that trivially compiles both files, and a seeded ideal table so later
+    edits journal."""
     gb, _ = init_store(repo)
     (repo / "a.py").write_text("def foo():\n    return 1\n\n\ndef bar():\n    return 2\n", encoding="utf-8")
     (repo / "m.py").write_text("def helper():\n    return 1\n", encoding="utf-8")
@@ -54,7 +54,7 @@ def _seed(repo):
     return gb
 
 
-def test_four_undos_walk_back_through_save_revert_rename_edit(tmp_path, capsys):
+def test_three_undos_walk_back_through_save_revert_rename(tmp_path, capsys):
     repo = tmp_path / "repo"
     _seed(repo)
     ideal_after_seed = lens.get(repo).op_ids
@@ -79,22 +79,9 @@ def test_four_undos_walk_back_through_save_revert_rename_edit(tmp_path, capsys):
     original_label = result["nodes"][fid].get("label", fid)
     fverbs.apply_rename(repo, fverbs.plan_rename(repo, fid, "renamed-feature"))
     assert tree.load(repo)["nodes"][fid]["label"] == "renamed-feature"
-
-    # 4) edit: in-place change of a symbol, landed (one ideal_edit event).
-    capsys.readouterr()  # drop prior verb output so the next capture is just the edit's JSON
-    assert _in(repo, ["advanced", "edit", "m.py::helper", "--json"]) == 0
-    draft_id = json.loads(capsys.readouterr().out)["draft_id"]
-    (repo / "m.py").write_text(
-        "def helper():\n    return 1  # tidy\n\n\ndef user():\n    return helper() + 1\n", encoding="utf-8"
-    )
-    assert _in(repo, ["advanced", "fulfill", draft_id, "--from-tree"]) == 0
-    assert _in(repo, ["advanced", "commit", "--override", "pass", "--reason", "behavior-preserving edit"]) == 0
     capsys.readouterr()
 
-    # Four undos, reverse-chronological, each restoring the prior state.
-    assert _in(repo, ["undo"]) == 0                             # undo the edit
-    assert lens.get(repo).op_ids == ideal_after_revert
-
+    # Three undos, reverse-chronological, each restoring the prior state.
     assert _in(repo, ["undo"]) == 0                             # undo the rename (feature reorg)
     assert tree.load(repo)["nodes"][fid]["label"] == original_label
     assert lens.get(repo).op_ids == ideal_after_revert          # reorg is byte-neutral for the ideal

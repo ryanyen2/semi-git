@@ -1,7 +1,6 @@
 """Exact ideal-edit verbs (plan U8, flipped onto the kernel in U10): `revert` (`I \\ ↑X`) and
 `restore` (`I ∪ ↓X`), with `--emit` previews and chain-fork surfacing (AE2). `revert
---keep-dependents` (plan U11) instead drafts a continuation hollow per dependent. `after`
-(U21) declares/retracts a declared order edge (`a <= b`) over the OR-Set."""
+--keep-dependents` (plan U11) instead drafts a continuation hollow per dependent."""
 
 from __future__ import annotations
 
@@ -10,15 +9,14 @@ from pathlib import Path
 
 from ugh.select import resolve as select_resolve
 
-from ._common import _emit_json, _fail, _fail_json
-from .rewrite import _print_draft, _print_repair_result
+from ._common import _emit_json, _fail_json
 
 
 def _theme_id_for_label(repo: str, target: str) -> str | None:
     """The theme whose label is exactly `target`, case- and punctuation-insensitively; `None` if
     no theme or more than one matches.
 
-    `ugh intent list` prints themes by label, so the label is what a person has in front of them
+    `ugh log` prints themes by label, so the label is what a person has in front of them
     and the id (`theme-4a6670e474a2`) is what they would have to copy. Without this, typing the
     printed name fell past the theme rung to the fuzzy one and matched a *different* object: on
     the study testbed `ugh revert "Event-Day Handling"` proposed the feature "Event Day Tracking",
@@ -43,10 +41,7 @@ def _theme_id_for_label(repo: str, target: str) -> str | None:
 
 
 def _resolve_theme(repo: str, target: str) -> tuple[frozenset[str], str] | None:
-    """A theme id -> the ops its member commits landed, plus a human label.
-
-    Deliberately the same lookup `ugh intent revert` uses (`ugh.intent.group.resolve_group`), so
-    the two spellings can never disagree about what a theme contains."""
+    """A theme id -> the ops its member commits landed, plus a human label."""
     from ugh import state
     from ugh.intent import group as intent_group
 
@@ -168,46 +163,6 @@ def register(subs, parent) -> None:
                         "bytes -- the render overlay's counterfactual sync")
     s.add_argument("ref", nargs="*")
     s.set_defaults(func=_cmd_restore)
-
-    af = subs.add_parser("after", parents=[parent])
-    af.add_argument("--retract", action="store_true")
-    af.add_argument("a")
-    af.add_argument("b")
-    af.set_defaults(func=_cmd_after)
-
-
-def _cmd_after(args) -> int:
-    return _after(".", args.a, args.b, args.retract, args.as_json)
-
-
-def _after(repo: str, a: str, b: str, retract: bool, as_json: bool) -> int:
-    """`ugh after <a> <b>` declares the order edge `a <= b` (OR-Set add with a fresh tag);
-    `ugh after --retract <a> <b>` tombstones every locally-observed tag for that edge (a concurrent
-    add elsewhere survives). Both resolve `a`/`b` through the ideal the same way the other edit
-    verbs resolve a target (op-id, prefix, or `file::name` frontier tip)."""
-    from ugh.core import verbs
-    from ugh.core.lens import get, retract_after
-
-    get(repo)  # mine-on-contact before resolving targets (R9)
-    preview = verbs.plan_after(repo, a, b)
-    if not preview.ok:
-        view = {"ok": False, "verb": "after", "message": preview.message}
-        return _emit_json(view) if as_json else _fail(preview.message)
-    assert preview.declared_edge is not None
-    a_id, b_id = preview.declared_edge
-    if retract:
-        tags = retract_after(repo, a_id, b_id)
-        view = {"ok": True, "verb": "after", "retracted": True,
-                "edge": [a_id, b_id], "tombstoned_tags": sorted(tags)}
-        msg = f"retract {a_id[:8]} ≤ {b_id[:8]} ({len(tags)} tag(s) tombstoned)"
-    else:
-        verbs.apply(repo, preview)
-        view = {"ok": True, "verb": "after", "retracted": False, "edge": [a_id, b_id]}
-        msg = f"declare {a_id[:8]} ≤ {b_id[:8]}"
-    if as_json:
-        return _emit_json(view)
-    print(f"✓ {msg}")
-    return 0
 
 
 def _cmd_revert(args) -> int:
@@ -703,19 +658,15 @@ def _kernel_edit_verb(
         get(repo)  # mine-on-contact before planning/applying the edit (R9)
 
     # A `<feature>@<n>` or `<feature>:<slug>` checkpoint (the intent-segment rewind unit): resolve
-    # it to its deterministic op-set and run the exact same op-set edit `ugh intent revert` uses
-    # (KTD6). Tried first because `@`/`:` name a checkpoint unambiguously; a non-match returns None
+    # it to its deterministic op-set and run the op-set edit. Tried first because `@`/`:` name a checkpoint unambiguously; a non-match returns None
     # and falls through. Both verbs enter here: `@n` is the rewind unit the map and the checkpoint
     # detail tell users to type, so a rewind whose inverse could not be addressed the same way was a
     # one-way door -- `ugh restore <feature>@<n>` used to fall past every deterministic rung to the
     # NL one and exit `could not resolve ... set OPENAI_API_KEY`.
     # A theme id names an intent that runs across several features -- exactly the shape a job that
-    # was done over three afternoons has. `ugh intent list` prints these, `ugh intent revert` has
-    # always been able to remove one, and plain `ugh revert` could not, so the tool showed people a
-    # grouping it then refused to act on and the answer was a second verb they had to already know.
-    # Same resolution, same removal path, one verb.
-    # By id, or by the label `ugh intent list` prints -- see `_theme_id_for_label` for why the
-    # label has to resolve here rather than fall through to the fuzzy rung.
+    # was done over three afternoons has. By id, or by the label `ugh log` prints -- see
+    # `_theme_id_for_label` for why the label has to resolve here rather than fall through to the
+    # fuzzy rung.
     theme_target = target if target.startswith("theme-") else _theme_id_for_label(repo, target)
     if theme_target is not None:
         from ugh.intent import group as intent_group
@@ -998,7 +949,7 @@ def _revert_a_save(cmd: str, target: str, save: tuple[str, str, list[tuple[str, 
                    as_json: bool) -> int:
     """The refusal for a save sha: say what the sha is, then name the moves that do work -- one
     `ugh <cmd> <handle>` per feature that save recorded, plus `ugh undo` (step the last save back)
-    and `ugh why <sha>` (what it was for). Exit 2 like every other unresolved target."""
+    and `ugh show <sha>` (what it was). Exit 2 like every other unresolved target."""
     sha, subject, feats = save
     if feats:
         # The message is self-contained: the extension shows `view.message` and nothing else, so
@@ -1030,7 +981,7 @@ def _revert_a_save(cmd: str, target: str, save: tuple[str, str, list[tuple[str, 
         print("  it recorded no feature ops.")
     print("  or:")
     print("    ugh undo            step the most recent save back")
-    print(f"    ugh why {sha}     what that save was for")
+    print(f"    ugh show {sha}    what that save was")
     return 2
 
 
@@ -1440,3 +1391,39 @@ def _print_verb_diff(files: dict, max_lines: int = 60) -> None:
                 return
             print(f"      {line}")
             shown += 1
+
+
+def _print_draft(draft, as_json: bool) -> int:
+    """The `revert --keep-dependents` draft (a `ugh.core.rewrite.RewriteDraft`)."""
+    if as_json:
+        return _emit_json({
+            "ok": draft.ok, "verb": draft.verb, "target": draft.target,
+            "draft_id": draft.draft_id, "hollow_ids": list(draft.hollow_ids),
+            "message": draft.message,
+        })
+    icon = "✓" if draft.ok else "✗"
+    print(f"{icon} [{draft.verb}] {draft.target}" + (f" — {draft.message}" if draft.message else ""))
+    if not draft.ok:
+        return 1
+    if draft.draft_id:
+        print(f"    draft: {draft.draft_id}")
+        for hid in draft.hollow_ids:
+            print(f"    hollow: {hid[:12]}")
+    return 0
+
+
+def _print_repair_result(result, as_json: bool) -> int:
+    """The `revert --keep-dependents --repair` result (a `ugh.repair.loop.RepairResult`)."""
+    if as_json:
+        return _emit_json({
+            "ok": result.ok, "sha": result.sha, "attempts": result.attempts,
+            "oracle_rounds": result.oracle_rounds, "message": result.message,
+        })
+    icon = "✓" if result.ok else "✗"
+    print(f"{icon} repair" + (f" — {result.message}" if result.message else ""))
+    if result.ok:
+        print(f"    landed {result.sha[:12]} ({result.attempts} attempt(s), "
+              f"{result.oracle_rounds} oracle round(s))")
+    if result.cost_line:
+        print(f"    {result.cost_line}")
+    return 0 if result.ok else 1

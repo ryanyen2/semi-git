@@ -1,8 +1,8 @@
 """Every `ugh ...` command we ship in prose must actually dispatch.
 
 Skills are instructions handed to an agent, and an agent follows them literally. When a verb is
-re-homed (`fsck` -> `advanced fsck`) or folded into another (`checkpoint` -> `save`), any prose
-naming the old spelling becomes a trap: the agent runs it, fails, and either thrashes on variations
+removed or folded into another (`checkpoint` -> `save`), any prose naming the old spelling becomes
+a trap: the agent runs it, fails, and either thrashes on variations
 or reports the task blocked. Prose drifts silently because nothing executes it -- when this test was
 written, 11 of the 23 commands in `ugh-workflow/SKILL.md` no longer existed, and the guide still
 described a `ugh pin` verb.
@@ -21,30 +21,25 @@ def test_every_documented_ugh_command_dispatches():
     findings = check()
     assert not findings, (
         "documentation names commands that do not dispatch:\n  "
-        + "\n  ".join(
-            f"{path}:{line}  `{quoted}`"
-            + (f"  ->  {replacement}" if replacement else "  ->  no such verb")
-            for path, line, quoted, replacement in findings
-        )
-        + "\n\nRun `python -m scripts.check_docs_commands --fix` to rewrite the re-homed ones."
+        + "\n  ".join(f"{path}:{line}  `{quoted}`  ->  {reason}"
+                     for path, line, quoted, reason in findings)
     )
 
 
-def test_the_checker_catches_a_rehomed_verb_and_an_invented_one(tmp_path):
+def test_the_checker_catches_a_removed_verb_and_an_invented_one(tmp_path):
     """The guard needs its own guard: a checker that silently passes everything is worse than none,
     because it converts an unmaintained surface into a green check."""
     doc = tmp_path / "doc.md"
     doc.write_text(
-        "Run `ugh fsck --tree` first, then `ugh bogusverb`, then `ugh log --map`.\n",
+        "Run `ugh now` first, then `ugh bogusverb`, then `ugh log --map`.\n",
         encoding="utf-8",
     )
 
     findings = check([str(doc)])
     quoted = {q: r for _p, _l, q, r in findings}
 
-    assert "ugh fsck" in quoted, "a re-homed verb must be reported"
-    assert quoted["ugh fsck"] == "ugh advanced fsck", "and its replacement path computed"
-    assert "ugh bogusverb" in quoted and quoted["ugh bogusverb"] is None
+    assert quoted.get("ugh now") == "no such verb", "a removed verb must be reported"
+    assert quoted.get("ugh bogusverb") == "no such verb"
     assert "ugh log" not in quoted, "a verb that dispatches must not be reported"
 
 
@@ -65,7 +60,7 @@ def test_a_stale_command_inside_a_code_block_is_caught(tmp_path):
     )
 
     quoted = {q for _p, _l, q, _r in check([str(doc)])}
-    assert "ugh fsck" in quoted, "a re-homed verb inside a code block must be reported"
+    assert "ugh fsck" in quoted, "a removed verb inside a code block must be reported"
     assert "ugh log" not in quoted, (
         "the gloss column is prose, not arguments -- `ugh log --map     one row per feature` "
         f"must not be read as a command with arguments: {quoted}")
@@ -87,12 +82,12 @@ def test_prose_about_a_removed_verb_is_not_flagged(tmp_path):
 
 def test_the_checker_catches_a_flag_the_verb_does_not_accept(tmp_path):
     """Flags drift the same way verbs do, and are easier to get wrong because they exist on sibling
-    verbs: `--no-color` is on `ugh now` and `ugh log` but not `ugh show`, so it reads as universal.
+    verbs: `--no-color` is on `ugh status` and `ugh log` but not `ugh show`, so it reads as universal.
     Writing `ugh show --no-color` into a skill hands an agent a command that dies on an argparse
     error -- which is how this check came to exist."""
     doc = tmp_path / "doc.md"
     doc.write_text(
-        "Show it plainly with `ugh show f-abc --no-color`, or `ugh now --no-color`.\n"
+        "Show it plainly with `ugh show f-abc --no-color`, or `ugh status --no-color`.\n"
         "Read it with `ugh show f-abc --json` and `ugh log --map`.\n",
         encoding="utf-8",
     )
@@ -101,6 +96,6 @@ def test_the_checker_catches_a_flag_the_verb_does_not_accept(tmp_path):
     flagged = {q for q, note in reported if note and "not a flag" in note}
 
     assert any("show" in q for q in flagged), "`--no-color` on `ugh show` must be reported"
-    assert not any("now" in q for q in flagged), "`--no-color` on `ugh now` is valid"
+    assert not any("status" in q for q in flagged), "`--no-color` on `ugh status` is valid"
     assert not any("--json" in q for q in flagged), "`--json` is valid on both"
     assert not any("--map" in q for q in flagged), "`--map` is a real `log` mode"

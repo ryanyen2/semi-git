@@ -1,105 +1,19 @@
 {
-  "blame": {
+  "check": {
     "json": {
       "argv": [
-        "advanced",
-        "blame",
-        "a.py",
+        "check",
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"file\": \"a.py\",\n  \"spans\": [],\n  \"features\": {},\n  \"covered\": true\n}\n"
+      "out": "{\n  \"ok\": true,\n  \"checked\": 31,\n  \"bad_hash\": [],\n  \"corrupt\": [],\n  \"chain_gaps\": [],\n  \"invalid_ideals\": [],\n  \"unreachable_witnesses\": [],\n  \"mixed_versions\": [],\n  \"pending_land\": [],\n  \"op_index_stale\": false\n}\n"
     },
     "text": {
       "argv": [
-        "advanced",
-        "blame",
-        "a.py"
+        "check"
       ],
       "exit": 0,
-      "out": ""
-    }
-  },
-  "commit_nothing_staged": {
-    "json": {
-      "argv": [
-        "advanced",
-        "commit",
-        "--json"
-      ],
-      "exit": 1,
-      "out": "\u2717 nothing staged -- run `ugh advanced fulfill` first\n"
-    },
-    "text": {
-      "argv": [
-        "advanced",
-        "commit"
-      ],
-      "exit": 1,
-      "out": "\u2717 nothing staged -- run `ugh advanced fulfill` first\n"
-    }
-  },
-  "diff": {
-    "json": {
-      "argv": [
-        "diff",
-        "main",
-        "release",
-        "--json"
-      ],
-      "exit": 0,
-      "out": "{\n  \"ref_a\": \"main\",\n  \"ref_b\": \"release\",\n  \"by_symbol\": {\n    \"slugify.py::slugify\": {\n      \"only_in_a\": [\n        \"bac2657449ecaa02f92cdf8bebd8b3810e12aff30bb79d34f0a471ce2dbc9cea\"\n      ],\n      \"only_in_b\": [\n        \"0dd3ed67952054062713ffa1105732fa27d5a7aaa665c2ad7287ca6f166f2271\"\n      ]\n    }\n  },\n  \"count\": 2\n}\n"
-    },
-    "text": {
-      "argv": [
-        "diff",
-        "main",
-        "release"
-      ],
-      "exit": 0,
-      "out": "2 differing op(s) between main (a) and release (b):\n  slugify.py::slugify\n    a: bac2657449ec\n    b: 0dd3ed679520\n"
-    }
-  },
-  "fsck": {
-    "json": {
-      "argv": [
-        "advanced",
-        "fsck",
-        "--json"
-      ],
-      "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"checked\": 31,\n  \"bad_hash\": [],\n  \"corrupt\": [],\n  \"chain_gaps\": [],\n  \"invalid_ideals\": [],\n  \"unreachable_witnesses\": [],\n  \"mixed_versions\": [],\n  \"pending_land\": [],\n  \"op_index_stale\": false,\n  \"stale_sessions\": []\n}\n"
-    },
-    "text": {
-      "argv": [
-        "advanced",
-        "fsck"
-      ],
-      "exit": 0,
-      "out": "\u2713 fsck \u2014 31 op(s) checked\n"
-    }
-  },
-  "fulfill_no_draft": {
-    "json": {
-      "argv": [
-        "advanced",
-        "fulfill",
-        "no-such-draft",
-        "--from-tree",
-        "--json"
-      ],
-      "exit": 1,
-      "out": "\u2717 no draft 'no-such-draft' -- see merge-op/split-op/transplant/revert --keep-dependents\n"
-    },
-    "text": {
-      "argv": [
-        "advanced",
-        "fulfill",
-        "no-such-draft",
-        "--from-tree"
-      ],
-      "exit": 1,
-      "out": "\u2717 no draft 'no-such-draft' -- see merge-op/split-op/transplant/revert --keep-dependents\n"
+      "out": "\u2713 check \u2014 31 op(s) checked\n"
     }
   },
   "help": {
@@ -107,51 +21,7 @@
       "help"
     ],
     "exit": 0,
-    "out": "ugh \u2014 semantic operation-ideal version control\n\n  the daily spine (a selection \u2014 symbol / glob / NL / feature / set \u2014 is the argument):\n  ugh save [-m \"<msg>\"] [--as \"<feature>\"]   record your edits + show which feature they landed in\n  ugh now [--json]            where am I, what next \u2014 in flight / needs you / recently done\n  ugh log [--json]            the feature map: one lane per feature, edits over time \u2014\n                              --rail (saves, newest first) \u00b7 --tree (feature tree) \u00b7\n                              --summary (what needs attention) \u00b7 --refresh (reflect new edits)\n  ugh show <sel>              what is this? \u2014 any id ugh printed: what it covers, what\n                              would go with it, and what you can do next\n  ugh undo                    invert the last mutating operation (the unified op log)\n  ugh revert <sel>            remove a selection and everything built on it\n  ugh restore <sel>           bring a selection back, along with what it needs\n  ugh resolve <symbol>        guided fork resolution when two versions of one symbol compete\n\n  navigation + inspection:\n  ugh switch <branch>         move HEAD to a branch's committed tree (mines both ends)\n  ugh diff <ref_a> <ref_b>    semantic diff: the symmetric difference of two ideals\n  ugh intent <cmd>            per-feature checkpoints (intent segments): list/show/build;\n                              rewind one with `ugh revert <feature>@<n>`\n\n  agentic loop:\n  ugh plan <cmd>              intake/abandon/status a stated plan's predicted hollow ops\n  ugh save --resolve-plan     settle an ambiguous plan-step match a save couldn't auto-confirm\n\n  groupings:\n  ugh feature <cmd>           author/re-cut features: regroup (merge/split/move),\n                              rename, select   (`why` is the top-level `ugh why <sel>`)\n  ugh advanced <cmd>          maintenance/rare verbs: blame, edit, fulfill, commit, fsck,\n                              resync (recover after a git history rewrite), ops, state,\n                              oracle, after, fold, preview, tiers, identity, migrate,\n                              history, compose, forks, review-queue, unstage, repair,\n                              merge-op, split-op, transplant\n\n  collaboration + setup:\n  ugh sync [remote] [branch]  fetch + merge a teammate's work; union ops, reconcile, fork\n  ugh land <branch> [--json]  advance a shared branch record by CAS, gated oracle-green\n  ugh push [remote] [branch]  non-forcing git push; a rejection routes you to `ugh sync`\n  ugh propose <cmd>           a base+\u0394 review object: create/status/land/render/publish\n  ugh session <cmd>           named scratch-tree lifecycle: start/status/land/gc\n  ugh init [path] [--horizon <ref>]   bind git + the kernel op store; mine existing history\n  ugh mcp [path]              run the MCP stdio server for coding-agent clients\n  ugh git <args...>           pass through to real git (refuses tree-mutating verbs)\n\n  <sel> resolves an op-id / prefix, a `file::name` symbol, a glob, a feature id/label, or\n  an NL phrase; read verbs take --json for the machine-readable ugh.api projection.\n\n"
-  },
-  "history": {
-    "json": {
-      "argv": [
-        "advanced",
-        "history",
-        "--json"
-      ],
-      "exit": 0,
-      "out": "{\n  \"commit_count\": 7,\n  \"save_count\": 7,\n  \"bookkeeping_count\": 0,\n  \"op_count\": 31,\n  \"kinds\": {\n    \"add\": 20,\n    \"rework\": 5,\n    \"prune\": 5,\n    \"move\": 1\n  },\n  \"features\": {\n    \"f-004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d\": 15\n  },\n  \"latest_commits\": [\n    {\n      \"sha\": \"7c2b1320a1c101f4aa3703ab02821df60d539233\",\n      \"subject\": \"edit non-parseable config\",\n      \"index\": 6,\n      \"ts\": 1700021600,\n      \"bookkeeping\": false,\n      \"feature_id\": \"f-004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d\",\n      \"headline\": \"edit non-parseable config\"\n    },\n    {\n      \"sha\": \"bf7218c6a895c6c0303352bb213b36c7adb66f0f\",\n      \"subject\": \"delete bar\",\n      \"index\": 5,\n      \"ts\": 1700018000,\n      \"bookkeeping\": false,\n      \"feature_id\": \"f-004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d\",\n      \"headline\": \"delete bar\"\n    },\n    {\n      \"sha\": \"4bcd22ea86cfbd402fa637b9b8095f5dc5bd4405\",\n      \"subject\": \"tangled: add baz to b.py and edit unrelated qux in c.py\",\n      \"index\": 4,\n      \"ts\": 1700014400,\n      \"bookkeeping\": false,\n      \"feature_id\": \"f-004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d\",\n      \"headline\": \"tangled: add baz to b.py and edit unrelated qux in c.py\"\n    },\n    {\n      \"sha\": \"26075c526c82f7724d1dd22ff3a5c0e2036842be\",\n      \"subject\": \"move bar from a.py to b.py\",\n      \"index\": 3,\n      \"ts\": 1700010800,\n      \"bookkeeping\": false,\n      \"feature_id\": \"f-004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d\",\n      \"headline\": \"move bar from a.py to b.py\"\n    },\n    {\n      \"sha\": \"56a3e016908411503095283493d6e18c694f759c\",\n      \"subject\": \"rename foo -> bar within a.py\",\n      \"index\": 2,\n      \"ts\": 1700007200,\n      \"bookkeeping\": false,\n      \"feature_id\": null,\n      \"headline\": \"rename foo -> bar within a.py\"\n    },\n    {\n      \"sha\": \"665bf8bc9bb0877d5ebe6d9e7ebe7a782abe6bca\",\n      \"subject\": \"modify foo\",\n      \"index\": 1,\n      \"ts\": 1700003600,\n      \"bookkeeping\": false,\n      \"feature_id\": null,\n      \"headline\": \"modify foo\"\n    },\n    {\n      \"sha\": \"75b001519c47d0dada850719e9349ae7dd734a7e\",\n      \"subject\": \"add foo, qux, config, binary\",\n      \"index\": 0,\n      \"ts\": 1700000000,\n      \"bookkeeping\": false,\n      \"feature_id\": \"f-004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d\",\n      \"headline\": \"add foo, qux, config, binary\"\n    }\n  ]\n}\n"
-    },
-    "text": {
-      "argv": [
-        "advanced",
-        "history"
-      ],
-      "exit": 0,
-      "out": "7 commit(s), 31 op(s) placed on the axis:\n  [6] 7c2b1320a1c1  edit non-parseable config\n  [5] bf7218c6a895  delete bar\n  [4] 4bcd22ea86cf  tangled: add baz to b.py and edit unrelated qux in c.py\n  [3] 26075c526c82  move bar from a.py to b.py\n  [2] 56a3e0169084  rename foo -> bar within a.py\n  [1] 665bf8bc9bb0  modify foo\n  [0] 75b001519c47  add foo, qux, config, binary\n"
-    }
-  },
-  "identity_split": {
-    "json": {
-      "argv": [
-        "advanced",
-        "identity",
-        "split",
-        "823f80d2d71f4d87d480ce9d1db2c0e7231357d4b5ad32caae0d8eb384866bf2",
-        "004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d",
-        "--json"
-      ],
-      "exit": 0,
-      "out": "{\n  \"never_link\": [\n    [\n      \"004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d\",\n      \"823f80d2d71f4d87d480ce9d1db2c0e7231357d4b5ad32caae0d8eb384866bf2\"\n    ]\n  ],\n  \"force_link\": []\n}\n"
-    },
-    "text": {
-      "argv": [
-        "advanced",
-        "identity",
-        "split",
-        "823f80d2d71f4d87d480ce9d1db2c0e7231357d4b5ad32caae0d8eb384866bf2",
-        "004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d"
-      ],
-      "exit": 0,
-      "out": "\u2713 identity split: 823f80d2d71f4d87d480ce9d1db2c0e7231357d4b5ad32caae0d8eb384866bf2 / 004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d\n"
-    }
+    "out": "ugh \u2014 semantic operation-ideal version control\n\n  the daily spine (a selection \u2014 symbol / glob / NL / feature / set \u2014 is the argument):\n  ugh save [-m \"<msg>\"] [--as \"<feature>\"]   record your edits + show which feature they landed in\n  ugh log [--json]            the feature map: one lane per feature, edits over time \u2014\n                              --rail (saves, newest first) \u00b7 --tree (feature tree) \u00b7\n                              --summary (what needs attention) \u00b7 --refresh (reflect new edits)\n  ugh show <sel>              what is this? \u2014 any id ugh printed: what it covers, what\n                              would go with it, and what you can do next\n  ugh find <words>            find a feature, save or symbol you can describe but not name\n  ugh undo                    invert the last mutating operation (the unified op log)\n  ugh revert <sel>            remove a selection and everything built on it\n  ugh restore <sel>           bring a selection back, along with what it needs\n  ugh resolve <symbol>        guided fork resolution when two versions of one symbol compete\n  ugh feature rename <feature> <label>   name a feature in your own words\n\n  agentic loop:\n  ugh plan <cmd>              intake/abandon/status a stated plan's predicted hollow ops\n  ugh save --resolve-plan     settle an ambiguous plan-step match a save couldn't auto-confirm\n\n  collaboration + setup:\n  ugh sync [remote] [branch]  fetch + merge a teammate's work; union ops, reconcile, fork\n  ugh push [remote] [branch]  non-forcing git push; a rejection routes you to `ugh sync`\n  ugh check [--tree] [--repair]   verify the op store; --repair re-derives after a history rewrite\n  ugh init [path] [--horizon <ref>]   bind git + the kernel op store; mine existing history\n  ugh mcp [path]              run the MCP stdio server for coding-agent clients\n  ugh git <args...>           pass through to real git (refuses tree-mutating verbs)\n\n  <sel> resolves an op-id / prefix, a `file::name` symbol, a glob, a feature id/label, or\n  an NL phrase; read verbs take --json for the machine-readable ugh.api projection.\n\n"
   },
   "init": {
     "argv": [
@@ -159,7 +29,7 @@
       "."
     ],
     "exit": 0,
-    "out": "\u2713 initialized ugh kernel in . (.sgt/ + git)\n\u2713 installed Claude Code prompt hook (.claude/settings.local.json) -- your prompts become local intent evidence; remove the UserPromptSubmit entry to opt out\n\u2713 installed Claude Code edit hook -- each Edit/Write becomes a live activity event `ugh now` surfaces; remove the PostToolUse entry to opt out\n\u2192 using Claude Code or the VS Code extension? run `ugh init --agent` to wire them up\n"
+    "out": "\u2713 initialized ugh kernel in . (.sgt/ + git)\n\u2713 installed Claude Code prompt hook (.claude/settings.local.json) -- your prompts become local intent evidence; remove the UserPromptSubmit entry to opt out\n\u2713 installed Claude Code edit hook -- each Edit/Write becomes a live activity event; remove the PostToolUse entry to opt out\n\u2192 using Claude Code or the VS Code extension? run `ugh init --agent` to wire them up\n"
   },
   "log": {
     "json": {
@@ -197,134 +67,6 @@
       "out": " \u001b[1m1 feature\u001b[0m\u001b[2m  \u00b7  \u001b[0m\u001b[2m0 subsystems\u001b[0m\n\n\u001b[2m \u001b[0m\u001b[2mFEATURE             \u001b[0m\u001b[2m  \u001b[0m\u001b[2mSYMBOLS\u001b[0m\n\u001b[2m \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u001b[0m\n \u001b[38;2;201;136;214m\u25cf \u001b[0mbaz qux             \u001b[2m      5\u001b[0m\n\n\u001b[2m \u001b[0m\u001b[2m1 row\u001b[0m\n\n"
     }
   },
-  "merge": {
-    "json": {
-      "argv": [
-        "feature",
-        "regroup",
-        "merge",
-        "f-004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d",
-        "f-004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d",
-        "--json"
-      ],
-      "exit": 0,
-      "out": "{\n  \"ok\": false,\n  \"message\": \"cannot merge a feature into itself\"\n}\n"
-    },
-    "text": {
-      "argv": [
-        "feature",
-        "regroup",
-        "merge",
-        "f-004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d",
-        "f-004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d"
-      ],
-      "exit": 1,
-      "out": "\u2717 cannot merge a feature into itself\n"
-    }
-  },
-  "merge_op": {
-    "json": {
-      "argv": [
-        "advanced",
-        "merge-op",
-        "bac2657449ecaa02f92cdf8bebd8b3810e12aff30bb79d34f0a471ce2dbc9cea",
-        "0dd3ed67952054062713ffa1105732fa27d5a7aaa665c2ad7287ca6f166f2271",
-        "--json"
-      ],
-      "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"verb\": \"merge-op\",\n  \"target\": \"bac2657449ec+0dd3ed679520\",\n  \"draft_id\": \"749fefdb8600\",\n  \"hollow_ids\": [\n    \"52445044c9f2dfcb036b721da918a39178fef367b7d329870219b853e7361145\"\n  ],\n  \"message\": \"drafted 1 hollow(s) for slugify.py::slugify\"\n}\n"
-    },
-    "text": {
-      "argv": [
-        "advanced",
-        "merge-op",
-        "bac2657449ecaa02f92cdf8bebd8b3810e12aff30bb79d34f0a471ce2dbc9cea",
-        "0dd3ed67952054062713ffa1105732fa27d5a7aaa665c2ad7287ca6f166f2271"
-      ],
-      "exit": 0,
-      "out": "\u2713 [merge-op] bac2657449ec+0dd3ed679520 \u2014 drafted 1 hollow(s) for slugify.py::slugify\n    draft: 749fefdb8600\n    hollow: 52445044c9f2\n    edit the working tree, then: ugh advanced fulfill 749fefdb8600 --from-tree\n"
-    }
-  },
-  "move": {
-    "json": {
-      "argv": [
-        "feature",
-        "regroup",
-        "move",
-        "004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d",
-        "--to",
-        "f-004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d",
-        "--json"
-      ],
-      "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"op_ids\": [\n    \"004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d\"\n  ],\n  \"target\": \"f-004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d\"\n}\n"
-    },
-    "text": {
-      "argv": [
-        "feature",
-        "regroup",
-        "move",
-        "004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d",
-        "--to",
-        "f-004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d"
-      ],
-      "exit": 0,
-      "out": "\u2713 moved 1 op(s) to f-004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d\n"
-    }
-  },
-  "now": {
-    "json": {
-      "argv": [
-        "now",
-        "--json"
-      ],
-      "exit": 0,
-      "out": "{\n  \"working_on\": null,\n  \"in_flight\": {\n    \"affected\": [],\n    \"new_work_count\": 0,\n    \"total_op_count\": 0\n  },\n  \"in_progress\": [],\n  \"needs_you\": {\n    \"paused_operation\": null,\n    \"history_rewritten\": false,\n    \"forks\": [],\n    \"reviews\": [],\n    \"stalled_plans\": []\n  },\n  \"recently_done\": [\n    {\n      \"sha\": \"7c2b1320a1c101f4aa3703ab02821df60d539233\",\n      \"subject\": \"edit non-parseable config\",\n      \"index\": 6,\n      \"ts\": 1700021600,\n      \"bookkeeping\": false,\n      \"feature_id\": \"f-004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d\",\n      \"headline\": \"edit non-parseable config\"\n    },\n    {\n      \"sha\": \"bf7218c6a895c6c0303352bb213b36c7adb66f0f\",\n      \"subject\": \"delete bar\",\n      \"index\": 5,\n      \"ts\": 1700018000,\n      \"bookkeeping\": false,\n      \"feature_id\": \"f-004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d\",\n      \"headline\": \"delete bar\"\n    },\n    {\n      \"sha\": \"4bcd22ea86cfbd402fa637b9b8095f5dc5bd4405\",\n      \"subject\": \"tangled: add baz to b.py and edit unrelated qux in c.py\",\n      \"index\": 4,\n      \"ts\": 1700014400,\n      \"bookkeeping\": false,\n      \"feature_id\": \"f-004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d\",\n      \"headline\": \"tangled: add baz to b.py and edit unrelated qux in c.py\"\n    },\n    {\n      \"sha\": \"26075c526c82f7724d1dd22ff3a5c0e2036842be\",\n      \"subject\": \"move bar from a.py to b.py\",\n      \"index\": 3,\n      \"ts\": 1700010800,\n      \"bookkeeping\": false,\n      \"feature_id\": \"f-004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d\",\n      \"headline\": \"move bar from a.py to b.py\"\n    },\n    {\n      \"sha\": \"56a3e016908411503095283493d6e18c694f759c\",\n      \"subject\": \"rename foo -> bar within a.py\",\n      \"index\": 2,\n      \"ts\": 1700007200,\n      \"bookkeeping\": false,\n      \"feature_id\": null,\n      \"headline\": \"rename foo -> bar within a.py\"\n    }\n  ],\n  \"context\": {\n    \"turns\": [],\n    \"activity\": []\n  },\n  \"next_action\": {\n    \"kind\": \"clean\",\n    \"command\": null,\n    \"target\": null,\n    \"label\": \"nothing pending\"\n  }\n}\n"
-    },
-    "text": {
-      "argv": [
-        "now"
-      ],
-      "exit": 0,
-      "out": "recently done\n    7c2b1320  edit non-parseable config\n    bf7218c6  delete bar\n    4bcd22ea  tangled: add baz to b.py and edit unrelated qux in c.py\n    26075c52  move bar from a.py to b.py\n    56a3e016  rename foo -> bar within a.py\n\u2192 next      nothing pending\n"
-    }
-  },
-  "oracle_override": {
-    "text": {
-      "argv": [
-        "advanced",
-        "oracle",
-        "override",
-        "--status",
-        "pass",
-        "--reason",
-        "manual"
-      ],
-      "exit": 0,
-      "out": "\u2713 override recorded: pass (manual)\n"
-    }
-  },
-  "oracle_run_no_config": {
-    "json": {
-      "argv": [
-        "advanced",
-        "oracle",
-        "run",
-        "--json"
-      ],
-      "exit": 0,
-      "out": "\u26a0 no oracle configured (.sgt/oracle.json not found) \u2014 proceeding without a verdict\n"
-    },
-    "text": {
-      "argv": [
-        "advanced",
-        "oracle",
-        "run"
-      ],
-      "exit": 0,
-      "out": "\u26a0 no oracle configured (.sgt/oracle.json not found) \u2014 proceeding without a verdict\n"
-    }
-  },
   "plan_status": {
     "json": {
       "argv": [
@@ -342,39 +84,6 @@
       ],
       "exit": 0,
       "out": "(no active plan sessions)\n"
-    }
-  },
-  "preview_bad_arity": {
-    "argv": [
-      "advanced",
-      "preview",
-      "merge",
-      "only-one-arg"
-    ],
-    "exit": 2,
-    "out": "usage: ugh preview merge <survivor> <absorbed> | ugh preview rename <feature> \"<new label>\" | ugh preview move <op>... --to <feature> | ugh preview revert <feature> | ugh preview restore <feature> | (for split, use: ugh split <feature>)\n"
-  },
-  "preview_revert_feature": {
-    "json": {
-      "argv": [
-        "advanced",
-        "preview",
-        "revert",
-        "f-004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d",
-        "--json"
-      ],
-      "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"verb\": \"revert\",\n  \"message\": \"\",\n  \"target\": \"f-004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d\",\n  \"removed\": [\n    \"004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d\",\n    \"15e93c14b9b288beeecb6c4e515f02a11b91d6aafa46997db22a5992c9170c6b\",\n    \"27d3d901e561fa9a8d63fb226d63ad711b2ba0c25eb66b8ab63578185505463b\",\n    \"439ab3afbd2b481ebb8c3be8db9ba80489596af338433f6eeb89f6cc444b8e04\",\n    \"46d106b7667b97172fc574a4fd913a901dacac6409141258a498d1c987391bb1\",\n    \"6302d788bba66fdafd4fcfcd273a0a7f0c964ab60c1fdca695c612855bdc3bb4\",\n    \"66521c9c8059f4cd85a95576c9becda29476814961cc8e7d18764a3cad6d3224\",\n    \"87f82580ba5b83f33d2f00e6456409e359949e92a2b36221f1d1148a0beef612\",\n    \"91cb13541de9b137ac548bfb4f2bbb13941510c1c8bb687c6e22365a6c0f8984\",\n    \"a24255df0edc2df53ec339c4afa5f7f5039fac54546155a3b143c40104a68bda\",\n    \"b47a71f812b416f98af29cd19c54f8dbe23cff9891ea688b831c67a774b6c5b0\",\n    \"b63b907d5173089905c1de8971c590a78bf6448c1f403056c3508ef977310021\",\n    \"ddd0cc977fe893673268893ceb1d8b78895e98d3ba21273a5145cdcd4b54e585\",\n    \"e35fadd4227224ef6d90e7ee84885050bb2f290a0c8804af2f2305fe2e22ffdc\",\n    \"f5eb13272206e7c80b1b91b2e6298297d19305bbb11e74c7732d452bf5ba4b19\"\n  ],\n  \"added\": [],\n  \"affected_features\": [\n    \"f-004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d\"\n  ],\n  \"affected\": [\n    {\n      \"feature_id\": \"f-004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d\",\n      \"direction\": \"blast\",\n      \"op_count\": 15\n    }\n  ]\n}\n"
-    },
-    "text": {
-      "argv": [
-        "advanced",
-        "preview",
-        "revert",
-        "f-004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d"
-      ],
-      "exit": 0,
-      "out": "\u2713 preview revert: affects f-004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d\n"
     }
   },
   "rename": {
@@ -520,48 +229,6 @@
       "out": "\u2713 nothing to save -- no uncommitted ops\n"
     }
   },
-  "split_preview": {
-    "json": {
-      "argv": [
-        "feature",
-        "regroup",
-        "split",
-        "f-004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d",
-        "--json"
-      ],
-      "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"feature\": \"f-004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d\",\n  \"applied\": false,\n  \"groups\": [\n    [\n      \"README.md\",\n      \"a.py::__residue__::\\u0000HEAD\\u0000\",\n      \"c.py::__residue__::\\u0000HEAD\\u0000\",\n      \"c.py::__residue__::qux\",\n      \"config.yaml\",\n      \"logo.bin\"\n    ],\n    [\n      \"b.py::__residue__::\\u0000HEAD\\u0000\",\n      \"b.py::__residue__::baz\",\n      \"b.py::baz\",\n      \"c.py::qux\"\n    ]\n  ],\n  \"new_id\": \"f-ma644e313a2834319e6ac50f3818f1427d6e6248e5afb54382f63ccd1919dc34e\",\n  \"moving_op_ids\": [\n    \"004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d\",\n    \"439ab3afbd2b481ebb8c3be8db9ba80489596af338433f6eeb89f6cc444b8e04\",\n    \"87f82580ba5b83f33d2f00e6456409e359949e92a2b36221f1d1148a0beef612\",\n    \"91cb13541de9b137ac548bfb4f2bbb13941510c1c8bb687c6e22365a6c0f8984\",\n    \"f5eb13272206e7c80b1b91b2e6298297d19305bbb11e74c7732d452bf5ba4b19\"\n  ]\n}\n"
-    },
-    "text": {
-      "argv": [
-        "feature",
-        "regroup",
-        "split",
-        "f-004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d"
-      ],
-      "exit": 0,
-      "out": "  group 0: README.md, a.py::__residue__::\u0000HEAD\u0000, c.py::__residue__::\u0000HEAD\u0000, c.py::__residue__::qux, config.yaml, logo.bin\n  group 1: b.py::__residue__::\u0000HEAD\u0000, b.py::__residue__::baz, b.py::baz, c.py::qux\n  (preview only \u2014 pass --apply to split)\n"
-    }
-  },
-  "state": {
-    "json": {
-      "argv": [
-        "advanced",
-        "state",
-        "--json"
-      ],
-      "exit": 0,
-      "out": "{\n  \"frontier_count\": 20,\n  \"entity_path_count\": 2,\n  \"covered_paths\": [\n    \"README.md\",\n    \"a.py\",\n    \"b.py\",\n    \"c.py\",\n    \"config.yaml\",\n    \"logo.bin\"\n  ],\n  \"coverage_fraction\": 0.3333333333333333,\n  \"derived_paths\": [],\n  \"oracle_configured\": false,\n  \"oracle_verdict\": null\n}\n"
-    },
-    "text": {
-      "argv": [
-        "advanced",
-        "state"
-      ],
-      "exit": 0,
-      "out": "20 symbols at the frontier; 6 paths covered, 2 at entity granularity (33%)\n  README.md\n  a.py\n  b.py\n  c.py\n  config.yaml\n  logo.bin\n"
-    }
-  },
   "status": {
     "json": {
       "argv": [
@@ -581,44 +248,6 @@
       "out": " \u001b[1m6 files\u001b[0m\u001b[2m  \u00b7  \u001b[0m\u001b[1m15 symbols\u001b[0m\u001b[2m  \u00b7  \u001b[0m\u001b[1m1 feature\u001b[0m\u001b[2m  \u00b7  \u001b[0m\u001b[2m33% coverage\u001b[0m\u001b[2m  \u00b7  \u001b[0m\u001b[2moracle unconfigured\u001b[0m\n\n\u001b[32m \u001b[0m\u001b[32m\u2713 in sync\u001b[0m\n\n"
     }
   },
-  "switch": {
-    "json": {
-      "argv": [
-        "switch",
-        "release",
-        "--json"
-      ],
-      "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"branch\": \"release\",\n  \"ops\": 5\n}\n"
-    },
-    "text": {
-      "argv": [
-        "switch",
-        "release"
-      ],
-      "exit": 0,
-      "out": "\u2713 switch release: 5 op(s) in the ideal\n"
-    }
-  },
-  "switch_unknown_branch": {
-    "json": {
-      "argv": [
-        "switch",
-        "no-such-branch",
-        "--json"
-      ],
-      "exit": 1,
-      "out": "{\n  \"ok\": false,\n  \"error\": \"`no-such-branch` is not a local branch -- it resolves to nothing in this repo. `ugh switch` moves HEAD, and switching to anything but a branch detaches it, where a later `ugh save` commits onto no branch. Branches here: main. To *look at* an older state instead, use `ugh log --at <commit>` or `ugh diff <ref> HEAD`; to detach deliberately, `ugh git checkout --force no-such-branch`.\"\n}\n"
-    },
-    "text": {
-      "argv": [
-        "switch",
-        "no-such-branch"
-      ],
-      "exit": 1,
-      "out": "\u2717 `no-such-branch` is not a local branch -- it resolves to nothing in this repo. `ugh switch` moves HEAD, and switching to anything but a branch detaches it, where a later `ugh save` commits onto no branch. Branches here: main. To *look at* an older state instead, use `ugh log --at <commit>` or `ugh diff <ref> HEAD`; to detach deliberately, `ugh git checkout --force no-such-branch`.\n"
-    }
-  },
   "sync_refuses_dirty_tree": {
     "json": {
       "argv": [
@@ -634,31 +263,6 @@
       ],
       "exit": 1,
       "out": "\u2717 working tree has uncommitted changes -- commit them first (e.g. `git commit -am ...`), then re-run\n      a.py\n"
-    }
-  },
-  "transplant": {
-    "json": {
-      "argv": [
-        "advanced",
-        "transplant",
-        "0dd3ed67952054062713ffa1105732fa27d5a7aaa665c2ad7287ca6f166f2271",
-        "--onto",
-        "main",
-        "--json"
-      ],
-      "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"verb\": \"transplant\",\n  \"target\": \"0dd3ed679520 onto main\",\n  \"draft_id\": \"f9c96bd51323\",\n  \"hollow_ids\": [\n    \"5464c5358a875cb4de20c2271082e71a3650f7e432c875b151b7f9143128be26\"\n  ],\n  \"message\": \"drafted 1 hollow(s) with main's chain tip as before_version\"\n}\n"
-    },
-    "text": {
-      "argv": [
-        "advanced",
-        "transplant",
-        "0dd3ed67952054062713ffa1105732fa27d5a7aaa665c2ad7287ca6f166f2271",
-        "--onto",
-        "main"
-      ],
-      "exit": 0,
-      "out": "\u2713 [transplant] 0dd3ed679520 onto main \u2014 drafted 1 hollow(s) with main's chain tip as before_version\n    draft: f9c96bd51323\n    hollow: 5464c5358a87\n    edit the working tree, then: ugh advanced fulfill f9c96bd51323 --from-tree\n"
     }
   },
   "undo": {

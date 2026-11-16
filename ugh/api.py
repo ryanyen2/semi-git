@@ -13,9 +13,6 @@ Shapes (stable; additive changes only):
   structured attribution (D7: session/agent/plan per witnessing sha), intent.
 * ``state_view``        — the current ref's ideal: frontier, coverage, entity-granularity fraction,
   and the async oracle's verdict (U9).
-* ``ideal_diff_view``   — the semantic diff between two refs' ideals, grouped by symbol.
-* ``verb_preview_view`` — a side-effect-free preview of an ideal-edit verb (U8: revert/restore/
-  pin/cherry-pick/after): op-ids added/removed, affected symbols, fork refusal, before/after bytes.
 * ``rewrite_view``      — the U11 rewrite-verb review surface: pending drafts (hollow ops awaiting
   fulfillment) and the currently staged candidate's oracle verdict, if any.
 * ``map_view``          — the U13 feature tree: every node's id/label/kind/parent/children/op_count,
@@ -26,11 +23,6 @@ Shapes (stable; additive changes only):
 * ``grid_view``         — the canonical lane×commit cell join (U1): every (feature, commit) cell
   that carries ops, the commit axis, active-plan ghost cells, and per-commit mining-fidelity marks
   — the one join every grid surface (CLI `ugh log`, TUI, VS Code webview) renders, computed once.
-* ``feature_verb_preview_view`` — a side-effect-free preview of a feature verb (merge/split/move/
-  rename/revert), with a uniform ``affected_features`` ripple list for hover-preview UIs.
-* ``blame_view``        — per-file symbol spans (`sym -> max-op-in-I -> feature`) for the editor
-  gutter: each entity's line range, its feature id, that feature's label, and the plan sessions
-  (D7) that touched its tip op.
 * ``status_view``       — a kernel-backed summary: file/symbol/feature counts, coverage fraction,
   the oracle's overall status, and working-tree drift from `code(current_ideal)`.
 * ``plan_view``         — the U14 plan review surface: every active plan session's steps (with
@@ -39,39 +31,12 @@ Shapes (stable; additive changes only):
 * ``drift_view``        — the U14 "what extra happened" query: every op not predicted by any
   active plan session, with its kind, footprint, and current file/line spans.
 * ``sync_view``         — the U15 `ugh sync` result: ops merged in, forks surfaced (with the
-  `merge-op` remedy), pin contradictions, declared-edge cycles, and tree identity events.
-* ``suggestion_view``   — the U7 clustering/merge suggestion queue: every open `merge`/`split`/
-  `conflict` suggestion a clustering-critic or a sync conflict (U6) recorded, for the user to
-  accept (via a feature verb) or dismiss. Clustering proposes; the user disposes (R4).
+  `ugh resolve` remedy), pin contradictions, declared-edge cycles, and tree identity events.
 * ``forks_view``        — the U20 open same-symbol forks recorded in committed `.sgt/forks.json`,
-  each with its two tips and the `ugh merge-op` remedy (divergence-as-state, C4).
-* ``proposal_view``     — the U24 proposal review object: feature delta, Δ op count, oracle claim,
-  provenance summary, and staleness `status` (current / clean-reunion / fork). `render_github`
-  projects exactly this shape into a PR body.
-* ``tiers_view``        — the U27 three-tier file boundary's effective configuration: `.sgt/
-  tiers.json`'s overrides, `.sgtignore`'s patterns, and each covered path's resolved tier + its
-  `derived` flag (S4).
-* ``selection_view``    — the U29 closure-explanation UX: a feature-tree selection's induced
-  closure (direct ops, files, ops pulled in grouped by their own feature with a representative
-  requires/chain path each), and the hub symbol when the pull crosses a feature boundary.
-* ``why_view``          — the U29 "why is this op here" query: an op's plurality-vote feature
-  attribution, or (given a target feature) the exact chain that pulled it into that feature's
-  selection closure.
-* ``trust_view``        — the U31 trust queue: every op with session/agent attribution or drift
-  status that isn't yet covered by a review record, grouped by provenance key (a session/agent
-  name, or ``"drift"`` for unattributed drift), so a teammate can act on or ack a whole group at
-  once (``ugh revert --session``, ``ugh review-queue ack``).
-* ``proposal_review_view`` — the U32 partial-accept surface: everything ``proposal_view`` has,
-  plus the U24 ``approvals`` schema and a ``feature_checklist`` naming, per delta feature, which
-  *other* delta features it requires — so ``ugh propose land --subset`` (or a future checkbox UI)
-  can validate or grey out a choice without recomputing the closure itself.
+  each with its two tips and the `ugh resolve` remedy (divergence-as-state, C4).
 * ``intent_view``       — the U6 intent-clustering overlay: every commit-keyed `IntentAtom` (rung
-  0/1, recomputed on read) and every persisted LLM-named `theme` (rung 2, `ugh intent build`'s
-  output), each with its dependency-graph-backed `tier` (coupled/co-changed/thematic) and
+  0/1, recomputed on read) and every persisted LLM-named `theme` (rung 2), each with its dependency-graph-backed `tier` (coupled/co-changed/thematic) and
   cross-feature `feature_span` -- the "why" axis alongside `map_view`'s structural "what" axis.
-* ``compose_view``      — a workbench refresh's whole picture in one call: `map`/`history`/
-  `status`/`forks`/`plan`/`drift`/`sessions`/`trust`/`intent`, the current ideal's oracle verdict,
-  and the open-proposal list, each delegated to its own view function with no reshaping.
 * ``fold_view``         — a side-effect-free fold of an arbitrary frontier (a ref's ideal, every op
   at or before a commit-index position, or an explicit op-id set): `code(I)` plus that exact
   op-set's oracle verdict, without checking anything out. Powers a draggable playhead and fork-tip
@@ -205,265 +170,6 @@ def state_view(repo, *, full: bool = False) -> dict:
     }
 
 
-def tiers_view(repo) -> dict:
-    """The three-tier file boundary's effective configuration (U27/D4): `.sgt/tiers.json`'s
-    explicit overrides, `.sgtignore`'s patterns, and -- for every path this ref's ideal
-    currently covers -- the tier it resolves to plus whether it's flagged `derived` (S4). Reads
-    the *working tree*'s config (a reporting/mutation surface); mining itself always reads via
-    `ugh.core.tiers.load_tiers_at` against the mined commit's own tree (LAW-0), never this."""
-    from ugh.core import tiers
-    from ugh.core.lens import ideal_for_ref
-    from ugh.core.store import Store
-
-    cfg = tiers.load_tiers(repo)
-    store = Store(repo)
-    ops = store.all_ops()
-    ideal = ideal_for_ref(repo, "HEAD", store)
-    covered = ideal.covered_paths(ops)
-    return {
-        "overrides": {t: list(cfg.overrides.get(t, ())) for t in ("entity", "opaque", "ignored")},
-        "sgtignore": list(cfg.sgtignore),
-        "paths": {
-            path: {"tier": tiers.resolve_tier(path, cfg), "derived": tiers.is_derived(path)}
-            for path in sorted(covered)
-        },
-    }
-
-
-def selection_view(repo, feature_refs) -> dict:
-    """The closure induced by selecting `feature_refs` (plan U29): direct op count, files, the
-    closure's total op count, ops additionally pulled in grouped by their own feature (each with
-    a representative requires/chain path), and the hub symbol when the pull crosses a feature
-    boundary. `select()` reports; it never materializes anything (see `ugh.lens.select`'s
-    module docstring for why -- the U25 BET-C gate that ruled out silent branch materialization)."""
-    from ugh.lens.select import select
-
-    if isinstance(feature_refs, str):  # a discriminated single spec → the universal resolver (U1)
-        return resolve_selection(repo, feature_refs)
-    result = select(repo, feature_refs)
-    if not result.ok:
-        return {"ok": False, "message": result.message}
-    return {
-        "ok": True, "feature_ids": list(result.feature_ids), "files": list(result.files),
-        "direct_op_count": result.direct_op_count, "closure_op_count": result.closure_op_count,
-        "pulled": [
-            {"feature_id": g.feature_id, "op_count": g.op_count, "chain": list(g.chain)}
-            for g in result.pulled
-        ],
-        "hub": result.hub,
-        "message": result.message,
-    }
-
-
-def resolve_selection(repo, spec: str) -> dict:
-    """The universal selection resolver's projection (plan U1/KTD1): resolve any `ugh select <spec>`
-    form -- exact `file::symbol`, glob, authored-feature ref, clustered-feature ref, explicit id set,
-    or an NL phrase -- into the resolved direct/closure op sets, the closure counts, a display label,
-    and (on an ambiguous NL phrase) the ranked candidates. Report-only, like `select` (see
-    `ugh.lens.select`'s docstring -- the U25 BET-C gate that ruled out silent materialization)."""
-    from ugh.lens.select import resolve
-
-    result = resolve(repo, spec)
-    return {
-        "ok": result.ok, "message": result.message, "label": result.label,
-        "direct_ops": sorted(result.direct_ops), "closure": sorted(result.closure),
-        "direct_op_count": result.direct_op_count, "closure_op_count": result.closure_op_count,
-        "files": list(result.files),
-        "candidates": list(result.candidates),
-    }
-
-
-def why_view(repo, op_ref: str, for_feature: str | None = None) -> dict:
-    """One op's feature attribution (plan U29): with no `for_feature`, the plurality vote that
-    assigned it (every leaf its footprint touched, and how many symbols voted for each); with
-    `for_feature`, the exact chain that pulled it into that feature's selection closure."""
-    from ugh.lens.select import why
-
-    result = why(repo, op_ref, for_feature)
-    # A commit sha is not an op-id (`why` resolves ops/symbols; a sha maps to a whole atom, not one
-    # op), so when op resolution fails and no `--for` feature was asked, try resolving the ref as a
-    # commit and answer "the aligned words for this commit" -- the contract's third `why` selector
-    # (plan §3.4). Op resolution is tried first so every existing `why <op>`/`<symbol>` call is
-    # byte-unchanged; only a ref that is *not* an op falls through here.
-    if not result.ok and for_feature is None:
-        commit = _commit_why(repo, op_ref)
-        if commit is not None:
-            return commit
-        # All three selectors failed. `verbs._resolve`'s message names only the two *it* tried
-        # (op-id, symbol), which is right for revert/restore but under-reports here -- `why` also
-        # accepts a commit, and a user who pasted a sha deserves to be told that is what was
-        # checked, not to be corrected about op-ids they never mentioned.
-        return {
-            "kind": "op", "ok": False, "op_id": None, "feature_id": None,
-            "for_feature": None, "votes": [], "chain": [], "rationale": [],
-            "message": (
-                f"{op_ref!r} is not an op-id, a live symbol (`path.py::name`), or a commit in "
-                f"this repo's history"
-            ),
-        }
-    # Intent-ledger M1: append the recorded "why" -- the rationale reflection derived from the
-    # user's own words -- beside the structural attribution. Empty when nothing was captured/derived
-    # for this op, which `ugh why` renders as an honest "no recorded reason" rather than a guess.
-    rationale = []
-    if result.op_id:
-        from ugh.intent.rationale import for_op
-        rationale = [
-            {
-                "reason": r["reason"], "actor": r["actor"], "confirmed": r["confirmed"],
-                "open": r.get("open", False), "superseded": r.get("superseded", False),
-                "evidence": len(r.get("evidence", [])),
-            }
-            for r in for_op(repo, result.op_id)
-        ]
-    if result.ok and "::" in op_ref:
-        # A symbol question ("why is `add` the way it is?") is about the symbol's whole recorded
-        # history, not just the single op the ref resolved to (usually the latest): earlier ops on
-        # the same symbol carry rationale too (testbed 2026-07-31: the priority reasoning was
-        # invisible from `feature why <sym>` once the due-date op became the resolution target).
-        from ugh.intent.rationale import recall
-        seen = {r["reason"] for r in rationale}
-        for hit in recall(repo, [op_ref])["rationale"]:
-            if hit["reason"] not in seen:
-                seen.add(hit["reason"])
-                rationale.append({
-                    "reason": hit["reason"], "actor": hit["actor"], "confirmed": hit["confirmed"],
-                    "open": False, "superseded": False, "evidence": hit["evidence"],
-                })
-    return {
-        "kind": "op",
-        "ok": result.ok, "message": result.message, "op_id": result.op_id,
-        "feature_id": result.feature_id, "for_feature": result.for_feature,
-        "votes": list(result.votes), "chain": list(result.chain),
-        "rationale": rationale,
-    }
-
-
-def _rationale_rows(repo, op_ids) -> list[dict]:
-    """The recorded-why rows for a set of ops, deduped by reason, superseded and empty records
-    dropped -- the one projection `ugh why <sha>` (`_commit_why`) and the checkpoint context pack
-    (`checkpoint_context`) both render, so a reason reads identically wherever it appears."""
-    from ugh.intent.rationale import for_op
-
-    rows: list[dict] = []
-    seen: set[str] = set()
-    for op_id in op_ids:
-        for r in for_op(repo, op_id):
-            reason = r.get("reason")
-            if r.get("superseded") or not reason or reason in seen:
-                continue
-            seen.add(reason)
-            rows.append({
-                "reason": reason, "actor": r["actor"], "confirmed": r["confirmed"],
-                "open": r.get("open", False), "superseded": False,
-                "evidence": len(r.get("evidence", [])),
-            })
-    return rows
-
-
-def _commit_why(repo, ref: str) -> dict | None:
-    """Resolve `ref` as a commit sha (full or a unique prefix over the intent atoms) and answer with
-    that commit's aligned words -- the `ugh why <sha>` selector. `None` when `ref` matches no commit
-    or is an ambiguous prefix, so the caller falls back to the op-scoped `why`'s own error. Reuses
-    `intent_view`'s canonical per-atom projection (words, sessions, resume handles) rather than
-    re-deriving the joins, and layers the same actor/confirmed/evidence-badged rationale the
-    op-scoped path renders, so `ugh why` reads consistently whether asked about an op or a commit."""
-    from ugh.intent import group
-
-    atoms = intent_view(repo)["atoms"]
-    cand = sorted({
-        a["commit_sha"] for a in atoms
-        if a["commit_sha"] != group.UNWITNESSED
-        and (a["commit_sha"] == ref or a["commit_sha"].startswith(ref))
-    })
-    if len(cand) != 1:
-        return None  # 0 = not a commit; >1 = ambiguous prefix -- a longer ref disambiguates
-    sha = cand[0]
-    atom = next(a for a in atoms if a["commit_sha"] == sha)
-
-    rationale = _rationale_rows(repo, atom["op_ids"])
-    return {
-        "kind": "commit", "ok": True, "message": "", "sha": sha,
-        "subject": atom["subject"], "op_count": len(atom["op_ids"]),
-        "words": atom["prompt"], "feature_span": atom["feature_span"],
-        "claude_session_ids": atom["claude_session_ids"],
-        "session_ids": atom["session_ids"], "plan_ids": atom["plan_ids"],
-        "rationale": rationale,
-    }
-
-
-def ideal_diff_view(repo, ref_a: str, ref_b: str) -> dict:
-    """The semantic diff between two refs' ideals: the symmetric difference of their op sets
-    (`Ideal.diff`), grouped by symbol and labeled by side (`only_in_a` / `only_in_b`). A pure
-    read over the store -- both refs must already have been mined (via `get()` on each) for the
-    diff to be complete; this projects what the store holds onto each ref's own commit ancestry
-    without checking anything out."""
-    from ugh.core.lens import ideal_for_ref
-    from ugh.core.store import Store
-
-    store = Store(repo)
-    ideal_a = ideal_for_ref(repo, ref_a, store)
-    ideal_b = ideal_for_ref(repo, ref_b, store)
-    by_id = {op.id: op for op in store.all_ops()}
-
-    sym_diff = ideal_a.diff(ideal_b)
-    only_a = sym_diff & ideal_a.op_ids
-    only_b = sym_diff & ideal_b.op_ids
-
-    by_symbol: dict[str, dict[str, list[str]]] = {}
-    for op_id in only_a:
-        for sym in by_id[op_id].footprint:
-            by_symbol.setdefault(sym, {}).setdefault("only_in_a", []).append(op_id)
-    for op_id in only_b:
-        for sym in by_id[op_id].footprint:
-            by_symbol.setdefault(sym, {}).setdefault("only_in_b", []).append(op_id)
-
-    grouped = {
-        sym: {
-            "only_in_a": sorted(sides.get("only_in_a", [])),
-            "only_in_b": sorted(sides.get("only_in_b", [])),
-        }
-        for sym, sides in sorted(by_symbol.items())
-    }
-    return {"ref_a": ref_a, "ref_b": ref_b, "by_symbol": grouped, "count": len(sym_diff)}
-
-
-def verb_preview_view(
-    repo, verb: str, target: str, *, version: str | None = None,
-    source_ref: str | None = None, other: str | None = None,
-) -> dict:
-    """A side-effect-free preview of an ideal-edit verb (U8: revert/restore/pin/cherry-pick/after)
-    -- the op-ids it would add/remove, the symbols whose frontier tip moves, whether it would fork
-    (and so refuse), and the per-file before/after bytes of the fold. Pure: it runs the verb's
-    `plan_*` (no mining, no writes) and materializes both ideals in memory via `fold.code`, so a
-    UI can render `--emit` without a CLI flip. Output is fully sorted for a stable projection.
-
-    `version` is required for `pin` (target is the symbol); `source_ref` for `cherry-pick`;
-    `other` for `after` (target and other are the two ops of the `a <= b` edge)."""
-    from ugh.core import verbs
-
-    # A `<feature>@<n>` or `<feature>:<slug>` checkpoint preview (the intent-segment rewind unit):
-    # resolve to its deterministic op-set and preview the same op-set revert `ugh revert` applies,
-    # so a UI hover paints the real blast radius rather than an empty (unresolvable) preview.
-    if verb == "revert" and ("@" in target or ":" in target):
-        from ugh.intent.segment import resolve_checkpoint
-
-        resolved = resolve_checkpoint(repo, target)
-        if resolved is not None:
-            op_ids, _label = resolved
-            return _project_verb_preview(repo, verbs.plan_revert_op_set(repo, target, op_ids))
-
-    plans = {
-        "revert": lambda: verbs.plan_revert(repo, target),
-        "restore": lambda: verbs.plan_restore(repo, target),
-        "pin": lambda: verbs.plan_pin(repo, target, version),
-        "cherry-pick": lambda: verbs.plan_cherry_pick(repo, target, source_ref),
-        "after": lambda: verbs.plan_after(repo, target, other),
-    }
-    if verb not in plans:
-        return {"error": f"unknown verb {verb!r}", "verbs": sorted(plans)}
-    return _project_verb_preview(repo, plans[verb]())
-
-
 def _affected_rows(repo, removed_ids, added_ids) -> list[dict]:
     """`affected` rows for a verb preview's removed/added op ids: each touched feature, a
     direction (`blast` for a feature losing ops, `foundation` for one gaining ops), and how many
@@ -580,13 +286,12 @@ def _frontier_rows(repo, preview) -> list[dict]:
     return rows
 
 
-_REVERSIBLE_VERBS = frozenset({"revert", "restore", "after", "merge", "split", "rename", "move"})
+_REVERSIBLE_VERBS = frozenset({"revert", "restore", "rename"})
 
 
 def _reversible(verb: str) -> bool:
-    """Whether a verb's effect can be walked back with `ugh undo` -- the ideal-edit and
-    metadata-reorg verbs -- or is a shared/one-way advance (`land`/`propose`/`push`/`sync`,
-    default False). Feeds the consequence pane's escape line: the one bit that changes how
+    """Whether a verb's effect can be walked back with `ugh undo` -- the ideal-edit verbs and
+    `feature rename` -- or is a shared/one-way advance (`sync`, default False). Feeds the consequence pane's escape line: the one bit that changes how
     carefully a user reads the rest of the preview."""
     return verb in _REVERSIBLE_VERBS
 
@@ -655,22 +360,6 @@ def so_what_for(projected: dict, kept: frozenset = frozenset()) -> str:
     )
     undo = ("Undo-able." if projected.get("reversible", _reversible(verb))
             else "Not auto-undoable — review carefully.")
-
-    if verb == "land":
-        branch = projected.get("target") or "the branch"
-        if not projected.get("clean", True):
-            return f"Can't land onto {branch} yet — {projected.get('error') or 'tree not ready'}."
-        forks = projected.get("forks") or []
-        if forks:
-            sym, a, b = forks[0]
-            more = f" (+{len(forks) - 1} more)" if len(forks) > 1 else ""
-            return (f"Won't advance {branch} — {len(forks)} fork(s) block it{more}. "
-                    f"Resolve first: ugh resolve {sym}.")
-        if not projected.get("oracle_configured", True):
-            return (f"Won't advance {branch} — no oracle configured; land refuses an "
-                    f"unverified op-set (LAW-G).")
-        n = projected.get("ops_added", 0)
-        return f"Advances {branch} by {n} op — runs the oracle (tests) then CAS. {undo}"
 
     if verb == "sync":
         src = f"{projected.get('remote') or 'the remote'}/{projected.get('target') or 'the branch'}"
@@ -761,12 +450,8 @@ def so_what_for(projected: dict, kept: frozenset = frozenset()) -> str:
         if scale:
             return f"Re-adds {scale}. Nothing to reconcile. {undo}"
         return f"Re-adds {primary} and its prerequisites. Nothing to reconcile. {undo}"
-    meta_phrase = {
-        "merge": "Merges into", "split": "Splits", "rename": "Relabels to",
-        "move": "Moves ops onto", "after": "Reorders",
-    }.get(verb)
-    if meta_phrase is not None:
-        return f"{meta_phrase} {primary} — metadata only, code untouched. {undo}"
+    if verb == "rename":
+        return f"Relabels to {primary} — metadata only, code untouched. {undo}"
     return f"{verb} {primary}. {undo}"
 
 
@@ -982,58 +667,12 @@ def focus_subgraph(preview, repo, *, so_what: str = "") -> dict:
 
 
 def _project_feature_preview(repo, verb: str, preview) -> dict:
-    """Project a metadata-only feature-reorg preview (`merge`/`rename`/`move`/`split`) into the
-    shared consequence shape the pane and `so_what_for` consume. These verbs touch no code, so
-    `fallout` and `carry_count` are empty and `reversible` is always True; the projection instead
-    carries a short human `summary` (resolved labels, counts, the split groups) the pane renders in
-    place of the code rail. Only call on an `ok` preview -- a refusal is handled by the CLI's
-    `_fail_preview` before this point."""
-    from collections import Counter
-
-    from ugh.lens.tree import load as load_tree
-
-    tree_result = load_tree(repo) or {}
-    nodes = tree_result.get("nodes", {})
-    op_leaf = tree_result.get("op_leaf", {})
-
-    def label(fid: str) -> str:
-        return (nodes.get(fid) or {}).get("label") or fid[:8]
-
-    if verb == "merge":
-        primary = label(preview.survivor_id)
-        summary = [f"absorb {label(preview.absorbed_id)} → {primary}",
-                   f"{preview.op_count} op(s) · {preview.member_count} member(s)"]
-    elif verb == "rename":
-        primary = preview.new_label
-        summary = [f"{preview.old_label!r} → {preview.new_label!r}"]
-    elif verb == "move":
-        primary = label(preview.target_id)
-        summary = [f"{len(preview.op_ids)} op(s) → {primary}"]
-        # Which lane loses them, and whether it loses all of them. `move` named only the destination,
-        # while `merge` has always named both sides ("absorb X → Y") -- and the source is the half a
-        # reader has to judge: a lane emptied of every op is dropped from the graph (the husk filter in
-        # `ugh log --map`, and `computeLayout` in the workbench), so the feature survives in the tree
-        # while vanishing from every view. That result is indistinguishable from the `merge` the reader
-        # did not choose, which makes the feedback confirm the wrong operation.
-        moving = Counter(leaf for op in preview.op_ids if (leaf := op_leaf.get(op)) is not None)
-        held = Counter(op_leaf.values())
-        for src, n in sorted(moving.items()):
-            if src == preview.target_id:
-                continue
-            left = held[src] - n
-            tail = "" if left else " — emptied, leaves the graph until it is edited again"
-            summary.append(f"from {label(src)}: {n} of {held[src]} op(s), {left} left{tail}")
-    elif verb == "split":
-        primary = label(preview.feature_id)
-        g0, g1 = preview.groups or ((), ())
-        summary = [
-            f"{primary} splits in two:",
-            f"  keep ({len(g0)}): {', '.join(sorted(g0)[:6])}" + (" …" if len(g0) > 6 else ""),
-            f"  new  ({len(g1)}): {', '.join(sorted(g1)[:6])}" + (" …" if len(g1) > 6 else ""),
-            f"→ mints {preview.new_id[:8]}",
-        ]
-    else:  # pragma: no cover -- only the four reorg verbs are projected here
-        primary, summary = verb, []
+    """Project a `feature rename` preview into the shared consequence shape the pane and
+    `so_what_for` consume. A rename touches no code, so `fallout` and `carry_count` are empty and
+    `reversible` is always True; the projection instead carries a short human `summary`. Only call on
+    an `ok` preview -- a refusal is handled by the CLI's `_fail_preview` before this point."""
+    primary = preview.new_label
+    summary = [f"{preview.old_label!r} → {preview.new_label!r}"]
 
     projected = {
         "ok": True, "verb": verb, "target": primary,
@@ -1044,77 +683,6 @@ def _project_feature_preview(repo, verb: str, preview) -> dict:
     }
     projected["so_what"] = so_what_for(projected)
     return projected
-
-
-def _project_land_preview(repo, plan) -> dict:
-    """Project a `ugh.core.sync.LandPlan` dry-run into the shared consequence shape the pane and
-    `so_what_for` consume. A land advances shared state, so `reversible` is False (the pane's escape
-    line reads "review carefully") and there is no toggleable `fallout` -- a fork isn't a
-    keep/drop choice, it's a blocker to resolve. The graph rail is precomputed into `summary` (like
-    the feature-reorg projection) because a land has no code-diff rail; it draws where your work is
-    going and what stops it (`render_collab_preview_lines`)."""
-    from ugh.tui.graph import render_collab_preview_lines
-
-    projected = {
-        # LAW-G pre-refuses a land with no oracle before it stages anything, so a no-oracle plan is
-        # not `ok` even though ingest/resolve found no fork -- the honest bit for the pane.
-        "ok": plan.clean and not plan.forks and plan.oracle_configured,
-        "verb": "land",
-        "target": plan.branch,
-        "affected_symbols": [f[0] for f in plan.forks],
-        "forked": bool(plan.forks),
-        "files": {},
-        "message": plan.error or "",
-        "fallout": [],
-        "carry_count": 0,
-        "reversible": False,
-        "clean": plan.clean,
-        "error": plan.error,
-        "ops_added": plan.ops_added,
-        "forks": [list(t) for t in plan.forks],
-        "pin_contradictions": [
-            {"kind": c.kind, "members": list(c.members), "detail": c.detail}
-            for c in plan.pin_contradictions
-        ],
-        "declared_cycles": [list(pair) for pair in plan.declared_cycles],
-        "oracle_configured": plan.oracle_configured,
-        "advisory": plan.advisory,
-    }
-    # What `ugh undo` will do *after* this land -- the one thing the "not reversible" line above
-    # doesn't answer, and the thing the user actually asks next. The shared advance itself is
-    # one-way either way; what differs is whether undo has anything local to act on. Landing the
-    # branch you are standing on journals an ordinary ideal_edit, so undo works and writes a
-    # forward correction; landing any other branch only moved a ref other people read, so undo
-    # refuses. (`ugh/core/sync/land.py:317` vs `:334`.)
-    try:
-        from ugh.store.gitbind import GitBinding
-        gb = GitBinding(repo)
-        checked_out = gb.symbolic_ref() == f"refs/heads/{plan.branch}"
-    except Exception:  # noqa: BLE001 -- an advisory line must never break a preview
-        checked_out = None
-    projected["checked_out"] = checked_out
-    projected["undo_note"] = (
-        "the shared advance is one-way; `ugh undo` afterward writes a local forward correction"
-        if checked_out else
-        "the shared advance is one-way; `ugh undo` will refuse it (it only moved a ref others read)"
-        if checked_out is False else ""
-    )
-    projected["so_what"] = so_what_for(projected)
-    projected["summary"] = render_collab_preview_lines(projected, color=True)
-    return projected
-
-
-def land_preview_view(repo, branch: str | None = None) -> dict:
-    """The dry-run consequence of `ugh land [branch]` (plan U19/D4) -- what the CAS *would* advance
-    the shared branch by, computed side-effect-free (`sync.plan_land`: `ingest -> resolve`, no
-    oracle, no ref move, rolled back to leave no trace). Unlike `land_view` (which projects an
-    already-run land), this is a pure read the CLI can call to show a feedforward pane before the
-    one-way advance. Carries the shared consequence shape (`so_what`, `reversible` False, the graph
-    `summary`) plus the structured fields (`ops_added`, `forks`, `oracle_configured`)."""
-    from ugh.core import sync as sync_mod
-
-    plan = sync_mod.plan_land(repo, branch=branch)
-    return _project_land_preview(repo, plan)
 
 
 def _project_sync_preview(repo, plan) -> dict:
@@ -1165,17 +733,6 @@ def sync_preview_view(repo, remote: str | None = None, branch: str | None = None
     return _project_sync_preview(repo, plan)
 
 
-def proposal_land_preview_view(repo, proposal_id: str, accept_ids=None) -> dict:
-    """The dry-run consequence of `ugh propose land <id> [--subset ...]` -- reuses the shared land
-    projection over `propose.plan_land` (a stale-forked proposal surfaces as a fork blocker; an
-    up-to-date proposal delegates to `sync.plan_land`). The pane reads exactly as a `land` because
-    it *is* one, scoped to the proposal's Δ."""
-    from ugh.core import propose
-
-    plan = propose.plan_land(repo, proposal_id, accept_ids=accept_ids)
-    return _project_land_preview(repo, plan)
-
-
 def resolve_apply_preview_view(repo, symbol: str) -> dict:
     """The dry-run consequence of `ugh resolve <symbol> --apply` -- the three-step remedy it will run
     (fulfill the drafted reconciliation from your edited tree, run the oracle, land it, closing the
@@ -1195,7 +752,7 @@ def resolve_apply_preview_view(repo, symbol: str) -> dict:
         for hid in rec["hollow_ids"]
     )
     if fork is None:
-        error = f"no open fork for {symbol!r} — run `ugh advanced forks` to list the open forks"
+        error = f"no open fork for {symbol!r} — `ugh status` lists the open forks"
     elif not has_draft:
         error = (f"no drafted reconciliation — run `ugh resolve {symbol}` first, then edit the "
                  f"file to merge both versions")
@@ -1742,212 +1299,6 @@ def _reverted_unaccounted(repo, shown: set[str]) -> dict:
     return {"op_count": len(carriers), "symbols": named}
 
 
-def _checkpoint_preview(repo, verb: str, target: str):
-    """`target` as an intent-segment checkpoint, planned exactly as `ugh revert`/`ugh restore` plan
-    it, or `None` when it does not name one (so the caller falls through to the feature planners).
-    One resolution path for both surfaces: a hover that previewed a checkpoint differently from the
-    command that applies it would be a preview of something else."""
-    from ugh.core import verbs as core_verbs
-    from ugh.intent.segment import resolve_checkpoint
-    from ugh.select import resolve as select_resolve
-
-    if not select_resolve.is_checkpoint_shaped(target):
-        return None
-    resolved = resolve_checkpoint(repo, target)
-    if resolved is None:
-        return None
-    op_ids, _label = resolved
-    return (core_verbs.plan_revert_op_set(repo, target, op_ids) if verb == "revert"
-            else core_verbs.plan_restore_op_set(repo, target, op_ids))
-
-
-def checkpoint_context(repo, spec: str) -> dict:
-    """The context pack for one checkpoint (capture weave P4, design doc 2026-09-01 §4f): what a
-    human -- or an agent -- needs in hand to go back to a chapter and keep working from it.
-
-    Four sections, each already recorded, joined here rather than re-derived: **asked** -- the
-    verbatim asks whose stints ground the chapter's ops, plus the save's own sha-keyed words and
-    the committed sidecar digest, in conversation order (the durable copy: this must survive the
-    source transcript being compacted or deleted, case 13); **why** -- the recorded rationale,
-    same rows `ugh why` renders; **touches / disturb** -- the chapter's footprint symbols and the
-    real blast radius of editing here, from the SAME revert planner a `ugh revert <spec>` would
-    run (`_checkpoint_preview`), so the warning and the verb cannot disagree; **resume** -- a
-    `claude --resume` handle per conversation the asks came from, offered only where the
-    transcript still exists (the words above are the payload, the handle is an accelerator, and an
-    accelerator that fails when it is typed is worse than none).
-
-    `{"ok": False, "message": ...}` when `spec` names no checkpoint -- never a guessed pack."""
-    from ugh.intent.segment import resolve_checkpoint_segment
-    from ugh.intent.stint import asks_for_ops
-
-    resolved = resolve_checkpoint_segment(repo, spec)
-    if resolved is None:
-        return {"ok": False, "message": f"{spec!r} names no checkpoint (see `ugh intent list`)"}
-    feature_id, feature_label, idx, seg = resolved
-
-    # Asked, in conversation order -- the same join the `asked` attribute on `ugh show` reads
-    # (`ugh.intent.stint.asks_for_ops`), so the chapter's context pack and the card a user sees
-    # before reverting it can never quote different words.
-    asked = asks_for_ops(repo, seg.op_ids, seg.commit_shas)
-
-    # The blast radius of editing from here: the same op-set revert plan `ugh revert <spec>`
-    # would run. Its removals beyond the chapter's own ops are the work built on top.
-    plan = _checkpoint_preview(repo, "revert", spec)
-    dependents = sorted(frozenset(plan.removed) - seg.op_ids) if plan and plan.ok else []
-
-    from ugh.core import opindex
-    by_id = {op.id: op for op in opindex.index_ops(repo)}
-    touches = sorted({sym for oid in seg.op_ids for sym in (by_id[oid].footprint if oid in by_id else ())})
-
-    # Resume handles: every conversation the asks came from, plus any plan session stamped into
-    # the ops' attribution (the plan loop's own resume path) -- and only the ones whose transcript
-    # is still on this machine. A compacted, foreign or replayed session used to be offered anyway
-    # and failed when the command was typed, which is why `asked` carries the words themselves:
-    # they are the durable copy, and the handle is only ever an accelerator onto it.
-    from ugh.intent.stint import resumable
-
-    sessions: list[str] = []
-    for a in asked:
-        sid = a["claude_session_id"]
-        # Only handles that resolve to a transcript on this machine: a `claude --resume` printed
-        # for a compacted, foreign, or replayed session fails when it is typed.
-        if sid and sid not in sessions and a.get("resumable"):
-            sessions.append(sid)
-    from ugh import state
-    plan_ids = sorted({att.plan for oid in seg.op_ids if oid in by_id
-                       for att in by_id[oid].attribution if att.plan})
-    plan_sessions = state.load_json(repo, "plan_sessions", default={})
-    for p in plan_ids:
-        sid = (plan_sessions.get(p) or {}).get("claude_session_id")
-        if sid and sid not in sessions and resumable(sid):
-            sessions.append(sid)
-
-    return {
-        "ok": True,
-        "checkpoint": f"{feature_id}@{idx}",
-        "feature_id": feature_id, "feature_label": feature_label,
-        "seg_index": idx, "label": seg.label, "source": seg.source,
-        "op_count": seg.op_count, "commit_shas": list(seg.commit_shas),
-        "asked": asked,
-        "why": _rationale_rows(repo, sorted(seg.op_ids)),
-        "touches": touches,
-        "dependent_op_ids": dependents,
-        "plan_ids": plan_ids,
-        "resume": [{"claude_session_id": s, "command": f"claude --resume {s}"} for s in sessions],
-    }
-
-
-def feature_verb_preview_view(repo, verb: str, *args: str) -> dict:
-    """A side-effect-free preview of a feature verb (U13's merge/split/move/rename) or a
-    feature-grouped revert (U8's kernel edit, resolved via `ugh.lens.verbs.plan_revert_feature`),
-    each verb's own `plan_*` fields plus a uniform ``affected_features`` list -- the real ripple
-    of that verb, so a hover-preview UI never needs per-verb-shaped logic: merge/rename affect the
-    named feature(s) directly; split's second id is the fresh id the *next* `ugh map` would mint
-    for the new group (previewed, not committed); move's are the op-losing source leaf(es) plus
-    the target; revert's is every feature whose ops sit in the real upset closure being removed --
-    the genuine cross-feature blast radius, not a guessed dependency edge."""
-    from collections import Counter
-
-    from ugh.lens import tree as tree_mod
-    from ugh.lens import verbs as lens_verbs
-
-    if verb == "merge":
-        if len(args) != 2:
-            return {"error": "merge requires <survivor> <absorbed>"}
-        preview = lens_verbs.plan_merge(repo, args[0], args[1])
-        return {
-            "ok": preview.ok, "verb": "merge", "message": preview.message,
-            "survivor_id": preview.survivor_id, "absorbed_id": preview.absorbed_id,
-            "op_count": preview.op_count, "member_count": preview.member_count,
-            "affected_features": [preview.survivor_id, preview.absorbed_id] if preview.ok else [],
-            "affected": [],  # metadata-only: no op moves, so no blast/foundation direction applies
-        }
-
-    if verb == "rename":
-        if len(args) != 2:
-            return {"error": "rename requires <feature> <new-label>"}
-        preview = lens_verbs.plan_rename(repo, args[0], args[1])
-        return {
-            "ok": preview.ok, "verb": "rename", "message": preview.message,
-            "feature_id": preview.feature_id, "old_label": preview.old_label, "new_label": preview.new_label,
-            "affected_features": [preview.feature_id] if preview.ok else [],
-            "affected": [],  # metadata-only
-        }
-
-    if verb == "split":
-        if len(args) != 1:
-            return {"error": "split requires <feature>"}
-        preview = lens_verbs.plan_split(repo, args[0])
-        affected: list[str] = []
-        if preview.ok:
-            affected = [preview.feature_id, preview.new_id]  # the content-addressed id apply mints (KTD4)
-        return {
-            "ok": preview.ok, "verb": "split", "message": preview.message,
-            "feature_id": preview.feature_id,
-            "groups": [list(g) for g in preview.groups] if preview.groups else None,
-            "reason": preview.reason,
-            "affected_features": affected,
-            "affected": [],  # metadata-only
-        }
-
-    if verb == "move":
-        if len(args) < 2:
-            return {"error": "move requires <op>... <target-feature>"}
-        *op_refs, target_id = args
-        preview = lens_verbs.plan_move(repo, list(op_refs), target_id)
-        affected = []
-        affected_rows: list[dict] = []
-        if preview.ok:
-            tree_result = tree_mod.load(repo)
-            op_leaf = tree_result["op_leaf"] if tree_result else {}
-            sources = {op_leaf[op] for op in preview.op_ids if op in op_leaf} - {preview.target_id}
-            affected = sorted(sources | {preview.target_id})
-            blast = Counter(
-                leaf for op in preview.op_ids
-                if (leaf := op_leaf.get(op)) is not None and leaf != preview.target_id
-            )
-            # every moved op lands in the target regardless of source, so it's one foundation row
-            affected_rows = (
-                [{"feature_id": f, "direction": "blast", "op_count": c} for f, c in sorted(blast.items())]
-                + [{"feature_id": preview.target_id, "direction": "foundation", "op_count": len(preview.op_ids)}]
-            )
-        return {
-            "ok": preview.ok, "verb": "move", "message": preview.message,
-            "op_ids": list(preview.op_ids), "target_id": preview.target_id,
-            "affected_features": affected,
-            "affected": affected_rows,
-        }
-
-    if verb in ("revert", "restore"):
-        if len(args) != 1:
-            return {"error": f"{verb} requires <feature>"}
-        # A `<feature>@<n>` / `<feature>:<slug>` checkpoint, resolved to its op-set through the same
-        # two planners `ugh revert`/`ugh restore` run on it (see `ugh/cli/ideal_edit.py`). The
-        # checkpoint is the rewind unit both timelines tell users to click, and the workbench's
-        # checkpoint hover asks this view to preview one -- resolving it as a feature id instead
-        # answered `feature ... not found; run `ugh log --refresh`` on every such hover, a dead
-        # preview whose remedy could not help, since nothing was stale.
-        preview = _checkpoint_preview(repo, verb, args[0])
-        if preview is None:
-            plan_fn = (lens_verbs.plan_revert_feature if verb == "revert"
-                       else lens_verbs.plan_restore_feature)
-            preview = plan_fn(repo, args[0])
-        affected = []
-        if preview.ok:
-            tree_result = tree_mod.load(repo)
-            op_leaf = tree_result["op_leaf"] if tree_result else {}
-            touched = preview.removed if verb == "revert" else preview.added
-            affected = sorted({op_leaf[op] for op in touched if op in op_leaf})
-        return {
-            "ok": preview.ok, "verb": verb, "message": preview.message,
-            "target": preview.target, "removed": sorted(preview.removed), "added": sorted(preview.added),
-            "affected_features": affected,
-            "affected": _affected_rows(repo, preview.removed, preview.added),
-        }
-
-    return {"error": f"unknown verb {verb!r}", "verbs": ["merge", "split", "move", "rename", "revert", "restore"]}
-
-
 def _entity_line_spans(repo, file: str) -> tuple[list[tuple[str, int, int]], str | None]:
     """Materialize the current ideal and extract `file`'s live entities as `(symbol, start_line,
     end_line)` triples, in document order -- the span lookup `blame_view`, `plan_view`, and
@@ -1990,107 +1341,6 @@ def _spans_for_symbols(repo, symbols) -> dict[str, list[dict]]:
         if matched:
             out[file] = matched
     return out
-
-
-def _attributed_spans(line_spans, frontier, op_leaf, nodes, by_id) -> tuple[list[dict], dict[str, dict]]:
-    """`(spans, features)` for one file's `(symbol, start_line, end_line)` triples: resolve each
-    `sym -> max-op-in-I -> feature` through the frontier and the feature tree's `op_leaf`. An
-    entity whose tip op has no feature assignment yet (tree stale, or `ugh map` never run) is
-    omitted rather than guessed at.
-
-    Shared by `blame_view` (one file, its own fold) and `blame_all_view` (every file, one fold) so
-    a span means the same thing and carries the same keys on both surfaces -- the whole point of
-    the repo-wide mode is that a client parses one shape either way."""
-    spans: list[dict] = []
-    features: dict[str, dict] = {}
-    for sym, start_line, end_line in line_spans:
-        tip = frontier.get(sym)
-        feature_id = op_leaf.get(tip) if tip else None
-        if feature_id is None:
-            continue
-        label = nodes.get(feature_id, {}).get("label", feature_id)
-        tip_op = by_id.get(tip)
-        sessions = sorted({a.session for a in tip_op.attribution if a.session is not None}) if tip_op else []
-        spans.append({
-            "symbol": sym, "start_line": start_line, "end_line": end_line,
-            "feature_id": feature_id, "label": label, "sessions": sessions,
-        })
-        features[feature_id] = {"label": label}
-    return spans, features
-
-
-def blame_view(repo, file: str) -> dict:
-    """Per-symbol feature attribution for one file (plan U13): for each of `file`'s live entities
-    (`_entity_line_spans`), resolve `sym -> max-op-in-I -> feature` via the frontier and the
-    feature tree's `op_leaf`. Returns `{"file", "spans", "features", "error"?}`; an entity whose
-    tip op has no feature assignment yet (tree stale, or `ugh map` never run) is omitted from
-    `spans` rather than guessed at."""
-    from pathlib import Path
-
-    from ugh.core.lens import current_ideal
-    from ugh.core.store import Store
-    from ugh.lens.tree import load as load_tree
-
-    line_spans, error = _entity_line_spans(repo, file)
-    if error:
-        # "Not covered by the ideal" is the normal answer for a working-tree file ugh has no op
-        # for -- a doc (JOURNAL.md), an untracked config -- not a failure. Reporting it under
-        # `error` flips the CLI `--json` exit code to 1, which the editor's per-file blame reads as
-        # a hard failure and re-appends "Command failed" every time such a tab is focused. A file
-        # that merely lacks coverage reports `covered: False`; only a genuinely absent path errors.
-        result = {"file": file, "spans": [], "features": {}, "covered": False}
-        if not (Path(repo) / file).exists():
-            result["error"] = error
-        return result
-
-    tree_result = load_tree(repo)
-    op_leaf = tree_result["op_leaf"] if tree_result else {}
-    nodes = tree_result["nodes"] if tree_result else {}
-    ops = Store(repo).all_ops()
-    by_id = {op.id: op for op in ops}
-    frontier = current_ideal(repo).frontier(ops)
-
-    spans, features = _attributed_spans(line_spans, frontier, op_leaf, nodes, by_id)
-    return {"file": file, "spans": spans, "features": features, "covered": True}
-
-
-def blame_all_view(repo) -> dict:
-    """Every covered file's blame at once -- `ugh advanced blame --all --json`. Returns
-    `{"files": {<path>: {"spans": [...]}}, "features": {<fid>: {"label": ...}}}`, the same span
-    shape `blame_view` emits per file (`_attributed_spans`), with the `features` map merged across
-    the repo so one parser reads either surface.
-
-    It exists for cost, not convenience. `_entity_line_spans` folds the *whole* ideal to answer
-    about one file, so a caller that wants the repo-wide symbol -> feature map -- the provenance
-    join behind "hover a feature, see its pixels" -- pays N full folds looping `blame_view`, and
-    N subprocesses on top if it loops the CLI. This folds once and extracts every path out of that
-    single materialization."""
-    from ugh.core.fold import code
-    from ugh.core.lens import current_ideal
-    from ugh.core.store import Store
-    from ugh.entities.extract import extract_file
-    from ugh.lens.tree import load as load_tree
-
-    tree_result = load_tree(repo)
-    op_leaf = tree_result["op_leaf"] if tree_result else {}
-    nodes = tree_result["nodes"] if tree_result else {}
-    ops = Store(repo).all_ops()
-    by_id = {op.id: op for op in ops}
-    ideal = current_ideal(repo)
-    materialized = code(ideal, ops)
-    frontier = ideal.frontier(ops)
-
-    files: dict[str, dict] = {}
-    features: dict[str, dict] = {}
-    for file, source in sorted(materialized.items()):
-        line_spans = [
-            (e.id, e.start_line, e.end_line)
-            for e in sorted(extract_file(file, source), key=lambda e: (e.start_line, e.id))
-        ]
-        spans, file_features = _attributed_spans(line_spans, frontier, op_leaf, nodes, by_id)
-        files[file] = {"spans": spans}
-        features.update(file_features)
-    return {"files": files, "features": features}
 
 
 def plan_view(repo, *, full: bool = False) -> dict:
@@ -2297,58 +1547,6 @@ def save_preview_view(repo) -> dict:
     }
 
 
-def trust_view(repo, *, full: bool = False) -> dict:
-    """The U31 trust queue: every op carrying session/agent attribution (D7) or drift status
-    (`drift_view`) that isn't yet covered by a review record (`ugh.core.review`), grouped by
-    provenance key -- a session or agent name, or ``"drift"`` for an unattributed drift op. Acting
-    on a group (`ugh revert --session`) or acking it (`ugh review-queue ack`) is the existing verb
-    surface; this view only renders what's queued, per the plan's "report, don't invent mutation
-    semantics" boundary.
-
-    Compact by default: each group reports `op_count` instead of the full `op_ids`/`ops` detail
-    (footprint + attribution per op). `ugh review-queue list` -- which hands the listed op ids to
-    a follow-up `ack` -- always requests `full=True`, the same "verb whose output feeds another
-    verb's input needs the full shape" rule `tool_checkpoint` (Part D) and `intent/resolve.py`
-    (Part E) follow."""
-    from ugh.core import opindex, review
-    from ugh.loop.match import compute_checkpoint
-
-    ops = opindex.index_ops(repo)
-    drift_ids = compute_checkpoint(repo).drift_op_ids
-    reviewed = review.reviewed_op_ids(repo)
-
-    groups: dict[str, list[dict]] = {}
-    for op in ops:
-        if op.id in reviewed:
-            continue
-        keys = sorted({a.session for a in op.attribution if a.session} |
-                      {a.agent for a in op.attribution if a.agent})
-        is_drift = op.id in drift_ids
-        if not keys and not is_drift:
-            continue
-        for key in keys or ["drift"]:
-            groups.setdefault(key, []).append({
-                "op_id": op.id,
-                "kind": op.kind,
-                "footprint": sorted(op.footprint),
-                "attribution": _attribution_entries(op),
-                "drift": is_drift,
-            })
-
-    if full:
-        group_list = [
-            {"provenance": key, "op_ids": [e["op_id"] for e in entries], "ops": entries}
-            for key, entries in sorted(groups.items())
-        ]
-    else:
-        group_list = [
-            {"provenance": key, "op_count": len(entries)}
-            for key, entries in sorted(groups.items())
-        ]
-    total_ops = len({e["op_id"] for entries in groups.values() for e in entries})
-    return {"groups": group_list, "total_ops": total_ops}
-
-
 def sync_view(report) -> dict:
     """Project an already-run `ugh.core.sync.SyncReport` (plan U15/U20) -- `sync` performs a real
     git fetch/merge/commit, so unlike this module's other views it isn't a pure read the CLI can
@@ -2373,159 +1571,6 @@ def sync_view(report) -> dict:
         ],
         "declared_cycles": [list(pair) for pair in report.declared_cycles],
         "identity_events": list(report.identity_events),
-    }
-
-
-def land_view(report) -> dict:
-    """Project an already-run `ugh.core.sync.LandReport` (plan U23, C9) -- like `sync_view`, `land`
-    performs real git plumbing (a branch-record CAS), so the CLI runs `sync.land(...)` itself and
-    hands the result here. `landed` is the CAS outcome; `blocked_reason` is set (and `landed` False)
-    when the land was refused -- a red/absent oracle (LAW-G), an open fork, or persistent contention.
-    Additive-only (R21)."""
-    return {
-        "branch": report.branch,
-        "landed": report.landed,
-        "land_sha": report.land_sha,
-        "blocked_reason": report.blocked_reason,
-        "ops_added": report.ops_added,
-        "attempts": report.attempts,
-        "forks": [list(triple) for triple in report.forks],
-        "open_fork_count": len(report.forks),
-        "pin_contradictions": [
-            {"kind": c.kind, "members": list(c.members), "detail": c.detail}
-            for c in report.pin_contradictions
-        ],
-        "declared_cycles": [list(pair) for pair in report.declared_cycles],
-        "identity_events": list(report.identity_events),
-        "advisory": report.advisory,
-    }
-
-
-def sessions_view(repo) -> dict:
-    """Every active scratch-tree session (plan U30, D5): name, branches, new-op count since its
-    base, and whether its owning pid is still alive. `overlaps` is the early-fork warning's data
-    -- pairs of sessions whose new ops touch a shared symbol, plus each session's collisions with
-    its target branch (`_target_collisions`) -- that `ugh session status`/`--watch` renders; it is
-    a *report*, never a lock (S6)."""
-    from ugh.core import session as session_mod
-    from ugh.lens.tree import leaf_member_index
-    from ugh.lens.tree import load as load_tree
-
-    tree_result = load_tree(repo)
-    nodes = tree_result["nodes"] if tree_result else {}
-    member_leaf = leaf_member_index(nodes) if nodes else {}
-    rows = []
-    sessions = session_mod.list_sessions(repo)
-    ids_by = {}
-    for s in sessions:
-        ids = ids_by[s.name] = session_mod.new_op_ids(s)
-        unlanded, uncommitted, last_change_ts = session_mod.activity(s)
-        rows.append({
-            "name": s.name, "branch": s.branch, "target_branch": s.target_branch,
-            "scratch": s.scratch, "new_op_count": len(ids),
-            "owner_pid": s.owner_pid, "alive": session_mod.is_alive(s.owner_pid),
-            "claude_session_id": s.claude_session_id, "started_by": s.started_by,
-            "unlanded": unlanded, "uncommitted": uncommitted, "last_change_ts": last_change_ts,
-            **_session_touched(s, ids, nodes, member_leaf),
-        })
-    overlaps = list(session_mod.overlaps(repo, ids_by)) + _target_collisions(repo, sessions, ids_by)
-    return {"sessions": rows, "overlaps": overlaps}
-
-
-def _target_collisions(repo, sessions, ids_by) -> list[dict]:
-    """Per session, the symbols a reader sees that its target branch changed since the session's
-    base and the session changed too -- what `land` will have to reconcile, which the session pairs
-    never showed. Emitted beside them as `{"a": <session>, "b": <target branch>, "branch": true,
-    "symbols"}`; a session pair carries no `branch`, so a session that happens to share a branch's
-    name is never read as one. A report, never a lock (S6). Named by `_named_symbols` on both sides, so unlike the session pairs
-    no sentinel reaches it. Reads only the branch's committed ideal (`session.target_op_ids`)."""
-    from ugh.core import opindex
-    from ugh.core import session as session_mod
-
-    out = []
-    for s in sessions:
-        theirs_ids = session_mod.target_op_ids(repo, s)
-        if not theirs_ids:
-            continue
-        theirs = {sym for op in opindex.index_ops(repo) if op.id in theirs_ids for sym in _named_symbols(op)}
-        ours = {sym for op in opindex.index_ops(s.scratch) if op.id in ids_by[s.name] for sym in _named_symbols(op)}
-        if shared := sorted(theirs & ours):
-            out.append({"a": s.name, "b": s.target_branch, "branch": True, "symbols": shared})
-    return out
-
-
-def _session_touched(session, ids, nodes, member_leaf) -> dict:
-    """K9 (2026-10-21 actors note): the main map's lanes a live session's own work touches, named
-    by the symbols a reader sees (`_named_symbols`, plus `map_view`'s entity-less-file fallback),
-    so a surface can draw the session's ghost on each lane and join `overlaps` through it.
-
-    The scratch tree has no map of its own (`.sgt/tree/` is gitignored and a worktree starts with
-    an empty `.sgt/`), so lanes come from the main repo's tree exactly as `save_preview_view` files
-    the reader's own uncommitted work: a symbol goes to the lane that owns it, else to the lane its
-    op's footprint votes for (where the ledger will file the op once it lands), else to no lane
-    (`feature_id` None: new code nothing owns yet). `change_count` follows the checkpoint rule --
-    each symbol counted once per save that touched it -- with the scratch's uncommitted work as
-    one save. Reads only the session's new ops; the main repo is never mined."""
-    from ugh.core import opindex
-    from ugh.core.op import _symbol_kind
-    from ugh.lens.tree import _member_leaf_for, assign_ops_to_leaves
-    from ugh.store.gitbind import GitBinding, parse_op_ids
-
-    ops = [op for op in opindex.index_ops(session.scratch) if op.id in ids]
-    gb = GitBinding(session.scratch)
-    # An op's save is the earliest session commit that witnesses it: by provenance, else (a `ugh
-    # save` in the scratch commits by trailer and stamps none) by that commit's `Sgt-Op:`
-    # trailers -- `opindex.earliest_commit_sha`'s rule, read over the session's commits only,
-    # because ugh writes the whole ideal into every commit and the full-history walk that helper
-    # does would cost the base history, not the session. Neither: uncommitted, saved as "".
-    commits = [sha for sha, _parent, _subject in gb.history(since=session.base_ref)]
-    unplaced = {op.id for op in ops if not set(op.provenance).intersection(commits)}
-    named_by = {sha: set(parse_op_ids(gb.commit_message(sha))) for sha in commits} if unplaced else {}
-    save_of = {
-        op.id: next((sha for sha in commits if sha in op.provenance
-                     or (op.id in unplaced and op.id in named_by[sha])), "")
-        for op in ops
-    }
-    op_leaf = assign_ops_to_leaves(nodes, ops) if nodes else {}
-    files_with_entities = _files_with_entities(ops) | {
-        m.partition("::")[0] for m in member_leaf if _symbol_kind(m) in _NAMED_KINDS}
-    lane: dict[str, str | None] = {}
-    saves: dict[str, set[str]] = {}
-    for op in ops:
-        named = _named_symbols(op) or sorted(
-            {s.partition("::")[0] for s in op.footprint} - files_with_entities)
-        for sym in named:
-            if lane.get(sym) is None:
-                lane[sym] = _member_leaf_for(sym, member_leaf) or op_leaf.get(op.id)
-            saves.setdefault(sym, set()).add(save_of[op.id])
-    by_lane: dict[str | None, list[str]] = {}
-    for sym in sorted(lane):
-        by_lane.setdefault(lane[sym], []).append(sym)
-    return {
-        "touched": [{"feature_id": fid, "symbols": syms[:SEGMENT_SYMBOL_CAP]}
-                    for fid, syms in sorted(by_lane.items(), key=lambda kv: (kv[0] is None, kv[0] or ""))],
-        "symbols_truncated": any(len(syms) > SEGMENT_SYMBOL_CAP for syms in by_lane.values()),
-        "change_count": sum(len(keys) for keys in saves.values()),
-    }
-
-
-def suggestion_view(repo) -> dict:
-    """The U7 clustering/merge suggestion queue: every open suggestion (`merge`/`split`/`conflict`)
-    a clustering-critic or a sync conflict (U6) recorded, for `ugh advanced suggestions`. A pure
-    read; accepting a suggestion is the existing `ugh feature merge`/`split`/`move`, and dismissing
-    it is `ugh advanced suggestions dismiss <id>` -- this view only renders what's queued, the same
-    "report, don't invent mutation semantics" boundary `trust_view` follows. Empty
-    (`{"count": 0, "suggestions": []}`) when there are none."""
-    from ugh.core import suggest
-
-    records = suggest.all_records(repo)
-    return {
-        "count": len(records),
-        "suggestions": [
-            {"id": r.id, "kind": r.kind, "features": list(r.features),
-             "op_ids": list(r.op_ids), "rationale": r.rationale}
-            for r in records
-        ],
     }
 
 
@@ -2590,7 +1635,7 @@ def forks_view(repo) -> dict:
 
 
 def fork_detail_view(repo, symbol: str) -> dict:
-    """Per-tip folded images for one open same-symbol fork (plan U20, C4) -- `ugh forks <symbol>`.
+    """Per-tip folded images for one open same-symbol fork (plan U20, C4) -- `ugh resolve`'s side-by-side pick.
     Each tip is folded on its own downward closure (`order.downset`, over the whole op universe --
     correct here because a fork's two tips are siblings, never each other's predecessor, so a tip's
     own downset structurally excludes the other tip and anything reachable only through it) via
@@ -2734,36 +1779,6 @@ def _prune_fold_leftovers(out, stale: set[str]) -> list[str]:
     return deleted
 
 
-def fold_out_view(repo, out_dir, *, ref=None, at_commit_index=None, op_ids=None,
-                  current=False) -> dict:
-    """Materialize `code(I)` onto `out_dir` -- the writing half of `fold_view`, behind
-    `ugh advanced fold --at <spec> --out <dir>`. Same frontier grammar (`_fold_ideal`), same
-    refusals; returns `{"ok", "path", "written", "deleted", "op_count"}`.
-
-    It writes `fold.code`'s raw `dict[path, bytes]` and never `fold_view`'s strings: that view
-    decodes `utf-8, "replace"`, which is right for a preview pane and lossy for a file -- any
-    binary asset round-tripped through it comes out corrupted.
-
-    A **sync**, not a dump. The target is a long-lived overlay that also holds what the fold cannot
-    contain: everything `.gitignore` matches is `ignored` tier (`ugh/core/tiers.py`), so
-    `node_modules`, a dev-server cache and a virtualenv are all correctly absent from `code(I)` and
-    a materialized fold is not by itself runnable. Scrubbing to an earlier frontier therefore has
-    to *remove* the files that left the fold, and must remove nothing else -- so the delete
-    authority is a manifest this function owns (`.sgt-fold-manifest.json`, the paths the last run
-    wrote), never the directory listing, and the directory is never cleared wholesale. A first run
-    into a directory with no manifest deletes nothing at all: an unrecognized directory gets
-    written into and inventoried, not scrubbed."""
-    from ugh.core.fold import code
-
-    ideal, ops, refusal = _fold_ideal(
-        repo, ref=ref, at_commit_index=at_commit_index, op_ids=op_ids, current=current
-    )
-    if refusal is not None:
-        return refusal
-
-    return _sync_fold_dir(out_dir, code(ideal, ops), len(ideal.op_ids))
-
-
 def _sync_fold_dir(out_dir, materialized: dict[str, bytes], op_count: int) -> dict:
     """Write `materialized`'s raw bytes into `out_dir`, remove the manifest-listed paths this fold
     no longer contains, and re-write the manifest. The overlay-sync half of `fold_out_view`, split
@@ -2897,12 +1912,7 @@ def show_at_view(repo, at: str, path: str | None = None) -> dict:
 
 def _parse_show_spec(spec: str) -> dict:
     """`ugh show`'s frontier grammar: `now` is the current ideal (the present), an all-digit spec is
-    a commit-index position, `op:<id>,...` an explicit op-id set, anything else a ref name.
-
-    Kept rung-for-rung identical to `ugh.cli.inspect._parse_at`, the same grammar behind
-    `ugh fold --at`. They are separate functions only because they sit either side of the api/cli
-    line: add a rung to one and you must add it to the other, or `ugh show <path> --at <spec>` and
-    `ugh fold --at <spec>` start disagreeing about what a spec means."""
+    a commit-index position, `op:<id>,...` an explicit op-id set, anything else a ref name."""
     if spec == "now":
         return {"current": True}
     if spec.isdigit():
@@ -2969,8 +1979,7 @@ def intent_view(repo) -> dict:
     """The intent overlay's one canonical projection (plan U6, KTD3/KTD7): every commit-keyed
     `IntentAtom` (rung 0/1, recomputed on read -- cheap and pure, like `map_view`'s coupling
     edges) and every persisted, LLM-named `theme` (rung 2, read from `.sgt/intent/themes.json`
-    if `ugh intent build` has run; `[]` otherwise -- a UI renders "run `ugh intent build`", never
-    an error). Each carries its dependency-graph-backed `tier` (`coupled` | `co-changed` |
+    if a `ugh log --refresh` has built them; `[]` otherwise, never an error). Each carries its dependency-graph-backed `tier` (`coupled` | `co-changed` |
     `thematic`, KTD3) and `feature_span` -- the "across features" claim is computed here, never
     asserted by a client. A theme also carries `stale_shas` (plan U5/KTD4): persisted member
     shas that no longer resolve against the current atom partition (e.g. a rebase/amend) are
@@ -3530,7 +2539,7 @@ def _next_action(in_flight: dict, needs_you: dict, working: dict | None = None) 
     """The single "do this next" recommendation as a STRUCTURED action (not a rendered string, so
     each surface phrases it in its own idiom), from a fixed priority ladder: an open fork blocks
     everything (its two tips are excluded from every ideal), a stalled plan is a resumable thread,
-    then dirty work to save, then guesses to review, else clean. Shape:
+    then dirty work to save, else clean. Shape:
     `{kind, command, target, label}` -- `command` is a copy-pasteable shell line (or `None` when
     there's nothing to run, e.g. `clean`, or a fork with no recorded remedy)."""
     from ugh.tui.graph import plural
@@ -3546,7 +2555,7 @@ def _next_action(in_flight: dict, needs_you: dict, working: dict | None = None) 
     if needs_you.get("history_rewritten"):
         # Above forks/save because until the ideal is re-derived, *every* other reading here is
         # computed over ops from commits that no longer exist -- including the fork list.
-        return {"kind": "resync", "command": "ugh advanced resync", "target": None,
+        return {"kind": "resync", "command": "ugh check --repair", "target": None,
                 "label": "git history moved backward — re-derive ugh's state"}
     forks = needs_you["forks"]
     if forks:
@@ -3581,16 +2590,12 @@ def _next_action(in_flight: dict, needs_you: dict, working: dict | None = None) 
         command = f'ugh save -m "{title}"' if usable else "ugh save"
         return {"kind": "save", "command": command, "target": None,
                 "label": f"save your {plural(n, 'unsaved edit')}"}
-    reviews = needs_you["reviews"]
-    if reviews:
-        return {"kind": "review", "command": "ugh intent review", "target": None,
-                "label": f"review {plural(len(reviews), 'pending alignment')}"}
     return {"kind": "clean", "command": None, "target": None, "label": "nothing pending"}
 
 
 def now_view(repo, *, include_preview: bool = True, recent_limit: int = 5) -> dict:
-    """The "state of actions" surface (`ugh now`, the extension's Now tree): one THIN, FAST assembler
-    over child views answering the four questions a developer orienting mid-session has -- what's
+    """The "state of actions" surface (`ugh log --rail`'s header, the extension's Now tree): one THIN,
+    FAST assembler over child views answering the four questions a developer orienting mid-session has -- what's
     *in flight*, what *needs me*, what was *recently done*, and what to do *next* -- plus a little
     *context* (latest human turns + the live agent-action feed). On the hot path (every `ugh log`,
     every extension refresh), so it deliberately avoids `intent_view` (which decodes op images, ~85%
@@ -3601,13 +2606,11 @@ def now_view(repo, *, include_preview: bool = True, recent_limit: int = 5) -> di
     callers. Everything else is a pure read of already-mined state."""
     from ugh.intent import activity as activity_mod
     from ugh.intent import turns as turns_mod
-    from ugh.intent.review import pending_reviews
 
     in_flight = (save_preview_view(repo) if include_preview
                  else {"affected": [], "new_work_count": 0, "total_op_count": 0})
 
     forks = forks_view(repo)
-    reviews = pending_reviews(repo)
     sessions = plan_view(repo)["sessions"]
     stalled = [s for s in sessions if s["derived_status"] == "stalled"]
     # A plan that is actively being built appeared nowhere: only *stalled* plans reached
@@ -3632,7 +2635,6 @@ def now_view(repo, *, include_preview: bool = True, recent_limit: int = 5) -> di
         # `log --summary`.
         "history_rewritten": _history_rewritten_flag(repo),
         "forks": forks["forks"],
-        "reviews": [{"id": r["id"], "subject": r["subject"], "reason": r["reason"]} for r in reviews],
         "stalled_plans": [
             {"session_id": s["session_id"], "claude_session_id": s.get("claude_session_id"),
              "pending_count": s["pending_count"], "remaining_titles": s["remaining_titles"]}
@@ -3802,7 +2804,6 @@ def show_view(repo, target: str, *, symbol_limit: int = 12, save_limit: int = 5,
                 ),
                 "next": [
                     {"cmd": "ugh log", "why": "the saves, each with the id this view accepts"},
-                    {"cmd": f"ugh why {target}", "why": "the words recorded for a commit, if it is one"},
                     {"cmd": f"git show {target}", "why": "if what you actually wanted was the commit itself"},
                 ],
             }
@@ -4122,26 +3123,17 @@ def _show_next(found, consequences: dict) -> list[dict]:
         steps.append({"cmd": f"ugh log --focus {feature[2:10] if feature.startswith('f-') else token}",
                       "why": "this checkpoint in the context of its feature"})
     elif found.kind == "save":
-        # `ugh why <sha>` is the commit-scoped selector (the words the user wrote for this save and
-        # the chat it came from); `git show` is where the line-by-line diff lives, and saying so is
-        # better than implying ugh has its own copy.
-        steps.append({"cmd": f"ugh why {token}",
-                      "why": "the words recorded for this save, and the chat it came from"})
+        # `git show` is where the line-by-line diff lives, and saying so is better than implying
+        # ugh has its own copy.
         steps.append({"cmd": f"git show {token}",
                       "why": "the line-by-line diff — ugh does not duplicate it"})
         if found.feature_id:
             fid = found.feature_id
             steps.append({"cmd": f"ugh log --focus {fid[2:10] if fid.startswith('f-') else fid[:8]}",
                           "why": "the checkpoints around this save — the units revert takes"})
-    elif found.kind == "symbol":
-        file = found.target.partition("::")[0]
-        steps.append({"cmd": f"ugh advanced blame {file}", "why": "who set each symbol in this file"})
-        if consequences.get("forked"):
-            steps.append({"cmd": f"ugh resolve {found.target}",
-                          "why": "two versions of this symbol compete -- guided resolution"})
-    if found.kind in ("op", "symbol"):
-        steps.append({"cmd": f"ugh why {found.target}",
-                      "why": "why this edit is grouped where it is, and the recorded reason"})
+    elif found.kind == "symbol" and consequences.get("forked"):
+        steps.append({"cmd": f"ugh resolve {found.target}",
+                      "why": "two versions of this symbol compete -- guided resolution"})
 
     # The revert offer comes last and states its cost, so the consequence is read before the verb is
     # copied. Omitted entirely when nothing here is live -- a revert would be a no-op -- and for a
@@ -4152,174 +3144,6 @@ def _show_next(found, consequences: dict) -> list[dict]:
     if consequences.get("live_op_count") and found.kind != "save":
         steps.append({"cmd": f"ugh revert {token}", "why": revert_cost(consequences)})
     return steps
-
-
-def compose_view(repo, *, full: bool = False) -> dict:
-    """One aggregate for a workbench refresh: `map`/`history`/`status`/`forks`/`plan`/`drift`/
-    `sessions`/`trust`/`intent`/`rewrite`/`save_preview`, the current ideal's oracle verdict, and a lightweight
-    open-proposal list, each delegated to its own view function with no reshaping. Collapses what
-    would otherwise be ~9 separate `ugh <verb> --json` shell-outs (each a fresh process) into one
-    call -- the single biggest responsiveness win for a UI that refreshes on every `.sgt/` change.
-
-    `full` threads into every child that accepts it (`history`/`plan`/`drift`/`trust`); `map`/
-    `status`/`forks`/`sessions`/`intent` take no `full` param and are always their own single
-    shape. The default (`full=False`) delegates each child at *its own* default, so
-    `compose_view(repo) == {"map": map_view(repo), "history": history_view(repo), ...}` stays an
-    exact identity -- R21's byte-equality guardrail, unchanged by this compaction."""
-    from ugh.core import propose
-    from ugh.core.lens import current_ideal
-    from ugh.core.oracle import verdict_for
-
-    proposals = [
-        {
-            "id": p.id, "title": p.title, "base_ref": p.base_ref, "created_ts": p.created_ts,
-            "delta_op_count": len(p.delta_ids), "feature_delta": sorted(p.feature_delta),
-        }
-        for p in propose.all_proposals(repo)
-    ]
-    return {
-        "map": map_view(repo),
-        "history": history_view(repo, full=full),
-        "status": status_view(repo),
-        "forks": forks_view(repo),
-        "plan": plan_view(repo, full=full),
-        "drift": drift_view(repo, full=full),
-        "sessions": sessions_view(repo),
-        "trust": trust_view(repo, full=full),
-        "intent": intent_view(repo),
-        # `status["staged"]` says *which paths* carry a staged candidate; this says *what it is* --
-        # verb, op count, and the oracle verdict landing is gated on. A surface needs both to offer
-        # Land honestly, and without the gate it draws a button that can only fail.
-        "rewrite": rewrite_view(repo),
-        "save_preview": save_preview_view(repo),
-        "oracle_verdict": verdict_for(repo, current_ideal(repo)),
-        "proposals": proposals,
-    }
-
-
-def proposal_view(repo, proposal_id: str) -> dict:
-    """The proposal review surface (plan U24, C10): a base+Δ review object projected for a client --
-    the feature delta (each touched feature's id/label/op-count), Δ's op count, the oracle claim for
-    base∪Δ, a provenance summary (the structured attribution + witnessing shas across Δ), and the
-    full staleness `status` (current / clean-reunion / fork, with the `merge-op` remedy). Pure and
-    deterministic; `{"error": ...}` for an unknown id. `render_github` is a pure projection of exactly
-    this shape."""
-    from ugh.core import propose
-    from ugh.core.store import Store
-    from ugh.lens.tree import load as load_tree
-
-    p = propose.load(repo, proposal_id)
-    if p is None:
-        return {"error": f"no proposal {proposal_id!r}", "id": proposal_id}
-
-    st = propose.status(repo, proposal_id)
-    by_id = {op.id: op for op in Store(repo).all_ops()}
-    delta_ids = list(p.delta_ids)
-
-    tree_result = load_tree(repo)
-    nodes = tree_result["nodes"] if tree_result else {}
-    op_leaf = tree_result["op_leaf"] if tree_result else {}
-    leaf_op_count: dict[str, int] = {}
-    for op_id in delta_ids:
-        leaf = op_leaf.get(op_id)
-        if leaf is not None:
-            leaf_op_count[leaf] = leaf_op_count.get(leaf, 0) + 1
-    feature_delta = [
-        {"feature_id": fid, "label": nodes.get(fid, {}).get("label", fid), "op_count": leaf_op_count.get(fid, 0)}
-        for fid in sorted(p.feature_delta)
-    ]
-
-    # Provenance across Δ: the structured attribution (D7) keyed by witnessing sha, with every bare
-    # provenance sha folded in even when it carries no session/agent/plan -- a sorted, stable list.
-    prov: dict[str, dict] = {}
-    for op_id in delta_ids:
-        op = by_id.get(op_id)
-        if op is None:
-            continue
-        for a in sorted(op.attribution, key=lambda a: a.sha):
-            entry = prov.setdefault(a.sha, {"sha": a.sha})
-            for f in ("session", "agent", "plan"):
-                if getattr(a, f) is not None:
-                    entry[f] = getattr(a, f)
-        for sha in op.provenance:
-            prov.setdefault(sha, {"sha": sha})
-    provenance = [prov[s] for s in sorted(prov)]
-
-    return {
-        "id": p.id,
-        "base_ref": p.base_ref,
-        "title": p.title,
-        "description": p.description,
-        "feature_delta": feature_delta,
-        "delta_op_count": len(delta_ids),
-        "claim": st["claim"],
-        "provenance": provenance,
-        "status": st,
-    }
-
-
-def proposal_review_view(repo, proposal_id: str) -> dict:
-    """`proposal_view` plus what a partial-accept UI needs (plan U32, S8) without computing
-    anything itself: the U24 ``approvals`` schema, and a ``feature_checklist`` -- each delta
-    feature's entry from `proposal_view`'s ``feature_delta``, plus ``op_ids`` (this feature's own Δ
-    op ids, so a caller can build an `accept_ids` set without recomputing feature attribution) and
-    ``requires``: the *other* delta features whose ops sit in this feature's closure over base∪Δ
-    (chain/reference/declared edges, `order.downset_in`, restricted to Δ -- the same closure
-    primitive `ugh select`/`ugh why` (U29) trace, just scoped to a proposal's op-set instead of the
-    current ideal). Un-checking a feature while a still-checked feature ``requires`` it would make
-    the accepted subset fail `propose.land`'s downward-closure check; this field lets a caller
-    (`ugh propose land --subset`, or a future checkbox rail) refuse/grey-out that choice with a
-    name, not just a raw op-id failure. `{"error": ...}` for an unknown id, same as `proposal_view`.
-    """
-    from ugh.core import lens, order, propose
-    from ugh.core.store import Store
-    from ugh.lens.tree import load as load_tree
-
-    view = proposal_view(repo, proposal_id)
-    if "error" in view:
-        return view
-    p = propose.load(repo, proposal_id)
-    assert p is not None  # proposal_view already confirmed it loads
-
-    ops = Store(repo).all_ops()
-    declared = lens._load_declared(repo)
-    delta_ids = frozenset(p.delta_ids)
-    union_ids = frozenset(p.base_ideal_ids) | delta_ids
-
-    tree_result = load_tree(repo)
-    op_leaf = tree_result["op_leaf"] if tree_result else {}
-    feature_ops: dict[str, set[str]] = {}
-    for op_id in delta_ids:
-        leaf = op_leaf.get(op_id)
-        if leaf is not None:
-            feature_ops.setdefault(leaf, set()).add(op_id)
-
-    checklist = []
-    for f in view["feature_delta"]:
-        fid = f["feature_id"]
-        closure: set[str] = set()
-        for op_id in feature_ops.get(fid, ()):
-            closure |= order.downset_in(op_id, union_ids, ops, declared)
-        requires = sorted({
-            op_leaf[oid] for oid in (closure & delta_ids)
-            if op_leaf.get(oid) not in (None, fid)
-        })
-        checklist.append({**f, "op_ids": sorted(feature_ops.get(fid, ())), "requires": requires})
-
-    return {**view, "approvals": list(p.approvals), "feature_checklist": checklist}
-
-
-def _drift_paths(repo, materialized: dict[str, bytes]) -> list[str]:
-    from pathlib import Path
-
-    repo_path = Path(repo)
-    drift = []
-    for path, expected in materialized.items():
-        full = repo_path / path
-        actual = full.read_bytes() if full.is_file() else None
-        if actual != expected:
-            drift.append(path)
-    return sorted(drift)
 
 
 def _drift_paths_by_hash(repo, path_hashes: dict[str, str]) -> list[str]:

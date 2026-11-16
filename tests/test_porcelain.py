@@ -1,8 +1,8 @@
-"""Tests for ugh.cli.porcelain -- the D3 daily-loop verbs `switch`/`save`/`undo` (plan U26).
+"""Tests for ugh.cli.porcelain -- the D3 daily-loop verbs `save`/`undo` (plan U26).
 
 The D2 refusal table itself (`ugh git <tree-mutating-sub>`) is covered end-to-end in
 tests/test_cli_git_passthrough.py. This file covers the other half: the ideal-edit journal that
-makes `undo` possible (`lens.record_ideal` -> `oplog.undo`), and `switch`/`save`/`undo`
+makes `undo` possible (`lens.record_ideal` -> `oplog.undo`), and `save`/`undo`
 exercised through `cli.main` on real repos -- ending with the plan's named scenario, the full
 daily loop running git-free.
 """
@@ -106,38 +106,8 @@ def test_repeated_undo_walks_back_through_two_independent_edits(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# `ugh switch` / `ugh save` / `ugh undo` through cli.main
+# `ugh save` / `ugh undo` through cli.main
 # ---------------------------------------------------------------------------
-
-
-def test_switch_materializes_the_target_branchs_ideal(tmp_path):
-    repo = tmp_path / "repo"
-    gb, base = _two_branches(repo)
-    with _in(repo):
-        rc = cli.main(["switch", base])
-    assert rc == 0
-    assert current_ideal(repo).op_ids == get(repo).op_ids
-    assert b"def bar" not in (repo / "a.py").read_bytes()  # base never had bar
-    assert gb.symbolic_ref().rsplit("/", 1)[-1] == base
-
-
-def test_switch_reports_a_git_error_for_an_unknown_branch(tmp_path, capsys):
-    repo = tmp_path / "repo"
-    _two_branches(repo)
-    with _in(repo):
-        rc = cli.main(["switch", "does-not-exist"])
-    assert rc == 1
-    assert "✗" in capsys.readouterr().out  # _fail's "✗" marker
-
-
-def test_switch_json_reports_branch_and_op_count(tmp_path, capsys):
-    repo = tmp_path / "repo"
-    gb, base = _two_branches(repo)
-    with _in(repo):
-        rc = cli.main(["switch", base, "--json"])
-    payload = json.loads(capsys.readouterr().out)
-    assert rc == 0
-    assert payload == {"ok": True, "branch": base, "ops": len(get(repo).op_ids)}
 
 
 def test_save_reports_nothing_to_save_on_a_clean_tree(tmp_path, capsys):
@@ -305,14 +275,12 @@ def test_save_closes_a_capture_manifest(tmp_path):
     assert [t["text"] for t in rec2["turns"]] == ["bump quux"]
 
 
-def test_save_reflects_a_grounded_stint_so_why_answers_with_the_users_words(tmp_path):
+def test_save_reflects_a_grounded_stint_into_the_users_words(tmp_path):
     """The P2 payoff: a hook-captured prompt, the activity events its session produced, and the
-    save's ops meet at the save beat -- and `ugh why <sha>` answers with the user's own sentence
-    (both the recorded-why rationale and the words line, via the manifest fallback), with no
+    save's ops meet at the save beat -- and the recorded why is the user's own sentence, with no
     batch aligner and no plan session anywhere."""
-    from ugh.api import why_view
     from ugh.intent import activity, turns
-    from ugh.store.gitbind import GitBinding
+    from ugh.intent.rationale import load_rationale
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     get(repo)
@@ -323,11 +291,8 @@ def test_save_reflects_a_grounded_stint_so_why_answers_with_the_users_words(tmp_
     with _in(repo):
         assert cli.main(["save"]) == 0
 
-    view = why_view(repo, GitBinding(repo).head())
-    assert view["kind"] == "commit" and view["ok"] is True
-    reasons = [r["reason"] for r in view["rationale"]]
+    reasons = [r["reason"] for r in load_rationale(repo).values()]
     assert "add a quux helper" in reasons  # the ask's first line, not the commit subject
-    assert view["words"] == "add a quux helper\nand keep it tiny"
 
 
 def test_save_echo_reports_no_words_captured_without_a_message(tmp_path, capsys):
@@ -524,14 +489,11 @@ def test_undo_inverts_a_save_and_then_reports_nothing_to_undo(tmp_path, capsys):
 
 
 def test_full_daily_loop_runs_git_free(tmp_path, capsys):
-    """switch -> save -> undo -> a raw `git checkout` still refuses: the whole loop is ugh verbs,
-    never a direct git tree mutation."""
+    """save -> undo -> a raw `git reset` still refuses: the whole loop is ugh verbs, never a direct
+    git tree mutation."""
     repo = tmp_path / "repo"
-    gb, base = _two_branches(repo)
+    gb, _base = _two_branches(repo)
     with _in(repo):
-        assert cli.main(["switch", base]) == 0
-        assert gb.symbolic_ref().rsplit("/", 1)[-1] == base
-
         before_ids = get(repo).op_ids
         (repo / "e.py").write_text("def new_thing():\n    return 1\n", encoding="utf-8")
         assert cli.main(["save"]) == 0
@@ -541,31 +503,12 @@ def test_full_daily_loop_runs_git_free(tmp_path, capsys):
         assert get(repo).op_ids == before_ids
         capsys.readouterr()
 
-        rc = cli.main(["git", "checkout", "feature"])
+        head = gb.head()
+        rc = cli.main(["git", "reset", "--hard", "HEAD~1"])
         assert rc == 1
         err = capsys.readouterr().err
-        assert "ugh switch" in err and "--force" in err
-        assert gb.symbolic_ref().rsplit("/", 1)[-1] == base  # refused: HEAD never moved
-
-
-def test_switch_preserves_a_symlink_in_both_directions(tmp_path):
-    """U1/R3: a symlink is unmanaged, so switching branches (each of which materializes an ideal
-    that never covers the link) must leave the link and its external target intact both ways."""
-    repo = tmp_path / "repo"
-    gb, base = _two_branches(repo)
-    outside = tmp_path / "outside.txt"
-    outside.write_text("SECRET\n", encoding="utf-8")
-    with _in(repo):
-        cli.main(["switch", base])
-        (repo / "link.txt").symlink_to(outside)
-        gb.commit_all("add link on base")
-        get(repo)  # mine the link commit (skipped as unmanaged)
-
-        assert cli.main(["switch", "feature"]) == 0
-        assert cli.main(["switch", base]) == 0
-
-    assert outside.read_text() == "SECRET\n"      # target never clobbered
-    assert (repo / "link.txt").is_symlink()        # link survives both switches
+        assert "ugh undo" in err and "--force" in err
+        assert gb.head() == head  # refused: HEAD never moved
 
 
 def test_save_does_not_claim_nothing_to_save_while_the_mine_is_incomplete(tmp_path, capsys, monkeypatch):

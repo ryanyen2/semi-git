@@ -36,8 +36,8 @@ order, with the surrounding text between symbols kept exactly as it was. The res
 byte what ends up checked out. There is no separate copy of your files that can drift out of sync
 with the ops. The files you see are just this ideal turned back into code.
 
-`ugh advanced fsck` checks that the current ideal is valid and that the files it produces match
-what git actually has.
+`ugh check` checks that the current ideal is valid, and `ugh check --tree` that the files it
+produces match what git actually has.
 
 ## The feature tree
 
@@ -49,9 +49,8 @@ keeps its identity as your code grows.
 
 This automatic grouping needs history to learn from. On a brand-new repo there is not enough
 signal yet to split features apart, so `ugh log --tree` reports one feature for everything. As real
-commits build up, the seams start to appear. You can correct or seed the grouping by hand at any
-time with `ugh feature regroup merge`, `ugh feature regroup split`, `ugh feature rename`, and `ugh
-feature regroup move`. These only change labels and grouping. They never touch your code.
+commits build up, the seams start to appear. You can name a feature in your own words at any time
+with `ugh feature rename`. It only changes the label and never touches your code.
 
 ## The one rule: ugh never writes your code
 

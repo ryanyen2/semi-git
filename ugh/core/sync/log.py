@@ -19,17 +19,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ugh.store.gitbind import (
-    EMPTY_TREE,
     GitBinding,
-    format_landed_sha,
-    format_op_trailers,
     parse_landed_sha,
     parse_op_ids,
 )
 
 LOG_REF_PREFIX = "refs/ugh/log/"
-
-_APPEND_RETRIES = 5
 
 
 def log_ref(branch: str) -> str:
@@ -40,25 +35,6 @@ def log_ref(branch: str) -> str:
 class LogEntry:
     landed_sha: str
     ideal_ids: frozenset[str]
-
-
-def append(gb: GitBinding, branch: str, landed_sha: str, ideal_ids: frozenset[str]) -> bool:
-    """Record that `landed_sha` just advanced `branch` with `ideal_ids`. Best-effort: `land`
-    already succeeded by the time this is called, so a failure here (a CAS race with another
-    lander's log append, or any git error) is swallowed rather than raised -- it only costs the
-    next reader a fallback to the older recovery ladder, not correctness."""
-    ref = log_ref(branch)
-    trailers = "\n".join([format_landed_sha(landed_sha), format_op_trailers(sorted(ideal_ids))])
-    try:
-        for _ in range(_APPEND_RETRIES):
-            tip = gb.rev_parse(ref)
-            parents = [tip] if tip else []
-            new = gb.commit_tree(EMPTY_TREE, parents, f"ugh land-log: {branch}", trailers=trailers)
-            if gb.update_ref_cas(ref, new, tip):
-                return True
-        return False
-    except Exception:
-        return False
 
 
 def read(gb: GitBinding, branch: str) -> list[LogEntry]:

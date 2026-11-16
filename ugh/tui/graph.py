@@ -656,14 +656,12 @@ def _state_banner(states: dict | None, *, color: bool) -> list[str]:
         out.append(_sgr(_AMBER, f" {_FORK} {plural(len(stale), 'fork')} are two mining generations of the "
                                 f"same commit, not edits — the store mixes miner versions:",
                         color=color))
-        out.append(_dim("     →  ugh advanced migrate ops-v3   (unifies the store; "
-                        "`ugh advanced fsck` shows the versions present)", color=color))
+        out.append(_dim("     →  `ugh check` shows the versions present", color=color))
     drafts = [d for d in (states.get("rewrites") or {}).get("drafts", []) if d.get("verb") == "merge-op"]
     if drafts:
         out.append(_sgr(_AMBER, f" {_MERGE} {plural(len(drafts), 'pending merge-op draft')}:", color=color))
         for d in drafts:
-            did = (d.get("draft_id") or "")[:12]
-            out.append(_dim(f"     {d.get('target', '?')}  →  ugh advanced repair {did}", color=color))
+            out.append(_dim(f"     {d.get('target', '?')}  →  ugh resolve <symbol> --apply", color=color))
     return out
 
 

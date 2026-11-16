@@ -6,19 +6,14 @@ We implement only the small surface a tool server needs — ``initialize``, ``to
 ``tools/call`` — with no third-party dependency, matching the project's minimal footprint and
 keeping the dispatch (``handle_request``) a pure function that is unit-tested without a process.
 
-Tool surface — kernel parity with the CLI's registered verbs:
+Tool surface:
 
-The tool names mirror their CLI paths after the spine re-triage (KTD2): the daily verbs (read/write
-kernel verbs, the semantic diff, and the agentic loop) keep their bare ``ugh_`` names, while only
-the genuinely rare/maintenance tools carry the ``ugh_advanced_`` prefix of their re-homed CLI verbs.
-
-* **read** (no API key, no writes): ``ugh_log`` (the mined op DAG), ``ugh_grid`` (the lane×commit
-  timeline join — features × commits, ghost cells, fidelity marks), ``ugh_status`` (the current
-  ref's ideal: frontier, coverage, oracle verdict), ``ugh_diff`` (semantic diff between two refs'
-  ideals), ``ugh_advanced_fsck`` (op-store integrity).
-* **write**: ``ugh_init`` (bind git + the kernel store, mine existing history), ``ugh_revert`` /
-  ``ugh_restore`` (exact ideal edits, `I \\ ↑X` / `I ∪ ↓X`, with an `emit` dry-run preview),
-  ``ugh_advanced_oracle_run`` (execute configured build/test tiers against the current ideal).
+* **read** (no API key, no writes): ``ugh_log`` (the mined op DAG), ``ugh_show`` (what an id
+  covers, or a file at a past point), ``ugh_find`` (rank features/saves/symbols against a phrase),
+  ``ugh_advanced_fsck`` (op-store integrity).
+* **write**: ``ugh_init`` (bind git + the kernel store, mine existing history), ``ugh_save``,
+  ``ugh_revert`` / ``ugh_restore`` (exact ideal edits, `I \\ ↑X` / `I ∪ ↓X`, with an `emit` dry-run
+  preview).
 * **agentic loop** (plan U14): ``ugh_plan_intake`` (decompose a plan into predicted hollow
   ops), ``ugh_checkpoint`` (the pure step<->op footprint-overlap preview, or -- given
   ``confirm`` -- the explicit, one-group-at-a-time write that resolves it), ``ugh_drift``
@@ -26,8 +21,7 @@ the genuinely rare/maintenance tools carry the ``ugh_advanced_`` prefix of their
   active surface -- a fully-matched plan closes itself on the last confirm).
 
 Every write tool mines the working tree on contact first (R9), so it reflects whatever the agent
-just edited. The feature-lens verbs (merge/split/rename/move) have no MCP surface yet -- CLI-only
-for now.
+just edited. `ugh feature rename` has no MCP surface.
 """
 
 from __future__ import annotations
@@ -67,35 +61,6 @@ def tool_log(repo_path: str, args: dict) -> dict:
     if args.get("offset") is not None:
         kwargs["offset"] = int(args["offset"])
     return oplog_view(repo_path, **kwargs)
-
-
-def tool_state(repo_path: str, args: dict) -> dict:
-    from ugh.api import state_view
-    from ugh.core.lens import get
-
-    get(repo_path)
-    full = bool(args.get("full", False))
-    view = state_view(repo_path, full=full)
-    if not full:
-        # Transport-level compaction, not a view change: the canonical projection keeps its
-        # schema (CLI `--json` parity), but over MCP the full covered/derived path lists were
-        # ~75% of the payload (~1200 tokens on this repo) and an orienting agent needs the
-        # counts; `full=true` restores the lists.
-        view["covered_path_count"] = len(view.pop("covered_paths"))
-        view["derived_path_count"] = len(view.pop("derived_paths"))
-    return view
-
-
-def tool_diff(repo_path: str, args: dict) -> dict:
-    from ugh.api import ideal_diff_view
-    from ugh.core.lens import get
-
-    ref_a = (args.get("ref_a") or "").strip()
-    ref_b = (args.get("ref_b") or "").strip()
-    if not ref_a or not ref_b:
-        return {"error": "missing 'ref_a'/'ref_b'"}
-    get(repo_path)
-    return ideal_diff_view(repo_path, ref_a, ref_b)
 
 
 def tool_fsck(repo_path: str, args: dict) -> dict:
@@ -256,19 +221,6 @@ def tool_restore(repo_path: str, args: dict) -> dict:
     return _verb_with_feature_fallback(repo_path, "restore", ref, bool(args.get("emit", False)))
 
 
-def tool_oracle_run(repo_path: str, args: dict) -> dict:
-    """Run configured build/test tiers against the current ideal (plan U9, R13)."""
-    from ugh.core import oracle
-    from ugh.core.lens import get
-
-    get(repo_path)
-    tier = (args.get("tier") or "").strip() or None
-    try:
-        return oracle.run(repo_path, tier=tier)
-    except ValueError as e:
-        return {"error": str(e)}
-
-
 def tool_plan_intake(repo_path: str, args: dict) -> dict:
     """Decompose a plan into predicted hollow ops (plan U14). Mines the working tree first (R9)
     so `baseline_op_ids` reflects current reality."""
@@ -350,17 +302,6 @@ def tool_checkpoint(repo_path: str, args: dict) -> dict:
     return plan_view(repo_path, full=detail)["checkpoint"]
 
 
-def tool_recall(repo_path: str, args: dict) -> dict:
-    """Agent recall (intent-ledger M1, design §4.4): the recorded "why" for the symbols an agent
-    is about to touch + stated-but-unlanded intents. Local-tier read; no mining needed beyond
-    contact so stale stores still answer."""
-    from ugh.core.lens import get as _get
-    from ugh.intent.rationale import recall
-
-    _get(repo_path)
-    return recall(repo_path, list(args.get("symbols") or []))
-
-
 def tool_find(repo_path: str, args: dict) -> dict:
     """Rank features, saves and symbols against a description (`ugh find`)."""
     from ugh.core.lens import get as _get
@@ -413,21 +354,6 @@ def tool_save(repo_path: str, args: dict) -> dict:
     return out
 
 
-def tool_now(repo_path: str, args: dict) -> dict:
-    """`ugh now`: what the developer asked for, what is unsaved, what needs them, what is next.
-
-    The tool to call *first* when picking up work in a repo you did not just set up -- it answers "is
-    someone mid-something here?" before you edit over them. Useful to the *agent* as well as the
-    human: `working_on` carries the user's own prompt, so an agent resuming reads what was actually
-    asked rather than inferring it from a diff."""
-    from ugh.api import now_view
-
-    # No leading `get()`: `now_view`'s default `include_preview=True` already runs the one
-    # mine-on-contact step (`save_preview_view` calls `get`), and a second sync per tool call
-    # re-pays the dirty-tree fingerprint for nothing.
-    return now_view(repo_path)
-
-
 def tool_show(repo_path: str, args: dict) -> dict:
     """`ugh show`: two readings of "show me this", chosen by whether a point in time was named.
 
@@ -452,19 +378,6 @@ def tool_show(repo_path: str, args: dict) -> dict:
     if not sel:
         return {"error": "pass 'sel' (what is this?) or 'at' (what existed at a past point)"}
     return show_view(repo_path, sel, include_asked=bool(args.get("asked")))
-
-
-def tool_checkpoint_context(repo_path: str, args: dict) -> dict:
-    """The checkpoint context pack (capture weave P4): the asks, the recorded why, the blast
-    radius, and the resume handles for one chapter -- what an agent reads before editing from it."""
-    from ugh.api import checkpoint_context
-    from ugh.core.lens import get
-
-    spec = (args.get("checkpoint") or "").strip()
-    if not spec:
-        return {"error": "missing 'checkpoint'"}
-    get(repo_path)  # mine-on-contact so the chapter reflects current reality (R9)
-    return checkpoint_context(repo_path, spec)
 
 
 def tool_plan_done(repo_path: str, args: dict) -> dict:
@@ -520,7 +433,7 @@ def _schema(props: dict, required: list[str]) -> dict:
 _DRIVING_PROMPT_PROP = {
     "type": "string",
     "description": "the user's ask that drove this work, verbatim as you received it (optional "
-                   "but valuable): it is recorded as capture evidence, so `ugh why` and the "
+                   "but valuable): it is recorded as capture evidence, so `ugh show` and the "
                    "checkpoint labels can answer with the user's own words instead of a guess. "
                    "Pass their words, not your paraphrase.",
 }
@@ -565,23 +478,8 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
     # and wrong for a language model, because a model never draws it. Measured on a 290-commit repo:
     # ~515 KB, about 129,000 tokens in a single tool result, growing linearly with history (1.5k
     # tokens at 10 commits, 6.5k at 60). One call would consume most of a context window and answer
-    # no question that `ugh_log` (capped at 30) or `ugh_now` (flat ~470 tokens) doesn't answer more
-    # cheaply. An agent that genuinely needs the raw join can shell out to `ugh log --json` and page
+    # no question that `ugh_log` (capped at 30) doesn't answer more cheaply. An agent that genuinely needs the raw join can shell out to `ugh log --json` and page
     # it itself. Please don't re-add it without a compact, paged shape.
-    "ugh_status": (
-        "The current ref's ideal: entity-granularity coverage fraction, covered/derived path "
-        "counts, and the async oracle's verdict (if `.sgt/oracle.json` is configured). Compact "
-        "by default (counts instead of the per-symbol frontier map and the covered/derived/"
-        "entity path lists); pass full=true to restore the lists.",
-        _schema({"full": {"type": "boolean", "description": "restore the frontier map and the covered/derived/entity path lists"}}, []),
-        tool_state,
-    ),
-    "ugh_diff": (
-        "Semantic diff between two refs' ideals: the symmetric difference of their op sets, "
-        "grouped by symbol.",
-        _schema({"ref_a": {"type": "string"}, "ref_b": {"type": "string"}}, ["ref_a", "ref_b"]),
-        tool_diff,
-    ),
     "ugh_save": (
         "Record your edits as a save. Pass `message` -- your own words about what this work was; "
         "they become the save's subject and the recorded intent, and a feature born from this work "
@@ -592,15 +490,6 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
                  "claude_session_id": _CHAT_KEY_PROP},
                 []),
         tool_save,
-    ),
-    "ugh_now": (
-        "Where the work stands: what the user asked for (`working_on`, their own prompt verbatim), "
-        "what is unsaved, what needs a human (forks, stalled plans, a paused git merge), what was "
-        "recently done, and the single next action. Call this FIRST when picking up work in a repo "
-        "you did not just set up: it says what was actually asked rather than leaving you to infer "
-        "it from a diff, and it tells you whether someone is mid-something before you edit over them.",
-        _schema({}, []),
-        tool_now,
     ),
     "ugh_show": (
         "Show me this thing. With `sel` alone it explains an id — a feature handle, a `feature@n` "
@@ -631,19 +520,6 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         _schema({}, []),
         tool_fsck,
     ),
-    "ugh_checkpoint_context": (
-        "Prepare to continue work from a checkpoint: the verbatim asks that drove the chapter "
-        "(`asked`), the recorded why, the symbols it touches, the ops later work built on it "
-        "(`dependent_op_ids` -- what an edit from here disturbs), and `claude --resume` handles "
-        "back into the conversations that produced it. Call this BEFORE editing or reverting from "
-        "a `<feature>@<n>` checkpoint, so you act on what was actually asked rather than a guess. "
-        "Read-only.",
-        _schema({"checkpoint": {"type": "string",
-                                "description": "a `<feature>@<n>` / `<feature>:<slug>` handle, as "
-                                               "printed by `ugh log` or the checkpoint list"}},
-                ["checkpoint"]),
-        tool_checkpoint_context,
-    ),
     "ugh_find": (
         "Find something you can describe but cannot name: ranks features, saves and symbols "
         "against a phrase like 'the thing that formats dates'. Use this before revert/restore "
@@ -672,13 +548,6 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         _schema({"ref": {"type": "string"}, "emit": {"type": "boolean", "description": "dry-run preview only"},
                  "prompt": _DRIVING_PROMPT_PROP, "claude_session_id": _CHAT_KEY_PROP}, ["ref"]),
         tool_restore,
-    ),
-    "ugh_advanced_oracle_run": (
-        "Run configured build/test tiers (declared in `.sgt/oracle.json`) against the current "
-        "ideal, in declared order, stopping at the first failure. Omit 'tier' to run the full "
-        "pipeline; pass it to re-run just that one.",
-        _schema({"tier": {"type": "string", "description": "run just this one tier (optional)"}}, []),
-        tool_oracle_run,
     ),
     "ugh_plan_intake": (
         "Decompose a plan (an agent's or human's stated intent before doing the work) into "
@@ -710,18 +579,10 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
             },
              "session_id": {"type": "string", "description": "which plan session a `note` belongs to (optional; defaults to the single active one)"},
              "claude_session_id": _OWN_SESSION_PROP,
-             "note": {"type": "string", "description": "the user's latest instruction/correction in this conversation, verbatim -- recorded as intent evidence so `ugh why` can answer later"}},
+             "note": {"type": "string", "description": "the user's latest instruction/correction in this conversation, verbatim -- recorded as intent evidence so `ugh show` can answer later"}},
             [],
         ),
         tool_checkpoint,
-    ),
-    "ugh_recall": (
-        "Before editing, recall why the code you are about to touch is the way it is: recorded "
-        "rationale (from past plans/conversations) overlapping the given symbols, plus intents "
-        "that were stated but never landed. Read-only, local, cheap -- call it at plan time.",
-        _schema({"symbols": {"type": "array", "items": {"type": "string"},
-                             "description": "symbols you plan to touch, as `repo/relative/path.py::name` (bare `file.py::name` also matches -- symbol names are joined exactly, file paths by suffix; empty = all recorded rationale)"}}, []),
-        tool_recall,
     ),
     "ugh_drift": (
         "Every op not predicted by any active plan session. Compact by default: {count, op_ids, "

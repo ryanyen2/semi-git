@@ -232,29 +232,6 @@ def test_sync_reports_a_pin_contradiction_and_still_merges(tmp_path):
     assert unioned.assign == {"m1": "featureA", "m2": "featureB"}
 
 
-def test_sync_reports_a_declared_edge_cycle_and_declared_edges_travel(tmp_path):
-    a, b = _two_clones(tmp_path, _BASE)
-
-    verbs.after(a, "main.py::foo", "main.py::bar")  # A declares foo <= bar
-    GitBinding(a).commit_all("A: declare foo <= bar")
-    _push(a)
-
-    verbs.after(b, "main.py::bar", "main.py::foo")  # B declares bar <= foo -- a cycle once unioned
-    GitBinding(b).commit_all("B: declare bar <= foo")
-
-    report = sync.sync(b, remote="origin", branch="main")
-
-    assert report.merged
-    assert len(report.declared_cycles) > 0
-
-    ops = Store(b).all_ops()
-    foo_id = next(op.id for op in ops if "main.py::foo" in op.footprint)
-    bar_id = next(op.id for op in ops if "main.py::bar" in op.footprint)
-    declared = lens._load_declared(b)
-    assert (foo_id, bar_id) in declared  # A's declared edge travelled to B post-sync
-    assert (bar_id, foo_id) in declared
-
-
 # -- U8: three-way resolve -- reverts travel, sync stops resurrecting removed work ---------------
 
 _WITH_BAZ = _BASE + "\n\ndef baz():\n    return 42\n"

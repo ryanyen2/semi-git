@@ -9,15 +9,14 @@ reachable that way, because the MCP tools are thin wrappers over the same projec
 
 | MCP tool | Shell equivalent |
 |---|---|
-| `ugh_now` | `ugh now --json` |
 | `ugh_show` (id) | `ugh show <sel> --json` |
 | `ugh_show` (with `at`) | `ugh show <file> --at <spec> --json` |
+| `ugh_show` (`asked: true`) | `ugh show <sel> --asked --json` |
+| `ugh_find` | `ugh find "<words>" --json` |
 | `ugh_log` | `ugh log --ops --json --limit 30` |
-| `ugh_status` | `ugh log --summary --json` |
-| `ugh_diff` | `ugh diff <ref_a> <ref_b> --json` |
 | `ugh_drift` | reported in `ugh save` output; no standalone verb |
-| `ugh_recall` | no CLI equivalent — MCP-only |
-| `ugh_advanced_fsck` | `ugh advanced fsck --json` |
+| `ugh_advanced_fsck` | `ugh check --json` |
+| — | `ugh status --json` — counts and what needs a human |
 
 ## Two argument shapes that catch people out
 
@@ -29,9 +28,6 @@ A **whitespace-only** working-tree edit cannot be saved. No symbol changed, so u
 and `put()` then refuses with `would overwrite uncommitted changes`. The tree can only go back
 (`git checkout -- <file>`). Fold such tidying into a real edit to the same file instead of trying to
 record it alone.
-
-`ugh_recall` is the one real gap. Its nearest substitute is `ugh why <symbol> --json`, which
-gives you one symbol's attribution and recorded reason rather than a batch lookup across several.
 
 ## The plan loop
 
@@ -50,14 +46,14 @@ plan from another agent either.
 
 ## Two differences worth knowing
 
-**Confirmation is not yours to skip.** The mutating collaboration verbs (`land`, `sync`,
-`propose land`, `resolve`) show a consequence preview and wait for a human on an interactive
+**Confirmation is not yours to skip.** The mutating collaboration verbs (`sync`, `resolve`) show
+a consequence preview and wait for a human on an interactive
 terminal. When they detect they are *not* on a terminal — which is your situation — they apply
 immediately. That is deliberate, for scripts and CI, and it means running one of them from a shell
 silently removes the review step a human would have got. Do not run them; hand them over.
 
-**Exit codes are meaningful.** A verb that does not exist exits non-zero and prints the replacement
-path, so a failed call tells you the right command rather than nothing. `ugh show` on an unknown id
+**Exit codes are meaningful.** A verb that does not exist exits non-zero and prints the closest
+real verbs, so a failed call tells you the right command rather than nothing. `ugh show` on an unknown id
 exits 1 with the places to look. Read the exit code before parsing the output.
 
 ## Reading output as a machine

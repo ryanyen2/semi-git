@@ -4,14 +4,12 @@ Source files are *derived* (`code(I)`), so sync never merges them textually -- i
 remote branch, unions the op store (near-free: `Store.add` unions provenance on any
 content-address collision, R8), reconciles the ideal, pins, declared edges, and feature tree, and
 then re-folds the working tree from the union. Footprint-disjoint work merges with zero
-interaction; a same-symbol chain fork is *surfaced* (with the exact `ugh merge-op`/`ugh pin`
-remedy) rather than silently resolved -- the ADR's "the only possible conflict is chain
+interaction; a same-symbol chain fork is *surfaced* (with the `ugh resolve` remedy) rather than
+silently resolved -- the ADR's "the only possible conflict is chain
 divergence" holds at sync time exactly as it does for a single clone's ideal.
 
-Decomposed (plan U19, D4) into four pure stages so the same boundaries can be reused: `land` (U23)
-is `ingest -> resolve -> materialize` over a local source, `propose` validation (U24) is
-`ingest -> resolve` as a dry run, and adoption-on-contact is `ingest` alone. `sync()` is their
-composition; only `materialize` (reached fork-free) touches disk, so a fork leaves nothing to roll
+Decomposed (plan U19, D4) into four pure stages so the same boundaries can be reused:
+adoption-on-contact is `ingest` alone. `sync()` is their composition; only `materialize` (reached fork-free) touches disk, so a fork leaves nothing to roll
 back -- there is no real `git merge` to abort, unlike the pre-U19 pipeline.
 """
 
@@ -29,13 +27,9 @@ from . import materialize as _materialize
 from . import resolve as _resolve
 from . import state_ref as _state_ref
 from .ingest import MinerVersionMismatch  # re-exported: the CLI catches it distinctly (C6)
-from .land import LandPlan, LandReport, land, plan_land  # SYNC-2: the CAS-gated shared-branch advance (U23)
-from .land import _restore_local_caches, _snapshot_local_caches  # reused by plan_sync's no-trace rollback
+from .land import _restore_local_caches, _snapshot_local_caches  # plan_sync's no-trace rollback
 
-__all__ = [
-    "SyncReport", "SyncPlan", "sync", "plan_sync", "MinerVersionMismatch",
-    "LandReport", "land", "LandPlan", "plan_land",
-]
+__all__ = ["SyncReport", "SyncPlan", "sync", "plan_sync", "MinerVersionMismatch"]
 
 
 @dataclass(frozen=True)

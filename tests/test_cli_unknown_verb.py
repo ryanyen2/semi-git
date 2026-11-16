@@ -1,11 +1,9 @@
-"""Unknown / moved first-token dispatch.
+"""Unknown first-token dispatch.
 
-KTD2's re-homing (`fsck` -> `advanced fsck`) and U14's rename-to-`log`-mode (`status` ->
-`log --summary`) both shipped without an alias layer, and the old dispatch answered *every*
-unrecognized token by printing the full help and returning 0. That is the silent-no-op failure
-class: a script, an agent, or a user following older output reads exit 0 as "it ran", when in fact
-nothing happened. The contract these tests pin: an unrecognized verb always exits non-zero, and
-whenever ugh can compute the replacement command it names it.
+The old dispatch answered *every* unrecognized token by printing the full help and returning 0.
+That is the silent-no-op failure class: a script, an agent, or a user following older output reads
+exit 0 as "it ran", when in fact nothing happened. The contract these tests pin: an unrecognized
+verb always exits non-zero, and names the closest real verbs.
 """
 
 from ugh.cli import main
@@ -33,38 +31,10 @@ def test_unknown_verb_exits_nonzero_and_says_so(capsys):
     assert "the daily spine" not in out.out
 
 
-def test_rehomed_verb_names_its_new_path(capsys):
-    """A verb that moved under a grouping reports the exact runnable command, not generic help."""
-    for verb, expected in (("fsck", "ugh advanced fsck"),
-                           ("merge-op", "ugh advanced merge-op"),
-                           ("blame", "ugh advanced blame"),
-                           ("merge", "ugh feature regroup merge")):
-        rc, out = _run(capsys, [verb])
-        assert rc == 2, verb
-        assert expected in out.err, (verb, out.err)
-
-
-def test_renamed_verb_names_its_log_mode(capsys):
-    """U14 turned four verbs into `log` render modes; each must route to its mode, not to help."""
-    for verb, expected in (("map", "ugh log --map"),
-                           ("episodes", "ugh log --rail"),
-                           ("checkpoint", "ugh save"),
-                           ("drift", "ugh log --summary")):
-        rc, out = _run(capsys, [verb])
-        assert rc == 2, verb
-        assert expected in out.err, (verb, out.err)
-
-
 def test_typo_suggests_the_closest_real_command(capsys):
-    """A near-miss gets a did-you-mean, and the suggestion is a *runnable* path (not a bare name
-    for a verb that only exists under a grouping)."""
     rc, out = _run(capsys, ["sve"])
     assert rc == 2
     assert "ugh save" in out.err
-
-    rc, out = _run(capsys, ["blam"])  # `blame` lives under `advanced`
-    assert rc == 2
-    assert "ugh advanced blame" in out.err
 
 
 def test_leading_flag_explains_flag_position(capsys):
@@ -75,20 +45,13 @@ def test_leading_flag_explains_flag_position(capsys):
 
 
 def test_the_spellings_a_git_user_reaches_for_actually_dispatch(capsys):
-    """`status` and `why` are top-level verbs, not moved names, so they must NOT be reported as
-    relocated. Both were folded away once for surface economy and restored because the collapse cost
-    a user something it was never meant to cost: `status` is the first word a git user types, and
-    `why` answers about an op, a symbol, *or* a commit sha, so only its `--for` closure form was ever
-    feature-scoped. This test is the pin that keeps them reachable -- an accidental re-home would
-    otherwise only show up as a help dump."""
+    """`status` is the first word a git user types; it is a thin alias onto `log --summary`'s
+    handler. `show` is where you point at a thing to see it."""
     import ugh.cli as cli
 
-    for verb in ("status", "why", "show"):
-        assert verb in cli._VERBS, f"`ugh {verb}` must dispatch, not report as moved"
-        assert verb not in cli._RENAMED, f"`ugh {verb}` dispatches; a moved-name entry would shadow it"
-        assert verb not in cli._ROUTING, f"`ugh {verb}` is top-level, not re-homed"
+    for verb in ("status", "show"):
+        assert verb in cli._VERBS, f"`ugh {verb}` must dispatch"
 
-    # `ugh status` takes no required argument, so it runs; `ugh why` needs one and says so.
+    # `ugh status` takes no required argument, so it runs; `ugh show` with nothing prints usage.
     assert main(["status"]) == 0
-    assert main(["why"]) == 2
-    assert "required" in _run(capsys, ["why"])[1].err
+    assert main(["show"]) == 2

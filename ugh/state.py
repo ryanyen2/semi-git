@@ -189,12 +189,6 @@ _ARTIFACTS: dict[str, _Artifact] = {
     # surface); the committed, CRDT-merged, liveness-joined team tier is M2, gated on the state-model
     # rework (2026-07-31-001 Phase 1.2). Content-addressed + append-only, so re-reflection is a no-op.
     "intent_rationale": _Artifact(("local", "rationale.json"), committed=False),
-    # local, gitignored alignment review queue (`ugh.intent.review`, alignment-pipeline §3.2-F):
-    # {review-id: record} -- REVIEW-region (op, episode) pairs the aligner could not confidently
-    # ALIGN, held for human adjudication (`ugh intent review`). Kept OUT of intent_rationale so an
-    # unconfirmed guess never leaks into recall()/for_op() (which don't filter by confirmed); a
-    # `--confirm` promotes one into intent_rationale, a `--reject` drops it. Local, never synced.
-    "intent_review": _Artifact(("local", "review.json"), committed=False),
     # local, gitignored agent-action feed (`ugh.intent.activity`): a bounded ring buffer of the
     # last N tool events (one row per Edit/Write) the `PostToolUse` hook appends -- the live "what
     # the agent is doing right now" signal `now_view` surfaces. Unlike turns it is NOT content-
@@ -373,152 +367,13 @@ def save_json_if_changed(repo: str | Path, name: str, body) -> bool:
     return True
 
 
-# -- committed claims directory (D8) -------------------------------------------------------------
-# Published oracle verdicts (`ugh oracle publish`) live one immutable file per (ideal_key, runner)
-# under `.sgt/claims/`, so sync's union is a trivial file-level G-Set: copy any file you don't have
-# (no field merge, no re-encode). Unlike the flat JSON tables above, the file *set* is the artifact,
-# so these get directory helpers rather than a registry slot -- but each file reuses the same schema
-# envelope (`_encode`/`_unwrap`) and byte format (`sort_keys=True`, trailing newline) as every other
-# committed single-file artifact. Distinct from the local, per-clone verdict cache, which never travels.
-_CLAIM_ART = _Artifact(("claims",), committed=True)
-
-
 def claims_dir(repo: str | Path) -> Path:
     return subdir(repo, "claims")
-
-
-def claim_rel(name: str) -> str:
-    """The repo-relative path (`.sgt/claims/<name>`) of one claim file -- the key a blob read uses."""
-    return "/".join((SGT_DIR, "claims", name))
-
-
-def save_claim(repo: str | Path, name: str, body) -> None:
-    """Write claim file `name` (a full basename like `<ideal_key>.<runner_fp>.json`) to the working
-    tree. Claim files are immutable once published; a re-publish by the same runner overwrites the
-    identical key, which is a no-op on content."""
-    _atomic_write_text(claims_dir(repo) / name, _encode(body, _CLAIM_ART))
-
-
-def load_claim(repo: str | Path, name: str, default=None):
-    """The logical body of claim file `name` from the working tree, or `default` if absent."""
-    p = claims_dir(repo) / name
-    if not p.is_file():
-        return default
-    return _unwrap(json.loads(p.read_text(encoding="utf-8")))
-
-
-def list_claim_files(repo: str | Path) -> list[str]:
-    """Sorted basenames of every claim file present in the working tree (empty if none)."""
-    d = claims_dir(repo)
-    if not d.is_dir():
-        return []
-    return sorted(p.name for p in d.iterdir() if p.is_file())
-
-
-def load_blob_claim(gb, sha: str, name: str, default=None):
-    """The logical body of claim file `name` as committed at `sha` (the historical-blob read path),
-    or `default` if absent -- the same version dispatch as a working-tree read."""
-    raw = gb.blob_bytes(sha, claim_rel(name))
-    if raw is None:
-        return default
-    return _unwrap(json.loads(raw.decode("utf-8")))
-
-
-# -- committed proposals directory (C10) ---------------------------------------------------------
-# A proposal (`ugh propose create`) is a committed, immutable review object -- base frontier + Δ
-# op-set + feature delta + claim link + provenance -- living one file per id under `.sgt/proposals/`,
-# content-addressed by base+Δ. Like claims (D8), the file *set* is the artifact, so sync's union is a
-# trivial file-level G-Set (`materialize._union_proposals`): copy any file you don't have, no field
-# merge. Each file reuses the same schema envelope and byte format as every other committed
-# single-file artifact, so a teammate's proposal arrives verbatim on `ugh sync`.
-_PROPOSAL_ART = _Artifact(("proposals",), committed=True)
 
 
 def proposals_dir(repo: str | Path) -> Path:
     return subdir(repo, "proposals")
 
 
-def proposal_rel(name: str) -> str:
-    """The repo-relative path (`.sgt/proposals/<name>`) of one proposal file -- a blob read's key."""
-    return "/".join((SGT_DIR, "proposals", name))
-
-
-def save_proposal(repo: str | Path, name: str, body) -> None:
-    """Write proposal file `name` (a full basename like `<proposal_id>.json`) to the working tree.
-    Proposals are immutable once created; a re-create with the same base+Δ overwrites the identical
-    content-addressed key, a no-op on content."""
-    _atomic_write_text(proposals_dir(repo) / name, _encode(body, _PROPOSAL_ART))
-
-
-def load_proposal(repo: str | Path, name: str, default=None):
-    """The logical body of proposal file `name` from the working tree, or `default` if absent."""
-    p = proposals_dir(repo) / name
-    if not p.is_file():
-        return default
-    return _unwrap(json.loads(p.read_text(encoding="utf-8")))
-
-
-def list_proposal_files(repo: str | Path) -> list[str]:
-    """Sorted basenames of every proposal file present in the working tree (empty if none)."""
-    d = proposals_dir(repo)
-    if not d.is_dir():
-        return []
-    return sorted(p.name for p in d.iterdir() if p.is_file())
-
-
-def load_blob_proposal(gb, sha: str, name: str, default=None):
-    """The logical body of proposal file `name` as committed at `sha` (the historical-blob read
-    path), or `default` if absent -- the same version dispatch as a working-tree read."""
-    raw = gb.blob_bytes(sha, proposal_rel(name))
-    if raw is None:
-        return default
-    return _unwrap(json.loads(raw.decode("utf-8")))
-
-
-# -- committed reviews directory (plan U31, S7) --------------------------------------------------
-# A review record (`ugh review-queue ack`) marks an op-set reviewed -- content-addressed by the
-# sorted op-id set, so acking the same set twice is a no-op and, like claims (D8) and proposals
-# (C10), the file *set* is the artifact: sync's union is a trivial file-level G-Set
-# (`materialize._union_reviews`), no field merge.
-_REVIEW_ART = _Artifact(("reviews",), committed=True)
-
-
 def reviews_dir(repo: str | Path) -> Path:
     return subdir(repo, "reviews")
-
-
-def review_rel(name: str) -> str:
-    """The repo-relative path (`.sgt/reviews/<name>`) of one review file -- a blob read's key."""
-    return "/".join((SGT_DIR, "reviews", name))
-
-
-def save_review(repo: str | Path, name: str, body) -> None:
-    """Write review file `name` (a full basename like `<review_id>.json`) to the working tree.
-    Review records are immutable once acked; a re-ack of the same op-set overwrites the identical
-    content-addressed key, a no-op on content."""
-    _atomic_write_text(reviews_dir(repo) / name, _encode(body, _REVIEW_ART))
-
-
-def load_review(repo: str | Path, name: str, default=None):
-    """The logical body of review file `name` from the working tree, or `default` if absent."""
-    p = reviews_dir(repo) / name
-    if not p.is_file():
-        return default
-    return _unwrap(json.loads(p.read_text(encoding="utf-8")))
-
-
-def list_review_files(repo: str | Path) -> list[str]:
-    """Sorted basenames of every review file present in the working tree (empty if none)."""
-    d = reviews_dir(repo)
-    if not d.is_dir():
-        return []
-    return sorted(p.name for p in d.iterdir() if p.is_file())
-
-
-def load_blob_review(gb, sha: str, name: str, default=None):
-    """The logical body of review file `name` as committed at `sha` (the historical-blob read
-    path), or `default` if absent -- the same version dispatch as a working-tree read."""
-    raw = gb.blob_bytes(sha, review_rel(name))
-    if raw is None:
-        return default
-    return _unwrap(json.loads(raw.decode("utf-8")))

@@ -31,9 +31,8 @@ that.
 uv run python -m scripts.check_docs_commands
 ```
 
-Add `--fix` to rewrite the commands that have a computable replacement, e.g., a verb that moved
-under `ugh advanced`. CI runs the checker on every push, so a rename that forgets the docs fails
-there rather than reaching a user.
+CI runs the checker on every push, so a rename that forgets the docs fails there rather than
+reaching a user.
 
 ## Where things live
 

@@ -53,8 +53,8 @@ def _cmd_init(args) -> int:
         print("✓ installed Claude Code prompt hook (.claude/settings.local.json) -- your prompts "
               "become local intent evidence; remove the UserPromptSubmit entry to opt out")
     if activity_hooked:
-        print("✓ installed Claude Code edit hook -- each Edit/Write becomes a live activity event "
-              "`ugh now` surfaces; remove the PostToolUse entry to opt out")
+        print("✓ installed Claude Code edit hook -- each Edit/Write becomes a live activity "
+              "event; remove the PostToolUse entry to opt out")
     if agent:
         print(f"✓ wired up your coding agent (.mcp.json, {agent['skills']} skills in "
               ".claude/skills/) and the VS Code extension (.vscode/settings.json)\n"
@@ -102,7 +102,7 @@ def _install_activity_hook(path: str) -> bool:
     """The live-activity companion to `_install_prompt_hook`: merge a `PostToolUse` hook into the
     repo's `.claude/settings.local.json` so every Edit/Write/MultiEdit Claude Code runs is appended
     to the local activity feed via `ugh intent activity` -- the "what the agent is doing right now"
-    signal `ugh now` surfaces. `matcher` is a pipe-separated regex over tool names (Claude Code's
+    signal. `matcher` is a pipe-separated regex over tool names (Claude Code's
     PostToolUse schema), the one structural difference from the prompt hook (which is not tool-
     scoped). Same absolute-path resolution, idempotency (substring check on `intent activity`), and
     best-effort contract; preserves any existing hooks. Returns whether the hook is (now) installed."""

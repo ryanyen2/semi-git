@@ -388,14 +388,6 @@ class Store:
             return None
         return _deserialize(path.read_bytes())
 
-    def all_hollow_ops(self) -> list[Op]:
-        if not self.hollow_dir.is_dir():
-            return []
-        return [
-            _deserialize((self.hollow_dir / name).read_bytes())
-            for name in sorted(p.name for p in self.hollow_dir.iterdir() if p.is_file())
-        ]
-
 
 @dataclass(frozen=True)
 class FsckReport:

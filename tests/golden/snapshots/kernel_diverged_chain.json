@@ -1,38 +1,4 @@
 {
-  "blame_view": {
-    "covered": true,
-    "features": {
-      "f-0dd3ed67952054062713ffa1105732fa27d5a7aaa665c2ad7287ca6f166f2271": {
-        "label": "slugify"
-      }
-    },
-    "file": "slugify.py",
-    "spans": [
-      {
-        "end_line": 2,
-        "feature_id": "f-0dd3ed67952054062713ffa1105732fa27d5a7aaa665c2ad7287ca6f166f2271",
-        "label": "slugify",
-        "sessions": [],
-        "start_line": 1,
-        "symbol": "slugify.py::slugify"
-      }
-    ]
-  },
-  "ideal_diff_view": {
-    "by_symbol": {
-      "slugify.py::slugify": {
-        "only_in_a": [
-          "bac2657449ecaa02f92cdf8bebd8b3810e12aff30bb79d34f0a471ce2dbc9cea"
-        ],
-        "only_in_b": [
-          "0dd3ed67952054062713ffa1105732fa27d5a7aaa665c2ad7287ca6f166f2271"
-        ]
-      }
-    },
-    "count": 2,
-    "ref_a": "main",
-    "ref_b": "release"
-  },
   "map_view": {
     "edges": [],
     "feature_count": 1,

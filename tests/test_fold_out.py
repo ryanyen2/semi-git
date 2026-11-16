@@ -1,5 +1,4 @@
-"""Materializing a fold onto disk: `ugh advanced fold --at <spec> --out <dir>` and the
-`revert/restore --emit --out <dir>` counterfactual.
+"""Materializing a fold onto disk: the `revert/restore --emit --out <dir>` counterfactual.
 
 `fold_view` has always been able to reconstruct `code(I)` at any frontier, but only as JSON text
 decoded `utf-8, "replace"` -- right for a preview pane, lossy for a file. These pin the two
@@ -11,7 +10,9 @@ properties that make the difference: the bytes are the fold's own bytes, and the
 import json
 import subprocess
 
-from ugh.api import FOLD_MANIFEST, blame_all_view, fold_out_view, fold_view, history_view
+from ugh.api import FOLD_MANIFEST, _parse_show_spec, fold_view
+from ugh.core.fold import code
+from ugh.core.store import Store
 from ugh.core.lens import current_ideal, get, ideal_for_ref
 from tests.laws import corpus
 
@@ -69,171 +70,6 @@ def _tree(out):
     }
 
 
-def test_fold_out_writes_the_folds_raw_bytes_not_the_json_views_text(tmp_path):
-    """The whole reason `--out` exists rather than a client writing `fold_view`'s strings: that
-    view decodes with `errors="replace"`, so a binary asset round-tripped through it comes back
-    corrupted. `linear_history` carries `logo.bin` (`\\x89PNG\\x00\\x01\\x02`), which is neither
-    valid UTF-8 nor NUL-free."""
-    repo = _mined(tmp_path, "linear_history")
-    out = tmp_path / "overlay"
-
-    summary = fold_out_view(repo, out, ref="HEAD")
-    assert summary["ok"]
-
-    original = (repo / "logo.bin").read_bytes()
-    assert b"\x00" in original and original == b"\x89PNG\x00\x01\x02"
-    assert (out / "logo.bin").read_bytes() == original
-
-    # The lossy path, spelled out, so this test fails loudly if `--out` is ever re-routed
-    # through `fold_view` for convenience.
-    via_json = fold_view(repo, ref="HEAD")["files"]["logo.bin"].encode("utf-8")
-    assert via_json != original
-
-
-def test_fold_out_at_a_ref_matches_a_real_git_checkout_byte_for_byte(tmp_path):
-    """`--at <sha>` materializes what `git checkout <sha>` would, for every path ugh mines.
-    Extracted with `git archive` rather than compared through ugh's own reader, so the fold is
-    checked against git's bytes and not against itself."""
-    import tarfile
-
-    repo = _mined(tmp_path, "linear_history")
-    sha = history_view(repo, full=True)["commits"][-1]["sha"]
-
-    checkout = tmp_path / "checkout"
-    checkout.mkdir()
-    archive = tmp_path / "at.tar"
-    archive.write_bytes(
-        subprocess.run(["git", "-C", str(repo), "archive", sha], check=True,
-                       capture_output=True).stdout
-    )
-    with tarfile.open(archive) as tf:
-        tf.extractall(checkout, filter="data")
-
-    out = tmp_path / "overlay"
-    fold_out_view(repo, out, ref=sha)
-
-    materialized = _tree(out)
-    # Non-vacuity, and specifically the path most likely to be silently dropped: a fold that
-    # stopped covering the binary would still pass the loop below.
-    assert "logo.bin" in materialized and len(materialized) > 1
-    for path, data in materialized.items():
-        assert data == (checkout / path).read_bytes(), path
-
-
-def test_fold_out_scrubbing_backward_deletes_a_file_that_left_the_fold(tmp_path):
-    """Deletion is part of materializing: `removed_paths` has `gone.py` at commit-index 0 and
-    not at 1, so scrubbing forward must remove it and scrubbing back must bring it back. A
-    playhead that only ever adds files shows a state that never existed."""
-    repo = _mined(tmp_path, "removed_paths")
-    out = tmp_path / "overlay"
-
-    first = fold_out_view(repo, out, at_commit_index=0)
-    assert (out / "gone.py").exists()
-    assert first["deleted"] == 0  # nothing to scrub on the first pass
-
-    second = fold_out_view(repo, out, at_commit_index=1)
-    assert not (out / "gone.py").exists()
-    assert second["deleted"] == 1
-
-    third = fold_out_view(repo, out, at_commit_index=0)
-    assert (out / "gone.py").exists()
-    assert third["deleted"] == 0
-
-
-def test_fold_out_never_deletes_anything_it_did_not_write(tmp_path):
-    """The overlay is long-lived and holds what the fold cannot: everything `.gitignore` matches
-    is `ignored` tier, so `node_modules` and a dev-server cache are correctly absent from
-    `code(I)` and must survive every scrub. The delete authority is the manifest, never the
-    directory listing."""
-    repo = _mined(tmp_path, "removed_paths")
-    out = tmp_path / "overlay"
-    fold_out_view(repo, out, at_commit_index=0)
-
-    (out / "node_modules" / "pkg").mkdir(parents=True)
-    (out / "node_modules" / "pkg" / "index.js").write_text("module.exports = 1\n")
-    (out / ".vite-cache").write_text("warm\n")
-    (out / "NOTES.txt").write_text("hand-written\n")
-
-    summary = fold_out_view(repo, out, at_commit_index=1)
-
-    assert summary["deleted"] == 1  # gone.py only
-    assert (out / "node_modules" / "pkg" / "index.js").read_text() == "module.exports = 1\n"
-    assert (out / ".vite-cache").read_text() == "warm\n"
-    assert (out / "NOTES.txt").read_text() == "hand-written\n"
-
-
-def test_fold_out_leaves_an_unchanged_file_untouched(tmp_path):
-    """A sync must not rewrite what already matches. The overlay is served by a running dev
-    server, and a dev server watches mtimes, not contents: Vite restarts the whole server when
-    `vite.config.ts` is touched and clears its TypeScript cache when `tsconfig.json` is, so a
-    rewrite-everything sync turns each scrub step into a server restart. Most files are identical
-    between two adjacent frontiers, and touching them is what the render panel cannot afford."""
-    repo = _mined(tmp_path, "removed_paths")
-    out = tmp_path / "overlay"
-
-    fold_out_view(repo, out, at_commit_index=0)
-    before = {p: (out / p).stat().st_mtime_ns for p in _tree(out)}
-
-    fold_out_view(repo, out, at_commit_index=0)
-
-    assert {p: (out / p).stat().st_mtime_ns for p in _tree(out)} == before
-
-
-def test_fold_out_still_writes_a_file_whose_content_changed(tmp_path):
-    """The other half of the same rule. Skipping unchanged bytes must not skip changed ones, or
-    the panel serves a stale frontier and reports a fresh one."""
-    repo = _mined(tmp_path, "removed_paths")
-    out = tmp_path / "overlay"
-
-    fold_out_view(repo, out, at_commit_index=1)
-    victim = sorted(_tree(out))[0]
-    (out / victim).write_text("clobbered\n")
-
-    fold_out_view(repo, out, at_commit_index=1)
-
-    assert (out / victim).read_text() != "clobbered\n"
-
-
-def test_fold_out_into_a_populated_directory_with_no_manifest_deletes_nothing(tmp_path):
-    """Pointed at a directory it has never written to, `--out` inventories rather than scrubs.
-    Without this the first scrub into someone's existing project directory is a data-loss bug,
-    and there is no manifest yet to tell ugh's files from theirs."""
-    repo = _mined(tmp_path, "removed_paths")
-    out = tmp_path / "existing"
-    (out / "node_modules").mkdir(parents=True)
-    (out / "node_modules" / "a.js").write_text("x\n")
-    (out / "stray.txt").write_text("y\n")
-
-    summary = fold_out_view(repo, out, at_commit_index=1)
-
-    assert summary["deleted"] == 0
-    assert (out / "stray.txt").exists() and (out / "node_modules" / "a.js").exists()
-    # ...and it *is* inventoried now, so the next scrub can clean up after itself.
-    assert set(json.loads((out / FOLD_MANIFEST).read_text())["paths"]) == set(_tree(out)) - {
-        "node_modules/a.js", "stray.txt"
-    }
-
-
-def test_fold_at_now_matches_the_working_tree_after_an_applied_revert(tmp_path):
-    """The contract `--at now` exists for: after a real, committed ideal edit, the fold agrees with
-    the files on disk.
-
-    `--at HEAD` does not, and cannot. `lens.ideal_for_ref` selects ops whose provenance intersects
-    the ref's commit ancestry -- documented behaviour that `sync` and ref-to-ref `diff` depend on --
-    but `apply` mints a revert's forward-subtraction ops with **empty provenance**, so no ref can
-    ever select them, while the ops they compensate for still carry provenance inside HEAD and stay
-    selected. The ref fold therefore returns the *pre-revert* ideal. On bikecount that was 111 ops
-    against the current ideal's 113, disagreeing with the working tree on 7 of 16 files, and it is
-    what the workbench's code(I) panel was showing after every revert."""
-    repo = _mined(tmp_path, "linear_history")
-    target = _forward_subtracting_target(repo)
-    assert _in(repo, ["revert", target, "--json"]) == 0
-
-    out = tmp_path / "now"
-    fold_out_view(repo, out, current=True)
-    assert _tree(out) == _worktree_managed(repo)
-
-
 def test_fold_at_now_resolves_the_current_ideal_never_a_ref(tmp_path):
     """`now` reads `lens.current_ideal` -- the table -- and consults no ref at all.
 
@@ -252,19 +88,12 @@ def test_fold_at_now_resolves_the_current_ideal_never_a_ref(tmp_path):
     target = _forward_subtracting_target(repo)
     assert _in(repo, ["revert", target, "--json"]) == 0
 
-    assert fold_view(repo, current=True)["op_count"] == len(current_ideal(repo).op_ids)
-
-    # Raw bytes via `fold_out_view`, never `fold_view`'s strings: those are decoded
-    # `utf-8, "replace"`, so `linear_history`'s `logo.bin` would not survive the round trip.
-    now_dir = tmp_path / "now"
-    fold_out_view(repo, now_dir, current=True)
-    assert _tree(now_dir) == _worktree_managed(repo)
+    now = fold_view(repo, current=True)
+    assert now["op_count"] == len(current_ideal(repo).op_ids)
 
     # ...and the trailer fix means HEAD now agrees rather than lagging. Asserted so that a
     # regression in `ideal_for_ref` surfaces here too, on the frontier the extension defaults to.
-    head_dir = tmp_path / "head"
-    fold_out_view(repo, head_dir, ref="HEAD")
-    assert _tree(head_dir) == _tree(now_dir)
+    assert fold_view(repo, ref="HEAD")["files"] == now["files"]
 
 
 def test_ideal_for_ref_reads_trailers_so_save_authored_history_is_not_lost(tmp_path):
@@ -299,8 +128,8 @@ def test_ideal_for_ref_reads_trailers_so_save_authored_history_is_not_lost(tmp_p
 def test_an_unresolvable_ref_stays_a_clean_refusal(tmp_path):
     """`commit_shas` answers `[]` for a ref that does not resolve, so the provenance rung has always
     degraded to an empty ideal rather than raising. Reading trailers introduced a way to break that:
-    `commit_message` raises `GitError` where `commit_shas` returns empty, which turned
-    `ugh advanced fold --at no-such-branch` into a traceback instead of a refusal. Caught in review
+    `commit_message` raises `GitError` where `commit_shas` returns empty, which turned a fold at
+    `no-such-branch` into a traceback instead of a refusal. Caught in review
     of my own change, pinned here so the trailer rung cannot re-tighten what the fallback keeps
     loose."""
     repo = _mined(tmp_path, "linear_history")
@@ -313,56 +142,13 @@ def test_an_unresolvable_ref_stays_a_clean_refusal(tmp_path):
 def test_at_now_parses_to_the_current_ideal_and_never_to_a_ref(tmp_path):
     """The grammar rung itself. `now` shadows a branch of that name, exactly as the all-digit rung
     already shadows a branch named `5`; `refs/heads/now` is the escape hatch."""
-    from ugh.cli.inspect import _parse_at
-
-    assert _parse_at("now") == {"current": True}
-    assert _parse_at("refs/heads/now") == {"ref": "refs/heads/now"}
-    assert _parse_at("5") == {"at_commit_index": 5}
-    assert _parse_at("main") == {"ref": "main"}
+    assert _parse_show_spec("now") == {"current": True}
+    assert _parse_show_spec("refs/heads/now") == {"ref": "refs/heads/now"}
+    assert _parse_show_spec("5") == {"at_commit_index": 5}
+    assert _parse_show_spec("main") == {"ref": "main"}
 
     repo = _mined(tmp_path, "linear_history")
-    assert _emit(repo, ["advanced", "fold", "--at", "now", "--json"])["op_count"] == len(
-        current_ideal(repo).op_ids
-    )
-
-
-def test_fold_out_prunes_a_directory_its_own_deletion_emptied_but_keeps_an_occupied_one(tmp_path):
-    """An emptied directory is swept, because a stale empty `pages/` in the overlay is a
-    directory that does not exist in the state being rendered. One that still holds anything --
-    including something ugh did not write -- stays."""
-    repo = _mined(tmp_path, "removed_paths")
-    out = tmp_path / "overlay"
-
-    # A nested layout the fold owns entirely, then one that also holds a foreign file.
-    fold_out_view(repo, out, at_commit_index=0)
-    manifest = out / FOLD_MANIFEST
-    (out / "nested").mkdir()
-    (out / "nested" / "gone.py").write_bytes((out / "gone.py").read_bytes())
-    (out / "shared").mkdir()
-    (out / "shared" / "gone.py").write_bytes((out / "gone.py").read_bytes())
-    (out / "shared" / "keep.txt").write_text("not ugh's\n")
-    manifest.write_text(json.dumps(
-        {"paths": sorted(set(json.loads(manifest.read_text())["paths"])
-                         | {"nested/gone.py", "shared/gone.py"})}
-    ))
-
-    fold_out_view(repo, out, at_commit_index=1)
-
-    assert not (out / "nested").exists()  # emptied by its own deletion -> swept
-    assert (out / "shared" / "keep.txt").read_text() == "not ugh's\n"  # occupied -> kept
-    assert not (out / "shared" / "gone.py").exists()
-
-
-def test_fold_out_reports_the_same_refusals_as_fold_view(tmp_path):
-    """`--out` shares `_fold_ideal`, so a bad spec is refused identically and nothing is written
-    -- an invalid frontier must not leave a half-synced overlay behind."""
-    repo = _mined(tmp_path, "linear_history")
-    out = tmp_path / "overlay"
-    non_root = next(o["id"] for o in history_view(repo, full=True)["ops"] if o["commit_index"] > 0)
-
-    assert fold_out_view(repo, out, op_ids=[non_root]).get("forked") is True
-    assert "error" in fold_out_view(repo, out)
-    assert not out.exists()
+    assert fold_view(repo, **_parse_show_spec("now"))["op_count"] == len(current_ideal(repo).op_ids)
 
 
 def test_emit_out_materializes_the_state_result_op_ids_names(tmp_path):
@@ -387,10 +173,7 @@ def test_emit_out_materializes_the_state_result_op_ids_names(tmp_path):
     assert view["out"]["op_count"] == len(view["result_op_ids"])
 
     assert _in(applied, ["revert", target, "--json"]) == 0
-    actual = tmp_path / "actual"
-    fold_out_view(applied, actual, op_ids=sorted(current_ideal(applied).op_ids))
-
-    assert _tree(out) == _tree(actual)
+    assert _tree(out) == code(current_ideal(applied), Store(applied).all_ops())
 
 
 def test_restore_emit_out_round_trips_the_same_way(tmp_path):
@@ -412,10 +195,7 @@ def test_restore_emit_out_round_trips_the_same_way(tmp_path):
     assert view["out"]["op_count"] == len(view["result_op_ids"])
 
     assert _in(applied, ["restore", target, "--json"]) == 0
-    actual = tmp_path / "actual"
-    fold_out_view(applied, actual, op_ids=sorted(current_ideal(applied).op_ids))
-
-    assert _tree(out) == _tree(actual)
+    assert _tree(out) == code(current_ideal(applied), Store(applied).all_ops())
 
 
 def _worktree_managed(repo):
@@ -603,20 +383,6 @@ def test_emit_out_writes_nothing_for_a_refused_preview(tmp_path):
     assert not out.exists()
 
 
-def test_fold_out_cli_reports_what_it_wrote_and_removed(tmp_path):
-    """The CLI surface: `--out` composes with the existing `--at` grammar and reports the sync,
-    not the file listing the bare form prints."""
-    repo = _mined(tmp_path, "removed_paths")
-    out = tmp_path / "overlay"
-
-    first = _emit(repo, ["advanced", "fold", "--at", "0", "--out", str(out), "--json"])
-    assert first == {"ok": True, "path": str(out), "written": len(_tree(out)),
-                     "deleted": 0, "op_count": first["op_count"]}
-
-    second = _emit(repo, ["advanced", "fold", "--at", "1", "--out", str(out), "--json"])
-    assert second["deleted"] == 1 and not (out / "gone.py").exists()
-
-
 def test_result_op_ids_is_not_the_current_ideal_minus_removed(tmp_path):
     """The shortcut a client reaches for first, pinned as wrong. A safe revert rewrites shared
     symbols at their tip with new ops (`added`) rather than dropping the target's ops, so
@@ -642,38 +408,3 @@ def test_fold_refuses_result_op_ids_because_the_new_ops_are_not_stored_yet(tmp_p
 
     assert view["added"]
     assert fold_view(repo, op_ids=view["result_op_ids"]).get("forked") is True
-
-
-def test_blame_all_matches_per_file_blame_and_folds_once(tmp_path):
-    """`blame --all` is the repo-wide provenance map the render panel joins DOM elements against.
-    Its spans must be the same objects `blame_view` returns per file -- one parser, either
-    surface -- and its `features` map the union of theirs."""
-    from ugh.api import blame_view
-
-    repo = _mined(tmp_path, "mixed_coverage")
-    from ugh.lens import map as lensmap
-
-    lensmap.build_map(repo)  # blame attributes through the feature tree's op_leaf
-
-    everything = blame_all_view(repo)
-    assert everything["files"]
-
-    merged = {}
-    for file, entry in everything["files"].items():
-        per_file = blame_view(repo, file)
-        assert per_file["spans"] == entry["spans"], file
-        merged.update(per_file["features"])
-    assert merged == everything["features"]
-
-
-def test_blame_all_covers_every_file_the_current_fold_contains(tmp_path):
-    """One pass over the whole ideal, not a walk of the working tree: a client asking for the
-    provenance map gets an entry per covered file, including the ones with no attributable span
-    yet, so a missing key means "not covered" rather than "not asked about"."""
-    from ugh.core.fold import code
-    from ugh.core.store import Store
-
-    repo = _mined(tmp_path, "linear_history")
-    materialized = code(current_ideal(repo), Store(repo).all_ops())
-
-    assert set(blame_all_view(repo)["files"]) == set(materialized)

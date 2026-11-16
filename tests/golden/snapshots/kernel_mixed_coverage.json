@@ -1,23 +1,4 @@
 {
-  "blame_view": {
-    "covered": true,
-    "features": {
-      "f-0027224b0d5f2285a94b19d80a881bfb7b725f1d02ce89ff1d08b3b7c84f9671": {
-        "label": "compute helper"
-      }
-    },
-    "file": "pkg.py",
-    "spans": [
-      {
-        "end_line": 2,
-        "feature_id": "f-0027224b0d5f2285a94b19d80a881bfb7b725f1d02ce89ff1d08b3b7c84f9671",
-        "label": "compute helper",
-        "sessions": [],
-        "start_line": 1,
-        "symbol": "pkg.py::compute"
-      }
-    ]
-  },
   "map_view": {
     "edges": [],
     "feature_count": 1,

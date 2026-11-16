@@ -7,15 +7,15 @@ semantic diffs. Fixtures are deterministic git repos (tests/laws/corpus.py, pinn
 
 import json
 
+from ugh import state
 from ugh.api import (
-    compose_view, drift_view, fold_view, history_view, ideal_diff_view, map_view, now_view,
-    oplog_view, plan_view, resolve_selection, save_preview_view, state_view, status_view,
-    trust_view,
+    drift_view, fold_view, history_view, map_view, now_view, oplog_view, plan_view,
+    save_preview_view, state_view, status_view,
 )
+from ugh.core import lens
 from ugh.core.lens import get
 from ugh.core.op import make_op
 from ugh.core.store import Store
-from ugh.lens import authored
 from ugh.loop import match as match_mod
 from ugh.loop import plan as plan_mod
 from ugh.store.gitbind import init_store
@@ -44,63 +44,6 @@ def test_state_view_coverage_fraction_on_mixed_fixture(tmp_path):
     assert "config.yaml" in v["frontier"]
 
 
-def test_ideal_diff_view_lists_symmetric_difference_grouped_by_symbol(tmp_path):
-    """`ideal_diff_view` between two diverged branch ideals lists exactly the symmetric-difference
-    ops, grouped by the symbol whose chain forked, labeled by side."""
-    repo = corpus.CORPUS["diverged_chain"].build(tmp_path / "repo")
-    corpus.checkout(repo, "release")
-    get(repo)
-    corpus.checkout(repo, "main")
-    get(repo)
-
-    v = ideal_diff_view(repo, "main", "release")
-    assert v["ref_a"] == "main" and v["ref_b"] == "release"
-    assert v["count"] == 2  # each branch's own tweak, and nothing else
-    assert list(v["by_symbol"]) == ["slugify.py::slugify"]  # only the forked chain differs
-    sides = v["by_symbol"]["slugify.py::slugify"]
-    assert len(sides["only_in_a"]) == 1 and len(sides["only_in_b"]) == 1
-    assert sides["only_in_a"] != sides["only_in_b"]  # a genuine fork, two distinct op ids
-
-
-def test_resolve_selection_view_projects_op_set_label_and_counts(tmp_path):
-    """`resolve_selection` is the thin projection over `select.resolve`: it exposes the resolved
-    direct/closure op sets, the closure counts, and the display label for any spec form."""
-    from ugh.store.gitbind import init_store
-
-    gb, _ = init_store(tmp_path)
-    (tmp_path / "a.py").write_text("def base():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("add a.py")
-    get(tmp_path)
-    base_op = next(op for op in Store(tmp_path).all_ops() if "a.py::base" in op.footprint)
-
-    v = resolve_selection(tmp_path, "a.py::base")
-    assert v["ok"] is True
-    assert v["label"] == "a.py::base"
-    assert v["direct_ops"] == [base_op.id]
-    assert v["closure"] == [base_op.id]
-    assert v["direct_op_count"] == 1
-    assert v["closure_op_count"] == 1
-    assert v["candidates"] == []
-
-
-def test_resolve_selection_view_reports_ambiguous_candidates(tmp_path):
-    """An ambiguous NL phrase projects `ok=False` with the ranked candidates, never raising."""
-    from ugh.store.gitbind import init_store
-
-    gb, _ = init_store(tmp_path)
-    (tmp_path / "a.py").write_text("def base():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("add a.py")
-    get(tmp_path)
-    fa = authored.create(["a.py::base"], "payment alpha")
-    fb = authored.create(["a.py::base"], "payment gamma")
-    authored.save_authored(tmp_path, {fa.id: fa, fb.id: fb})
-
-    v = resolve_selection(tmp_path, "payment")
-    assert v["ok"] is False
-    assert v["message"]
-    assert {c["label"] for c in v["candidates"]} >= {"payment alpha", "payment gamma"}
-
-
 def test_oplog_view_is_sorted_and_carries_op_fields(tmp_path):
     """The op DAG is emitted in a deterministic (id-sorted) order with each op's kind, footprint,
     provenance, structured attribution (U22/D7), and intent -- no set-iteration leakage."""
@@ -125,10 +68,10 @@ def test_kernel_views_are_pure(tmp_path):
     assert oplog_view(repo)["count"] == op_count
 
 
-def test_log_and_state_cli_json_match_views_byte_for_byte(tmp_path, capsys, monkeypatch):
+def test_log_cli_json_matches_views_byte_for_byte(tmp_path, capsys, monkeypatch):
     """R21: the CLI `--json` surface is byte-identical to the api views -- one projection, no drift.
-    `ugh log` defaults to the grid (`grid_view`, KTD9); the raw op DAG moved to `ugh log --ops`
-    (`oplog_view`); `state` is re-homed under the `advanced` grouping (KTD2)."""
+    `ugh log` defaults to the grid (`grid_view`, KTD9); the raw op DAG is `ugh log --ops`
+    (`oplog_view`)."""
     from ugh.api import grid_view
     from ugh.cli import main
     from ugh.lens.map import build_map
@@ -138,29 +81,12 @@ def test_log_and_state_cli_json_match_views_byte_for_byte(tmp_path, capsys, monk
     expected = {
         ("log",): json.dumps(grid_view(repo), indent=2),
         ("log", "--ops"): json.dumps(oplog_view(repo), indent=2),
-        ("advanced", "state"): json.dumps(state_view(repo), indent=2),
     }
 
     monkeypatch.chdir(repo)
     for argv, want in expected.items():
         assert main([*argv, "--json"]) == 0
         assert capsys.readouterr().out.rstrip("\n") == want
-
-
-def test_diff_cli_json_matches_view_byte_for_byte(tmp_path, capsys, monkeypatch):
-    """R21: `ugh diff --json <a> <b>` output is byte-identical to `ugh.api.ideal_diff_view`."""
-    from ugh.cli import main
-
-    repo = corpus.CORPUS["diverged_chain"].build(tmp_path / "repo")
-    corpus.checkout(repo, "release")
-    get(repo)
-    corpus.checkout(repo, "main")
-    get(repo)
-    expected = json.dumps(ideal_diff_view(repo, "main", "release"), indent=2)
-
-    monkeypatch.chdir(repo)
-    assert main(["diff", "--json", "main", "release"]) == 0
-    assert capsys.readouterr().out.rstrip("\n") == expected
 
 
 def test_history_view_orders_commits_chronologically_and_places_every_op_on_the_axis(tmp_path):
@@ -650,38 +576,6 @@ def test_grid_view_feature_roster_labels_match_the_map(tmp_path):
         assert roster["label"] == map_labels[fid]
 
 
-def test_compose_view_bundles_every_sub_view_with_no_reshaping(tmp_path):
-    """`compose_view` is purely additive glue: each key is exactly what calling the underlying
-    view function directly would return, plus the current ideal's oracle verdict and an
-    open-proposal list -- a workbench refresh in one call instead of ~9 shell-outs."""
-    from ugh.api import (
-        drift_view as _drift, forks_view, intent_view, rewrite_view, sessions_view, status_view,
-    )
-    from ugh.core.lens import current_ideal
-    from ugh.core.oracle import verdict_for
-
-    repo = _mined(tmp_path, "mixed_coverage")
-    v = compose_view(repo)
-
-    assert set(v) == {
-        "map", "history", "status", "forks", "plan", "drift", "sessions", "trust", "intent",
-        "rewrite", "save_preview", "oracle_verdict", "proposals",
-    }
-    assert v["map"] == map_view(repo)
-    assert v["history"] == history_view(repo)
-    assert v["status"] == status_view(repo)
-    assert v["forks"] == forks_view(repo)
-    assert v["plan"] == plan_view(repo)
-    assert v["drift"] == _drift(repo)
-    assert v["sessions"] == sessions_view(repo)
-    assert v["trust"] == trust_view(repo)
-    assert v["intent"] == intent_view(repo)
-    assert v["rewrite"] == rewrite_view(repo)
-    assert v["save_preview"] == save_preview_view(repo)
-    assert v["oracle_verdict"] == verdict_for(repo, current_ideal(repo))
-    assert v["proposals"] == []  # nothing proposed in this fixture
-
-
 def test_save_preview_view_splits_affected_features_from_new_work(tmp_path):
     """The in-situ save preview answers "which features gain ops if I save now". A clean tree has
     nothing pending; uncommitted work that reworks an existing feature's symbol lands in `affected`
@@ -855,12 +749,22 @@ def test_plan_view_reports_matched_step_spans_and_drift_view_reports_the_unpredi
     assert len(bar_entries) == 1
 
 
+def _seed_repo(root):
+    gb, _ = init_store(root)
+    state.save_json(root, "oracle_config", {"tiers": [{"name": "gate", "command": "exit 0"}]})
+    (root / "main.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("init")
+    ideal = get(root)
+    put_sha = lens.put(root, ideal, message="ugh: init")
+    lens.record_ideal(root, ideal, put_sha)
+    return gb
+
+
 def test_plan_view_places_an_unplaced_step_on_a_lane_by_its_footprint_or_its_title(tmp_path, monkeypatch):
     """With no LLM the decomposer leaves every step unplaced, so a pending step had no lane to draw
     its ghost on. `plan_view(full=True)` places it at read time: by its footprint when it has one,
     else by a `file::Symbol` its title names, through the main map's membership. A step naming
     nothing the map knows stays unplaced, and the stored record is never rewritten."""
-    from tests.core.test_session import _seed_repo
     from ugh.lens.map import build_map
 
     def no_client(*args, **kwargs):
@@ -894,29 +798,6 @@ def test_map_view_reports_no_sessions_for_a_plain_mined_tree(tmp_path):
     assert all(n["sessions"] == [] for n in v["nodes"])
 
 
-def test_map_view_rolls_up_a_landed_session_onto_its_feature_node(tmp_path):
-    """A session's landed op's `Attribution(session=...)` rolls up through `map_view`'s node tree
-    (plan U31, S7) exactly like `op_count` does -- the leaf feature node it lands under names the
-    session."""
-    from pathlib import Path
-
-    from ugh.core import session as session_mod
-    from ugh.lens.map import build_map
-    from tests.core.test_session import _seed_repo, _write_and_commit
-
-    _seed_repo(tmp_path)
-    session = session_mod.start(tmp_path, "s1")
-    _write_and_commit(Path(session.scratch), "b.py", "def bar():\n    return 5\n")
-    session_mod.land(tmp_path, "s1")
-    get(tmp_path)
-    build_map(tmp_path)
-
-    v = map_view(tmp_path)
-    named = [n for n in v["nodes"] if n["sessions"]]
-    assert named, "at least one node should roll up the landed session"
-    assert all(n["sessions"] == ["s1"] for n in named)
-
-
 def test_sync_status_reports_complete_from_both_views_on_a_fresh_fully_synced_fixture(tmp_path):
     """U6: a freshly-mined, fully-synced fixture reports `sync_status.complete == True` from both
     `map_view` and `status_view`, per the plan's own scenario (1)."""
@@ -942,86 +823,6 @@ def test_sync_status_reports_incomplete_from_both_views_and_neither_view_mines(t
     assert map_view(repo)["sync_status"] == behind
     assert status_view(repo)["sync_status"] == behind
     assert len(Store(repo).all_ops()) == op_count_before
-
-
-def test_trust_view_is_empty_with_nothing_attributed_or_drifting(tmp_path):
-    repo = _mined(tmp_path, "mixed_coverage")
-    assert trust_view(repo) == {"groups": [], "total_ops": 0}
-
-
-def test_trust_view_groups_a_landed_sessions_ops_under_its_session_name(tmp_path):
-    from pathlib import Path
-
-    from ugh.core import session as session_mod
-    from tests.core.test_session import _seed_repo, _write_and_commit
-
-    _seed_repo(tmp_path)
-    session = session_mod.start(tmp_path, "s1")
-    _write_and_commit(Path(session.scratch), "b.py", "def bar():\n    return 5\n")
-    session_mod.land(tmp_path, "s1")
-    get(tmp_path)
-
-    v = trust_view(tmp_path, full=True)
-    assert [g["provenance"] for g in v["groups"]] == ["s1"]
-    group = v["groups"][0]
-    assert group["op_ids"]
-    assert all(not op["drift"] for op in group["ops"])
-    assert v["total_ops"] == len(group["op_ids"])
-
-
-def test_trust_view_dequeues_ops_covered_by_a_review_record(tmp_path):
-    from pathlib import Path
-
-    from ugh.core import review, session as session_mod
-    from tests.core.test_session import _seed_repo, _write_and_commit
-
-    _seed_repo(tmp_path)
-    session = session_mod.start(tmp_path, "s1")
-    _write_and_commit(Path(session.scratch), "b.py", "def bar():\n    return 5\n")
-    session_mod.land(tmp_path, "s1")
-    get(tmp_path)
-
-    op_ids = trust_view(tmp_path, full=True)["groups"][0]["op_ids"]
-    review.ack(tmp_path, op_ids, scope="session:s1")
-
-    assert trust_view(tmp_path) == {"groups": [], "total_ops": 0}
-
-
-def test_trust_view_includes_an_unattributed_drift_op_under_the_drift_key(tmp_path):
-    """A mined op with no session/agent attribution but flagged drift by an active plan session
-    still shows up in the trust queue -- grouped under the `"drift"` key -- until reviewed or
-    retagged (the plan's second test scenario)."""
-    repo = tmp_path / "repo"
-    gb, _ = init_store(repo)
-    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("add foo")
-    get(repo)
-    store = Store(repo)
-    baseline = sorted(op.id for op in store.all_ops())
-
-    footprint = {"a.py::foo": (None, plan_mod._PENDING), "__plan__::s1::step0": (None, plan_mod._PENDING)}
-    hollow = make_op(footprint, {}, kind="planned", off_chain=True, intent="touch foo")
-    store.add_hollow(hollow)
-    table = plan_mod._load_sessions(repo)
-    table["s1"] = {
-        "plan_text": "1. touch foo\n", "created_ts": 0.0, "last_activity_ts": 0.0, "status": "active",
-        "baseline_op_ids": baseline,
-        "steps": [{
-            "hollow_id": hollow.id, "title": "touch foo", "predicted_footprint": ["a.py::foo"],
-            "predicted_feature": None, "rationale": "", "status": "pending", "matched_op_ids": [],
-        }],
-    }
-    plan_mod._save_sessions(repo, table)
-
-    (repo / "a.py").write_text("def foo():\n    return 2\n\n\ndef bar():\n    return 3\n", encoding="utf-8")
-    gb.commit_all("add bar")
-    get(repo)
-
-    v = trust_view(repo, full=True)
-    assert [g["provenance"] for g in v["groups"]] == ["drift"]
-    drift_ops = v["groups"][0]["ops"]
-    assert drift_ops and all(op["drift"] for op in drift_ops)
-    assert any(op["footprint"] == ["a.py::bar"] for op in drift_ops)
 
 
 # -- compact-by-default view contracts (plan: optimize the ugh agent surface for context +
@@ -1245,7 +1046,7 @@ def test_now_view_clean_repo_reports_clean_next_action(tmp_path):
     assert v["in_flight"] == {"affected": [], "new_work_count": 0, "total_op_count": 0}
     assert v["in_progress"] == []
     assert v["working_on"] is None  # nothing asked for, so nothing claimed
-    assert v["needs_you"] == {"forks": [], "reviews": [], "stalled_plans": [],
+    assert v["needs_you"] == {"forks": [], "stalled_plans": [],
                               "paused_operation": None, "history_rewritten": False}
     assert v["next_action"]["kind"] == "clean"
     assert v["next_action"]["command"] is None
@@ -1393,41 +1194,6 @@ def test_now_view_context_carries_recent_activity_newest_first(tmp_path):
     assert [e["file"] for e in feed] == ["b.py", "a.py"]
 
 
-def test_trust_view_default_reports_op_count_not_op_detail(tmp_path):
-    from pathlib import Path
-
-    from ugh.core import session as session_mod
-    from tests.core.test_session import _seed_repo, _write_and_commit
-
-    _seed_repo(tmp_path)
-    session = session_mod.start(tmp_path, "s1")
-    _write_and_commit(Path(session.scratch), "b.py", "def bar():\n    return 5\n")
-    session_mod.land(tmp_path, "s1")
-    get(tmp_path)
-
-    compact = trust_view(tmp_path)
-    full = trust_view(tmp_path, full=True)
-    group = compact["groups"][0]
-    assert "op_ids" not in group and "ops" not in group
-    assert group["op_count"] == len(full["groups"][0]["op_ids"]) > 0
-    assert compact["total_ops"] == full["total_ops"]
-
-
-def test_compose_view_full_threads_into_children(tmp_path):
-    from ugh.api import status_view
-
-    repo = _mined(tmp_path, "mixed_coverage")
-    v = compose_view(repo, full=True)
-
-    assert v["history"] == history_view(repo, full=True)
-    assert v["plan"] == plan_view(repo, full=True)
-    assert v["drift"] == drift_view(repo, full=True)
-    assert v["trust"] == trust_view(repo, full=True)
-    # unaffected children are unchanged regardless of `full`
-    assert v["map"] == map_view(repo)
-    assert v["status"] == status_view(repo)
-
-
 # -- U3: per-dependent revert frontier (R4) -----------------------------------------------------
 
 def _chain_repo(tmp_path):
@@ -1446,126 +1212,6 @@ def _chain_repo(tmp_path):
     gb.commit_all("deep")
     get(repo)
     return repo
-
-
-def test_verb_preview_frontier_classifies_blast_carry_and_foundation(tmp_path):
-    from ugh.api import verb_preview_view
-
-    repo = _chain_repo(tmp_path)
-    ops = Store(repo).all_ops()
-    by_sym = lambda s: next(o for o in ops if s in o.footprint)
-    helper_op, user_op = by_sym("a.py::helper"), by_sym("b.py::user")
-    caller_op, deep_op = by_sym("c.py::caller"), by_sym("d.py::deep")
-
-    v = verb_preview_view(repo, "revert", user_op.id)
-    rows = {r["op_id"]: r for r in v["frontier"]}
-    assert rows[caller_op.id] == {"op_id": caller_op.id, "bucket": "blast", "toggleable": True}
-    assert rows[deep_op.id] == {"op_id": deep_op.id, "bucket": "carry", "toggleable": True}
-    assert rows[helper_op.id] == {"op_id": helper_op.id, "bucket": "foundation", "toggleable": False}
-    assert user_op.id not in rows  # the revert target itself is not a frontier row
-
-
-def test_blame_view_on_an_uncovered_working_file_is_not_an_error(tmp_path):
-    """A working-tree file ugh has no op for (a doc like JOURNAL.md, an untracked config) has no
-    semantic blame -- a valid empty answer, not a failure. `blame_view` must not stamp an `error`
-    key for it: that key flips the CLI `--json` exit code to 1, which the editor's per-file blame
-    surfaces as a repeated "Command failed" for every non-code tab the user focuses. It reports
-    `covered: False` with empty spans instead. A genuinely absent path still gets an `error`."""
-    from ugh.api import blame_view
-
-    repo = _mined(tmp_path, "mixed_coverage")
-    (repo / "JOURNAL.md").write_text("# notes\n")  # exists on disk, but no op produces it
-
-    v = blame_view(repo, "JOURNAL.md")
-    assert v["covered"] is False
-    assert v["spans"] == [] and v["features"] == {}
-    assert "error" not in v  # not a failure -> `_emit_json` exits 0
-
-    missing = blame_view(repo, "does-not-exist.py")
-    assert missing.get("error")  # genuinely absent path -> a real error
-
-
-def test_verb_preview_frontier_populates_for_a_symbol_ref_not_only_an_op_id(tmp_path):
-    """The frontier must resolve a `file::symbol` (or op-id prefix) ref to its op the same way the
-    plan does -- otherwise a symbol-targeted revert (the editor/blame entry point) gets an empty
-    frontier and silently degrades to a plain revert. Regression: `_frontier_rows` used the raw
-    unresolved `preview.target`."""
-    from ugh.api import verb_preview_view
-
-    repo = _chain_repo(tmp_path)
-    ops = Store(repo).all_ops()
-    by_sym = lambda s: next(o for o in ops if s in o.footprint)
-    caller_op, deep_op = by_sym("c.py::caller"), by_sym("d.py::deep")
-
-    v = verb_preview_view(repo, "revert", "b.py::user")  # symbol ref, not an op-id
-    rows = {r["op_id"]: r for r in v["frontier"]}
-    assert rows[caller_op.id]["bucket"] == "blast"
-    assert rows[deep_op.id]["bucket"] == "carry"
-    # identical to the op-id-targeted frontier for the same symbol
-    assert rows == {r["op_id"]: r for r in verb_preview_view(repo, "revert", by_sym("b.py::user").id)["frontier"]}
-
-
-def test_verb_preview_frontier_matches_what_revert_keep_dependents_applies(tmp_path):
-    """The contract the TUI checklist (U9) and CLI `--keep` rely on: the projection's blast/carry
-    buckets and toggleability line up with the hollows drafted and symbols carried by apply."""
-    from ugh.api import verb_preview_view
-    from ugh.core import rewrite
-
-    repo = _chain_repo(tmp_path)
-    ops = Store(repo).all_ops()
-    by_id = {o.id: o for o in ops}
-    user_op = next(o for o in ops if "b.py::user" in o.footprint)
-
-    rows = verb_preview_view(repo, "revert", user_op.id)["frontier"]
-    blast = {r["op_id"] for r in rows if r["bucket"] == "blast"}
-    carry = {r["op_id"] for r in rows if r["bucket"] == "carry"}
-    foundation = {r["op_id"] for r in rows if r["bucket"] == "foundation"}
-
-    draft = rewrite.revert_keep_dependents(repo, user_op.id)  # keep all
-    hollow_syms = {next(iter(Store(repo).get_hollow(h).footprint)) for h in draft.hollow_ids}
-    blast_syms = {sym for oid in blast for sym in by_id[oid].footprint}
-    carry_syms = {sym for oid in carry for sym in by_id[oid].footprint}
-
-    assert blast_syms == hollow_syms  # every blast op's symbol got a continuation hollow
-    assert carry_syms == set(draft.meta["carry_forward"])  # every carry op's symbol is carried
-    assert foundation.isdisjoint(draft.meta["removed_ids"])  # foundation is never removed
-    assert all(not r["toggleable"] for r in rows if r["bucket"] == "foundation")
-    assert all(r["toggleable"] for r in rows if r["bucket"] in ("blast", "carry"))
-
-
-def test_verb_preview_frontier_is_empty_for_non_revert_verbs(tmp_path):
-    from ugh.api import verb_preview_view
-
-    repo = _chain_repo(tmp_path)
-    ops = Store(repo).all_ops()
-    helper_op = next(o for o in ops if "a.py::helper" in o.footprint)
-    # `restore` of an already-live op is a no-op preview; its frontier block is empty.
-    assert verb_preview_view(repo, "restore", helper_op.id)["frontier"] == []
-
-
-def test_so_what_layer_fallout_is_act_required_only_and_carry_is_a_hidden_count(tmp_path):
-    """The consequence-pane contract: `fallout` carries exactly the toggleable blast dependents
-    (never carry, never foundation), `carry_count` counts the hidden mechanical repoints, and
-    `reversible` is True for an ideal edit -- so the pane can lead with "so what" and footnote the
-    carries without ever listing them."""
-    from ugh.api import verb_preview_view
-
-    repo = _chain_repo(tmp_path)
-    ops = Store(repo).all_ops()
-    user_op = next(o for o in ops if "b.py::user" in o.footprint)
-
-    view = verb_preview_view(repo, "revert", user_op.id)
-    frontier = view["frontier"]
-    blast = {r["op_id"] for r in frontier if r["bucket"] == "blast"}
-    carry = {r["op_id"] for r in frontier if r["bucket"] == "carry"}
-
-    fallout_ids = {r["op_id"] for r in view["fallout"] if r["kind"] == "blast"}
-    assert fallout_ids == blast  # every act-required blast op is in the fallout
-    assert fallout_ids.isdisjoint(carry)  # carry is never in the fallout
-    assert all(r["kind"] == "blast" for r in view["fallout"])  # no fork row on a clean revert
-    assert view["carry_count"] == len(carry) > 0  # the chain has a transitive dependent
-    assert view["reversible"] is True
-    assert view["so_what"].startswith("b.py::user will break —")
 
 
 # -- focus_subgraph: the "Focus & Morph" preview contract ---------------------------------------
@@ -1601,52 +1247,6 @@ def _per_file_leaf_tree(tmp_path):
     res["op_leaf"] = op_leaf
     tree_mod.save(repo, res)
     return repo, ops
-
-
-def test_focus_subgraph_revert_splits_target_blast_and_foundation_with_before_after_counts(tmp_path):
-    """The keystone morph contract: a revert's focus subgraph names exactly the affected features,
-    one spotlight `target`, and the live prerequisite the revert is built on as an unchanged
-    `foundation` -- each carrying its op-count before and after, so a renderer can dim the field and
-    morph just these nodes instead of listing 64 op-ids.
-
-    Since the forward-subtraction default the revert both drops ops and mints compensating `prune`
-    ops, so the acted-on leaf moves in both directions at once: F35 pulls the entity's layout
-    siblings (its anchor and its trailing gap) in as targets so they are excluded alongside it, and
-    the emptied-path pass then mints one prune, which is two ops out and one in for this leaf. The
-    dependents that used to appear as shrinking `blast` leaves survive untouched and never enter the
-    subgraph. The pane still has to name the leaf that changed, which is what this pins."""
-    from ugh.api import map_view, verb_preview_view
-
-    repo, ops = _per_file_leaf_tree(tmp_path)
-    user_op = next(o for o in ops if "b.py::user" in o.footprint)
-
-    view = verb_preview_view(repo, "revert", user_op.id)
-    focus = view["focus"]
-    assert focus["so_what"] == view["so_what"]  # the headline is the same line the pane leads with
-    by_fid = {n["feature_id"]: n for n in focus["nodes"]}
-
-    # helper's leaf is the prerequisite the revert stands on: lit as foundation, its count untouched.
-    assert by_fid["f-a"]["role"] == "foundation"
-    assert by_fid["f-a"]["ops_before"] == by_fid["f-a"]["ops_after"] > 0
-
-    roles = [n["role"] for n in focus["nodes"]]
-    assert roles.count("target") == 1  # exactly one spotlight node
-    target = next(n for n in focus["nodes"] if n["role"] == "target")
-    assert target["feature_id"] == "f-b"  # the leaf owning the symbol the user named
-    assert set(roles) <= {"target", "blast", "foundation"}
-
-    # The per-node deltas account for exactly the ops the plan moves. The compensating ops the
-    # subtraction mints must be attributed to a feature, or the pane renders empty.
-    # The sign of the net is the planner's business (F35 made it negative for this shape); what the
-    # pane needs is that the plan moves ops in both directions and every one of them lands on a node.
-    net = sum(n["ops_after"] - n["ops_before"] for n in focus["nodes"])
-    assert view["removed"] and view["added"]
-    assert net == len(view["added"]) - len(view["removed"])
-
-    # edges are the map's cross-feature edges restricted to focus members; context is the rest.
-    fids = set(by_fid)
-    assert all(e["a"] in fids and e["b"] in fids for e in focus["edges"])
-    assert focus["context_count"] == map_view(repo)["feature_count"] - len(focus["nodes"])
 
 
 def test_focus_subgraph_restore_grows_the_restored_features_lane(tmp_path):
@@ -1823,30 +1423,6 @@ def test_now_view_keeps_a_stalled_plan_in_needs_you_not_in_progress(tmp_path):
 
     assert v["in_progress"] == []
     assert [p["session_id"] for p in v["needs_you"]["stalled_plans"]] == ["quiet"]
-
-
-def test_land_preview_says_what_undo_will_do_afterward(tmp_path):
-    """"Not reversible" tells a developer the land is one-way but not what their next move can be.
-    Landing the branch you are standing on journals an ordinary ideal_edit, so `ugh undo` works;
-    landing any other branch only moved a ref other people read, so undo refuses. Same verb,
-    opposite answer -- so the preview has to say which case this is."""
-    from ugh.api import _project_land_preview
-    from ugh.core.sync.land import LandPlan
-    from ugh.store.gitbind import GitBinding
-
-    repo = tmp_path / "repo"
-    gb, _ = init_store(repo)
-    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("add foo")
-    current = (GitBinding(repo).symbolic_ref() or "refs/heads/main").rsplit("/", 1)[-1]
-
-    on_branch = _project_land_preview(repo, LandPlan(branch=current))
-    assert on_branch["checked_out"] is True
-    assert "forward correction" in on_branch["undo_note"]
-
-    elsewhere = _project_land_preview(repo, LandPlan(branch="some-other-branch"))
-    assert elsewhere["checked_out"] is False
-    assert "refuse" in elsewhere["undo_note"]
 
 
 def test_now_view_leads_with_the_developers_own_words(tmp_path):

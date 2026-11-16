@@ -45,21 +45,17 @@ def test_tools_list_advertises_kernel_surface(tmp_path):
     repo = _seed(tmp_path, 1)
     resp = handle_request(repo, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
     names = {t["name"] for t in resp["result"]["tools"]}
-    # kernel parity with the CLI's registered verbs — a regression dropping any is caught here.
-    #
-    # The surface is deliberately NOT every CLI verb. Three groups are held back on purpose, and the
+    # The surface is deliberately NOT every CLI verb. Three things are held back on purpose, and the
     # reasoning belongs next to the assertion so "parity" is never restored by reflex:
-    #   * `land`/`sync`/`propose land`/`resolve` advance *shared* state and are gated behind the
-    #     CLI's interactive confirm; exposing them here would drop that gate for the least
-    #     supervised caller.
-    #   * the feature verbs (merge/split/move/rename) set authored labels and re-cut groupings,
-    #     which permanently override generated ones -- a human call made while looking at the graph.
+    #   * `sync`/`resolve` advance *shared* state and are gated behind the CLI's interactive
+    #     confirm; exposing them here would drop that gate for the least supervised caller.
+    #   * `feature rename` sets an authored label, which permanently overrides the generated one --
+    #     a human call made while looking at the graph.
     #   * `ugh_grid` returns a *complete* projection (right for a TUI/webview that draws it, wrong
     #     for a model that never does): ~129,000 tokens on a 290-commit repo, growing with history.
-    assert names == {"ugh_init", "ugh_log", "ugh_status", "ugh_diff", "ugh_advanced_fsck",
-                      "ugh_revert", "ugh_restore", "ugh_advanced_oracle_run",
+    assert names == {"ugh_init", "ugh_log", "ugh_advanced_fsck", "ugh_revert", "ugh_restore",
                       "ugh_plan_intake", "ugh_checkpoint", "ugh_drift", "ugh_plan_done",
-                      "ugh_plan_adopt", "ugh_recall", "ugh_now", "ugh_show",
+                      "ugh_plan_adopt", "ugh_show",
                       # An agent could read the graph and edit code but record neither, so a human
                       # relayed every save by hand -- the back-and-forth between editor, terminal
                       # and agent that the graph exists to remove.
@@ -67,11 +63,7 @@ def test_tools_list_advertises_kernel_surface(tmp_path):
                       # Every other tool here needs an id the caller already holds. Without a way
                       # in from a description, an agent asked to remove "the waitlist" had to
                       # guess at symbols or read the whole graph to find one.
-                      "ugh_find",
-                      # Read-only context pack for one checkpoint (weave P4): the asks, the
-                      # recorded why, the blast radius, the resume handles -- what an agent reads
-                      # before editing from a chapter, instead of inferring intent from a diff.
-                      "ugh_checkpoint_context"}
+                      "ugh_find"}
 
 
 def test_unknown_method_is_method_not_found(tmp_path):
@@ -141,19 +133,6 @@ def test_the_grid_is_not_an_mcp_tool_and_log_stays_bounded(tmp_path):
     assert set(log) == {"count", "kinds", "truncated", "ops"}
 
 
-def test_state_shows_frontier(tmp_path):
-    repo = _seed(tmp_path, 1)
-    _, payload = _call(repo, "ugh_status")
-    assert payload["oracle_configured"] is False
-    assert "frontier" not in payload  # compact by default
-
-
-def test_state_full_carries_frontier(tmp_path):
-    repo = _seed(tmp_path, 1)
-    _, payload = _call(repo, "ugh_status", {"full": True})
-    assert "a.py::foo" in payload["frontier"]
-
-
 def test_diff_requires_both_refs(tmp_path):
     repo = _seed(tmp_path, 1)
     _, payload = _call(repo, "ugh_diff", {"ref_a": "HEAD"})
@@ -210,12 +189,6 @@ def test_init_tool_bootstraps_workspace(tmp_path):
 
     _, payload = _call(str(fresh), "ugh_init")
     assert payload["ok"] and (fresh / ".sgt").exists()
-
-
-def test_oracle_run_tool_with_no_config(tmp_path):
-    repo = _seed(tmp_path, 1)
-    _, payload = _call(repo, "ugh_advanced_oracle_run")
-    assert payload["configured"] is False
 
 
 # -- agentic loop tools (plan U14) -------------------------------------------
@@ -416,10 +389,9 @@ def test_save_carries_the_driving_prompt_into_the_closing_manifest(tmp_path):
     rec = load_manifests(repo)[payload["commit"]]
     assert "make foo return 99" in [t["text"] for t in rec["turns"]]
     # An MCP client without hooks produces no activity events, so nothing grounds file-by-file --
-    # but the deliberate carry is a whole-save claim, and the save's reflection records it (P2):
-    # `ugh why <sha>` answers with the user's words from the very next read.
-    from ugh.api import why_view
-    reasons = [r["reason"] for r in why_view(repo, payload["commit"])["rationale"]]
+    # but the deliberate carry is a whole-save claim, and the save's reflection records it (P2).
+    from ugh.intent.rationale import load_rationale
+    reasons = [r["reason"] for r in load_rationale(repo).values()]
     assert "make foo return 99" in reasons
 
 
@@ -440,47 +412,9 @@ def test_save_without_a_chat_key_keys_the_prompt_by_the_new_commit(tmp_path):
     assert hits[0]["channel"] == "agent"
     # The carry landed after the save's own reflection, so tool_save re-reflects: the sha-keyed
     # prompt still becomes a save-wide recorded why.
-    from ugh.api import why_view
-    reasons = [r["reason"] for r in why_view(repo, payload["commit"])["rationale"]]
+    from ugh.intent.rationale import load_rationale
+    reasons = [r["reason"] for r in load_rationale(repo).values()]
     assert "make foo return 99" in reasons
-
-
-def test_checkpoint_context_prepares_an_agent_to_edit_from_a_chapter(tmp_path):
-    """Weave P4, the hookless-MCP path end to end: the carry on `ugh_save` is the only capture
-    channel, and the pack still answers with the user's ask (`whole_save_turns` -- the same
-    whole-save rule the rationale emission applies), the recorded why, and the resume handle."""
-    from ugh.core.store import Store
-    from ugh.lens import tree
-
-    repo = _seed(tmp_path, 1)
-    (tmp_path / "a.py").write_text("def foo():\n    return 99\n", encoding="utf-8")
-    _, saved = _call(repo, "ugh_save", {"prompt": "make foo return 99",
-                                        "claude_session_id": "cs-42"})
-    assert saved["saved"] is True
-
-    nodes = {"F-A": {"parent": None, "children": [], "members": ["a.py::foo"], "size": 1,
-                     "dir": "", "label": "F-A"}}
-    tree.save(tmp_path, {"nodes": nodes, "roots": ["F-A"],
-                         "op_leaf": tree.assign_ops_to_leaves(nodes, Store(tmp_path).all_ops()),
-                         "max_depth": 0, "cannot_link_moves": [], "identity_events": []})
-
-    _, pack = _call(repo, "ugh_checkpoint_context", {"checkpoint": "F-A@0"})
-
-    assert pack["ok"] is True
-    assert "make foo return 99" in [a["text"] for a in pack["asked"]]
-    assert "make foo return 99" in [r["reason"] for r in pack["why"]]
-    # An ask carries whose words it was, so an agent reporting it back can say so rather than
-    # implying every recorded line is the user's own typing.
-    assert [a["source"] for a in pack["asked"]] == ["you, relayed by the assistant"]
-    # ...and no resume handle, because this session's transcript is not on this machine: a
-    # `claude --resume` that fails when typed is worse than not offering one.
-    assert pack["resume"] == []
-
-
-def test_checkpoint_context_requires_a_checkpoint_arg(tmp_path):
-    repo = _seed(tmp_path, 1)
-    _, payload = _call(repo, "ugh_checkpoint_context", {})
-    assert payload["error"] == "missing 'checkpoint'"
 
 
 def test_save_on_a_clean_tree_says_so_rather_than_committing_nothing(tmp_path):
@@ -490,22 +424,6 @@ def test_save_on_a_clean_tree_says_so_rather_than_committing_nothing(tmp_path):
     _, payload = _call(repo, "ugh_save", {})
 
     assert payload["ok"] is True and payload["saved"] is False
-
-
-def test_now_gives_an_agent_the_users_own_ask(tmp_path):
-    """`working_on` is as useful to the agent as to the human: picking work back up, it says what
-    was actually asked instead of leaving the agent to infer it from a diff."""
-    from ugh.intent.turns import record_turn
-
-    repo = _seed(tmp_path, 1)
-    record_turn(repo, key="chat-1", key_kind="chat", actor="human", channel="hook",
-                text="Add rate limiting to the API")
-    (tmp_path / "a.py").write_text("def foo():\n    return 99\n", encoding="utf-8")
-
-    _, payload = _call(repo, "ugh_now")
-
-    assert payload["working_on"]["title"] == "Add rate limiting to the API"
-    assert payload["working_on"]["source"] == "prompt"
 
 
 def test_show_reads_a_past_file_without_touching_the_tree(tmp_path):

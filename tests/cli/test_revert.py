@@ -1023,7 +1023,7 @@ def test_reverting_a_save_sha_says_it_is_a_save_and_names_the_features_it_touche
     assert "add the cart tax" in out, f"the refusal doesn't say which save:\n{out}"
     assert re.search(r"ugh revert [0-9a-f]{4,}\s{2,}\S", out), (
         f"the refusal names no feature to revert instead:\n{out}")
-    assert "ugh undo" in out and f"ugh why {sha[:7]}" in out, out
+    assert "ugh undo" in out and f"ugh show {sha[:7]}" in out, out
 
 
 def test_reverting_a_save_sha_answers_json_consumers_with_the_same_features(tmp_path, capsys):

@@ -48,7 +48,7 @@ restored=$(rm -f tsconfig.tsbuildinfo; npx tsc --noEmit 2>&1 | grep -c 'error TS
 exact=$(diff -rq src "$repo/src" >/dev/null 2>&1 && echo yes || echo no)
 
 dirty=$(git -C "$repo" status --porcelain)
-direct=$(cd "$repo" && "$UGH" feature select "$label" 2>/dev/null | head -1 | sed -n 's/.*: \([0-9]*\) direct.*/\1/p')
+direct=$(cd "$repo" && "$UGH" show "$label" --json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("op_count", 0))' 2>/dev/null)
 removed=$(echo "$out" | sed -n 's/.*removes \([0-9]*\) edits.*/\1/p' | head -1)
 
 pass=0; fail=0

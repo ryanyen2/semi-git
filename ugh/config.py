@@ -151,13 +151,3 @@ def load_identity_constraints(repo_path: str | Path = ".") -> IdentityConstraint
         never_link=frozenset(tuple(sorted(pair)) for pair in payload.get("never_link", [])),
         force_link=frozenset(tuple(sorted(pair)) for pair in payload.get("force_link", [])),
     )
-
-
-def save_identity_constraints(repo_path: str | Path, constraints: IdentityConstraints) -> None:
-    """Write `.sgt/identity_constraints.json` -- committed, so teammates re-mining the same
-    history see the same correction (the escape hatch's whole point)."""
-    payload = {
-        "never_link": sorted([list(pair) for pair in constraints.never_link]),
-        "force_link": sorted([list(pair) for pair in constraints.force_link]),
-    }
-    state.save_json(repo_path, "identity_constraints", payload)

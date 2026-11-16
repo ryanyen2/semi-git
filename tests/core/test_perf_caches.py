@@ -6,7 +6,6 @@ hiding real drift, a corrupt backing file erroring instead of re-parsing."""
 
 from __future__ import annotations
 
-import hashlib
 import os
 import time
 
@@ -81,18 +80,6 @@ def test_reduced_ideal_ids_stamp_reproduces_the_reduction(tmp_path):
     # A fresh in-memory state (new process) must reproduce the same result from the stamp.
     lens._DERIVE_STATE.clear()
     assert lens._reduced_ideal_ids(tmp_path, {a.id, b.id}, index) == first
-
-
-def test_drift_by_hash_matches_byte_drift(tmp_path):
-    from ugh import api
-
-    (tmp_path / "a.txt").write_bytes(b"hello")
-    materialized = {"a.txt": b"hello", "b.txt": b"gone"}
-    hashes = {p: hashlib.sha256(c).hexdigest() for p, c in materialized.items()}
-    assert api._drift_paths_by_hash(tmp_path, hashes) == api._drift_paths(tmp_path, materialized)
-    (tmp_path / "a.txt").write_bytes(b"edited")
-    assert api._drift_paths_by_hash(tmp_path, hashes) == ["a.txt", "b.txt"]
-    assert api._drift_paths(tmp_path, materialized) == ["a.txt", "b.txt"]
 
 
 def test_persistent_extract_cache_roundtrips_and_degrades_on_corruption(tmp_path):

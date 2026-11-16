@@ -9,20 +9,6 @@ from ugh.intent import rationale
 from ugh.store.gitbind import init_store
 
 
-def test_record_and_read_for_op(tmp_path):
-    init_store(tmp_path)
-    rid = rationale.record_rationale(
-        tmp_path, subject=[{"op": "o1", "sha": "shaX", "fp": "fp1"}],
-        reason="because the old guard leaked sessions", actor="human", evidence=["t1"], ts=1.0)
-    assert rid is not None
-
-    recs = rationale.for_op(tmp_path, "o1")
-    assert len(recs) == 1
-    assert recs[0]["reason"] == "because the old guard leaked sessions"
-    assert recs[0]["confirmed"] is False
-    assert recs[0]["superseded"] is False
-
-
 def test_record_is_idempotent_by_subject_reason_actor(tmp_path):
     init_store(tmp_path)
     a = rationale.record_rationale(tmp_path, subject=[{"op": "o1", "sha": None, "fp": "f"}],
@@ -52,40 +38,6 @@ def test_open_intent_record_allows_empty_subject(tmp_path):
     assert opens[0]["predicted_fp"] == "fp-rl"
 
 
-def test_supersession_splits_live_from_historical(tmp_path):
-    init_store(tmp_path)
-    old = rationale.record_rationale(tmp_path, subject=[{"op": "o1", "sha": None, "fp": "f"}],
-                                     reason="use in-memory cache", actor="human", evidence=[], ts=1.0)
-    rationale.record_rationale(tmp_path, subject=[{"op": "o1", "sha": None, "fp": "f"}],
-                               reason="switched to redis for SSO", actor="human", evidence=[],
-                               confirmed=True, ts=2.0,
-                               relations=[{"type": "supersedes", "target": old}])
-
-    recs = rationale.for_op(tmp_path, "o1")
-    live = [r for r in recs if not r["superseded"]]
-    historical = [r for r in recs if r["superseded"]]
-    assert len(live) == 1 and live[0]["reason"] == "switched to redis for SSO"
-    assert len(historical) == 1 and historical[0]["reason"] == "use in-memory cache"
-    assert rationale.for_op(tmp_path, "o1")[0]["superseded"] is False  # live sorts first
-
-
-def test_alignment_score_fields_are_stored_and_read_back(tmp_path):
-    # An aligner-produced record carries calibrated score-bearing fields (schema ext v1): a
-    # confidence, the signals that fired, and the pipeline version -- alongside the boolean
-    # `confirmed` human-endorsement pin, which stays orthogonal to confidence.
-    init_store(tmp_path)
-    rationale.record_rationale(
-        tmp_path, subject=[{"op": "o1", "sha": None, "fp": "f"}], reason="add the retry",
-        actor="human", evidence=["t1"], ts=1.0, confidence=0.82,
-        signals=[{"name": "symbol", "value": 1.0}, {"name": "temporal", "value": 0.3}],
-        aligner_version="1")
-    r = rationale.for_op(tmp_path, "o1")[0]
-    assert r["confidence"] == 0.82
-    assert r["signals"] == [{"name": "symbol", "value": 1.0}, {"name": "temporal", "value": 0.3}]
-    assert r["aligner_version"] == "1"
-    assert r["confirmed"] is False  # score is orthogonal to human endorsement
-
-
 def test_score_fields_are_not_part_of_identity(tmp_path):
     # Re-scoring the same claim (same subject/reason/actor) is the SAME id -- confidence/signals do
     # not identify a record. Without a supersedes relation the re-score therefore no-ops, which is
@@ -98,21 +50,6 @@ def test_score_fields_are_not_part_of_identity(tmp_path):
     assert a == b
     assert len(rationale.load_rationale(tmp_path)) == 1
     assert rationale.load_rationale(tmp_path)[a]["confidence"] == 0.5  # first write stands
-
-
-def test_rescoring_supersedes_via_a_new_record(tmp_path):
-    # The aligner re-scores by writing a NEW record that supersedes the old one (the supersedes
-    # relation is part of identity, so it does not collide) -- never a mutation.
-    init_store(tmp_path)
-    old = rationale.record_rationale(tmp_path, subject=[{"op": "o1", "sha": None, "fp": "f"}],
-                                     reason="r", actor="human", evidence=[], confidence=0.5, ts=1.0)
-    new = rationale.record_rationale(
-        tmp_path, subject=[{"op": "o1", "sha": None, "fp": "f"}], reason="r", actor="human",
-        evidence=[], confidence=0.9, ts=2.0, relations=[{"type": "supersedes", "target": old}])
-    assert new != old
-    recs = rationale.for_op(tmp_path, "o1")
-    live = [r for r in recs if not r["superseded"]]
-    assert len(live) == 1 and live[0]["confidence"] == 0.9
 
 
 def test_retired_open_intent_drops_from_open_list(tmp_path):
@@ -213,107 +150,6 @@ def test_abandon_reflects_open_intents_through_the_plan_verb(tmp_path):
     assert opens[0]["reason"] == "the bit never finished"
 
 
-def test_edit_supersedes_with_a_confirmed_user_record(tmp_path):
-    init_store(tmp_path)
-    old = rationale.record_rationale(tmp_path, subject=[{"op": "o1", "sha": None, "fp": "f"}],
-                                     reason="inferred guess", actor="human", evidence=["t1"], ts=1.0)
-
-    new = rationale.edit_rationale(tmp_path, old[:10], "actually: unblock the SSO migration")
-
-    assert new is not None
-    recs = rationale.for_op(tmp_path, "o1")
-    live = [r for r in recs if not r["superseded"]]
-    assert live[0]["reason"] == "actually: unblock the SSO migration"
-    assert live[0]["confirmed"] is True and live[0]["actor"] == "human"
-    assert live[0]["recorded_by"] == "user"  # the writer distinction lives here, not in actor
-    assert rationale.edit_rationale(tmp_path, "r-nope", "x") is None  # unknown prefix -> no guess
-
-
-def test_recall_matches_rationale_by_symbol_overlap_and_lists_open(tmp_path):
-    from ugh.core.op import make_op
-    from ugh.core.store import Store
-
-    init_store(tmp_path)
-    op = Store(tmp_path).add(make_op({"a.py::foo": (None, "v1")}, {"a.py::foo": b"x"}))
-    rationale.record_rationale(tmp_path, subject=[{"op": op.id, "sha": None, "fp": "f"}],
-                               reason="foo guards the session", actor="human", evidence=[], ts=1.0)
-    rationale.record_rationale(tmp_path, subject=[], reason="add rate limiting", actor="human",
-                               evidence=[], open=True, ts=2.0)
-
-    hit = rationale.recall(tmp_path, ["a.py::foo"])
-    assert hit["rationale"][0]["reason"] == "foo guards the session"
-    assert hit["rationale"][0]["symbols"] == ["a.py::foo"]
-    assert hit["open_intents"][0]["reason"] == "add rate limiting"
-    assert rationale.recall(tmp_path, ["z.py::none"])["rationale"] == []  # no overlap -> no noise
-
-
-def test_recall_matches_symbols_leniently_by_path_suffix(tmp_path):
-    """Agents name the basename form (`__main__.py::add`) while the miner stores the
-    repo-relative form (`pkg/__main__.py::add`) -- recall must join the two (testbed 2026-07-31:
-    the exact-set join silently returned nothing for a real agent query). Symbol names still
-    match exactly: `add` never answers for `radd`."""
-    from ugh.core.op import make_op
-    from ugh.core.store import Store
-
-    init_store(tmp_path)
-    op = Store(tmp_path).add(make_op({"pkg/__main__.py::add": (None, "v1")},
-                                     {"pkg/__main__.py::add": b"x"}))
-    rationale.record_rationale(tmp_path, subject=[{"op": op.id, "sha": None, "fp": "f"}],
-                               reason="add parses the priority flag", actor="human",
-                               evidence=[], ts=1.0)
-
-    hit = rationale.recall(tmp_path, ["__main__.py::add"])
-    assert hit["rationale"][0]["reason"] == "add parses the priority flag"
-    assert hit["rationale"][0]["symbols"] == ["pkg/__main__.py::add"]  # reports the mined form
-    assert rationale.recall(tmp_path, ["__main__.py::list_tasks"])["rationale"] == []
-    assert rationale.recall(tmp_path, ["ain__.py::add"])["rationale"] == []  # not a path suffix
-
-
-def test_why_view_aggregates_symbol_rationale_across_ops(tmp_path):
-    """A symbol query resolves to ONE op (usually the latest), but the recorded "why" for the
-    symbol lives on every op that touched it -- `why_view` must surface the older ops' rationale
-    too (testbed 2026-07-31: the first feature's reasoning went invisible the moment a second
-    commit touched the same function)."""
-    from ugh.api import why_view
-    from ugh.core.lens import get
-    from ugh.core.store import Store
-    from ugh.lens import tree
-    from ugh.store.gitbind import init_store as _init
-
-    gb, _ = _init(tmp_path)
-    (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("v1")
-    (tmp_path / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
-    gb.commit_all("v2")
-    get(tmp_path)
-
-    # `select.why` needs a feature tree to attribute against; hand-craft the minimal one
-    # (same rationale as tests/lens/test_select.py -- this test is about the rationale join,
-    # not clustering quality).
-    nodes = {"F-A": {"parent": None, "children": [], "members": ["a.py::foo"], "size": 1,
-                     "dir": "", "label": "Foo"}}
-    all_ops = Store(tmp_path).all_ops()
-    tree.save(tmp_path, {"nodes": nodes, "roots": ["F-A"],
-                         "op_leaf": tree.assign_ops_to_leaves(nodes, all_ops),
-                         "max_depth": 0, "cannot_link_moves": [], "identity_events": []})
-
-    # Record on an op that actually touches `a.py::foo`. Mining also emits internal
-    # `__anchor__`/`__residue__` fold artifacts on the same commit; their op ids (hence `all_ops`
-    # order) and the per-run commit-sha sort are both unstable, so a blind `sorted(..)[0]` can land
-    # on an artifact and read empty. Pick the birth (`add`) op deterministically: it is the older of
-    # the two `a.py::foo` ops, and `why` resolves the symbol to the latest, so surfacing this one
-    # exercises exactly the cross-op aggregation the view promises.
-    foo_ops = [o for o in Store(tmp_path).all_ops() if "a.py::foo" in o.footprint]
-    older = min(foo_ops, key=lambda o: (o.kind != "add", min(o.provenance)))
-    rationale.record_rationale(tmp_path, subject=[{"op": older.id, "sha": None, "fp": "f"}],
-                               reason="v1 guards the invariant", actor="human", evidence=[], ts=1.0)
-
-    view = why_view(tmp_path, "a.py::foo")
-    assert view["ok"]
-    assert view["kind"] == "op"
-    assert "v1 guards the invariant" in [r["reason"] for r in view["rationale"]]
-
-
 def test_auto_retire_ages_out_a_stale_open_intent(tmp_path):
     """Age-retire (intent-ledger P1): an open intent no one has acted on in over `max_age_days` is
     no longer 'what needs attention' -- it is superseded automatically, keeping the residual
@@ -371,48 +207,3 @@ def test_auto_retire_overlap_needs_full_coverage(tmp_path):
                                      predicted_symbols=["a.py::foo", "a.py::bar"], ts=100.0)
     assert rationale.auto_retire_open(tmp_path, now=100.0) == []  # a.py::bar never landed
     assert rid in {r["id"] for r in rationale.open_intents(tmp_path)}
-
-
-def test_why_view_resolves_a_commit_sha_to_its_aligned_words(tmp_path):
-    """`ugh why <sha>` (intent-ledger P1): a commit sha isn't an op-id -- it maps to a whole atom --
-    so `why_view` answers with the commit's captured words rather than forcing the ref through the
-    op-scoped resolver. A unique sha prefix resolves the same commit."""
-    from ugh.api import intent_view, why_view
-    from ugh.core.lens import get
-    from ugh.intent import turns
-    from ugh.store.gitbind import init_store as _init
-
-    gb, _ = _init(tmp_path)
-    (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("add foo")
-    get(tmp_path)
-
-    atom = next(a for a in intent_view(tmp_path)["atoms"] if a["subject"] == "add foo")
-    sha = atom["commit_sha"]
-    turns.record_turn(tmp_path, key=sha, key_kind="sha", actor="human", channel="cli",
-                      text="make foo return the invariant")
-
-    view = why_view(tmp_path, sha)
-    assert view["kind"] == "commit"
-    assert view["sha"] == sha
-    assert view["subject"] == "add foo"
-    assert view["words"] == "make foo return the invariant"
-    assert view["op_count"] >= 1
-    assert why_view(tmp_path, sha[:8])["sha"] == sha  # a unique prefix resolves it too
-
-
-def test_why_view_unknown_ref_falls_back_to_the_op_scoped_error(tmp_path):
-    """A ref that is neither a live op/symbol nor a known commit falls through to the op-scoped
-    `why`'s own honest failure -- the commit branch never masks it, and never guesses a commit."""
-    from ugh.api import why_view
-    from ugh.core.lens import get
-    from ugh.store.gitbind import init_store as _init
-
-    gb, _ = _init(tmp_path)
-    (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("add foo")
-    get(tmp_path)
-
-    view = why_view(tmp_path, "ffffffffffffffffffffffffffffffffffffffff")
-    assert view["kind"] == "op"
-    assert view["ok"] is False

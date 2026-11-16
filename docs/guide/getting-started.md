@@ -42,20 +42,18 @@ ops, and commits. It also tells you which feature your edits landed in.
 Here are the commands you'll use to see where you are.
 
 ```bash
-ugh now                      # what you asked for, what's unsaved, and the next thing to do
 ugh log                      # what you did, one row per save
 ugh status                   # files, symbols, features, coverage, and any drift
 ugh show app.py --at 12      # read a file as it was at save 12, without checking anything out
 ugh log --tree               # the feature tree
-ugh advanced blame app.py    # which feature owns each symbol in this file
 ```
 
 `ugh status` tells you whether your working tree matches the state `ugh` has recorded or has drifted
 ahead of it.
 
-`ugh now` leads with what you asked for, in your own words. If you use Claude Code, the prompt hook
-that `ugh init` installs records each prompt as you type it, so `ugh now` can say what you're
-working on without you declaring a plan.
+`ugh log --rail` leads with what you asked for, in your own words. If you use Claude Code, the prompt
+hook that `ugh init` installs records each prompt as you type it, so ugh can say what you're working
+on without you declaring a plan.
 
 ## Remove a symbol and bring it back
 
@@ -83,7 +81,7 @@ The daily loop needs no API key. A few steps call a language model, and they're 
 
 - the feature labeler in `ugh log --tree`
 - `ugh plan intake`
-- the intent clustering in `ugh intent build`
+- the checkpoint naming in `ugh log --refresh`
 - the plain English forms of `ugh revert` and `ugh restore`
 
 Put your key in a `.env` file at the root of your repo.
@@ -122,13 +120,12 @@ It writes `.mcp.json` so Claude Code offers the `ugh` tools, pre-approves that s
 extension at your `ugh` install through `.vscode/settings.json`.
 
 Behind `.mcp.json` is `ugh mcp`, a stdio MCP server that lets an agent call `ugh` directly instead
-of shelling out. It exposes 17 tools today: `ugh_init`, `ugh_now`, `ugh_log`, `ugh_status`,
-`ugh_show`, `ugh_diff`, `ugh_save`, `ugh_advanced_fsck`, `ugh_revert`, `ugh_restore`,
-`ugh_advanced_oracle_run`, `ugh_plan_intake`, `ugh_checkpoint`, `ugh_recall`, `ugh_drift`,
+of shelling out. It exposes 13 tools: `ugh_init`, `ugh_log`, `ugh_show`, `ugh_find`, `ugh_save`,
+`ugh_advanced_fsck`, `ugh_revert`, `ugh_restore`, `ugh_plan_intake`, `ugh_checkpoint`, `ugh_drift`,
 `ugh_plan_done`, and `ugh_plan_adopt`.
 
-An agent with those tools can orient itself, inspect state, recall why existing code is the way it
-is, run the plan and checkpoint and drift loop, save its own work, and revert or restore individual
-symbols. The commands for working with other people have no MCP tool yet, so `ugh sync`, `ugh land`,
-`ugh advanced merge-op`, `ugh session`, and `ugh propose` still run from the terminal. See
+An agent with those tools can inspect state, find a thing it can describe, run the plan and
+checkpoint and drift loop, save its own work, and revert or restore individual symbols. The commands
+for working with other people have no MCP tool, so `ugh sync` and `ugh resolve` run from the
+terminal. See
 [user workflows](workflows.md) for the full picture.

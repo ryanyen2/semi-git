@@ -927,10 +927,6 @@ def summary_lines(view: dict, *, color: bool = True, full: bool = False,
                     emit(con, Text("     ", style=MUTE).append(chunk, style=MUTE))
             else:
                 emit(con, Text("     ", style=MUTE).append(fit(sample + more, width - 6), style=MUTE))
-        # A state with TWO exits names both. The staged rewrite is the case: `commit` lands the
-        # candidate and `unstage` abandons it, and this line is the only place a terminal user
-        # learns the state exists at all -- so offering one of the two exits leaves them stuck
-        # holding the half of the decision they did not want.
         if alt:
             emit(con, Text("     ", style=FAINT).append(fit(alt, width - 6), style=FAINT))
 
@@ -938,7 +934,7 @@ def summary_lines(view: dict, *, color: bool = True, full: bool = False,
     needs: list = []
     if view.get("sync_status", {}).get("history_rewritten"):
         needs.append(("git history moved backward — the counts above include dropped commits",
-                      "ugh advanced resync", None, None))
+                      "ugh check --repair", None, None))
     elif view.get("drift", {}).get("any"):
         n_drift = len(view["drift"]["paths"])
         needs.append((f"{plural(n_drift, 'file')} {agrees(n_drift, 'differs', 'differ')}"
@@ -948,11 +944,10 @@ def summary_lines(view: dict, *, color: bool = True, full: bool = False,
         n_staged = len(view["staged"]["paths"])
         needs.append((f"{plural(n_staged, 'file')} {agrees(n_staged, 'holds', 'hold')}"
                       " a staged rewrite — edits blocked",
-                      "ugh advanced commit", view["staged"]["paths"],
-                      "or `ugh advanced unstage` to abandon it"))
+                      None, view["staged"]["paths"], None))
     if view.get("backstop_kept"):
         needs.append((f"{plural(len(view['backstop_kept']), 'unreproducible file')} kept on disk",
-                      "ugh advanced fsck --tree", view["backstop_kept"], None))
+                      "ugh check --tree", view["backstop_kept"], None))
     if needs:
         emit(con, "")
         emit(con, Text(" ", style=WARN).append("NEEDS YOU", style=f"bold {WARN}"))

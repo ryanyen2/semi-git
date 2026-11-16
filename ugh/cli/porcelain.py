@@ -10,13 +10,12 @@ Two things live here, both small and both *data*:
    on next contact -- the net that catches raw `git` too). This replaces U18's advisory-only
    posture; the routing table is one data table, not conditionals scattered through the passthrough.
 
-2. **The daily-loop verbs (D3): `switch`, `save`, `undo`.** Exactly three, each composed from
-   existing lens machinery (no new kernel call): `switch` materializes a named ideal (an existing
-   branch's committed tree) via `get` + git checkout + `get`; `save` is the put-path sugar
-   (`get` + witness commit + `record_ideal`); `undo` inverts the last mutating operation by popping
-   the unified operation log (`oplog.undo`), whatever its kind. Everything git does that ugh does not wrap
-   stays one keystroke away behind `ugh git …`; a verb is only wrapped where the ugh-native version
-   is *semantically different*, never merely renamed (design doc §1 non-goal).
+2. **The daily-loop verbs (D3): `save`, `undo`.** Each composed from existing lens machinery (no
+   new kernel call): `save` is the put-path sugar (`get` + witness commit + `record_ideal`); `undo`
+   inverts the last mutating operation by popping the unified operation log (`oplog.undo`), whatever
+   its kind. Everything git does that ugh does not wrap stays one keystroke away behind
+   `ugh git …`; a verb is only wrapped where the ugh-native version is *semantically different*,
+   never merely renamed (design doc §1 non-goal).
 """
 
 from __future__ import annotations
@@ -32,15 +31,13 @@ from ._common import _emit_json, _fail, _fail_json
 # `revert` to `ugh revert`; `stash` dissolves into `ugh save` (a dirty tree is just ops not yet
 # landed). `rebase` has no ugh analogue -- history is a mined DAG -- so it routes to `ugh sync`.
 REFUSALS: dict[str, str] = {
-    "checkout": "ugh switch <branch>  (or `ugh restore <path>` to restore files)",
-    "switch": "ugh switch <branch>",
     "restore": "ugh restore <ref>",
     "pull": "ugh sync [remote] [branch]",
     "merge": "ugh sync [remote] [branch]",
     "reset": "ugh undo  (or `ugh revert <ref>` to drop an op)",
     "rebase": "ugh sync  (history is a mined op DAG; ugh has no rebase)",
     "revert": "ugh revert <ref>",
-    "cherry-pick": "ugh restore <ref>  (or `ugh advanced transplant <op>... --onto <ref>`)",
+    "cherry-pick": "ugh restore <ref>",
     "stash": "ugh save  (a dirty tree is just ops not yet landed)",
     "am": "git apply, then `ugh save` to record the change as ops",
 }
@@ -61,10 +58,6 @@ def refusal_message(subcommand: str, remedy: str) -> str:
 
 
 def register(subs, parent) -> None:
-    sw = subs.add_parser("switch", parents=[parent])
-    sw.add_argument("branch")
-    sw.set_defaults(func=_cmd_switch)
-
     sv = subs.add_parser("save", parents=[parent])
     sv.add_argument("-m", "--message", dest="message")
     sv.add_argument("--as", dest="as_label", metavar="LABEL",
@@ -91,10 +84,6 @@ def register(subs, parent) -> None:
     uv.set_defaults(func=_cmd_undo)
 
 
-def _cmd_switch(args) -> int:
-    return _switch(".", args.branch, args.as_json)
-
-
 def _cmd_save(args) -> int:
     return _save(".", args.message, args.as_json, resolve_plan=args.resolve_plan,
                  confirm_hollow=args.confirm_hollow, confirm_op=args.confirm_op,
@@ -103,48 +92,6 @@ def _cmd_save(args) -> int:
 
 def _cmd_undo(args) -> int:
     return _undo(".", args.as_json, force=args.force, emit=args.emit)
-
-
-def _switch(repo: str, branch: str, as_json: bool) -> int:
-    """`ugh switch <branch>` (D3): materialize a named ideal -- an existing branch's committed
-    tree. Mines the current ref first so nothing is lost (R9), moves HEAD to `branch` (git writes
-    that branch's tree, which *is* `code(ideal)`), then mines the new ref so the op store reflects
-    it. ugh owns the write path; a raw `git switch` is what D2 refuses in favor of this.
-
-    The argument must name a *local branch*. It used to go straight to `git checkout`, so a commit
-    sha or tag detached HEAD with no warning -- and a `ugh save` on a detached HEAD writes a commit
-    that belongs to no branch and disappears from every ideal the moment the user switches back.
-    Refusing here (rather than materializing a state ugh cannot keep) is the only honest answer:
-    ugh's history is append-only, so "go look at an old state" is a read, not a checkout."""
-    from ugh.core.lens import DirtyWorkingTreeError, get
-    from ugh.store.gitbind import GitBinding, GitError
-
-    gb = GitBinding(repo)
-    if not gb.local_branch_exists(branch):
-        known = gb.local_branches()
-        resolved = gb.rev_parse(branch)
-        what = "a commit or tag" if resolved else "nothing in this repo"
-        listing = ", ".join(known[:8]) + ("…" if len(known) > 8 else "") if known else "(none)"
-        return _fail_json(
-            f"`{branch}` is not a local branch -- it resolves to {what}. `ugh switch` moves HEAD, "
-            f"and switching to anything but a branch detaches it, where a later `ugh save` commits "
-            f"onto no branch. Branches here: {listing}. To *look at* an older state instead, use "
-            f"`ugh log --at <commit>` or `ugh diff <ref> HEAD`; to detach deliberately, "
-            f"`ugh git checkout --force {branch}`.",
-            as_json,
-        )
-    try:
-        get(repo)  # absorb current reality before leaving this ref (R9)
-        gb.checkout_branch(branch)  # move HEAD + materialize the branch's committed tree
-        ideal = get(repo)  # reconcile the now-current ref's ideal
-    except (GitError, DirtyWorkingTreeError, ValueError) as e:
-        return _fail_json(str(e), as_json)
-
-    n = len(ideal.op_ids)
-    if as_json:
-        return _emit_json({"ok": True, "branch": branch, "ops": n})
-    print(f"✓ switch {branch}: {n} op(s) in the ideal")
-    return 0
 
 
 def _snapshot_cascade_tables(repo: str) -> dict[str, bytes | None]:
@@ -204,7 +151,7 @@ def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool =
     # 0.9/F26: an in-progress git merge/cherry-pick/revert leaves conflict-marker bytes in the tree
     # and a *_HEAD pseudo-ref set. Refuse *before* mining (`get`) so those markers never become ops
     # and the paused operation is never finalized blind. (`_sync` also skips its dirty pass while one
-    # is live, the shared safety net for revert/switch/reads; save additionally refuses, loudly.)
+    # is live, the shared safety net for revert/reads; save additionally refuses, loudly.)
     gb = GitBinding(repo)
     verb = merge_in_progress(gb)
     if verb is not None:
@@ -329,7 +276,7 @@ def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool =
                             ops=[op for op in opindex.index_ops(repo) if op.id in new_op_ids],
                             end=_time.time(), prev_save_ts=prev_ts)
             # ...and reflect it (weave P2): each grounded stint and each sha-keyed turn becomes a
-            # standard rationale record, so `ugh why` answers with the user's own words from the
+            # standard rationale record, so `ugh show` answers with the user's own words from the
             # next read on. Idempotent all the way down; a retried save re-emits nothing.
             from ugh.intent.stint import reflect_save
             reflect_save(repo, sha)
@@ -654,9 +601,8 @@ def _render_save(as_json: bool, saved: bool, sha: str | None, n: int,
             # spread is the answer to "what did this change touch", not a symptom. Under a `⚠` and
             # the word "deliberate?" it read as "you have done something wrong", pointing at a
             # regroup nobody needed; in a timed study stage that is an invitation to go repair
-            # correct work. The re-filing route stays, as an option rather than a remedy.
-            print(f"  · one save, {len(features)} features — `ugh log` draws them"
-                  f"; `ugh feature regroup move` re-files work if that was not what you meant")
+            # correct work.
+            print(f"  · one save, {len(features)} features — `ugh log` draws them")
         # Un-save discoverability (Issue 2): make reversing the save one obvious command. `ugh undo`
         # pops the tail event of the op-log, which right now is this save's ideal edit -- so it drops
         # exactly this save.

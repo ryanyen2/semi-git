@@ -305,7 +305,7 @@ def _matching_revert_event(
     the failure this absorbs. Two removals that agree on every entity op are the same removal.
 
     With `tag`, the handle the person typed is the last thing tried, because op ids do not survive
-    a re-derivation and a name does. `ugh log --refresh` or `advanced resync` re-mines and
+    a re-derivation and a name does. `ugh log --refresh` or `ugh check --repair` re-mines and
     re-clusters, and afterwards the same theme resolves to a different op-set -- 39 ops where the
     revert had recorded 20, on the study's footfall bundle -- so neither comparison above matches
     and the restore falls back to the algebraic union: `would leave two live versions of
@@ -804,19 +804,6 @@ def plan_restore_op_set(repo: str | Path, tag: str, op_ids: frozenset[str]) -> V
     return _named(plan, requested)
 
 
-def plan_after(repo: str | Path, a: str, b: str) -> VerbPreview:
-    ops, ideal, declared = _load(repo)
-    a_id, ea = resolve_target(ideal, ops, a)
-    b_id, eb = resolve_target(ideal, ops, b)
-    tag = f"{a} ≤ {b}"
-    if ea or eb:
-        return _preview("after", tag, ideal.op_ids, ideal.op_ids, ops, ok=False, message=ea or eb)
-    # `after` doesn't change the ideal's op set -- it records an ordering constraint for later
-    # verbs; the preview's before == after, and the edge rides in `declared_edge`.
-    return _preview("after", tag, ideal.op_ids, ideal.op_ids, ops,
-                    message=f"declare {a_id[:8]} ≤ {b_id[:8]}", declared_edge=(a_id, b_id))
-
-
 # -- apply (the only writer) ----------------------------------------------------------------------
 
 def apply(repo: str | Path, preview: VerbPreview, message: str | None = None) -> str:
@@ -893,11 +880,4 @@ def cherry_pick(repo: str | Path, target: str, source_ref: str, *, emit: bool = 
     preview = plan_cherry_pick(repo, target, source_ref)
     if preview.ok and not emit:
         apply(repo, preview, message)
-    return preview
-
-
-def after(repo: str | Path, a: str, b: str, *, emit: bool = False) -> VerbPreview:
-    preview = plan_after(repo, a, b)
-    if preview.ok and not emit:
-        apply(repo, preview)
     return preview

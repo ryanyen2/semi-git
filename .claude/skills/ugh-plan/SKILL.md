@@ -30,7 +30,7 @@ plan.
    do. If the variable is genuinely unset, omit it rather than guessing — an unowned plan is
    claimable by anyone, which is the safe degrade.
 
-2. **Work** — implement the steps in the working tree (or a `ugh session` worktree). Edit code
+2. **Work** — implement the steps in the working tree. Edit code
    normally; you do not touch the plan while working. When a step's work is finished, record it
    with `ugh_save` and pass `message` — your own words about what this work was. They become the
    save's subject, the recorded intent, and the name of any feature born from it, so writing the
@@ -58,13 +58,13 @@ new plan no longer has are cleaned up.
 
 **Working without a plan.** This loop is worth the ceremony for multi-step work, and most work is
 not that. If you are just doing what was asked, skip it: edit, then `ugh_save` with your own words.
-`ugh_now` tells you where things stand at any point — including `working_on`, the user's own prompt
-verbatim, which is what to read when picking work back up rather than inferring the task from a
-diff. `ugh_show` reads a file as it was at a past point without checking anything out.
+`ugh log --rail` prints where things stand at the top — including what the user is working on, in
+their own words, which is what to read when picking work back up rather than inferring the task from
+a diff. `ugh_show` reads a file as it was at a past point without checking anything out.
 
 Between steps 3 and 4, `ugh_drift` lists ops no active plan predicted. Drift is not a chore to
 resolve; it is a read-only diff of what happened outside your stated plan. Read it to confirm no
-unplanned change crept in, then land the work as usual.
+unplanned change crept in.
 
 ## Session ownership when agents work concurrently
 

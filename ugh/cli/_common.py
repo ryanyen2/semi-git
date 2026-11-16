@@ -41,8 +41,8 @@ def maybe_confirm(pview, map_view=None, grid_view=None, segments=None, *, focus_
 
 
 def confirm_collab(pview, question: str) -> bool:
-    """The interactive confirm step for a shared-state collaboration verb (`sync`/`land`/`propose
-    land`/`resolve`). On a tty with `textual` the consequence pane *is* the confirm (its `summary`
+    """The interactive confirm step for a shared-state collaboration verb (`sync`/`resolve`). On a
+    tty with `textual` the consequence pane *is* the confirm (its `summary`
     holds the precomputed collaboration graph); otherwise it degrades to the printed feedforward
     graph (`render_collab_preview_lines`) plus a `[y/N]` prompt. Returns True to apply. Only call on
     an interactive tty -- the caller gates `isatty`/`--json` first, so the machine/CI immediate-apply
@@ -58,8 +58,8 @@ def confirm_collab(pview, question: str) -> bool:
     for line in render_collab_preview_lines(pview, color=sys.stdout.isatty()):
         print(line)
     # "Not reversible" tells the user this is one-way but not what their next move can be. When the
-    # projection knows what `ugh undo` will do afterward (land), say it here, right above the
-    # prompt where the decision is actually made.
+    # projection knows what `ugh undo` will do afterward, say it here, right above the prompt where
+    # the decision is actually made.
     note = pview.get("undo_note") if isinstance(pview, dict) else None
     if note:
         print(f"\n  {note}")
@@ -71,15 +71,12 @@ def confirm_collab(pview, question: str) -> bool:
 
 
 def confirm_summary(pview, question: str) -> bool:
-    """The confirm step for a verb whose consequence is already a short human `summary` -- the
-    metadata feature verbs (merge/rename/move/split). Returns True to apply.
+    """The confirm step for a verb whose consequence is already a short human `summary` --
+    `feature rename`. Returns True to apply.
 
     Preview symmetry: `confirm_collab` degrades to a printed feedforward graph plus `[y/N]` when
-    `textual` isn't installed, and the ideal edits degrade to their own `[y/N]`. The feature verbs
-    had no degrade at all -- `maybe_confirm` returns `None` without `textual`, which the caller read
-    as "proceed", so on any machine without that *optional* dependency `ugh feature regroup merge A B`
-    re-cut two features with nothing shown and nothing asked. The summary is the same text the pane
-    would have shown, so the degraded path answers the same question the pane does.
+    `textual` isn't installed, and the ideal edits degrade to their own `[y/N]`. Without `textual`
+    `maybe_confirm` returns `None`, so this prints the summary the pane would have shown and asks.
 
     Only call on an interactive tty: the caller gates `isatty`/`--json` first, keeping the
     machine/CI immediate-apply contract byte-for-byte."""

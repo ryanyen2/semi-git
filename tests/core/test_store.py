@@ -169,7 +169,6 @@ def test_hollow_op_roundtrips_with_empty_images(tmp_path):
     assert fetched.off_chain is True
     assert fetched.images == {}
     assert hollow.id not in store  # never lands in the main chain
-    assert store.all_hollow_ops() == [hollow]
 
 
 def test_add_hollow_rejects_a_normal_op(tmp_path):

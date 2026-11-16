@@ -38,7 +38,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ugh import state
-from ugh.config import IdentityConstraints, load_identity_constraints, save_identity_constraints
 from ugh.core import lens, oracle, order
 from ugh.core.fold import code
 from ugh.core.ideal import Ideal
@@ -221,84 +220,6 @@ def merge_op(repo: str | Path, tip_a: str, tip_b: str, intent: str | None = None
     return _register(repo, draft)
 
 
-def split_op(repo: str | Path, op_id: str, intent: str | None = None) -> RewriteDraft:
-    """Drafts one hollow for a new intermediate cut of a single-symbol op: `before` = the
-    original op's own `before_version`, `after` = TBD (the agent's intermediate bytes). The tail
-    back to the original op's own after-image is minted automatically inside `stage` once the
-    intermediate is fulfilled -- no agent authorship needed for that half, since it's the
-    original's own bytes verbatim."""
-    repo = Path(repo)
-    store = Store(repo)
-    ops = store.all_ops()
-    by_id = {op.id: op for op in ops}
-    ideal = lens.current_ideal(repo)
-    target_id, err = resolve_target(ideal, ops, op_id)
-    if err:
-        return _refuse("split-op", op_id, err)
-    original = by_id[target_id]
-    if len(original.footprint) != 1:
-        return _refuse(
-            "split-op", target_id,
-            "split-op targets a single-symbol op; use merge-op/transplant for multi-symbol edits",
-        )
-    (sym, (before, _after)), = original.footprint.items()
-    if original.images.get(sym) is None:
-        return _refuse("split-op", target_id, f"{sym} has no after-image to split (a removal can't be split)")
-
-    hollow = make_op(
-        {sym: (before, _PENDING)}, {}, kind="split", off_chain=True,
-        intent=intent or f"split-op: intermediate cut of {target_id[:12]} ({sym})",
-    )
-    store.add_hollow(hollow)
-    draft = RewriteDraft(
-        ok=True, verb="split-op", target=target_id, hollow_ids=(hollow.id,),
-        meta={"original_op_id": target_id, "symbol": sym, "removed_ids": [target_id]},
-        message=f"drafted an intermediate hollow for {sym}; fulfilling it mints the "
-                f"{target_id[:12]}-tail automatically",
-    )
-    return _register(repo, draft)
-
-
-def transplant(repo: str | Path, op_ids: list[str], onto_ref: str, intent: str | None = None) -> RewriteDraft:
-    """Drafts one hollow per symbol touched by `op_ids`, with `onto_ref`'s own chain tip as
-    `before_version` (AE3) -- no structural link back to the source ops; they're inspiration for
-    the agent's rewrite, named only in `intent`."""
-    repo = Path(repo)
-    store = Store(repo)
-    ops = store.all_ops()
-    by_id = {op.id: op for op in ops}
-    dest_frontier = lens.ideal_for_ref(repo, onto_ref).frontier(ops)
-
-    resolved: list[Op] = []
-    for ref in op_ids:
-        oid, err = _resolve_op(repo, ops, ref)
-        if err:
-            return _refuse("transplant", ",".join(op_ids), f"{ref}: {err}")
-        resolved.append(by_id[oid])
-
-    symbols = sorted({sym for op in resolved for sym in op.footprint})
-    if not symbols:
-        return _refuse("transplant", ",".join(op_ids), "no symbols to transplant")
-
-    label = ",".join(o.id[:12] for o in resolved)
-    hollows = []
-    for sym in symbols:
-        dest_tip = dest_frontier.get(sym)
-        before = by_id[dest_tip].footprint[sym][1] if dest_tip else None
-        h = make_op(
-            {sym: (before, _PENDING)}, {}, kind="transplant", off_chain=True,
-            intent=intent or f"transplant of {label} onto {onto_ref}",
-        )
-        store.add_hollow(h)
-        hollows.append(h)
-    draft = RewriteDraft(
-        ok=True, verb="transplant", target=f"{label} onto {onto_ref}",
-        hollow_ids=tuple(h.id for h in hollows),
-        message=f"drafted {len(hollows)} hollow(s) with {onto_ref}'s chain tip as before_version",
-    )
-    return _register(repo, draft)
-
-
 def revert_keep_dependents(
     repo: str | Path, target: str, intent: str | None = None,
     keep: frozenset[str] | set[str] | None = None,
@@ -388,145 +309,7 @@ def revert_keep_dependents(
     return _register(repo, draft)
 
 
-def _blast_dependents(op_id, sym, version, ideal, ops, by_id, declared) -> list[str]:
-    """The target op's *blast* dependents: direct reference-edge dependents whose `requires` names
-    `(sym, version)` -- the version the target op itself presents. A transitive dependent never
-    names the target's own version, so it is untouched (no repoint, no removal). Shared by `edit_op`
-    (the happy-path repoint) and `edit_repair_op` (the red-oracle rework), which classify the same
-    set off the same reference edges."""
-    upset = order.upset_in(op_id, ideal.op_ids, ops, declared)
-    return sorted(
-        b for a, b in order.reference_edges(ops)
-        if a == op_id and b in upset and (sym, version) in by_id[b].requires
-    )
-
-
-def edit_op(repo: str | Path, target: str, intent: str | None = None) -> RewriteDraft:
-    """`ugh edit <target>` (plan U4, R5/KTD5): change a symbol in place. Drafts one chain-extension
-    hollow whose `before` is the target's *current* after_version -- the tip-after shape `merge_op`
-    uses (`ugh/core/rewrite.py`, `before = a.footprint[sym][1]`), NOT `split_op`'s original-before
-    intermediate cut -- and `after = _PENDING`. The user edits the file and `fulfill(..., from_tree=
-    True)` reads the new bytes.
-
-    Because versions are content hashes, the edit stales every dependent's `requires` edge that
-    named the target's *old* version. Those are exactly the target's direct reference-edge (blast)
-    dependents; they are recorded in `meta` and repointed mechanically (`_mint_repoints`, no LLM) in
-    `build_candidate` once the new version is known. `removed_ids` subtracts the pre-edit dependents
-    so their repointed replacements take their place. A red oracle can't be pinned to one dependent
-    (KTD5 bounded-safety), so `edit_repair_op` then drafts continuation hollows for *all* of them."""
-    repo = Path(repo)
-    store = Store(repo)
-    ops = store.all_ops()
-    by_id = {op.id: op for op in ops}
-    ideal = lens.current_ideal(repo)
-    declared = lens._load_declared(repo)
-
-    op_id, err = resolve_target(ideal, ops, target)
-    if err:
-        return _refuse("edit", target, err)
-    original = by_id[op_id]
-    if len(original.footprint) != 1:
-        return _refuse("edit", op_id, "edit targets a single-symbol op; regroup the feature first")
-    (sym, (_before, after_version)), = original.footprint.items()
-    if original.images.get(sym) is None:
-        return _refuse("edit", op_id, f"{sym} has no after-image to edit (a removal can't be edited)")
-
-    hollow = make_op(
-        {sym: (after_version, _PENDING)}, {}, kind="edit", off_chain=True,
-        intent=intent or f"edit: change {sym} in place (chain-extends {op_id[:12]})",
-    )
-    store.add_hollow(hollow)
-
-    # Blast = direct reference-edge dependents naming the target's current version; a transitive
-    # dependent never names the target's own version, so it's untouched (no repoint, no removal).
-    blast = _blast_dependents(op_id, sym, after_version, ideal, ops, by_id, declared)
-    draft = RewriteDraft(
-        ok=True, verb="edit", target=op_id, hollow_ids=(hollow.id,),
-        meta={
-            "edit_symbol": sym, "old_version": after_version,
-            "removed_ids": blast, "repoint_deps": blast,
-        },
-        message=f"drafted an edit hollow for {sym}; fulfilling it repoints "
-                f"{len(blast)} dependent(s) mechanically",
-    )
-    return _register(repo, draft)
-
-
-def edit_repair_op(repo: str | Path, target: str, intent: str | None = None) -> RewriteDraft:
-    """The red-oracle companion to `edit_op` (plan U4/KTD5, bounded-safety caveat). Once a staged
-    edit's whole-suite oracle verdict is red, it can't be attributed to a specific dependent, so
-    this drafts a continuation hollow for *every* blast (direct reference-edge) dependent of the
-    target -- not "only the broken ones" -- reusing `revert_keep_dependents`'s per-dependent hollow
-    shape, for `--repair` (the LLM loop) to fill and re-gate. The edit op itself is already in the
-    store (the happy-path `fulfill` added it); it is carried as a `required_id`, while the stale
-    pre-edit dependents are `removed`, replaced by the reworked hollows."""
-    repo = Path(repo)
-    store = Store(repo)
-    ops = store.all_ops()
-    by_id = {op.id: op for op in ops}
-    ideal = lens.current_ideal(repo)
-    declared = lens._load_declared(repo)
-
-    op_id, err = resolve_target(ideal, ops, target)
-    if err:
-        return _refuse("edit-repair", target, err)
-    original = by_id[op_id]
-    (sym, (_before, old_version)), = original.footprint.items()
-
-    # The edit op is the `kind="edit"` chain-extension the happy-path `fulfill` already added to the
-    # store (its `before` is the target's own version); absent it there is nothing to repair.
-    edits = [o for o in ops if o.kind == "edit" and o.footprint.get(sym, (None, None))[0] == old_version]
-    if not edits:
-        return _refuse("edit-repair", op_id, f"no staged edit of {sym} to repair -- run `ugh edit` + fulfill first")
-    edit = edits[-1]
-
-    blast = _blast_dependents(op_id, sym, old_version, ideal, ops, by_id, declared)
-    hollows = []
-    for dep_id in blast:
-        for dsym, (before, _after) in by_id[dep_id].footprint.items():
-            h = make_op(
-                {dsym: (before, _PENDING)}, {}, kind="rework", off_chain=True,
-                intent=intent or f"rework {dsym} for the edited {sym}",
-            )
-            store.add_hollow(h)
-            hollows.append(h)
-    draft = RewriteDraft(
-        ok=True, verb="edit-repair", target=op_id, hollow_ids=tuple(h.id for h in hollows),
-        meta={"required_ids": [edit.id], "removed_ids": blast},
-        message=f"drafted {len(hollows)} continuation hollow(s) for {sym}'s blast dependents",
-    )
-    return _register(repo, draft)
-
-
 # -- identity corrections (no hollow op; corrects the matcher, not a chain) -----------------------
-
-def identity_split(repo: str | Path, a: str, b: str) -> dict:
-    """Corrects a wrong weld: the matcher linked surface ids `a` and `b` as a rename/move when
-    they're unrelated. Records a permanent `never_link` constraint; a subsequent `mine()` treats
-    them as delete + add again."""
-    repo = Path(repo)
-    constraints = load_identity_constraints(repo)
-    pair = tuple(sorted((a, b)))
-    updated = IdentityConstraints(
-        never_link=constraints.never_link | {pair},
-        force_link=constraints.force_link - {pair},
-    )
-    save_identity_constraints(repo, updated)
-    return {"never_link": sorted(updated.never_link), "force_link": sorted(updated.force_link)}
-
-
-def identity_join(repo: str | Path, a: str, b: str) -> dict:
-    """Corrects a missed weld: `a` and `b` are the same identity (a rename/move) but the
-    hash/fuzzy tiers didn't find it. Records a permanent `force_link` constraint."""
-    repo = Path(repo)
-    constraints = load_identity_constraints(repo)
-    pair = tuple(sorted((a, b)))
-    updated = IdentityConstraints(
-        never_link=constraints.never_link - {pair},
-        force_link=constraints.force_link | {pair},
-    )
-    save_identity_constraints(repo, updated)
-    return {"never_link": sorted(updated.never_link), "force_link": sorted(updated.force_link)}
 
 
 # -- stage / fulfill / land (the only writers of real bytes and commits) --------------------------
@@ -811,27 +594,26 @@ def land(
     commits them *directly* (`lens.commit_materialized`) rather than re-mining the deliberately
     dirty tree through `lens.put` -- then `record_ideal` so the edit survives the next `get()`.
     Refuses a *stale* stage (a tree edited or synced since `fulfill`, U6) before gating, so a
-    mixture can never be committed; abandon it with `ugh advanced unstage`."""
+    mixture can never be committed."""
     repo = Path(repo)
     record = _load_staged(repo)
     if record is None:
-        raise RewriteError("nothing staged -- run `ugh advanced fulfill` first")
+        raise RewriteError("nothing staged")
     ops = Store(repo).all_ops()
     candidate = Ideal.from_ops(frozenset(record["op_ids"]), ops)
 
     stale = _stale_paths(repo, candidate, ops)
     if stale:
         raise RewriteError(
-            f"staged candidate is stale -- {', '.join(stale)} changed since `ugh advanced fulfill`; "
-            f"re-fulfill, or `ugh advanced unstage` to abandon it (refusing to land a mixture)"
+            f"staged candidate is stale -- {', '.join(stale)} changed since it was staged; "
+            f"refusing to land a mixture"
         )
 
     status = oracle.overall_status(oracle.verdict_for(repo, candidate))
     if status != "pass":
         if override is None:
             raise RewriteError(
-                f"cannot land: oracle verdict is {status!r} -- run `ugh advanced oracle run`, "
-                "or land with an override"
+                f"cannot land: oracle verdict is {status!r} -- land with an override"
             )
         status_, reason, by = override
         rec = oracle.override(repo, status_, reason, by, ideal=candidate)

@@ -61,9 +61,9 @@ and `ugh help` lists the full surface.
 Your agent can record its own work, and it should. `ugh save` asks the agent for its own words, and
 those words become the name of any feature born from the work. `ugh undo` reverses a save.
 
-Four commands change state other people can see, and they stay with you rather than your agent.
-They are `ugh land`, `ugh sync`, `ugh propose land`, and `ugh resolve`. Each one asks you to confirm,
-and no single command undoes them.
+Two commands change state other people can see, and they stay with you rather than your agent.
+They are `ugh sync` and `ugh resolve`. Each one asks you to confirm, and no single command undoes
+them.
 
 ## Install the VS Code extension
 
@@ -123,26 +123,19 @@ an API key, a plain English phrase.
 | --- | --- |
 | `ugh init` | Read your existing git history into `ugh`. Run once per repo. |
 | `ugh save -m "..."` | Record the edits you just made, and name the feature they landed in. |
-| `ugh now` | Where am I? What you asked for, what's unsaved, what needs you, and the next thing to do. |
 | `ugh log` | What you did, newest first. `--map` shows features over time, `--tree` shows the feature tree, and `--summary` shows what needs attention. |
 | `ugh status` | What needs attention right now. The same view as `ugh log --summary`. |
 | `ugh show <target>` | What an id, feature, or symbol is, and what removing it would cost. Add `--at <point>` to read a file as it was then. Nothing is checked out. |
-| `ugh why <target>` | Why this code exists, meaning the prompt or plan step behind a commit, op, or symbol. |
+| `ugh find <words>` | Find a feature, save, or symbol you can describe but not name. |
 | `ugh undo` | Reverse your last `ugh` command as a new change, rather than by rewriting history. It shows what it will do first. |
-| `ugh revert <target>` | Remove one symbol, feature, or session's work, along with anything built on it. |
+| `ugh revert <target>` | Remove one symbol, feature, or checkpoint's work, along with anything built on it. |
 | `ugh restore <target>` | Bring a removed thing back, along with anything it needs. |
 | `ugh resolve <symbol>` | Walk through reconciling a symbol that was edited two different ways at once. |
-| `ugh switch <branch>` | Switch branches and rebuild that branch's files. |
-| `ugh diff <a> <b>` | Which symbol-level edits differ between two states. |
-| `ugh intent ...` | Browse the reason behind a feature. |
 | `ugh plan ...` | State a plan up front so later saves can be matched against it. |
-| `ugh feature ...` | Re-group or rename features. Labels only, and it never touches your code. |
-| `ugh advanced ...` | Rare and maintenance commands, e.g., `ugh advanced fsck`. |
+| `ugh feature rename` | Rename a feature. Labels only, and it never touches your code. |
+| `ugh check` | Verify the op store. `--repair` re-derives the record after a git history rewrite. |
 | `ugh sync` | Fetch a teammate's work and merge it, flagging any real conflict. |
-| `ugh land <branch>` | Advance a shared branch, one writer at a time, once your checks pass. |
 | `ugh push` | Push. If the push is rejected, it points you at `ugh sync`. |
-| `ugh propose ...` | Open a review object, like a pull request, that a reviewer can accept feature by feature. |
-| `ugh session ...` | Run an agent in its own scratch worktree, then land its work. |
 | `ugh mcp` | Run an MCP server so a coding agent can call `ugh` directly. |
 
 Run `ugh help` for the full list.
@@ -156,8 +149,8 @@ you get back, byte for byte, what is checked out.
 Removing an edit also removes anything built on top of it, so whatever is left still rebuilds into
 working files. Two versions of the same function can never both be in at once. When that happens,
 because two people edited it in parallel, `ugh` calls it a fork and asks you to reconcile it rather
-than picking a side. `ugh advanced fsck` checks that the current state is still valid and that the
-files it builds match what git has.
+than picking a side. `ugh check` checks that the current state is still valid, and `ugh check
+--tree` that the files it builds match what git has.
 
 [docs/guide/the-semantic-tree.md](docs/guide/the-semantic-tree.md) has the formal version.
 
@@ -171,11 +164,10 @@ time, that's a real conflict, and `ugh` isolates it to that one function. Everyt
 right away with no conflict markers to resolve.
 
 You reconcile the conflict with `ugh resolve <symbol>`. It won't let the conflict close until your
-build and test checks pass, so a conflict is never closed by code nobody verified. `ugh land`
-advances a shared branch one writer at a time, and only once those checks are green.
+build and test checks pass, so a conflict is never closed by code nobody verified.
 
-[docs/guide/workflows.md](docs/guide/workflows.md) walks through this end to end, along with
-parallel agent sessions and the points where a person still has to step in.
+[docs/guide/workflows.md](docs/guide/workflows.md) walks through this end to end, along with the
+points where a person still has to step in.
 
 ## Docs
 

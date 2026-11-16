@@ -107,19 +107,19 @@ def test_escape_returns_abort_and_keeps_nothing(tmp_path):
     assert result == Decision(False, frozenset())
 
 
-def _merge_pview():
+def _rename_pview():
     """A metadata-verb projection: no code rail, no fallout -- just the precomputed `summary`
     lines and a so-what sentence, exactly what `_project_feature_preview` hands the pane."""
     return {
-        "ok": True, "verb": "merge", "target": "auth", "affected_symbols": ["auth"],
+        "ok": True, "verb": "rename", "target": "auth", "affected_symbols": ["auth"],
         "forked": False, "message": "", "files": {}, "fallout": [], "carry_count": 0,
-        "reversible": True, "summary": ["absorb login → auth", "3 op(s) · 5 member(s)"],
-        "so_what": "Merges into auth — metadata only, code untouched. Undo-able.",
+        "reversible": True, "summary": ["'login' → 'auth'"],
+        "so_what": "Relabels to auth — metadata only, code untouched. Undo-able.",
     }
 
 
 def test_metadata_verb_pane_renders_summary_and_has_no_fallout_table():
-    pview = _merge_pview()
+    pview = _rename_pview()
 
     async def drive():
         app = ConsequenceApp(pview)  # no views -- a metadata verb passes none
@@ -128,7 +128,7 @@ def test_metadata_verb_pane_renders_summary_and_has_no_fallout_table():
             assert app._blast == []  # nothing to toggle
             assert not app.query("#fallout-table")  # table only mounts when there's blast
             rail = str(app.query_one("#rail-body").render())
-            assert "absorb login → auth" in rail
+            assert "'login' → 'auth'" in rail
             so_what = str(app.query_one("#so-what").render())
             assert "metadata only, code untouched" in so_what
             await pilot.press("enter")
@@ -140,7 +140,7 @@ def test_metadata_verb_pane_renders_summary_and_has_no_fallout_table():
 
 def test_metadata_verb_pane_escape_aborts():
     async def drive():
-        app = ConsequenceApp(_merge_pview())
+        app = ConsequenceApp(_rename_pview())
         async with app.run_test() as pilot:
             await pilot.pause()
             await pilot.press("escape")

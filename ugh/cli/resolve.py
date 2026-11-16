@@ -3,8 +3,7 @@
 A `sync`/`land` that can't fold two divergent edits of one symbol records the fork in committed
 `.sgt/forks.json` with a `ugh resolve <symbol>` remedy. This is that verb: it wraps the three-step
 spine -- `merge_op` (draft a reconciliation hollow) -> edit the tree -> `fulfill` -> `land`
-(oracle-gated) -- into one command, so a user never stitches the pieces together by hand
-(`ugh advanced merge-op <a> <b>` remains the low-level escape hatch):
+(oracle-gated) -- into one command, so a user never stitches the pieces together by hand:
 
     ugh resolve <symbol>          # draft the reconciliation; then edit the file to merge both sides
     ugh resolve <symbol> --apply  # fulfill from the edited tree and land it (gated on the oracle)
@@ -43,7 +42,7 @@ def _resolve(repo: str, symbol: str, apply: bool, as_json: bool,
 
     fork = next((f for f in forks_view(repo)["forks"] if f["symbol"] == symbol), None)
     if fork is None:
-        msg = f"no open fork for {symbol!r} — run `ugh advanced forks` to list the open forks"
+        msg = f"no open fork for {symbol!r} — `ugh status` lists the open forks"
         return _emit_json({"ok": False, "error": msg}) if as_json else _err(msg)
     tip_a, tip_b = fork["tips"]
 

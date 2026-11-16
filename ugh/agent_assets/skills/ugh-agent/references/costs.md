@@ -10,13 +10,10 @@ what matters is the ratio between reads and which ones stay flat.
 
 | read | tokens | ms |
 |---|---|---|
-| `ugh_recall` | ~10 | 210 |
 | `ugh_drift` | ~10 | 280 |
 | `ugh_advanced_fsck` | ~15 | 3300 |
-| `ugh_now` | ~530 | 910 |
 | `ugh_show` | ~720 | 570 |
 | `ugh_log` | ~1400 | 260 |
-| `ugh_status` | ~3300 | 400 |
 
 Latency is dominated by whether that call is the one that mines the working tree. The first ugh call
 in a session pays for mining (seconds); later ones do not. Do not read the millisecond column as a
@@ -24,14 +21,14 @@ per-call cost or you will avoid a second read that is nearly free.
 
 ## Growth, which is the part that decides the guidance
 
-| commits | `ugh_now` | `ugh_log` |
-|---|---|---|
-| 10 | ~326 | ~1106 |
-| 30 | ~330 | ~1099 |
-| 60 | ~330 | ~1118 |
+| commits | `ugh_log` |
+|---|---|
+| 10 | ~1106 |
+| 30 | ~1099 |
+| 60 | ~1118 |
 
-All three are flat, which is what makes them safe to reach for on a repository of any age. `ugh_log`
-is flat because it is windowed to 30 ops over MCP and reports `truncated` when it clipped.
+`ugh_log` is flat, which is what makes it safe to reach for on a repository of any age: it is
+windowed to 30 ops over MCP and reports `truncated` when it clipped.
 
 The contrast is the grid, which is why it is not an MCP tool: `grid_view` measured ~1,470 tokens at
 10 commits, ~4,620 at 30, ~6,480 at 60, and about **129,000** on the 290-commit repo. That growth is

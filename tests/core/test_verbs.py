@@ -16,7 +16,6 @@ import pytest
 from hypothesis import HealthCheck, given, settings, strategies as st
 
 from ugh.core import order
-from ugh.core import session as session_mod
 from ugh.core import verbs
 from ugh.core.fold import code
 from ugh.core.lens import get
@@ -24,7 +23,6 @@ from ugh.core.op import make_op
 from ugh.core.order import is_valid_ideal
 from ugh.core.store import Store
 from ugh.store.gitbind import init_store
-from tests.core.test_session import _seed_repo, _write_and_commit
 from tests.laws import corpus
 
 
@@ -241,27 +239,6 @@ def test_pin_to_an_older_version_removes_the_induced_upset(tmp_path):
     assert code(get(repo), Store(repo).all_ops())["a.py"] == b"def foo():\n    return 1\n"
 
 
-def test_after_edge_changes_a_subsequent_reverts_closure(tmp_path):
-    """`after(a, b)` records a declared edge a ≤ b; a later revert(a) then also removes b, which
-    it would not without the edge (the two symbols are otherwise independent)."""
-    repo = tmp_path / "repo"
-    gb, _ = init_store(repo)
-    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("add foo")
-    (repo / "a.py").write_text("def foo():\n    return 1\n\n\ndef bar():\n    return 2\n", encoding="utf-8")
-    gb.commit_all("add independent bar")
-    get(repo)
-    ops = Store(repo).all_ops()
-    foo_op = _op_with(ops, "a.py::foo", b"return 1")
-    bar_op = _op_with(ops, "a.py::bar", b"return 2")
-
-    # Control: without a declared edge, reverting foo leaves bar untouched.
-    assert bar_op.id not in verbs.plan_revert(repo, foo_op.id).removed
-
-    verbs.after(repo, foo_op.id, bar_op.id)  # declare foo ≤ bar
-    assert bar_op.id in verbs.plan_revert(repo, foo_op.id).removed  # closure now pulls bar out
-
-
 def test_emit_and_plan_are_side_effect_free(tmp_path):
     """`--emit`/`plan_*` write nothing: the store, the persisted ideal, and the working tree are
     byte-identical before and after previewing an edit."""
@@ -291,53 +268,6 @@ def test_apply_then_get_persists_the_edit_without_a_phantom_inverse(tmp_path):
     after = get(repo).op_ids
     assert after == before - preview.removed  # exactly the edit, nothing resurrected or inverted
     assert is_valid_ideal(Store(repo).all_ops(), after)
-
-
-def test_plan_revert_session_removes_exactly_the_landed_session_ops(tmp_path):
-    """Addressing by provenance (plan U31, S7): `revert --session <name>` resolves a session name
-    to the op-set it landed via structured attribution (`ops_by_session`), not the session record
-    (which `land` already dropped), then removes exactly that op-set's up-set closure."""
-    _seed_repo(tmp_path)
-    session = session_mod.start(tmp_path, "s1")
-    _write_and_commit(Path(session.scratch), "b.py", "def bar():\n    return 5\n")
-    session_mod.land(tmp_path, "s1")
-    get(tmp_path)  # absorb the landing commit into the main repo's store
-
-    session_ops = session_mod.ops_by_session(tmp_path, "s1")
-    assert session_ops  # the landed op still carries the attribution after the record is gone
-    assert session_mod.list_sessions(tmp_path) == ()  # the session record itself is gone
-
-    preview = verbs.plan_revert_session(tmp_path, "s1")
-    assert preview.ok
-    assert preview.removed == session_ops
-
-    verbs.apply(tmp_path, preview)
-    materialized = code(get(tmp_path), Store(tmp_path).all_ops())
-    assert "b.py" not in materialized
-
-
-def test_plan_revert_session_refuses_an_unknown_session_name(tmp_path):
-    _seed_repo(tmp_path)
-    preview = verbs.plan_revert_session(tmp_path, "nope")
-    assert not preview.ok
-    assert "no op carries session" in preview.message
-    assert preview.after_ids == preview.before_ids
-
-
-def test_plan_revert_session_reports_no_change_once_already_reverted(tmp_path):
-    _seed_repo(tmp_path)
-    session = session_mod.start(tmp_path, "s1")
-    _write_and_commit(Path(session.scratch), "b.py", "def bar():\n    return 5\n")
-    session_mod.land(tmp_path, "s1")
-    get(tmp_path)
-
-    verbs.plan_revert_session(tmp_path, "s1")
-    verbs.apply(tmp_path, verbs.plan_revert_session(tmp_path, "s1"))  # reverted once
-
-    preview = verbs.plan_revert_session(tmp_path, "s1")
-    assert preview.ok
-    assert preview.after_ids == preview.before_ids
-    assert "no change" in preview.message
 
 
 @settings(max_examples=20, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])

@@ -302,7 +302,7 @@ rm -f "$rebuild_log"
 # rendered tree below prints -- the render drops the 38 zero-symbol lanes, but every `--json`
 # surface (and therefore the VS Code workbench) still reports 67.
 #
-# `ugh advanced resync` is deliberately NOT run here, and this is the note that stops the next
+# `ugh check --repair` is deliberately NOT run here, and this is the note that stops the next
 # person adding it. It is the obvious candidate -- `ugh save`'s own failure message on this repo
 # recommends it by name -- and it does recover ops: measured on this build it ran 6m16s and
 # re-derived `refs/heads/master` from 2,066 to 2,181 ops (+115), taking the reported working-tree
@@ -339,7 +339,7 @@ PY
 # in forty while they narrate an apology. Run twice and print the SECOND timing: the first is the
 # fill, the second is what the participant will actually see.
 say "warming the read paths (each run twice; the second timing is the live one)"
-for cmd in "now" "log" "log --tree" "log --summary"; do
+for cmd in "log" "log --tree" "log --summary"; do
     # shellcheck disable=SC2086
     "$UGH" $cmd --no-color >/dev/null 2>&1 || true
     t="$("$UGH_PY" - "$UGH" $cmd <<'PY'

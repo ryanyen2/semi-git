@@ -105,39 +105,3 @@ def test_plan_intake_records_a_turn_keyed_by_session_id(tmp_path):
     assert len(got) == 1
     assert got[0]["text"] == "Fix the login bug across auth and session store."
     assert got[0]["actor"] == "human"
-
-
-def test_session_start_with_task_records_a_turn_keyed_by_name(tmp_path):
-    from ugh.core import lens
-    from ugh.core import session as session_mod
-    from ugh.core.lens import get
-
-    gb, _ = init_store(tmp_path)
-    (tmp_path / "main.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("init")
-    ideal = get(tmp_path)
-    put_sha = lens.put(tmp_path, ideal, message="ugh: init")
-    lens.record_ideal(tmp_path, ideal, put_sha)
-
-    session_mod.start(tmp_path, "s1", task="add rate limiting")
-
-    got = turns.turns_for(tmp_path, "s1", key_kind="session")
-    assert len(got) == 1
-    assert got[0]["text"] == "add rate limiting"
-
-
-def test_session_start_without_task_records_no_turn(tmp_path):
-    from ugh.core import lens
-    from ugh.core import session as session_mod
-    from ugh.core.lens import get
-
-    gb, _ = init_store(tmp_path)
-    (tmp_path / "main.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("init")
-    ideal = get(tmp_path)
-    put_sha = lens.put(tmp_path, ideal, message="ugh: init")
-    lens.record_ideal(tmp_path, ideal, put_sha)
-
-    session_mod.start(tmp_path, "s1")
-
-    assert turns.turns_for(tmp_path, "s1") == []

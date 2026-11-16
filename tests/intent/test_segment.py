@@ -265,18 +265,6 @@ def test_apply_label_pins_ignores_unmatched_key(tmp_path):
     assert all(s.source != "user" for s in pinned)
 
 
-def test_verb_preview_view_resolves_a_checkpoint(tmp_path):
-    """The VS Code hover-preview path: `verb_preview_view('revert', '<feature>@<n>')` must resolve
-    to the segment's deterministic op-set (not silently fall through to an unresolvable plan)."""
-    from ugh.api import verb_preview_view
-
-    segs = _feature_with_two_segments(tmp_path)
-    v = verb_preview_view(tmp_path, "revert", "F-A@1")
-    assert v["ok"] is True
-    # the removed set is the segment's upset closure -> at least the segment's own ops
-    assert segs[1].op_ids <= frozenset(v["removed"])
-
-
 def test_soft_cap_bounds_segment_count(tmp_path):
     """A feature with many distinct-scope commits would cut into many segments; the MAX_SEGMENTS
     soft cap keeps the offline view readable."""

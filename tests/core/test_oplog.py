@@ -265,60 +265,6 @@ def test_feature_reorg_undo_restores_prior_label_and_membership(tmp_path):
 _BASE = "def foo():\n    return 1\n"
 
 
-def _seed_checked_out(root: Path):
-    from ugh import state
-    from ugh.core import lens
-
-    gb, _ = init_store(root)
-    (root / "main.py").write_text(_BASE, encoding="utf-8")
-    state.save_json(root, "oracle_config", {"tiers": [{"name": "gate", "command": "exit 0"}]})
-    gb.commit_all("init")
-    ideal = lens.get(root)
-    put = lens.put(root, ideal, message="ugh: init")
-    lens.record_ideal(root, ideal, put)
-    return gb, gb.symbolic_ref()
-
-
-def _commit_op(gb, root: Path, symbol: str) -> str:
-    from ugh.core import lens
-
-    (root / "main.py").write_text(
-        (root / "main.py").read_text(encoding="utf-8") + f"\n\ndef {symbol}():\n    return 0\n",
-        encoding="utf-8",
-    )
-    gb.commit_all(f"add {symbol}")
-    ideal = lens.get(root)
-    put = lens.put(root, ideal, message=f"ugh: add {symbol}")
-    lens.record_ideal(root, ideal, put)
-    return put
-
-
-def test_shared_land_is_logged_but_its_undo_is_refused(tmp_path):
-    """Landing a *non-checked-out* branch is a shared-out mutation (mirrors the `journal=checked_out`
-    guard, land.py:207): it is logged for provenance in the unified log, but `undo` refuses to apply
-    its inverse -- undo only reverses local, not-yet-shared operations."""
-    from ugh.core import sync
-
-    repo = tmp_path / "repo"
-    gb, _cur = _seed_checked_out(repo)
-    gb._git("branch", "release")            # target branch, not checked out
-    _commit_op(gb, repo, "baz")             # advance the checked-out branch past release
-
-    report = sync.land(repo, branch="release")
-    assert report.landed
-
-    table = oplog.load(repo)
-    assert any(e.get("kind") == "land" for entries in table.values() for e in entries), \
-        "the shared land must be logged for provenance"
-
-    outcome = oplog.undo(repo)
-    assert outcome.status == "refused"
-    assert "shared" in outcome.message.lower() and "land" in outcome.message.lower()
-    # refused, not popped: the provenance record survives (no rebase story past a shared op).
-    table_after = oplog.load(repo)
-    assert any(e.get("kind") == "land" for entries in table_after.values() for e in entries)
-
-
 # ---------------------------------------------------------------------------
 # preview: what undo will do, before it does it
 # ---------------------------------------------------------------------------

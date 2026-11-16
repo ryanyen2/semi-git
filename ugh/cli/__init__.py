@@ -1,36 +1,12 @@
-"""The `ugh` command surface — the operation-ideal kernel (plan U7/U8/U9/U11, flipped in U10),
-plus the feature lens (U13). Restructured in U18 into an argparse subcommand package: `main()`
-wires one subparser per verb from the verb-family modules below, and `ugh git <args...>` forwards
-verbatim to real git (advisory-only for tree-mutating subcommands, C8) before argparse is entered.
+"""The `ugh` command surface: an argparse subcommand package. `main()` wires one subparser per verb
+from the verb-family modules below, and `ugh git <args...>` forwards verbatim to real git (refusing
+tree-mutating subcommands) before argparse is entered.
 
 History is a mined, content-addressed op DAG; a codebase state is an order ideal of that DAG.
-`revert`/`restore` are exact ideal edits (`I \\ ↑X` / `I ∪ ↓X`) with `--emit` previews and
-chain-fork surfacing (AE2). `log`/`state`/`diff` inspect the DAG, the current ideal, and
-ideal-vs-ideal semantic diffs. `oracle` attaches async tiered build/test verdicts. `fsck` verifies
-the op store's integrity. Every verb mines the working tree on contact before acting (R9).
-
-Where the ideal algebra can't express an edit exactly, U11's rewrite verbs (`merge-op`,
-`split-op`, `transplant`, `revert --keep-dependents`, `identity split`/`identity join`) draft
-hollow ops for an agent/human to fulfill (`ugh advanced fulfill <draft-id> --from-tree`) and stage
-to the working tree without committing; `ugh advanced commit` is the only verb that commits one,
-gated on a passing oracle verdict (R14). `ugh land <branch>` is a distinct verb (U23's shared-branch
-CAS advance) -- deliberately not named `commit` and not overloaded onto a bare `ugh land`, so "land"
-only ever means the branch advance.
-
-`ugh log` is the one inspection surface (U14): the lane×commit grid, with `--tree` (the hierarchical
-feature tree, formerly `ugh map`; `--rebuild` reclusters), `--rail` (episode rail, formerly `ugh
-episodes`), `--summary` (scalars, formerly `ugh status`), and `--ops` (the raw op DAG). `ugh advanced
-blame` attributes a file's symbols. `merge`/`split`/`rename`/`move` are metadata-only feature verbs
--- instant, reversible, content-untouched (R16) -- and `revert <feature>` bridges into the ideal
-algebra: it resolves a feature id/label to its op-set and runs the same exact edit a single-op
-`revert` would, grouped by feature.
-
-`plan` is the agentic loop's off-chain half (plan U14): `plan intake` decomposes a stated plan into
-predicted hollow ops (R18 -- never touching the ideal algebra). Step<->op matching and plan-drift
-(the former `checkpoint`/`drift` verbs) are folded into `ugh save` (U12/R10): a save auto-confirms
-each unambiguous single-step match and reports the rest; `ugh save --resolve-plan` settles an
-n:m/multi-step match (`--confirm-hollow`/`--confirm-op` names one group). The working-tree sense of
-"drift" keeps its name in `ugh log --summary`/`ugh advanced fsck --tree`.
+`revert`/`restore` are exact ideal edits (`I \\ ↑X` / `I ∪ ↓X`) with `--emit` previews.
+`log` is the one inspection surface: the feature map, with `--rail`, `--tree`, `--summary` and
+`--ops` modes. `check` verifies the op store's integrity. Every verb mines the working tree on
+contact before acting (R9).
 """
 
 from __future__ import annotations
@@ -40,100 +16,16 @@ import difflib
 import subprocess
 import sys
 
-from . import (
-    edit, feature, ideal_edit, init, inspect, intent, loop, migrate, oracle, porcelain, propose,
-    resolve, review, rewrite, select, session, show, suggestions, sync, tiers,
-)
+from . import feature, ideal_edit, init, inspect, intent, loop, porcelain, resolve, select, show, sync
 
-# The daily spine + the frequently-reached verbs kept at the top level, two groupings, and the
-# unchanged collaboration/setup verbs (KTD2/R2, re-triaged). This is the ONLY top-level surface;
-# every *rare/maintenance* verb is re-homed under `feature`/`advanced` and is reachable only there
-# -- a hard rename, no alias layer. `advanced` is for maintenance/rare verbs only: the verbs a user
-# runs daily (navigation, inspection, the agentic loop, the rewrite pipeline) stay one word away.
+# `intent` is the hidden entry point the editor hooks call (`intent record` / `intent activity`).
 _VERBS = {
-    # spine (U14: the grid is the only inspection surface -- status/map/graph/episodes are `log`
-    # modes, no longer verbs; blame/edit/commit/fulfill demoted under `advanced`)
-    "save", "log", "undo", "revert", "restore", "resolve", "show",
-    # navigation + inspection (daily). `intent` stays top-level: its subcommands (list/show/build)
-    # don't map to a `log` mode and it was deliberately re-promoted (c4f9966/KTD8). `now` is the
-    # state-of-actions orient (what's in flight / needs you / next), a fast assembler distinct from
-    # `log`'s history grid.
-    # `status` is a thin alias of `log --summary` (one handler, so they cannot drift): U14 removed
-    # the spelling, which made the first command every git user types answer with the help text.
-    # `why` is top-level because "why is this code like this" is a question about a *selector*, not
-    # about features: `ugh why <sha>` answers with the prompt and words that produced a commit, and
-    # nothing in that reading is feature-scoped (the feature-closure form is the `--for` flag). It
-    # sat under `feature why`, so the natural spelling printed the help text instead of answering.
-    # `show` is the read half of visiting a past state: ugh could always reconstruct `code(I)` at an
-    # arbitrary frontier, and only the workbench's playhead ever displayed it. Reading an old version
-    # of a file is a daily question, so it answers at the top level, like `git show <rev>:<path>`.
-    # `find` is top-level for the same reason `why` is: it answers a question
-    # asked in words, not in identifiers. Every other way into the graph needs
-    # you to already know a name for the thing you are looking for, which is
-    # exactly what someone arriving at an unfamiliar repository does not have.
-    "switch", "diff", "intent", "now", "status", "why", "show", "find",
-    # agentic loop (daily) -- checkpoint/drift folded into `save` (U12)
-    "plan",
-    # groupings
-    "feature", "advanced",
-    # collaboration + setup (unchanged behavior + name)
-    "sync", "land", "push", "propose", "session", "init", "mcp",
+    "save", "log", "status", "undo", "revert", "restore", "resolve", "show", "find", "plan",
+    "feature", "check", "sync", "push", "init", "mcp", "intent",
 }
 
-# Where each re-homed verb's registration lands (default: top-level, i.e. spine/collaboration/setup).
-# The verb NAME and its args/handler are untouched -- only the parent subparser changes -- so the
-# family modules register unchanged and each verb keeps its exact behavior at its new path.
-_ROUTING = {
-    "rename": "feature", "select": "feature",
-    "merge": "regroup", "split": "regroup", "move": "regroup",
-    "state": "advanced", "oracle": "advanced", "fsck": "advanced",
-    "resync": "advanced", "history": "advanced", "ops": "advanced",
-    "compose": "advanced", "fold": "advanced", "preview": "advanced",
-    "forks": "advanced", "after": "advanced",
-    "tiers": "advanced", "migrate": "advanced",
-    "review-queue": "advanced", "identity": "advanced", "suggestions": "advanced",
-    "merge-op": "advanced", "split-op": "advanced", "transplant": "advanced",
-    "unstage": "advanced", "repair": "advanced",
-    # U14: demoted from the daily spine -- `blame` is a narrow single-symbol lookup, `edit` the
-    # opt-in oracle-gated ceremony (ordinary edits go through plain `save`), and `commit`/`fulfill`
-    # join the rewrite pipeline verbs (merge-op/split-op/transplant) already here.
-    "blame": "advanced", "edit": "advanced", "commit": "advanced", "fulfill": "advanced",
-}
-
-_FAMILIES = (init, inspect, ideal_edit, feature, loop, sync, oracle, rewrite, migrate, propose,
-             porcelain, tiers, select, session, review, intent, edit, resolve, show, suggestions)
-
-# Verbs that were *renamed* rather than re-homed: `log` render modes (U14) and the two loop verbs
-# folded into `save` (U12). `_ROUTING` covers the re-homed ones, so this table only holds the names
-# whose replacement isn't `ugh <grouping> <same-name>`. Both feed `_unknown_verb`: the KTD2 rename
-# was deliberately alias-free, which means a user arriving from older output or docs types a verb
-# that no longer exists -- the one thing we owe them is the command that replaced it.
-_RENAMED = {
-    # `status` is deliberately absent: it is a real top-level verb again (a thin alias onto
-    # `log --summary`'s handler), so an entry here would be unreachable -- the `_VERBS` gate passes
-    # it through before `_unknown_verb` is ever consulted -- and would read as a claim that it moved.
-    "map": "ugh log --map",
-    "graph": "ugh log --map",
-    "episodes": "ugh log --rail",
-    "tree": "ugh log --tree",
-    "checkpoint": "ugh save",       # U12: folded into the save beat
-    "drift": "ugh log --summary",   # working-tree drift kept its name as a summary scalar
-    "put": "ugh save",              # never existed as a verb (stale in core/sync/land.py docstring)
-}
-
-
-class _Router:
-    """Routes each family's ``add_parser(name, ...)`` to the destination subparsers action named by
-    ``_ROUTING`` (default: the top-level ``subs``). This is the whole mechanism of KTD2's re-homing:
-    a family module still calls ``subs.add_parser("fsck", ...)`` exactly as before, but the parser
-    it gets back is created under the ``advanced`` grouping instead of the top level, so the verb's
-    args and handler are unchanged -- only its path moves."""
-
-    def __init__(self, dests: dict):
-        self._dests = dests  # tier key -> subparsers action
-
-    def add_parser(self, name: str, **kwargs):
-        return self._dests[_ROUTING.get(name, "top")].add_parser(name, **kwargs)
+_FAMILIES = (init, inspect, ideal_edit, feature, loop, sync, porcelain, select, intent, resolve,
+             show)
 
 
 class _CLIExit(Exception):
@@ -151,17 +43,6 @@ class _Parser(argparse.ArgumentParser):
         raise _CLIExit(status)
 
 
-def _grouping_help(parser: argparse.ArgumentParser):
-    """A grouping verb invoked bare (`ugh feature`, `ugh advanced`, `ugh feature regroup`) prints
-    its own subhelp and exits cleanly, rather than erroring on a missing subcommand."""
-
-    def _f(args) -> int:
-        parser.print_help()
-        return 0
-
-    return _f
-
-
 def _build_parser() -> _Parser:
     parent = argparse.ArgumentParser(add_help=False)
     # `--json` switches the read verbs to the canonical machine-readable projection (ugh.api),
@@ -169,24 +50,8 @@ def _build_parser() -> _Parser:
     parent.add_argument("--json", action="store_true", dest="as_json")
     parser = _Parser(prog="ugh")
     subs = parser.add_subparsers(dest="verb")
-
-    # Two grouping verbs host the re-homed subcommands (KTD2), mirroring `tiers.py`'s nested
-    # `add_subparsers`. `feature regroup` is a third nesting level for the old merge/split/move.
-    feature_p = subs.add_parser("feature", parents=[parent])
-    feature_subs = feature_p.add_subparsers(dest="feature_verb")
-    feature_p.set_defaults(func=_grouping_help(feature_p))
-    regroup_p = feature_subs.add_parser("regroup", parents=[parent])
-    regroup_subs = regroup_p.add_subparsers(dest="regroup_verb")
-    regroup_p.set_defaults(func=_grouping_help(regroup_p))
-
-    advanced_p = subs.add_parser("advanced", parents=[parent])
-    advanced_subs = advanced_p.add_subparsers(dest="advanced_verb")
-    advanced_p.set_defaults(func=_grouping_help(advanced_p))
-
-    router = _Router({"top": subs, "feature": feature_subs,
-                      "regroup": regroup_subs, "advanced": advanced_subs})
     for family in _FAMILIES:
-        family.register(router, parent)
+        family.register(subs, parent)
     return parser
 
 
@@ -258,43 +123,22 @@ def _version() -> int:
     return 0
 
 
-def _runnable(name: str) -> str:
-    """The command a user can actually type for `name` today: its `log`-mode/fold replacement, its
-    re-homed path, or the bare top-level verb."""
-    if name in _RENAMED:
-        return _RENAMED[name]
-    group = _ROUTING.get(name)
-    if group == "regroup":
-        return f"ugh feature regroup {name}"
-    if group is not None:
-        return f"ugh {group} {name}"
-    return f"ugh {name}"
-
-
 def _unknown_verb(token: str) -> int:
     """An unrecognized first token. Never prints the full help and exits 0: a caller (a script, an
-    agent, a user reading a stale README) that types a verb which no longer exists would read that
-    success as "it ran and did nothing to do", which is the same silent-no-op failure class the
-    workbench fixed. Exit 2 always, and -- because KTD2's re-homing shipped without an alias layer --
-    name the command that replaced it whenever we can compute one."""
+    agent, a user reading a stale README) that types a verb which does not exist would read that
+    success as "it ran and did nothing to do". Exit 2 always, with the closest real verbs."""
     if token.startswith("-"):
         sys.stderr.write(
             f"ugh: `{token}` is a flag, not a verb — flags go after the verb (e.g. `ugh log --json`).\n"
             "  run `ugh help` for the verb surface.\n")
         return 2
 
-    if token in _RENAMED or token in _ROUTING:
-        sys.stderr.write(f"ugh: `ugh {token}` no longer exists — it moved.\n"
-                         f"  run: {_runnable(token)}\n")
-        return 2
-
-    known = sorted(_VERBS | set(_ROUTING) | set(_RENAMED))
-    close = difflib.get_close_matches(token, known, n=3, cutoff=0.6)
+    close = difflib.get_close_matches(token, sorted(_VERBS), n=3, cutoff=0.6)
     sys.stderr.write(f"ugh: unknown verb `{token}`.\n")
     if close:
         sys.stderr.write("  did you mean:\n")
         for name in close:
-            sys.stderr.write(f"    {_runnable(name)}\n")
+            sys.stderr.write(f"    ugh {name}\n")
     sys.stderr.write("  run `ugh help` for the verb surface.\n")
     return 2
 
@@ -321,42 +165,26 @@ def _help() -> int:
         "ugh — semantic operation-ideal version control\n\n"
         "  the daily spine (a selection — symbol / glob / NL / feature / set — is the argument):\n"
         '  ugh save [-m "<msg>"] [--as "<feature>"]   record your edits + show which feature they landed in\n'
-        "  ugh now [--json]            where am I, what next — in flight / needs you / recently done\n"
         "  ugh log [--json]            the feature map: one lane per feature, edits over time —\n"
         "                              --rail (saves, newest first) · --tree (feature tree) ·\n"
         "                              --summary (what needs attention) · --refresh (reflect new edits)\n"
         "  ugh show <sel>              what is this? — any id ugh printed: what it covers, what\n"
         "                              would go with it, and what you can do next\n"
+        "  ugh find <words>            find a feature, save or symbol you can describe but not name\n"
         "  ugh undo                    invert the last mutating operation (the unified op log)\n"
         "  ugh revert <sel>            remove a selection and everything built on it\n"
         "  ugh restore <sel>           bring a selection back, along with what it needs\n"
         "  ugh resolve <symbol>        guided fork resolution when two versions of one symbol compete\n"
-        "\n"
-        "  navigation + inspection:\n"
-        "  ugh switch <branch>         move HEAD to a branch's committed tree (mines both ends)\n"
-        "  ugh diff <ref_a> <ref_b>    semantic diff: the symmetric difference of two ideals\n"
-        "  ugh intent <cmd>            per-feature checkpoints (intent segments): list/show/build;\n"
-        "                              rewind one with `ugh revert <feature>@<n>`\n"
+        "  ugh feature rename <feature> <label>   name a feature in your own words\n"
         "\n"
         "  agentic loop:\n"
         "  ugh plan <cmd>              intake/abandon/status a stated plan's predicted hollow ops\n"
         "  ugh save --resolve-plan     settle an ambiguous plan-step match a save couldn't auto-confirm\n"
         "\n"
-        "  groupings:\n"
-        "  ugh feature <cmd>           author/re-cut features: regroup (merge/split/move),\n"
-        "                              rename, select   (`why` is the top-level `ugh why <sel>`)\n"
-        "  ugh advanced <cmd>          maintenance/rare verbs: blame, edit, fulfill, commit, fsck,\n"
-        "                              resync (recover after a git history rewrite), ops, state,\n"
-        "                              oracle, after, fold, preview, tiers, identity, migrate,\n"
-        "                              history, compose, forks, review-queue, unstage, repair,\n"
-        "                              merge-op, split-op, transplant\n"
-        "\n"
         "  collaboration + setup:\n"
         "  ugh sync [remote] [branch]  fetch + merge a teammate's work; union ops, reconcile, fork\n"
-        "  ugh land <branch> [--json]  advance a shared branch record by CAS, gated oracle-green\n"
         "  ugh push [remote] [branch]  non-forcing git push; a rejection routes you to `ugh sync`\n"
-        "  ugh propose <cmd>           a base+Δ review object: create/status/land/render/publish\n"
-        "  ugh session <cmd>           named scratch-tree lifecycle: start/status/land/gc\n"
+        "  ugh check [--tree] [--repair]   verify the op store; --repair re-derives after a history rewrite\n"
         "  ugh init [path] [--horizon <ref>]   bind git + the kernel op store; mine existing history\n"
         "  ugh mcp [path]              run the MCP stdio server for coding-agent clients\n"
         "  ugh git <args...>           pass through to real git (refuses tree-mutating verbs)\n"

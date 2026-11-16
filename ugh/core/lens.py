@@ -363,17 +363,6 @@ def declare_after(repo: Path, a: str, b: str) -> None:
     save_declared_orset(repo, orset.union(DeclaredORSet(adds=frozenset({(a, b, uuid.uuid4().hex)}))))
 
 
-def retract_after(repo: Path, a: str, b: str) -> frozenset[str]:
-    """`ugh after --retract a b`: tombstone every tag *currently observed locally* for edge
-    `(a, b)` (OR-Set remove). A concurrent add elsewhere, with a tag this clone hasn't seen, is not
-    tombstoned and survives the sync -- the whole point of OR-Set over a blanket delete. Returns the
-    set of tags tombstoned (empty if the edge wasn't declared here)."""
-    orset = load_declared_orset(repo)
-    observed = frozenset(tag for (x, y, tag) in orset.adds if (x, y) == (a, b))
-    save_declared_orset(repo, DeclaredORSet(adds=orset.adds, tombstones=orset.tombstones | observed))
-    return observed
-
-
 def _load_declared(repo: Path) -> frozenset[Edge]:
     """The *live* declared order edges (`ugh after a b` -> `(a, b)` meaning `a <= b`, U8's escape
     hatch for ordering the analyzer can't infer) -- the OR-Set resolved down to the plain edge set
@@ -681,7 +670,7 @@ def ideal_for_ref(repo: str | Path, ref: str = "HEAD", store: Store | None = Non
     live in the commit, so reading a ref's own trailers is what "the ideal this ref's committed
     history implies" already means -- the same source `sync`'s log -> trailers -> mine recovery
     ladder trusts (`sync.ingest._attributed_ids`). A rewrite that strips trailers falls to rung 2,
-    i.e. exactly today's answer and never a worse one; `ugh advanced resync` remains the remedy
+    i.e. exactly today's answer and never a worse one; `ugh check --repair` remains the remedy
     there.
 
     A ref whose history was never mined *and* carries no trailers still yields an under-approximated
@@ -1204,7 +1193,7 @@ def dropped_ideal_ops(repo: str | Path, ref: str | None = None) -> list[str]:
 
 def _history_rewritten(gb: GitBinding, witness: str | None, head: str | None) -> bool:
     """True iff this ref's recorded ideal still names ops from commits git can no longer reach --
-    i.e. git history moved backward/sideways and `ugh advanced resync` is the remedy.
+    i.e. git history moved backward/sideways and `ugh check --repair` is the remedy.
 
     Before this, the desync presented as ordinary working-tree drift, so every surface suggested
     `ugh save` -- which finds nothing new, prints "nothing to save", exits 0, and leaves the
@@ -1226,7 +1215,7 @@ def _history_rewritten(gb: GitBinding, witness: str | None, head: str | None) ->
 
 
 def resync(repo: str | Path, *, reseed: bool = False) -> dict:
-    """`ugh resync`: recover the current ref's ideal after a git history rewrite (`git reset --hard`,
+    """`ugh check --repair`: recover the current ref's ideal after a git history rewrite (`git reset --hard`,
     `commit --amend`, `branch -f`) desynced it. A backward/divergent move leaves the persisted
     `.sgt/local/ideal.json` still naming ops from now-dropped commits: `log`/`--map` show vanished
     symbols and a later `save` can dead-end. The old workaround was a manual `rm .sgt/local/ideal.json`
@@ -1331,14 +1320,10 @@ def put(repo: str | Path, ideal: Ideal, message: str = "ugh: materialize ideal",
     gb = GitBinding(repo)
     # A staged rewrite candidate deliberately leaves the tree dirty (U6). `put`'s `get()` would
     # re-mine those un-landed bytes and its fold would clobber them, committing a mixture -- so any
-    # materializing edit refuses while a stage is live. `ugh advanced commit` lands it directly
-    # (`rewrite.land` -> `commit_materialized`, which does not call `get`); `ugh advanced unstage`
-    # abandons it. Both remedies are spelled at their real CLI paths here because this comment is
-    # where the refusal below got its wording, and both spellings it inherited were wrong.
+    # materializing edit refuses while a stage is live.
     if state.load_json(repo, "staged", default=None) is not None:
         raise DirtyWorkingTreeError(
-            "a rewrite candidate is staged -- `ugh advanced commit` to land it or "
-            "`ugh advanced unstage` to abandon it before another materializing edit"
+            "a rewrite candidate is staged -- another materializing edit would overwrite it"
         )
     get(repo)  # absorb any dirty tree / foreign commit first (R9)
     store = Store(repo)
@@ -1348,7 +1333,7 @@ def put(repo: str | Path, ideal: Ideal, message: str = "ugh: materialize ideal",
     if conflicts:
         raise DirtyWorkingTreeError(
             f"put() would overwrite uncommitted changes: {sorted(conflicts)} "
-            f"(if you just rewrote git history -- reset/amend/branch -f -- run `ugh advanced resync`)"
+            f"(if you just rewrote git history -- reset/amend/branch -f -- run `ugh check --repair`)"
         )
     # Delta-scoped guard (Phase 0, 0.1): the fold rewrites *every* covered path, but this edit only
     # touches the symbols in `before_ideal Δ after_ideal`. A path outside that delta whose on-disk
@@ -1659,7 +1644,7 @@ def materialization_skips(
 
     The split exists because the two need opposite things said about them. A path ugh never mined
     -- `.gitignore` in every repo built by these tools -- cannot be materialized by any repair, so
-    reporting it as damage and pointing at `ugh advanced fsck --tree` sends a user to run a command
+    reporting it as damage and pointing at `ugh check --tree` sends a user to run a command
     that answers "0 drifted path(s)" and leaves the same warning on the next `status`. That is the
     failure `_history_rewritten` documents for resync: a remedy that reports success without
     fixing anything is worse than none, because it also removes the reason to keep looking.
@@ -1705,7 +1690,7 @@ _TREE_CLASSES = ("drift", "unmanaged", "backstop_kept", "staged", "unseeded")
 
 
 def fsck_tree(repo: str | Path) -> dict[str, list[str]]:
-    """`ugh fsck --tree` (R2): compare `code(current_ideal)` against the HEAD tree and classify
+    """`ugh check --tree` (R2): compare `code(current_ideal)` against the HEAD tree and classify
     every divergent path. Only `drift` is a real finding -- bytes at HEAD that ugh never absorbed
     (`get` to absorb, or `put` to enforce the ideal, with opposite data-loss profiles). The rest
     are planned divergence: `unmanaged` (a symlink), `backstop_kept` (a path the ideal dropped

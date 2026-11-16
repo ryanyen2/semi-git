@@ -50,7 +50,7 @@ def _imported_modules(path: pathlib.Path) -> set[str]:
 # Known inversions, each one a bug that is allowlisted rather than hidden: the rule stays enforced
 # for everything else, and removing an entry here is the definition of "fixed".
 #
-# `api.py -> ugh.tui.graph`: `_project_land_preview`/`_project_feature_preview` call
+# `api.py -> ugh.tui.graph`: `_project_sync_preview`/`resolve_apply_preview_view` call
 # `render_collab_preview_lines` to precompute terminal-rendered strings into the projection's
 # `summary` field. So the canonical projection contains presentation, which means the VS Code webview
 # and MCP receive text laid out for a terminal. The fix is to move the rendering up into the CLI/TUI

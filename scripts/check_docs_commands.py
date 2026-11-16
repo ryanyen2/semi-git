@@ -1,18 +1,15 @@
 #!/usr/bin/env python3
 """Check every `ugh ...` command quoted in the skills and docs against the live CLI surface.
 
-Skills are instructions we ship to agents, and an agent follows them literally. When a verb gets
-re-homed (`fsck` -> `advanced fsck`) or renamed to a `log` mode (`status` -> `log --summary`), the
-prose that names the old spelling becomes a trap: the agent runs it, gets an error, and either
-retries variations or reports the task blocked. At the time this script was written, 11 of the 23
-commands in `ugh-workflow/SKILL.md` no longer existed.
+Skills are instructions we ship to agents, and an agent follows them literally. When a verb is
+removed or renamed, the prose that names the old spelling becomes a trap: the agent runs it, gets an
+error, and either retries variations or reports the task blocked. At the time this script was
+written, 11 of the 23 commands in `ugh-workflow/SKILL.md` no longer existed.
 
 Prose drifts silently because nothing executes it. This does: it reads the argparse tree that
-actually dispatches and reports any quoted command that would not run, with the replacement path
-where one can be computed.
+actually dispatches and reports any quoted command that would not run.
 
     python -m scripts.check_docs_commands              # skills + docs/guide + README
-    python -m scripts.check_docs_commands --fix        # rewrite the re-homed/renamed ones in place
     python -m scripts.check_docs_commands path/to.md   # just these files
 
 Exit status is 1 when anything is stale, so it works as a test or a pre-commit hook.
@@ -27,13 +24,9 @@ import sys
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
-# Where we ship prose that tells someone (or something) to run a command. The study materials are
-# on this list because they are the most literal instructions we hand anyone: a participant types
-# them verbatim, with a facilitator watching, and has no way to tell a renamed verb from a tool that
-# cannot do the thing. `web/src/study/content.ts` is the same two sheets served as a web page, so it
-# drifts the same way and independently.
+# Where we ship prose that tells someone (or something) to run a command.
 DEFAULT_TARGETS = ("ugh/agent_assets/skills", "docs/guide", "README.md", "CONTRIBUTING.md",
-                   "CLAUDE.md", "docs/study/materials", "web/src/study/content.ts")
+                   "CLAUDE.md")
 
 # A backticked ugh command: `ugh log --map`, `ugh feature regroup merge <a> <b>`. Stops at the first
 # token that isn't a plain word/flag, so placeholders (`<ref>`, `"text"`) end the verb path cleanly.
@@ -63,26 +56,15 @@ _EXEMPT_LINE_MARKERS = (
 )
 
 
-def _surface():
-    """(top-level verbs, {verb: grouping}, {verb: replacement command}) from the live CLI."""
+def _surface() -> set[str]:
+    """The top-level verbs of the live CLI."""
     sys.path.insert(0, str(REPO))
     import ugh.cli as cli
 
     # `help` and `git` dispatch in `main()` *before* the `_VERBS` gate, so they are real entry
     # points that simply aren't in that set. Without them here, every `ugh help` in the README
     # reads as stale.
-    return cli._VERBS | {"help", "git"}, cli._ROUTING, cli._RENAMED
-
-
-def _replacement(verb: str, routing: dict, renamed: dict) -> str | None:
-    if verb in renamed:
-        return renamed[verb]
-    group = routing.get(verb)
-    if group == "regroup":
-        return f"ugh feature regroup {verb}"
-    if group is not None:
-        return f"ugh {group} {verb}"
-    return None
+    return cli._VERBS | {"help", "git"}
 
 
 def _display(path: pathlib.Path) -> pathlib.Path:
@@ -95,17 +77,14 @@ def _display(path: pathlib.Path) -> pathlib.Path:
 
 
 def _flag_index():
-    """{(verb path tuple): {allowed long flags}} for every registered subparser.
-
-    Built from the real parser tree, so it stays correct through re-homing: `ugh advanced fsck`'s
-    flags are looked up under `("advanced", "fsck")` without this file knowing that fsck moved."""
+    """{(verb path tuple): {allowed long flags}} for every registered subparser, built from the real
+    parser tree: `ugh feature rename`'s flags are looked up under `("feature", "rename")`."""
     sys.path.insert(0, str(REPO))
     import ugh.cli as cli
 
     index: dict[tuple[str, ...], set[str]] = {}
     # A subparser can be reachable by more than one path (the families share a `parents=[parent]`
-    # parser, and the router hands the same subparsers action to several groupings), so an
-    # unguarded walk recurses forever. Track the actions already expanded.
+    # parser), so an unguarded walk recurses forever. Track the actions already expanded.
     seen: set[int] = set()
 
     def walk(action, prefix=()):
@@ -134,8 +113,7 @@ def _flag_index():
 def _bad_subcommand(tokens, flag_index) -> str | None:
     """A message when `tokens` names a *grouping* plus a subcommand that grouping does not have.
 
-    Only reported for a verb that actually hosts subparsers (`feature`, `advanced`, `feature
-    regroup`, `tiers`). A verb whose second token is an ordinary argument -- `ugh show f-abc`,
+    Only reported for a verb that actually hosts subparsers (`feature`). A verb whose second token is an ordinary argument -- `ugh show f-abc`,
     `ugh revert auth.py::login` -- has no subparsers, so nothing is checked and a placeholder is
     never mistaken for a missing subcommand."""
     verbs = [t for t in tokens if not t.startswith("--")]
@@ -191,11 +169,8 @@ def unrunnable(command: str) -> str | None:
     flags = [t for t in tokens[1:] if t.startswith("--")]
     if not rest:
         return None  # `ugh --help` and friends
-    verbs, routing, renamed = _surface()
-    if rest[0] not in verbs:
-        replacement = _replacement(rest[0], routing, renamed)
-        return (f"`ugh {rest[0]}` moved -> {replacement}" if replacement
-                else f"`ugh {rest[0]}` is not a verb")
+    if rest[0] not in _surface():
+        return f"`ugh {rest[0]}` is not a verb"
     flag_index = _flag_index()
     bad_sub = _bad_subcommand(rest, flag_index)
     if bad_sub is not None:
@@ -208,12 +183,11 @@ def _fenced_as_quoted(line: str) -> str:
     """A command inside a fenced code block, rewritten as if it were backticked, so the two regexes
     above find it unchanged. Empty string when the line holds no command.
 
-    Fenced blocks were invisible to this check, and they are where instructions actually live: the
-    study sheets put every command a participant types in one, and the prose around it names those
-    same verbs in backticks only sometimes. A sheet could therefore go stale in the one form someone
-    copies while passing here.
+    Fenced blocks were invisible to this check, and they are where instructions actually live: a
+    guide puts the commands to type in one, and the prose around it names those same verbs in
+    backticks only sometimes.
 
-    The sheets write a command in a left column and its gloss in a right one (`ugh log --map     one
+    A block writes a command in a left column and its gloss in a right one (`ugh log --map     one
     row per feature`), so the command ends at the first run of two or more spaces, or at a comment.
     """
     # A `.ts` sheet holds the same markdown inside a template literal, where every backtick is
@@ -235,16 +209,14 @@ def _iter_files(targets):
             yield from sorted(path.rglob("*.md"))
 
 
-def check(targets=DEFAULT_TARGETS, *, fix: bool = False):
-    """Returns a list of `(path, line_no, quoted, replacement_or_None)` for each stale command."""
-    verbs, routing, renamed = _surface()
+def check(targets=DEFAULT_TARGETS):
+    """Returns a list of `(path, line_no, quoted, reason)` for each stale command."""
+    verbs = _surface()
     flag_index = _flag_index()
     findings = []
 
     for path in _iter_files(targets):
-        original = path.read_text(encoding="utf-8")
-        lines = original.splitlines(keepends=True)
-        changed = False
+        lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
 
         in_fence = False
         for i, raw_line in enumerate(lines, start=1):
@@ -252,7 +224,7 @@ def check(targets=DEFAULT_TARGETS, *, fix: bool = False):
                 in_fence = not in_fence
                 continue
             # Inside a fence the command is bare; scan a backticked rewrite of it so both regexes
-            # work as written. `--fix` skips these: the line has no backtick to rewrite.
+            # work as written.
             line = _fenced_as_quoted(raw_line) if in_fence else raw_line
             if not line:
                 continue
@@ -267,27 +239,15 @@ def check(targets=DEFAULT_TARGETS, *, fix: bool = False):
                 verb = tokens[0]
                 if verb in verbs:
                     # The top-level verb dispatches. Also check the *sub*-path when the next token
-                    # names a grouping's subcommand: checking only the first token let
-                    # `ugh feature why` pass unnoticed after `why` was promoted out of `feature`,
-                    # because `feature` itself still dispatched. A grouping prints its subhelp for an
-                    # unknown subcommand, so the failure there is quiet rather than loud.
+                    # names a grouping's subcommand: a grouping prints its subhelp for an unknown
+                    # subcommand, so the failure there is quiet rather than loud.
                     bad_sub = _bad_subcommand(tokens, flag_index)
                     if bad_sub is not None:
                         findings.append((_display(path), i, f"ugh {' '.join(tokens)}", bad_sub))
                     continue
-                replacement = _replacement(verb, routing, renamed)
-                quoted = f"ugh {' '.join(tokens)}"
-                findings.append((_display(path), i, quoted, replacement))
-                if fix and replacement is not None and not in_fence:
-                    # Replace just the verb, keeping whatever arguments followed it.
-                    rest = " ".join(tokens[1:])
-                    fixed = f"`{replacement}" + (f" {rest}" if rest else "")
-                    lines[i - 1] = lines[i - 1].replace(f"`ugh {' '.join(tokens)}", fixed, 1)
-                    changed = True
+                findings.append((_display(path), i, f"ugh {' '.join(tokens)}", "no such verb"))
 
-            # Flags, checked against the verb they were written for. Not auto-fixable: the right
-            # correction is usually to drop the flag or move it to a verb that has it, which needs
-            # a human reading the sentence.
+            # Flags, checked against the verb they were written for.
             for match in _CMD_WITH_FLAGS.finditer(line):
                 tokens = match.group(1).split()
                 if tokens[0] not in verbs:
@@ -296,9 +256,6 @@ def check(targets=DEFAULT_TARGETS, *, fix: bool = False):
                     findings.append((_display(path), i, f"ugh {' '.join(tokens)}",
                                      f"{flag} is not a flag of that verb"))
 
-        if changed:
-            path.write_text("".join(lines), encoding="utf-8")
-
     return findings
 
 
@@ -306,28 +263,16 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("targets", nargs="*", default=None,
                         help="files or directories to check (default: skills, docs/guide, README)")
-    parser.add_argument("--fix", action="store_true",
-                        help="rewrite re-homed/renamed commands in place")
     args = parser.parse_args(argv)
 
-    findings = check(args.targets or DEFAULT_TARGETS, fix=args.fix)
+    findings = check(args.targets or DEFAULT_TARGETS)
     if not findings:
         print("✓ every quoted ugh command dispatches")
         return 0
 
     print(f"✗ found {len(findings)} command(s) that do not dispatch:\n")
-    for path, line, quoted, replacement in findings:
-        fix_note = f"  ->  {replacement}" if replacement else "  ->  no such verb"
-        print(f"  {path}:{line}  `{quoted}`{fix_note}")
-    if args.fix:
-        # Not "rewrote N": the count includes findings `--fix` deliberately left alone (a bad flag,
-        # a verb with no computable replacement, anything inside a code block), and claiming a
-        # rewrite that did not happen is the one thing a checker must not do.
-        print("\nRe-homed commands in prose were rewritten. Commands inside code blocks are "
-              "reported only: there is no backtick to rewrite, and the lines around them usually "
-              "need editing too.")
-    else:
-        print("\nRe-run with --fix to rewrite the ones that have a computable replacement.")
+    for path, line, quoted, reason in findings:
+        print(f"  {path}:{line}  `{quoted}`  ->  {reason}")
     return 1
 
 

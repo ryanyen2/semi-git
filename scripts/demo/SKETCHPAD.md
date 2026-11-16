@@ -25,8 +25,7 @@ cheaply, and shot 6 uses it for that reason.
 The demo repo is `~/repos/sgt-demo/sketchpad-v2` and it is not in this repository, so ask Ryan for
 it and for the golden record at `~/repos/sgt-demo/.sgt-golden-v2` before you start.
 
-The seedbank demo is a different repo with its own file at `RUNBOOK-seedbank.md`. The four shot
-sketchpad-v3 take is at `sketchpad-v3/RUNBOOK.md`.
+The four shot sketchpad-v3 take is at `sketchpad-v3/RUNBOOK.md`.
 
 ## Setup
 
@@ -245,22 +244,6 @@ bash $UGH_SRC/scripts/demo/check-ideas.sh
 Keep the golden copy out of `/tmp`. macOS empties `/tmp` file contents and leaves the directories,
 so a stale copy looks present and restores nothing.
 
-**The golden copy is missing.** Rebuild the authored ideas from the git history, which is the only
-part that has to survive. Move the pins aside first, or `--rebuild` reproduces the mangled
-partition from them.
-
-```bash
-cd $DEMO
-mkdir -p /tmp/ugh-aside && mv .sgt/pins/pins.json .sgt/authored/features.json /tmp/ugh-aside/
-"$UGH" log --rebuild                                              # ~25s for the 20 commits
-UGH="$UGH" $UGH_SRC/scripts/demo/sketchpad-rebuild/author-ideas.sh "$DEMO"   # want: 5 passed
-"$UGH" feature rename "Constraint Solver" "the relaxation solver"
-cp -r .sgt ~/repos/sgt-demo/.sgt-golden-v2
-```
-
-`author-ideas.sh` re-derives each idea's ops from the `Sgt-Op:` commit trailers, so it runs from
-nothing. Then run the preflight again.
-
 **The whole repo is missing.** `build-sketchpad-v2.sh` replays the 20 saves, and the rebuild takes
 about ten minutes end to end. It needs the original `~/repos/sgt-demo/sketchpad` as its source,
 which now sits in `~/.Trash/sketchpad`.
@@ -269,7 +252,6 @@ which now sits in `~/.Trash/sketchpad`.
 cd $UGH_SRC
 FORCE=1 bash scripts/demo/sketchpad-rebuild/build-sketchpad-v2.sh
 cd $DEMO && $UGH log --refresh
-bash $UGH_SRC/scripts/demo/sketchpad-rebuild/author-ideas.sh
 $UGH feature rename 02004cfc "the relaxation solver"
 cp -r .sgt ~/repos/sgt-demo/.sgt-golden-v2
 ```

@@ -4,7 +4,7 @@ dependency-graph-backed tier and cross-feature span. Additive to compose_view (R
 
 from __future__ import annotations
 
-from ugh.api import compose_view, intent_view
+from ugh.api import intent_view
 from ugh.core.lens import get
 from ugh.intent import prompts, theme
 from ugh.store.gitbind import init_store
@@ -33,19 +33,6 @@ def test_shape_emits_themes_and_atoms_with_documented_keys_sorted(tmp_path, monk
                       "session_ids", "plan_ids", "claude_session_ids", "rationale"}
     assert v["atoms"] == sorted(v["atoms"], key=lambda x: x["commit_sha"])
     assert v["themes"] == sorted(v["themes"], key=lambda x: x["theme_id"])
-
-
-def test_additive_existing_compose_view_keys_unchanged_intent_added(tmp_path):
-    init_store(tmp_path)
-
-    v = compose_view(tmp_path)
-
-    assert "intent" in v
-    assert set(v["intent"]) == {"themes", "atoms", "segments"}
-    # every pre-existing key is still present and untouched
-    for key in ("map", "history", "status", "forks", "plan", "drift", "sessions", "trust",
-                "oracle_verdict", "proposals"):
-        assert key in v
 
 
 def test_empty_repo_has_no_themes_but_still_reports_atoms(tmp_path):

@@ -265,22 +265,6 @@ def auto_retire_open(repo: str | Path, *, max_age_days: float = 30.0,
     return retired
 
 
-def edit_rationale(repo: str | Path, rid_prefix: str, reason: str) -> str | None:
-    """Human correction (`ugh intent edit <id> "<reason>"`): supersede a record with a confirmed
-    one carrying the user's own reason, same subject. The optional lever -- capture never depends
-    on it. `None` when the prefix matches no record or several (never guess)."""
-    store = load_rationale(repo)
-    hits = [r for r in store.values() if r["id"].startswith(rid_prefix)]
-    if len(hits) != 1 or not reason.strip():
-        return None
-    old = hits[0]
-    return record_rationale(
-        repo, subject=old["subject"], reason=reason.strip(), actor="human",
-        evidence=old.get("evidence", []), confirmed=True, open=old.get("open", False),
-        predicted_fp=old.get("predicted_fp"),
-        relations=[{"type": "supersedes", "target": old["id"]}], recorded_by="user")
-
-
 def _symbol_matches(query: str, mined: str) -> bool:
     """Lenient join between the symbol an agent *names* and the symbol the miner *stores*
     (`repo/relative/path.py::name`). Agents reliably know the file basename and the symbol name,
@@ -296,55 +280,12 @@ def _symbol_matches(query: str, mined: str) -> bool:
     return mf.endswith("/" + qf) or qf.endswith("/" + mf)
 
 
-def recall(repo: str | Path, symbols: list[str]) -> dict:
-    """The agent-recall read (design §4.4, local tier): live rationale whose subject ops touch
-    `symbols`, plus every open intent -- "before you edit here, this is why it is the way it is,
-    and this was stated but never landed." Pure read over local stores; empty stores mean empty
-    lists, never an error."""
-    from ugh.core.store import Store
-
-    recs = list(load_rationale(repo).values())
-    dead = _superseded_ids(recs)
-    store = Store(repo)
-    wanted = list(dict.fromkeys(symbols))
-    matched = []
-    for r in recs:
-        if r["id"] in dead or r.get("open") or not r.get("reason"):
-            continue
-        ops = [s["op"] for s in r.get("subject", [])]
-        touched = set()
-        for op_id in ops:
-            op = store.get(op_id)
-            if op is not None:
-                touched.update(op.footprint)
-        overlap = sorted(m for m in touched if any(_symbol_matches(q, m) for q in wanted))
-        if overlap or not wanted:
-            matched.append({"reason": r["reason"], "actor": r["actor"],
-                            "confirmed": r["confirmed"], "symbols": overlap,
-                            "evidence": len(r.get("evidence", []))})
-    matched.sort(key=lambda m: -len(m["symbols"]))
-    opens = [{"id": r["id"], "reason": r["reason"]} for r in open_intents(repo)]
-    return {"rationale": matched, "open_intents": opens}
-
-
 def _superseded_ids(records: list[dict]) -> set[str]:
     """The ids any record in `records` supersedes -- those are historical, not the current why."""
     return {
         rel["target"] for r in records for rel in r.get("relations", [])
         if rel.get("type") == "supersedes"
     }
-
-
-def for_op(repo: str | Path, op_id: str) -> list[dict]:
-    """Every rationale record whose subject includes `op_id`, live (unsuperseded) first, then by
-    recency. Each record gains a `superseded` flag. The read-time liveness join against the current
-    ideal (demote rationale whose code was reverted) is M2 -- here supersession is the only
-    liveness signal, and M1 mints none, so in practice all records read live."""
-    recs = [r for r in load_rationale(repo).values() if any(s["op"] == op_id for s in r["subject"])]
-    superseded = _superseded_ids(recs)
-    for r in recs:
-        r["superseded"] = r["id"] in superseded
-    return sorted(recs, key=lambda r: (r["superseded"], -r["ts"]))
 
 
 def open_intents(repo: str | Path) -> list[dict]:

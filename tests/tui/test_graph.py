@@ -1102,8 +1102,8 @@ def test_state_banner_renders_forks_with_symbol_and_resolve_remedy():
 
 def test_state_banner_separates_cross_version_forks_from_divergent_edits():
     """F82: a fork whose tips come from two MINER_VERSIONs is the same commit mined twice, not two
-    people editing one symbol. `ugh resolve <symbol>` cannot close it -- only `migrate ops-v3` can --
-    so the banner must not hand the user a hand-merge for each one. Observed on ugh's own repo, where
+    people editing one symbol. `ugh resolve <symbol>` cannot close it, so the banner must not hand
+    the user a hand-merge for each one. Observed on ugh's own repo, where
     `status` offered 612 hand-merges for 619 cross-version pairs."""
     states = {"forks": [
         {"symbol": "room.py::apply", "tips": ["a1", "a2"], "cross_version": False},
@@ -1112,16 +1112,16 @@ def test_state_banner_separates_cross_version_forks_from_divergent_edits():
     text = "\n".join(_state_banner(states, color=False))
     assert "ugh resolve room.py::apply" in text          # the real divergence keeps its remedy
     assert "ugh resolve blame.ts::render" not in text    # the artifact must not get one
-    assert "ugh advanced migrate ops-v3" in text
+    assert "`ugh check` shows the versions present" in text
     assert "1 open fork" in text                      # counted honestly: one is a real fork
 
 
-def test_state_banner_renders_merge_op_drafts_with_repair_remedy():
+def test_state_banner_renders_merge_op_drafts_with_resolve_remedy():
     states = {"forks": [], "rewrites": {"drafts": [
         {"verb": "merge-op", "target": "room.py::apply", "draft_id": "rw-abcdef123456"}]}}
     text = "\n".join(_state_banner(states, color=False))
     assert "1 pending merge-op draft" in text and "room.py::apply" in text
-    assert "ugh advanced repair rw-abcdef123" in text  # draft_id capped at 12 chars
+    assert "ugh resolve <symbol> --apply" in text
 
 
 def test_state_banner_is_empty_for_no_state_and_ignores_non_merge_op_drafts():

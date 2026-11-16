@@ -40,13 +40,13 @@ def test_forwards_args_verbatim_and_propagates_exit_code(monkeypatch):
 
 def test_refuses_tree_mutating_subcommand_naming_the_ugh_verb(monkeypatch, capsys):
     """A tree-mutating subcommand is refused (git never runs), exits non-zero, and names the ugh
-    remedy on stderr (D2). `checkout` routes to `ugh switch`; `pull` to `ugh sync`."""
+    remedy on stderr (D2). `reset` routes to `ugh undo`; `pull` to `ugh sync`."""
     calls = _record_run(monkeypatch)
-    rc = cli.main(["git", "checkout", "main"])
+    rc = cli.main(["git", "reset", "--hard", "HEAD~1"])
     assert rc == 1
     assert calls == []  # git was NOT run
     err = capsys.readouterr().err
-    assert "ugh switch" in err and "--force" in err
+    assert "ugh undo" in err and "--force" in err
 
     rc = cli.main(["git", "pull", "origin", "main"])
     assert rc == 1
@@ -58,9 +58,9 @@ def test_force_overrides_refusal_and_consumes_the_token(monkeypatch, capsys):
     """`--force` overrides the refusal: git runs, but the override token is stripped so the plain
     git command reaches git (uniform across subcommands that don't accept `--force`)."""
     calls = _record_run(monkeypatch)
-    rc = cli.main(["git", "checkout", "--force", "main"])
+    rc = cli.main(["git", "reset", "--force", "--hard", "HEAD~1"])
     assert rc == 0
-    assert calls == [["git", "checkout", "main"]]  # --force consumed, not forwarded
+    assert calls == [["git", "reset", "--hard", "HEAD~1"]]  # --force consumed, not forwarded
     assert capsys.readouterr().err == ""
 
 
