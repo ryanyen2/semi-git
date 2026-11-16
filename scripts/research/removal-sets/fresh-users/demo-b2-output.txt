@@ -1,0 +1,83 @@
+THE 12 REQUESTS, oldest first:
+   1. hour-profile: add a by-hour page showing average rides per hour
+   2. weekday-weekend: split the by-hour page into weekday and weekend charts
+   3. event-days: track known non-normal days like storms and holidays
+   4. monthly-trend: add a monthly totals page to see the seasonal swing
+   5. event-annotation: mark tracked event days on the daily and monthly charts
+   6. side-compare: add an east vs west comparison page
+   7. year-table: add a by-year summary table
+   8. event-exclusion: exclude event days from averages, keep them in totals
+   9. csv-download: add a csv download link for daily totals
+  10. quiet-sensor: show the east/west split drifting over time, keep totals summed
+  11. date-window: scope every page to a picked date window, default last complete year
+  12. rounding: round bike counts on the overview page to the nearest 10
+
+With everything in, the project's check passes and renders 5 pages: /, /hourly, /monthly, /sides, /years
+
+TAKE OUT: year-table
+  VERDICT: only partly removed. 5 of its 34 lines go, 29 stay.
+  The project's check (check.py, renders every page): the check passes; pages it renders: 4 of 5 (/years no longer there).
+  Removed (it created them): pages/yearly.py: 3 constants (ORDER, PATH, TITLE), 1 file header
+  Held in place by other requests:
+    event-exclusion changed it later: metrics.py: yearly_summary()
+    quiet-sensor changed it later: pages/yearly.py: render()
+    date-window changed it later: pages/yearly.py: render()
+    and, needed by what is held: pages/yearly.py: 2 imports
+  Left in place, but nothing that remains calls it: metrics.py: yearly_summary(); pages/yearly.py: render()
+  TO REMOVE IT COMPLETELY you would also take out 30 lines of 3 other request(s):
+    event-exclusion: 8 lines in metrics.py: yearly_summary()
+    quiet-sensor: 4 lines in pages/yearly.py: render()
+    date-window: 18 lines in pages/yearly.py: render()
+    after that: 34 of its 34 lines are gone; the check passes; pages it renders: 4 of 5 (/years no longer there).
+
+TAKE OUT: event-days
+  VERDICT: NOT removed. 0 of its 60 lines go, 60 stay.
+  The project's check (check.py, renders every page): the check passes; pages it renders: 5 of 5 (the same pages as before).
+  Held in place by other requests:
+    event-annotation uses: events.py: 1 constant (EVENT_DAYS)
+    event-exclusion uses: events.py: label(), 1 file header
+    and, needed by what is held: events.py: 1 import
+  TO REMOVE IT COMPLETELY you would also take out 23 lines of 2 other request(s):
+    event-annotation: 17 lines in events.py: label_for_month(); pages/monthly.py: render(), 1 import; pages/overview.py: render(), 1 import
+    event-exclusion: 6 lines in metrics.py: hourly_averages(), yearly_summary(), 1 import
+    after that: 60 of its 60 lines are gone; the check passes; pages it renders: 5 of 5 (the same pages as before).
+
+TAKE OUT: event-days, event-annotation, event-exclusion
+  VERDICT: removed completely. 104 of its 104 lines go.
+  The project's check (check.py, renders every page): the check passes; pages it renders: 5 of 5 (the same pages as before).
+  Removed (it created them): events.py: label(), label_for_month(), 1 constant (EVENT_DAYS), 1 import, 1 file header; metrics.py: 1 import
+  Its changes undone inside: charts.py: bar_chart(); metrics.py: hourly_averages(), yearly_summary(); pages/monthly.py: render(), 1 import; pages/overview.py: render(), 1 import
+
+TAKE OUT: csv-download
+  VERDICT: NOT removed. 0 of its 22 lines go, 22 stay.
+  The project's check (check.py, renders every page): the check passes; pages it renders: 5 of 5 (the same pages as before).
+  Held in place by other requests:
+    date-window rewrote lines of it: its change inside pages/__init__.py: shell(); server.py: Handler(), 1 import
+    and, needed by what is held: server.py: daily_csv(), 2 imports
+  Left in place, but nothing that remains calls it: server.py: daily_csv()
+  TO REMOVE IT COMPLETELY you would also take out 48 lines of 1 other request(s):
+    date-window: 48 lines in check.py: main(); pages/__init__.py: shell(); pages/hourly.py: render(); pages/monthly.py: render(); pages/overview.py: render(); pages/sides.py: render(); pages/yearly.py: render(); server.py: Handler(), 1 import
+    after that: 22 of its 22 lines are gone; the check passes; pages it renders: 5 of 5 (the same pages as before).
+
+TAKE OUT: hour-profile
+  VERDICT: only partly removed. 5 of its 28 lines go, 23 stay.
+  The project's check (check.py, renders every page): the check passes; pages it renders: 4 of 5 (/hourly no longer there).
+  Removed (it created them): pages/hourly.py: 3 constants (ORDER, PATH, TITLE), 1 file header
+  Held in place by other requests:
+    weekday-weekend changed it later: pages/hourly.py: render()
+    event-exclusion changed it later: metrics.py: hourly_averages()
+    date-window changed it later: pages/hourly.py: render()
+    and, needed by what is held: pages/hourly.py: 2 imports
+  Left in place, but nothing that remains calls it: pages/hourly.py: render()
+  TO REMOVE IT COMPLETELY you would also take out 30 lines of 3 other request(s):
+    weekday-weekend: 21 lines in metrics.py: hourly_averages_weekday(), hourly_averages_weekend(); pages/hourly.py: render()
+    event-exclusion: 7 lines in metrics.py: hourly_averages()
+    date-window: 2 lines in pages/hourly.py: render()
+    after that: 28 of its 28 lines are gone; the check passes; pages it renders: 4 of 5 (/hourly no longer there).
+
+TAKE OUT: event-annotation
+  VERDICT: removed completely. 28 of its 28 lines go.
+  The project's check (check.py, renders every page): the check passes; pages it renders: 5 of 5 (the same pages as before).
+  Removed (it created them): events.py: label_for_month()
+  Its changes undone inside: charts.py: bar_chart(); pages/monthly.py: render(), 1 import; pages/overview.py: render(), 1 import
+

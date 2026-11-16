@@ -1,0 +1,92 @@
+THE 12 REQUESTS, oldest first:
+   1. hour-profile: add a by-hour page showing average rides per hour
+   2. weekday-weekend: split the by-hour page into weekday and weekend charts
+   3. event-days: track known non-normal days like storms and holidays
+   4. monthly-trend: add a monthly totals page to see the seasonal swing
+   5. event-annotation: mark tracked event days on the daily and monthly charts
+   6. side-compare: add an east vs west comparison page
+   7. year-table: add a by-year summary table
+   8. event-exclusion: exclude event days from averages, keep them in totals
+   9. csv-download: add a csv download link for daily totals
+  10. quiet-sensor: show the east/west split drifting over time, keep totals summed
+  11. date-window: scope every page to a picked date window, default last complete year
+  12. rounding: round bike counts on the overview page to the nearest 10
+
+With everything in, the project's check (check.py, which renders every page) passes; the pages are: /, /hourly, /monthly, /sides, /years
+What the tool can observe here is the output of those pages. Anything else (other addresses such as a download, files written) it cannot see.
+
+WHAT WOULD IT TAKE TO MAKE year-table GONE?
+  When it was added, a visitor got: new page(s) /years; 1 new line(s) of output, for example "Overview By Hour Monthly East vs West By Year".
+  OPTION 1, take out only what nothing else stands on.   Gone for a visitor: YES
+    a visitor sees: page /years no longer there; on every page: "...our Monthly East vs West By Year Download CSV" becomes "...our Monthly East vs West Download CSV"
+    in the code: 5 of its 34 lines go; left behind and called by nothing: pages/yearly.py: render()
+    held by: event-exclusion (changed it later), quiet-sensor (changed it later), date-window (changed it later)
+  OPTION 2, take out the complete set (everything that stands on it goes too).   Gone for a visitor: YES
+    also comes out: event-exclusion (1 of its 3 steps: metrics.py: yearly_summary()); quiet-sensor (1 of its 3 steps: pages/yearly.py: render()); date-window (1 of its 21 steps: pages/yearly.py: render())
+    a visitor sees: exactly what option 1 shows, nothing more
+    in the code: 34 of its 34 lines go, and no code is left that nothing calls
+  OPTION 3, remove what is held by hand or with your coding agent (a new save).
+    where: metrics.py: yearly_summary(); pages/yearly.py: render(), 2 import lines
+    must keep working: date-window, event-exclusion, quiet-sensor
+  RECOMMENDED: option 2. A visitor sees the same as with option 1, and it leaves no code behind that nothing calls.
+
+WHAT WOULD IT TAKE TO MAKE csv-download GONE?
+  When it was added, a visitor got: 1 new line(s) of output, for example "Overview By Hour Monthly East vs West By Year Download CSV".
+  OPTION 1, take out only what nothing else stands on.   Gone for a visitor: NO
+    a visitor sees: no difference at all
+    in the code: 0 of its 22 lines go
+    held by: date-window (rewrote the same lines)
+  OPTION 2, take out the complete set (everything that stands on it goes too).   Gone for a visitor: YES
+    also comes out: date-window (9 of its 21 steps: check.py: main(); pages/__init__.py: shell(); pages/hourly.py: render(); pages/monthly.py: render(); pages/overview.py: render(); pages/sides.py: render(); pages/yearly.py: render(); server.py: Handler(), 1 import line)
+    a visitor sees: on every page: "...thly East vs West By Year Download CSV" becomes "...thly East vs West By Year"; on every page: "Apply" disappears; on /: "Busiest day, 01 Jan 2018 to 31 Dec 2018" becomes "Busiest day on record"; on /: "5,790" becomes "6,430"; and 21 more change(s) in what the pages show
+    in the code: 22 of its 22 lines go, and no code is left that nothing calls
+    WARNING: this option changes check.py, the project's check itself. Confirm before using it.
+  OPTION 3, remove what is held by hand or with your coding agent (a new save).
+    where: pages/__init__.py: shell(); server.py: Handler(), daily_csv(), 3 import lines
+    must keep working: date-window
+  RECOMMENDED: option 3. Option 1 leaves it visible, and option 2 would also change other things a visitor sees.
+
+WHAT WOULD IT TAKE TO MAKE event-days GONE?
+  When it was added, a visitor got: nothing visible; it only added code that later requests use.
+  OPTION 1, take out only what nothing else stands on.   Gone for a visitor: it never showed a visitor anything by itself
+    a visitor sees: no difference at all
+    in the code: 0 of its 60 lines go
+    held by: event-annotation (uses it), event-exclusion (uses it)
+  OPTION 2, take out the complete set (everything that stands on it goes too).   Gone for a visitor: it never showed a visitor anything by itself
+    also comes out: event-annotation (5 of its 6 steps: events.py: label_for_month(); pages/monthly.py: render(), 1 import line; pages/overview.py: render(), 1 import line); event-exclusion (all of it: metrics.py: hourly_averages(), yearly_summary(), 1 import line)
+    a visitor sees: on /: "... 24 Dec: 775 25 Dec: 298 (Christmas) 26 Dec: 795 27 Dec: 1,339 28 Dec: 822 29 De..." becomes "... 24 Dec: 775 25 Dec: 298 26 Dec: 795 27 Dec: 1,339 28 Dec: 822 29 Dec: 319 30 De..."; on /: "Amber bars are known non-normal days &mdash; storms, holidays &mdash; not a real swing." disappears; on /hourly: "average 429 bikes an hour" becomes "average 425 bikes an hour"; on /hourly: "...:00: 9 05:00: 29 06:00: 99 07:00: 253 08:00: 365 09:00: 204 10:00: 103 11:00: 92..." becomes "...:00: 9 05:00: 29 06:00: 98 07:00: 250 08:00: 362 09:00: 202 10:00: 103 11:00: 92..."; and 5 more change(s) in what the pages show
+    in the code: 60 of its 60 lines go, and no code is left that nothing calls
+  OPTION 3, remove what is held by hand or with your coding agent (a new save).
+    where: events.py: label(), constants EVENT_DAYS, 1 import line, the file itself (other code imports it)
+    must keep working: event-annotation, event-exclusion
+  RECOMMENDED: none by default. This request shows nothing by itself; it is a base that other requests use. Taking it out means option 2, which changes what a visitor sees as listed.
+
+WHAT WOULD IT TAKE TO MAKE event-days, event-annotation, event-exclusion GONE?
+  When it was added, a visitor got: 9 new line(s) of output, for example "average 401 bikes an hour"; "Amber bars are known non-normal days &mdash; storms, holidays &mdash; ".
+  OPTION 1, take out only what nothing else stands on.   Gone for a visitor: YES
+    a visitor sees: on /: "... 24 Dec: 775 25 Dec: 298 (Christmas) 26 Dec: 795 27 Dec: 1,339 28 Dec: 822 29 De..." becomes "... 24 Dec: 775 25 Dec: 298 26 Dec: 795 27 Dec: 1,339 28 Dec: 822 29 Dec: 319 30 De..."; on /: "Amber bars are known non-normal days &mdash; storms, holidays &mdash; not a real swing." disappears; on /hourly: "average 429 bikes an hour" becomes "average 425 bikes an hour"; and 6 more change(s) in what the pages show
+    in the code: 104 of its 104 lines go
+  Nothing else stands on it, so there is no other option to weigh. RECOMMENDED: option 1.
+
+WHAT WOULD IT TAKE TO MAKE event-annotation GONE?
+  When it was added, a visitor got: 3 new line(s) of output, for example "Amber bars are known non-normal days &mdash; storms, holidays &mdash; "; "Amber bars contain a known non-normal day &mdash; storms, holidays &md".
+  OPTION 1, take out only what nothing else stands on.   Gone for a visitor: YES
+    a visitor sees: on /: "... 24 Dec: 775 25 Dec: 298 (Christmas) 26 Dec: 795 27 Dec: 1,339 28 Dec: 822 29 De..." becomes "... 24 Dec: 775 25 Dec: 298 26 Dec: 795 27 Dec: 1,339 28 Dec: 822 29 Dec: 319 30 De..."; on /: "Amber bars are known non-normal days &mdash; storms, holidays &mdash; not a real swing." disappears; on /monthly: "Jan 2018: 58,591 (New Year's Day) Feb 2018: 50,677 Mar 2018: 77,284 Apr 2018: 79..." becomes "Jan 2018: 58,591 Feb 2018: 50,677 Mar 2018: 77,284 Apr 2018: 79,947 May 2018: 12..."; and 1 more change(s) in what the pages show
+    in the code: 28 of its 28 lines go
+  Nothing else stands on it, so there is no other option to weigh. RECOMMENDED: option 1.
+
+WHAT WOULD IT TAKE TO MAKE hour-profile GONE?
+  When it was added, a visitor got: new page(s) /hourly; 1 new line(s) of output, for example "Overview By Hour".
+  OPTION 1, take out only what nothing else stands on.   Gone for a visitor: YES
+    a visitor sees: page /hourly no longer there; on every page: "Overview By Hour Monthly East vs West By Year Download CSV" becomes "Overview Monthly East vs West By Year Download CSV"
+    in the code: 5 of its 28 lines go; left behind and called by nothing: pages/hourly.py: render()
+    held by: weekday-weekend (changed it later), event-exclusion (changed it later), date-window (changed it later)
+  OPTION 2, take out the complete set (everything that stands on it goes too).   Gone for a visitor: YES
+    also comes out: weekday-weekend (all of it: metrics.py: hourly_averages_weekday(), hourly_averages_weekend(); pages/hourly.py: render()); event-exclusion (1 of its 3 steps: metrics.py: hourly_averages()); date-window (1 of its 21 steps: pages/hourly.py: render())
+    a visitor sees: exactly what option 1 shows, nothing more
+    in the code: 28 of its 28 lines go, and no code is left that nothing calls
+  OPTION 3, remove what is held by hand or with your coding agent (a new save).
+    where: metrics.py: hourly_averages(); pages/hourly.py: render(), 2 import lines
+    must keep working: date-window, event-exclusion, weekday-weekend
+  RECOMMENDED: option 2. A visitor sees the same as with option 1, and it leaves no code behind that nothing calls.
+

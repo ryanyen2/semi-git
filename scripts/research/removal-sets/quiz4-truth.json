@@ -1,0 +1,119 @@
+[
+ {
+  "off": [
+   "hour-profile"
+  ],
+  "stays": [
+   "hour-profile | metrics.py \u00b7 hourly_averages()",
+   "hour-profile | pages/hourly.py \u00b7 render()"
+  ],
+  "steps": 8
+ },
+ {
+  "off": [
+   "monthly-trend"
+  ],
+  "stays": [
+   "monthly-trend | metrics.py \u00b7 monthly_totals()",
+   "monthly-trend | pages/monthly.py \u00b7 docstring",
+   "monthly-trend | pages/monthly.py \u00b7 from bikecount",
+   "monthly-trend | pages/monthly.py \u00b7 render()"
+  ],
+  "steps": 8
+ },
+ {
+  "off": [
+   "event-days"
+  ],
+  "stays": [
+   "event-days | events.py \u00b7 EVENT_DAYS",
+   "event-days | events.py \u00b7 docstring",
+   "event-days | events.py \u00b7 import datetime",
+   "event-days | events.py \u00b7 label()"
+  ],
+  "steps": 4
+ },
+ {
+  "off": [
+   "event-days",
+   "event-annotation"
+  ],
+  "stays": [
+   "event-days | events.py \u00b7 EVENT_DAYS",
+   "event-days | events.py \u00b7 docstring",
+   "event-days | events.py \u00b7 import datetime",
+   "event-days | events.py \u00b7 label()"
+  ],
+  "steps": 10
+ },
+ {
+  "off": [
+   "event-days",
+   "event-annotation",
+   "event-exclusion"
+  ],
+  "stays": [],
+  "steps": 13
+ },
+ {
+  "off": [
+   "csv-download"
+  ],
+  "stays": [
+   "csv-download | pages/__init__.py \u00b7 shell()",
+   "csv-download | server.py \u00b7 Handler()",
+   "csv-download | server.py \u00b7 daily_csv()",
+   "csv-download | server.py \u00b7 from bikecount",
+   "csv-download | server.py \u00b7 import csv",
+   "csv-download | server.py \u00b7 import io"
+  ],
+  "steps": 6
+ },
+ {
+  "off": [
+   "date-window",
+   "csv-download"
+  ],
+  "stays": [],
+  "steps": 27
+ },
+ {
+  "off": [
+   "monthly-trend",
+   "event-annotation"
+  ],
+  "stays": [
+   "monthly-trend | metrics.py \u00b7 monthly_totals()",
+   "monthly-trend | pages/monthly.py \u00b7 docstring",
+   "monthly-trend | pages/monthly.py \u00b7 render()"
+  ],
+  "steps": 14
+ },
+ {
+  "off": [
+   "monthly-trend",
+   "date-window"
+  ],
+  "stays": [
+   "monthly-trend | metrics.py \u00b7 monthly_totals()",
+   "monthly-trend | pages/monthly.py \u00b7 from bikecount",
+   "monthly-trend | pages/monthly.py \u00b7 render()"
+  ],
+  "steps": 29
+ },
+ {
+  "off": [
+   "hour-profile",
+   "monthly-trend"
+  ],
+  "stays": [
+   "hour-profile | metrics.py \u00b7 hourly_averages()",
+   "hour-profile | pages/hourly.py \u00b7 render()",
+   "monthly-trend | metrics.py \u00b7 monthly_totals()",
+   "monthly-trend | pages/monthly.py \u00b7 docstring",
+   "monthly-trend | pages/monthly.py \u00b7 from bikecount",
+   "monthly-trend | pages/monthly.py \u00b7 render()"
+  ],
+  "steps": 16
+ }
+]

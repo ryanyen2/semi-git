@@ -1,0 +1,110 @@
+You have never seen this tool or the project it is shown on. A colleague hands you the two pages below and asks what you make of it. Read them once, then answer the questions at the end. Do not open any other file, do not search the web. Be candid: criticism is more useful than praise, and "I did not understand X" is a useful answer.
+
+=== PAGE 1: what the tool is, as a user is told ===
+
+The tool sits on top of git. For every save (a commit, or one request to a coding agent) it keeps what that save did to each function or other top-level definition. One save's change to one definition is called a step.
+
+For each step it also records what the step stands on:
+  - the earlier steps whose lines it rewrote,
+  - the definitions its code uses,
+  - the definitions somebody else created and it changed.
+
+You can switch any save off, and later on again. When a save is off, each of its steps is undone, unless something that remains stands on it. A step stays whole or goes whole. Before anything happens the tool lists what goes, what stays and why. It does not leave the program in a state that fails the project's check (compiler or tests): if undoing a step would break the program, that step stays and is listed with the reason.
+
+For anything that stays you can choose "take it out too". That also takes out what stands on it, and the tool lists those first.
+
+A feature is not a folder or a label. It is a set of steps that nothing outside it stands on, for example three requests that built on each other. You get one by pointing at a request, a function or a line and asking what stands on it.
+
+If you keep editing while something is off and later switch it back on: edits to different lines of the same function are combined automatically. Where your edit and the returning step replaced the same lines, the tool keeps the version you have now, sets the returning one aside and lists it. You can switch to the other version or write a combined one. There is no state with conflict markers.
+
+=== PAGE 2: output of a prototype on a small web project (real output, not edited) ===
+
+THE 12 REQUESTS, oldest first:
+   1. hour-profile: add a by-hour page showing average rides per hour
+   2. weekday-weekend: split the by-hour page into weekday and weekend charts
+   3. event-days: track known non-normal days like storms and holidays
+   4. monthly-trend: add a monthly totals page to see the seasonal swing
+   5. event-annotation: mark tracked event days on the daily and monthly charts
+   6. side-compare: add an east vs west comparison page
+   7. year-table: add a by-year summary table
+   8. event-exclusion: exclude event days from averages, keep them in totals
+   9. csv-download: add a csv download link for daily totals
+  10. quiet-sensor: show the east/west split drifting over time, keep totals summed
+  11. date-window: scope every page to a picked date window, default last complete year
+  12. rounding: round bike counts on the overview page to the nearest 10
+
+TAKE OUT: year-table
+  result: 7 of their 34 lines go; 0 lines written by other requests go; the app still runs
+  goes (6 steps):
+    year-table created pages/yearly.py · ORDER
+    year-table created pages/yearly.py · PATH
+    year-table created pages/yearly.py · TITLE
+    year-table created pages/yearly.py · docstring
+    year-table created pages/yearly.py · from bikecount
+    year-table created pages/yearly.py · from bikecount.pages
+  stays (2 steps):
+    year-table created metrics.py · yearly_summary()  <- stays because event-exclusion changed it later
+    year-table created pages/yearly.py · render()  <- stays because date-window, quiet-sensor changed it later
+
+TAKE OUT: event-days
+  result: 0 of their 60 lines go; 0 lines written by other requests go; the app still runs
+  goes (0 steps):
+  stays (4 steps):
+    event-days created events.py · EVENT_DAYS  <- stays because event-annotation's code in events.py · label_for_month() uses it
+    event-days created events.py · docstring  <- stays because event-exclusion's code in metrics.py · from bikecount uses it
+    event-days created events.py · import datetime  <- stays because event-days's code in events.py · EVENT_DAYS uses it
+    event-days created events.py · label()  <- stays because event-exclusion's code in metrics.py · yearly_summary() uses it
+
+TAKE OUT: event-days, event-annotation, event-exclusion
+  result: 104 of their 104 lines go; 0 lines written by other requests go; the app still runs
+  goes (13 steps):
+    event-days created events.py · EVENT_DAYS
+    event-days created events.py · docstring
+    event-days created events.py · import datetime
+    event-days created events.py · label()
+    event-annotation changed charts.py · bar_chart()
+    event-annotation created events.py · label_for_month()
+    event-annotation changed pages/monthly.py · from bikecount
+    event-annotation changed pages/monthly.py · render()
+    event-annotation changed pages/overview.py · from bikecount
+    event-annotation changed pages/overview.py · render()
+    event-exclusion created metrics.py · from bikecount
+    event-exclusion changed metrics.py · hourly_averages()
+    event-exclusion changed metrics.py · yearly_summary()
+  stays (0 steps):
+    (nothing)
+
+TAKE OUT: csv-download
+  result: 0 of their 22 lines go; 0 lines written by other requests go; the app still runs
+  goes (0 steps):
+  stays (6 steps):
+    csv-download changed pages/__init__.py · shell()  <- stays because date-window rewrote lines of it
+    csv-download changed server.py · Handler()  <- stays because date-window rewrote lines of it
+    csv-download created server.py · daily_csv()  <- stays because csv-download's code in server.py · Handler() uses it
+    csv-download changed server.py · from bikecount  <- stays because date-window rewrote lines of it
+    csv-download created server.py · import csv  <- stays because csv-download's code in server.py · daily_csv() uses it
+    csv-download created server.py · import io  <- stays because csv-download's code in server.py · daily_csv() uses it
+
+TAKE OUT: hour-profile
+  result: 7 of their 28 lines go; 0 lines written by other requests go; the app still runs
+  goes (6 steps):
+    hour-profile created pages/hourly.py · ORDER
+    hour-profile created pages/hourly.py · PATH
+    hour-profile created pages/hourly.py · TITLE
+    hour-profile created pages/hourly.py · docstring
+    hour-profile created pages/hourly.py · from bikecount
+    hour-profile created pages/hourly.py · from bikecount.pages
+  stays (2 steps):
+    hour-profile created metrics.py · hourly_averages()  <- stays because event-exclusion changed it later
+    hour-profile created pages/hourly.py · render()  <- stays because date-window, weekday-weekend changed it later
+
+
+=== QUESTIONS (answer under these seven headings, about 500 words in total) ===
+
+1. In your own words, in three to five sentences: what does this tool do, and what are a "step" and a "feature"?
+2. Predict three things. (a) What happens if you take out event-annotation alone? (b) After taking out year-table, the file pages/yearly.py still has render() but no TITLE, PATH or imports. What do you expect to see in the app, and what would you do next? (c) You take out csv-download and nothing goes. What would you do to actually remove the CSV download?
+3. What confused you or made you re-read? Quote the words.
+4. Where does this differ from what you would expect of "undo this request"? What would surprise or annoy you in real work?
+5. What information is missing at the moment you decide to take something out or bring it back?
+6. Compared with what you use today (git revert, feature flags, asking an agent to remove it): when would you use this, and when not?
+7. Your three most important criticisms, each with one concrete suggestion.

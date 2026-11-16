@@ -1,0 +1,144 @@
+REQUESTS, oldest first, and the steps of each (a step = everything one request did to one function or other top-level definition):
+  1. hour-profile
+    created metrics.py · hourly_averages()
+    created pages/hourly.py · ORDER
+    created pages/hourly.py · PATH
+    created pages/hourly.py · TITLE
+    created pages/hourly.py · docstring
+    created pages/hourly.py · from bikecount
+    created pages/hourly.py · from bikecount.pages
+    created pages/hourly.py · render()
+  2. weekday-weekend
+    created metrics.py · hourly_averages_weekday()
+    created metrics.py · hourly_averages_weekend()
+    changed pages/hourly.py · render()
+  3. event-days
+    created events.py · EVENT_DAYS
+    created events.py · docstring
+    created events.py · import datetime
+    created events.py · label()
+  4. monthly-trend
+    created metrics.py · monthly_totals()
+    created pages/monthly.py · ORDER
+    created pages/monthly.py · PATH
+    created pages/monthly.py · TITLE
+    created pages/monthly.py · docstring
+    created pages/monthly.py · from bikecount
+    created pages/monthly.py · from bikecount.pages
+    created pages/monthly.py · render()
+  5. event-annotation
+    changed charts.py · bar_chart()
+    created events.py · label_for_month()
+    changed pages/monthly.py · from bikecount
+    changed pages/monthly.py · render()
+    changed pages/overview.py · from bikecount
+    changed pages/overview.py · render()
+  6. side-compare
+    created metrics.py · hourly_west_share()
+    created metrics.py · side_totals()
+    created pages/sides.py · ORDER
+    created pages/sides.py · PATH
+    created pages/sides.py · TITLE
+    created pages/sides.py · docstring
+    created pages/sides.py · from bikecount
+    created pages/sides.py · from bikecount.pages
+    created pages/sides.py · render()
+  7. year-table
+    created metrics.py · yearly_summary()
+    created pages/yearly.py · ORDER
+    created pages/yearly.py · PATH
+    created pages/yearly.py · TITLE
+    created pages/yearly.py · docstring
+    created pages/yearly.py · from bikecount
+    created pages/yearly.py · from bikecount.pages
+    created pages/yearly.py · render()
+  8. event-exclusion
+    created metrics.py · from bikecount
+    changed metrics.py · hourly_averages()
+    changed metrics.py · yearly_summary()
+  9. csv-download
+    changed pages/__init__.py · shell()
+    changed server.py · Handler()
+    created server.py · daily_csv()
+    changed server.py · from bikecount
+    created server.py · import csv
+    created server.py · import io
+  10. quiet-sensor
+    created metrics.py · west_share_by_year()
+    changed pages/sides.py · render()
+    changed pages/yearly.py · render()
+  11. date-window
+    changed README.md · file
+    changed check.py · from bikecount
+    changed check.py · main()
+    changed metrics.py · side_totals()
+    changed pages/__init__.py · STYLE
+    changed pages/__init__.py · shell()
+    changed pages/hourly.py · render()
+    changed pages/monthly.py · docstring
+    changed pages/monthly.py · render()
+    changed pages/overview.py · docstring
+    changed pages/overview.py · render()
+    changed pages/sides.py · render()
+    changed pages/yearly.py · render()
+    changed server.py · Handler()
+    changed server.py · from bikecount
+    created server.py · from urllib.parse
+    created window.py · apply()
+    created window.py · default()
+    created window.py · docstring
+    created window.py · from_query()
+    created window.py · import datetime
+  12. rounding
+    changed pages/overview.py · render()
+
+REWRITES (a later request rewrote lines that an earlier request's step wrote, in the same definition):
+  weekday-weekend's step on [pages/hourly.py · render()] rewrote lines of hour-profile's step on [pages/hourly.py · render()]
+  event-annotation's step on [pages/monthly.py · from bikecount] rewrote lines of monthly-trend's step on [pages/monthly.py · from bikecount]
+  event-annotation's step on [pages/monthly.py · render()] rewrote lines of monthly-trend's step on [pages/monthly.py · render()]
+  event-exclusion's step on [metrics.py · hourly_averages()] rewrote lines of hour-profile's step on [metrics.py · hourly_averages()]
+  event-exclusion's step on [metrics.py · yearly_summary()] rewrote lines of year-table's step on [metrics.py · yearly_summary()]
+  date-window's step on [pages/hourly.py · render()] rewrote lines of hour-profile's step on [pages/hourly.py · render()]
+  date-window's step on [pages/monthly.py · docstring] rewrote lines of monthly-trend's step on [pages/monthly.py · docstring]
+  date-window's step on [pages/monthly.py · render()] rewrote lines of monthly-trend's step on [pages/monthly.py · render()]
+  date-window's step on [metrics.py · side_totals()] rewrote lines of side-compare's step on [metrics.py · side_totals()]
+  date-window's step on [pages/sides.py · render()] rewrote lines of side-compare's step on [pages/sides.py · render()]
+  date-window's step on [pages/yearly.py · render()] rewrote lines of year-table's step on [pages/yearly.py · render()]
+  date-window's step on [pages/__init__.py · shell()] rewrote lines of csv-download's step on [pages/__init__.py · shell()]
+  date-window's step on [server.py · Handler()] rewrote lines of csv-download's step on [server.py · Handler()]
+  date-window's step on [server.py · from bikecount] rewrote lines of csv-download's step on [server.py · from bikecount]
+
+USES (code written by a request uses a definition that a request created; the two can be the same request):
+  hour-profile's code in [pages/hourly.py · render()] uses [metrics.py · hourly_averages()], created by hour-profile
+  weekday-weekend's code in [metrics.py · hourly_averages_weekday()] uses [metrics.py · hourly_averages()], created by hour-profile
+  weekday-weekend's code in [metrics.py · hourly_averages_weekend()] uses [metrics.py · hourly_averages()], created by hour-profile
+  weekday-weekend's code in [pages/hourly.py · render()] uses [metrics.py · hourly_averages_weekday()], created by weekday-weekend
+  weekday-weekend's code in [pages/hourly.py · render()] uses [metrics.py · hourly_averages_weekend()], created by weekday-weekend
+  event-days's code in [events.py · EVENT_DAYS] uses [events.py · import datetime], created by event-days
+  event-days's code in [events.py · label()] uses [events.py · EVENT_DAYS], created by event-days
+  monthly-trend's code in [pages/monthly.py · render()] uses [metrics.py · monthly_totals()], created by monthly-trend
+  event-annotation's code in [events.py · label_for_month()] uses [events.py · EVENT_DAYS], created by event-days
+  event-annotation's code in [pages/monthly.py · from bikecount] uses [events.py · docstring], created by event-days
+  event-annotation's code in [pages/monthly.py · render()] uses [events.py · label_for_month()], created by event-annotation
+  event-annotation's code in [pages/overview.py · from bikecount] uses [events.py · docstring], created by event-days
+  event-annotation's code in [pages/overview.py · render()] uses [events.py · label()], created by event-days
+  side-compare's code in [pages/sides.py · render()] uses [metrics.py · hourly_west_share()], created by side-compare
+  side-compare's code in [pages/sides.py · render()] uses [metrics.py · side_totals()], created by side-compare
+  year-table's code in [pages/yearly.py · render()] uses [metrics.py · yearly_summary()], created by year-table
+  event-exclusion's code in [metrics.py · from bikecount] uses [events.py · docstring], created by event-days
+  event-exclusion's code in [metrics.py · hourly_averages()] uses [events.py · label()], created by event-days
+  event-exclusion's code in [metrics.py · yearly_summary()] uses [events.py · label()], created by event-days
+  csv-download's code in [server.py · Handler()] uses [server.py · daily_csv()], created by csv-download
+  csv-download's code in [server.py · daily_csv()] uses [server.py · import csv], created by csv-download
+  csv-download's code in [server.py · daily_csv()] uses [server.py · import io], created by csv-download
+  quiet-sensor's code in [pages/sides.py · render()] uses [metrics.py · west_share_by_year()], created by quiet-sensor
+  date-window's code in [check.py · from bikecount] uses [window.py · docstring], created by date-window
+  date-window's code in [check.py · main()] uses [window.py · apply()], created by date-window
+  date-window's code in [check.py · main()] uses [window.py · default()], created by date-window
+  date-window's code in [server.py · Handler()] uses [server.py · from urllib.parse], created by date-window
+  date-window's code in [server.py · Handler()] uses [window.py · apply()], created by date-window
+  date-window's code in [server.py · Handler()] uses [window.py · from_query()], created by date-window
+  date-window's code in [server.py · from bikecount] uses [window.py · docstring], created by date-window
+  date-window's code in [window.py · default()] uses [window.py · import datetime], created by date-window
+  date-window's code in [window.py · from_query()] uses [window.py · default()], created by date-window
+  date-window's code in [window.py · from_query()] uses [window.py · import datetime], created by date-window

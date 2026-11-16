@@ -1,0 +1,103 @@
+THE 12 REQUESTS, oldest first:
+   1. hour-profile: add a by-hour page showing average rides per hour
+   2. weekday-weekend: split the by-hour page into weekday and weekend charts
+   3. event-days: track known non-normal days like storms and holidays
+   4. monthly-trend: add a monthly totals page to see the seasonal swing
+   5. event-annotation: mark tracked event days on the daily and monthly charts
+   6. side-compare: add an east vs west comparison page
+   7. year-table: add a by-year summary table
+   8. event-exclusion: exclude event days from averages, keep them in totals
+   9. csv-download: add a csv download link for daily totals
+  10. quiet-sensor: show the east/west split drifting over time, keep totals summed
+  11. date-window: scope every page to a picked date window, default last complete year
+  12. rounding: round bike counts on the overview page to the nearest 10
+
+With everything in, the project's check (check.py, which renders every page) passes; the pages are: /, /hourly, /monthly, /sides, /years
+The tool observes the project only through that check: the text of those pages, and which lines of code rendering them runs.
+
+WHAT WOULD IT TAKE TO MAKE year-table GONE?
+  What it showed when it was added: new page(s) /years; 1 new line(s) on the pages, for example "Overview By Hour Monthly East vs West By Year".
+  What the check can observe of it: rendering the pages runs 15 of the 27 lines it has inside functions (pages /years).
+  OPTION 1, take out only what nothing else stands on.   Gone from the pages: YES
+    the pages: page /years no longer there; on every page: "...our Monthly East vs West By Year Download CSV" becomes "...our Monthly East vs West Download CSV"
+    the code: 5 of its 34 lines go; left behind and reached by nothing: metrics.py: yearly_summary(); pages/yearly.py: render()
+    held by: event-exclusion (changed it later), quiet-sensor (changed it later), date-window (changed it later)
+  OPTION 2, take out the removal set (the request and everything that stands on it).   Gone from the pages: YES
+    what happens to the other requests:
+      event-exclusion ("exclude event days from averages, keep them in tot"): PARTLY removed (1 of its 3 steps); of what it showed on the pages: none still shown; loses its changes in metrics.py: yearly_summary()
+      quiet-sensor ("show the east/west split drifting over time, keep "): PARTLY removed (1 of its 3 steps); of what it showed on the pages: 5 of the 12 things it added to the pages are gone; loses its changes in pages/yearly.py: render()
+      date-window ("scope every page to a picked date window, default "): PARTLY removed (1 of its 21 steps); of what it showed on the pages: 4 of the 26 things it added to the pages are gone; loses its changes in pages/yearly.py: render()
+    the pages: exactly what option 1 shows, nothing more
+    the code: 34 of its 34 lines go; nothing is left that nothing reaches
+  OPTION 3, remove what is held by hand or with your coding agent (a new save).
+    where: metrics.py: yearly_summary(); pages/yearly.py: render(), 2 import lines  (29 lines of this request are there)
+    brief for the agent: remove "add a by-year summary table" from the places above; keep date-window, event-exclusion, quiet-sensor working; afterwards the pages must no longer show "Overview By Hour Monthly East vs West By Year" and must otherwise be unchanged. The tool reruns this same comparison on the agent's save.
+  RECOMMENDED: option 2. The pages end up exactly as with option 1, and no code is left that nothing reaches.
+
+WHAT WOULD IT TAKE TO MAKE csv-download GONE?
+  What it showed when it was added: 1 new line(s) on the pages, for example "Overview By Hour Monthly East vs West By Year Download CSV".
+  What the check can observe of it: rendering the pages runs 0 of the 20 lines it has inside functions. NEVER RUN by the check: server.py: Handler(), daily_csv(). Whatever those do cannot be confirmed here.
+  OPTION 1, take out only what nothing else stands on.   Gone from the pages: NO, as far as the pages show; the code the check never runs is not confirmed
+    the pages: no difference at all
+    the code: 0 of its 22 lines go
+    held by: date-window (rewrote the same lines)
+  OPTION 2, take out the removal set (the request and everything that stands on it).   Gone from the pages: YES, as far as the pages show; the code the check never runs is not confirmed
+    what happens to the other requests:
+      date-window ("scope every page to a picked date window, default "): PARTLY removed (9 of its 21 steps); of what it showed on the pages: 23 of the 26 things it added to the pages are gone; loses its changes in check.py: main(); pages/__init__.py: shell(); pages/hourly.py: render(); pages/monthly.py: render(); pages/overview.py: render(); pages/sides.py: render(); pages/yearly.py: render(); server.py: Handler(), 1 import line
+    the pages: on every page: "...thly East vs West By Year Download CSV" becomes "...thly East vs West By Year"; on every page: "Apply" disappears; on /: "Busiest day, 01 Jan 2018 to 31 Dec 2018" becomes "Busiest day on record"; on /: "5,790" becomes "6,430"; on /: "Tuesday 22 May 2018" becomes "Tuesday 11 June 2019"; on /: "18 Dec: 1,966 19 Dec: 2,325 20 Dec: 1,495 21 Dec: 1,912 22 Dec: 591 23 Dec: 338 ..." becomes "18 Oct: 2,714 19 Oct: 826 20 Oct: 630 21 Oct: 3,150 22 Oct: 3,723 23 Oct: 4,635 ..."; and 19 more change(s) in what the pages show
+    the code: 22 of its 22 lines go; nothing is left that nothing reaches
+    WARNING: this option changes check.py, the project's check itself. It needs your explicit confirmation.
+  OPTION 3, remove what is held by hand or with your coding agent (a new save).
+    where: pages/__init__.py: shell(); server.py: Handler(), daily_csv(), 3 import lines  (22 lines of this request are there)
+    the lines both wrote, in server.py: Handler(): this request wrote  path = self.path.split("?")[0]
+                                         date-window made them  all_readings = data.load_readings(DATA) | parts = urlsplit(self.path) | path = parts.path
+    the lines both wrote, in server.py: from bikecount: this request wrote  from bikecount import data, metrics, pages
+                                         date-window made them  from bikecount import data, metrics, pages, window
+    brief for the agent: remove "add a csv download link for daily totals" from the places above; keep date-window working; afterwards the pages must no longer show "Overview By Hour Monthly East vs West By Year Download CSV" and must otherwise be unchanged. The tool reruns this same comparison on the agent's save.
+  RECOMMENDED: option 3. Option 1 leaves it on the pages, and option 2 would also change other things the pages show.
+
+WHAT WOULD IT TAKE TO MAKE event-days GONE?
+  What it showed when it was added: nothing on any page; it only added code that later requests use.
+  What the check can observe of it: rendering the pages runs 2 of the 5 lines it has inside functions (pages /, /hourly, /years).
+  OPTION 1, take out only what nothing else stands on.   Gone from the pages: it never showed a visitor anything by itself
+    the pages: no difference at all
+    the code: 0 of its 60 lines go
+    held by: event-annotation (uses it), event-exclusion (uses it)
+  OPTION 2, take out the removal set (the request and everything that stands on it).   Gone from the pages: it never showed a visitor anything by itself
+    what happens to the other requests:
+      event-annotation ("mark tracked event days on the daily and monthly c"): PARTLY removed (5 of its 6 steps); of what it showed on the pages: none still shown; loses its changes in events.py: label_for_month(); pages/monthly.py: render(), 1 import line; pages/overview.py: render(), 1 import line
+      event-exclusion ("exclude event days from averages, keep them in tot"): GONE entirely; loses its changes in metrics.py: hourly_averages(), yearly_summary(), 1 import line
+    the pages: on /: "... 24 Dec: 775 25 Dec: 298 (Christmas) 26 Dec: 795 27 Dec: 1,339 28 Dec: 822 29 De..." becomes "... 24 Dec: 775 25 Dec: 298 26 Dec: 795 27 Dec: 1,339 28 Dec: 822 29 Dec: 319 30 De..."; on /: "Amber bars are known non-normal days &mdash; storms, holidays &mdash; not a real swing." disappears; on /hourly: "average 429 bikes an hour" becomes "average 425 bikes an hour"; on /hourly: "...:00: 9 05:00: 29 06:00: 99 07:00: 253 08:00: 365 09:00: 204 10:00: 103 11:00: 92..." becomes "...:00: 9 05:00: 29 06:00: 98 07:00: 250 08:00: 362 09:00: 202 10:00: 103 11:00: 92..."; on /hourly: "... 04:00 9 05:00 29 06:00 99 07:00 253 08:00 365 09:00 204 10:00 103 11:00 92 12:0..." becomes "... 04:00 9 05:00 29 06:00 98 07:00 250 08:00 362 09:00 202 10:00 103 11:00 92 12:0..."; on /hourly: "...0: 10 05:00: 38 06:00: 132 07:00: 342 08:00: 488 09:00: 254 10:00: 104 11:00: 78..." becomes "...0: 10 05:00: 38 06:00: 130 07:00: 337 08:00: 482 09:00: 251 10:00: 104 11:00: 78..."; and 3 more change(s) in what the pages show
+    the code: 60 of its 60 lines go; nothing is left that nothing reaches
+  OPTION 3, remove what is held by hand or with your coding agent (a new save).
+    where: events.py: label(), constants EVENT_DAYS, 1 import line, the file itself (other code imports it)  (60 lines of this request are there)
+    brief for the agent: remove "track known non-normal days like storms and holidays" from the places above; keep event-annotation, event-exclusion working; the pages must be unchanged. The tool reruns this same comparison on the agent's save.
+  RECOMMENDED: none of these. This request shows nothing by itself; it is a base that other requests use. Ask instead about event-days, event-annotation, event-exclusion together: that set comes out cleanly.
+
+WHAT WOULD IT TAKE TO MAKE event-days, event-annotation, event-exclusion GONE?
+  What it showed when it was added: 9 new line(s) on the pages, for example "average 401 bikes an hour"; "Amber bars are known non-normal days &mdash; storms, holidays &mdash; ".
+  What the check can observe of it: rendering the pages runs 18 of the 46 lines it has inside functions (pages /, /hourly, /monthly, /sides, /years).
+  OPTION 1, take out only what nothing else stands on.   Gone from the pages: YES
+    the pages: on /: "... 24 Dec: 775 25 Dec: 298 (Christmas) 26 Dec: 795 27 Dec: 1,339 28 Dec: 822 29 De..." becomes "... 24 Dec: 775 25 Dec: 298 26 Dec: 795 27 Dec: 1,339 28 Dec: 822 29 Dec: 319 30 De..."; on /: "Amber bars are known non-normal days &mdash; storms, holidays &mdash; not a real swing." disappears; on /hourly: "average 429 bikes an hour" becomes "average 425 bikes an hour"; on /hourly: "...:00: 9 05:00: 29 06:00: 99 07:00: 253 08:00: 365 09:00: 204 10:00: 103 11:00: 92..." becomes "...:00: 9 05:00: 29 06:00: 98 07:00: 250 08:00: 362 09:00: 202 10:00: 103 11:00: 92..."; on /hourly: "... 04:00 9 05:00 29 06:00 99 07:00 253 08:00 365 09:00 204 10:00 103 11:00 92 12:0..." becomes "... 04:00 9 05:00 29 06:00 98 07:00 250 08:00 362 09:00 202 10:00 103 11:00 92 12:0..."; on /hourly: "...0: 10 05:00: 38 06:00: 132 07:00: 342 08:00: 488 09:00: 254 10:00: 104 11:00: 78..." becomes "...0: 10 05:00: 38 06:00: 130 07:00: 337 08:00: 482 09:00: 251 10:00: 104 11:00: 78..."; and 3 more change(s) in what the pages show
+    the code: 104 of its 104 lines go
+  Nothing else stands on it, so there is nothing more to weigh. RECOMMENDED: option 1.
+
+WHAT WOULD IT TAKE TO MAKE hour-profile GONE?
+  What it showed when it was added: new page(s) /hourly; 1 new line(s) on the pages, for example "Overview By Hour".
+  What the check can observe of it: rendering the pages runs 15 of the 21 lines it has inside functions (pages /hourly).
+  OPTION 1, take out only what nothing else stands on.   Gone from the pages: YES
+    the pages: page /hourly no longer there; on every page: "Overview By Hour Monthly East vs West By Year Download CSV" becomes "Overview Monthly East vs West By Year Download CSV"
+    the code: 5 of its 28 lines go; left behind and reached by nothing: pages/hourly.py: render()
+    held by: weekday-weekend (changed it later), event-exclusion (changed it later), date-window (changed it later)
+  OPTION 2, take out the removal set (the request and everything that stands on it).   Gone from the pages: YES
+    what happens to the other requests:
+      weekday-weekend ("split the by-hour page into weekday and weekend ch"): GONE entirely; loses its changes in metrics.py: hourly_averages_weekday(), hourly_averages_weekend(); pages/hourly.py: render()
+      event-exclusion ("exclude event days from averages, keep them in tot"): PARTLY removed (1 of its 3 steps); of what it showed on the pages: none still shown; loses its changes in metrics.py: hourly_averages()
+      date-window ("scope every page to a picked date window, default "): PARTLY removed (1 of its 21 steps); of what it showed on the pages: 7 of the 26 things it added to the pages are gone; loses its changes in pages/hourly.py: render()
+    the pages: exactly what option 1 shows, nothing more
+    the code: 28 of its 28 lines go; nothing is left that nothing reaches
+  OPTION 3, remove what is held by hand or with your coding agent (a new save).
+    where: metrics.py: hourly_averages(); pages/hourly.py: render(), 2 import lines  (23 lines of this request are there)
+    brief for the agent: remove "add a by-hour page showing average rides per hour" from the places above; keep date-window, event-exclusion, weekday-weekend working; afterwards the pages must no longer show "Overview By Hour" and must otherwise be unchanged. The tool reruns this same comparison on the agent's save.
+  RECOMMENDED: option 2. The pages end up exactly as with option 1, and no code is left that nothing reaches.
+

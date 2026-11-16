@@ -1,0 +1,5 @@
+# local data, rebuilt or unpacked on demand
+*.tgz
+exp-bikecount/
+exp-footfall/
+__pycache__/

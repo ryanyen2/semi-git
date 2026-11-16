@@ -1,0 +1,79 @@
+THE 12 REQUESTS, oldest first:
+   1. hour-profile: add a by-hour page showing average rides per hour
+   2. weekday-weekend: split the by-hour page into weekday and weekend charts
+   3. event-days: track known non-normal days like storms and holidays
+   4. monthly-trend: add a monthly totals page to see the seasonal swing
+   5. event-annotation: mark tracked event days on the daily and monthly charts
+   6. side-compare: add an east vs west comparison page
+   7. year-table: add a by-year summary table
+   8. event-exclusion: exclude event days from averages, keep them in totals
+   9. csv-download: add a csv download link for daily totals
+  10. quiet-sensor: show the east/west split drifting over time, keep totals summed
+  11. date-window: scope every page to a picked date window, default last complete year
+  12. rounding: round bike counts on the overview page to the nearest 10
+
+TAKE OUT: year-table
+  result: 7 of their 34 lines go; 0 lines written by other requests go; the app still runs
+  goes (6 steps):
+    year-table created pages/yearly.py · ORDER
+    year-table created pages/yearly.py · PATH
+    year-table created pages/yearly.py · TITLE
+    year-table created pages/yearly.py · docstring
+    year-table created pages/yearly.py · from bikecount
+    year-table created pages/yearly.py · from bikecount.pages
+  stays (2 steps):
+    year-table created metrics.py · yearly_summary()  <- stays because event-exclusion changed it later
+    year-table created pages/yearly.py · render()  <- stays because date-window, quiet-sensor changed it later
+
+TAKE OUT: event-days
+  result: 0 of their 60 lines go; 0 lines written by other requests go; the app still runs
+  goes (0 steps):
+  stays (4 steps):
+    event-days created events.py · EVENT_DAYS  <- stays because event-annotation's code in events.py · label_for_month() uses it
+    event-days created events.py · docstring  <- stays because event-exclusion's code in metrics.py · from bikecount uses it
+    event-days created events.py · import datetime  <- stays because event-days's code in events.py · EVENT_DAYS uses it
+    event-days created events.py · label()  <- stays because event-exclusion's code in metrics.py · yearly_summary() uses it
+
+TAKE OUT: event-days, event-annotation, event-exclusion
+  result: 104 of their 104 lines go; 0 lines written by other requests go; the app still runs
+  goes (13 steps):
+    event-days created events.py · EVENT_DAYS
+    event-days created events.py · docstring
+    event-days created events.py · import datetime
+    event-days created events.py · label()
+    event-annotation changed charts.py · bar_chart()
+    event-annotation created events.py · label_for_month()
+    event-annotation changed pages/monthly.py · from bikecount
+    event-annotation changed pages/monthly.py · render()
+    event-annotation changed pages/overview.py · from bikecount
+    event-annotation changed pages/overview.py · render()
+    event-exclusion created metrics.py · from bikecount
+    event-exclusion changed metrics.py · hourly_averages()
+    event-exclusion changed metrics.py · yearly_summary()
+  stays (0 steps):
+    (nothing)
+
+TAKE OUT: csv-download
+  result: 0 of their 22 lines go; 0 lines written by other requests go; the app still runs
+  goes (0 steps):
+  stays (6 steps):
+    csv-download changed pages/__init__.py · shell()  <- stays because date-window rewrote lines of it
+    csv-download changed server.py · Handler()  <- stays because date-window rewrote lines of it
+    csv-download created server.py · daily_csv()  <- stays because csv-download's code in server.py · Handler() uses it
+    csv-download changed server.py · from bikecount  <- stays because date-window rewrote lines of it
+    csv-download created server.py · import csv  <- stays because csv-download's code in server.py · daily_csv() uses it
+    csv-download created server.py · import io  <- stays because csv-download's code in server.py · daily_csv() uses it
+
+TAKE OUT: hour-profile
+  result: 7 of their 28 lines go; 0 lines written by other requests go; the app still runs
+  goes (6 steps):
+    hour-profile created pages/hourly.py · ORDER
+    hour-profile created pages/hourly.py · PATH
+    hour-profile created pages/hourly.py · TITLE
+    hour-profile created pages/hourly.py · docstring
+    hour-profile created pages/hourly.py · from bikecount
+    hour-profile created pages/hourly.py · from bikecount.pages
+  stays (2 steps):
+    hour-profile created metrics.py · hourly_averages()  <- stays because event-exclusion changed it later
+    hour-profile created pages/hourly.py · render()  <- stays because date-window, weekday-weekend changed it later
+

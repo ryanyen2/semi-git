@@ -1,0 +1,103 @@
+THE 12 REQUESTS, oldest first:
+   1. hour-profile: add a by-hour page showing average rides per hour
+   2. weekday-weekend: split the by-hour page into weekday and weekend charts
+   3. event-days: track known non-normal days like storms and holidays
+   4. monthly-trend: add a monthly totals page to see the seasonal swing
+   5. event-annotation: mark tracked event days on the daily and monthly charts
+   6. side-compare: add an east vs west comparison page
+   7. year-table: add a by-year summary table
+   8. event-exclusion: exclude event days from averages, keep them in totals
+   9. csv-download: add a csv download link for daily totals
+  10. quiet-sensor: show the east/west split drifting over time, keep totals summed
+  11. date-window: scope every page to a picked date window, default last complete year
+  12. rounding: round bike counts on the overview page to the nearest 10
+
+With everything in, the project's check (check.py, which renders every page) passes; the pages are: /, /hourly, /monthly, /sides, /years
+
+TAKE OUT: year-table
+  FOR A VISITOR (the pages the project renders, before and after):
+    page(s) no longer there: /years
+    page /: 1 line(s) of its output change, for example what read "Overview By Hour Monthly East vs West By Year Down"
+    page /hourly: 1 line(s) of its output change, for example what read "Overview By Hour Monthly East vs West By Year Down"
+    page /monthly: 1 line(s) of its output change, for example what read "Overview By Hour Monthly East vs West By Year Down"
+    page /sides: 1 line(s) of its output change, for example what read "Overview By Hour Monthly East vs West By Year Down"
+  IN THE CODE: part of it is removed: 5 of its 34 lines go, 29 stay.
+    removed (it created them): pages/yearly.py: constants ORDER, PATH, TITLE, the file itself (other code imports it)
+  HELD IN PLACE, and by whom:
+    event-exclusion changed it later: metrics.py: yearly_summary()
+    quiet-sensor changed it later: pages/yearly.py: render()
+    date-window changed it later: pages/yearly.py: render()
+    kept with them because the held code needs it: pages/yearly.py: 2 import lines
+    of what is held, nothing that remains calls: pages/yearly.py: render()
+  TO REMOVE IT COMPLETELY you would also take out:
+    event-exclusion ("exclude event days from averages, keep them in totals"): 1 of its 3 steps, so it becomes partly removed; 8 lines in metrics.py: yearly_summary()
+    quiet-sensor ("show the east/west split drifting over time, keep totals sum"): 1 of its 3 steps, so it becomes partly removed; 4 lines in pages/yearly.py: render()
+    date-window ("scope every page to a picked date window, default last compl"): 1 of its 21 steps, so it becomes partly removed; 18 lines in pages/yearly.py: render()
+    after that, for a visitor: page(s) no longer there: /years; page /: 1 line(s) of its output change, for example what read "Overview By Hour Monthly East vs West By Year Down"; page /hourly: 1 line(s) of its output change, for example what read "Overview By Hour Monthly East vs West By Year Down"; page /monthly: 1 line(s) of its output change, for example what read "Overview By Hour Monthly East vs West By Year Down"; page /sides: 1 line(s) of its output change, for example what read "Overview By Hour Monthly East vs West By Year Down". In the code: 34 of its 34 lines are gone.
+
+TAKE OUT: event-days
+  FOR A VISITOR (the pages the project renders, before and after):
+    all pages look exactly as before
+  IN THE CODE: none of it is removed: 0 of its 60 lines go, 60 stay.
+  HELD IN PLACE, and by whom:
+    event-annotation uses it: events.py: constants EVENT_DAYS
+    event-exclusion uses it: events.py: label(), the file itself (other code imports it)
+    kept with them because the held code needs it: events.py: 1 import line
+  TO REMOVE IT COMPLETELY you would also take out:
+    event-annotation ("mark tracked event days on the daily and monthly charts"): 5 of its 6 steps, so it becomes partly removed; 17 lines in events.py: label_for_month(); pages/monthly.py: render(), 1 import line; pages/overview.py: render(), 1 import line
+    event-exclusion ("exclude event days from averages, keep them in totals"): ALL of it; 16 lines in metrics.py: hourly_averages(), yearly_summary(), 1 import line
+    after that, for a visitor: page /: 2 line(s) of its output change, for example what read "18 Dec: 1,966 19 Dec: 2,325 20 Dec: 1,495 21 Dec: "; "Amber bars are known non-normal days &mdash; storm"; page /hourly: 4 line(s) of its output change, for example what read "average 429 bikes an hour"; "00:00: 10 01:00: 5 02:00: 3 03:00: 3 04:00: 9 05:0"; page /monthly: 2 line(s) of its output change, for example what read "Jan 2018: 58,591 (New Year's Day) Feb 2018: 50,677"; "Amber bars contain a known non-normal day &mdash; "; page /years: 1 line(s) of its output change, for example what read "2018 1,051,880 2,900 5,787 22 May"; page(s) /sides look exactly as before. In the code: 60 of its 60 lines are gone.
+
+TAKE OUT: event-days, event-annotation, event-exclusion
+  FOR A VISITOR (the pages the project renders, before and after):
+    page /: 2 line(s) of its output change, for example what read "18 Dec: 1,966 19 Dec: 2,325 20 Dec: 1,495 21 Dec: "; "Amber bars are known non-normal days &mdash; storm"
+    page /hourly: 4 line(s) of its output change, for example what read "average 429 bikes an hour"; "00:00: 10 01:00: 5 02:00: 3 03:00: 3 04:00: 9 05:0"
+    page /monthly: 2 line(s) of its output change, for example what read "Jan 2018: 58,591 (New Year's Day) Feb 2018: 50,677"; "Amber bars contain a known non-normal day &mdash; "
+    page /years: 1 line(s) of its output change, for example what read "2018 1,051,880 2,900 5,787 22 May"
+    page(s) /sides look exactly as before
+  IN THE CODE: all of it is removed: 104 of its 104 lines go.
+    removed (it created them): events.py: label(), label_for_month(), constants EVENT_DAYS, 1 import line, the file itself (other code imports it); metrics.py: 1 import line
+    its changes undone inside: charts.py: bar_chart(); metrics.py: hourly_averages(), yearly_summary(); pages/monthly.py: render(), 1 import line; pages/overview.py: render(), 1 import line
+
+TAKE OUT: csv-download
+  FOR A VISITOR (the pages the project renders, before and after):
+    all pages look exactly as before
+  IN THE CODE: none of it is removed: 0 of its 22 lines go, 22 stay.
+  HELD IN PLACE, and by whom:
+    date-window rewrote the same lines: its change inside pages/__init__.py: shell(); server.py: Handler(), 1 import line
+    kept with them because the held code needs it: server.py: daily_csv(), 2 import lines
+  TO REMOVE IT COMPLETELY you would also take out:
+    date-window ("scope every page to a picked date window, default last compl"): 9 of its 21 steps, so it becomes partly removed; 51 lines in check.py: main(); pages/__init__.py: shell(); pages/hourly.py: render(); pages/monthly.py: render(); pages/overview.py: render(); pages/sides.py: render(); pages/yearly.py: render(); server.py: Handler(), 1 import line
+    WARNING: this changes check.py, the check itself.
+    after that, for a visitor: page /: 13 line(s) of its output change, for example what read "Overview By Hour Monthly East vs West By Year Down"; "<form method="get" class="range">"; page /hourly: 12 line(s) of its output change, for example what read "Overview By Hour Monthly East vs West By Year Down"; "<form method="get" class="range">"; page /monthly: 11 line(s) of its output change, for example what read "Overview By Hour Monthly East vs West By Year Down"; "<form method="get" class="range">"; page /sides: 12 line(s) of its output change, for example what read "Overview By Hour Monthly East vs West By Year Down"; "<form method="get" class="range">"; page /years: 10 line(s) of its output change, for example what read "Overview By Hour Monthly East vs West By Year Down"; "<form method="get" class="range">". In the code: 22 of its 22 lines are gone.
+
+TAKE OUT: hour-profile
+  FOR A VISITOR (the pages the project renders, before and after):
+    page(s) no longer there: /hourly
+    page /: 1 line(s) of its output change, for example what read "Overview By Hour Monthly East vs West By Year Down"
+    page /monthly: 1 line(s) of its output change, for example what read "Overview By Hour Monthly East vs West By Year Down"
+    page /sides: 1 line(s) of its output change, for example what read "Overview By Hour Monthly East vs West By Year Down"
+    page /years: 1 line(s) of its output change, for example what read "Overview By Hour Monthly East vs West By Year Down"
+  IN THE CODE: part of it is removed: 5 of its 28 lines go, 23 stay.
+    removed (it created them): pages/hourly.py: constants ORDER, PATH, TITLE, the file itself (other code imports it)
+  HELD IN PLACE, and by whom:
+    weekday-weekend changed it later: pages/hourly.py: render()
+    event-exclusion changed it later: metrics.py: hourly_averages()
+    date-window changed it later: pages/hourly.py: render()
+    kept with them because the held code needs it: pages/hourly.py: 2 import lines
+    of what is held, nothing that remains calls: pages/hourly.py: render()
+  TO REMOVE IT COMPLETELY you would also take out:
+    weekday-weekend ("split the by-hour page into weekday and weekend charts"): ALL of it; 21 lines in metrics.py: hourly_averages_weekday(), hourly_averages_weekend(); pages/hourly.py: render()
+    event-exclusion ("exclude event days from averages, keep them in totals"): 1 of its 3 steps, so it becomes partly removed; 7 lines in metrics.py: hourly_averages()
+    date-window ("scope every page to a picked date window, default last compl"): 1 of its 21 steps, so it becomes partly removed; 2 lines in pages/hourly.py: render()
+    after that, for a visitor: page(s) no longer there: /hourly; page /: 1 line(s) of its output change, for example what read "Overview By Hour Monthly East vs West By Year Down"; page /monthly: 1 line(s) of its output change, for example what read "Overview By Hour Monthly East vs West By Year Down"; page /sides: 1 line(s) of its output change, for example what read "Overview By Hour Monthly East vs West By Year Down"; page /years: 1 line(s) of its output change, for example what read "Overview By Hour Monthly East vs West By Year Down". In the code: 28 of its 28 lines are gone.
+
+TAKE OUT: event-annotation
+  FOR A VISITOR (the pages the project renders, before and after):
+    page /: 2 line(s) of its output change, for example what read "18 Dec: 1,966 19 Dec: 2,325 20 Dec: 1,495 21 Dec: "; "Amber bars are known non-normal days &mdash; storm"
+    page /monthly: 2 line(s) of its output change, for example what read "Jan 2018: 58,591 (New Year's Day) Feb 2018: 50,677"; "Amber bars contain a known non-normal day &mdash; "
+    page(s) /hourly, /sides, /years look exactly as before
+  IN THE CODE: all of it is removed: 28 of its 28 lines go.
+    removed (it created them): events.py: label_for_month()
+    its changes undone inside: charts.py: bar_chart(); pages/monthly.py: render(), 1 import line; pages/overview.py: render(), 1 import line
+

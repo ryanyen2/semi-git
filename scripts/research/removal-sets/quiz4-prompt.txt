@@ -1,0 +1,29 @@
+You are taking a short reading test. Do not look for or read any source code; answer only from the rule and the facts below. Do not use any tools except to read the one facts file named below.
+
+A small web project was built by 12 requests, in order. Everything one request did to one definition (a function, a constant, an import line, a docstring) is called a "step". Any set of requests can be switched off. The rule for what happens then:
+
+When a request is switched off, each of its steps is undone, unless something that remains stands on it. A step always stays whole or goes whole. Something stands on a step in exactly three cases:
+(a) the step created a definition, and code that remains uses that definition (see USES in the facts);
+(b) the step created a definition, and a request that is on changed that definition (in the facts, that request lists "changed <the definition>" among its steps);
+(c) the step changed a definition, and a later step that remains rewrote lines of it (see REWRITES in the facts).
+"Remains" means: the steps of requests that are on, plus any step of an off request that stays. Apply the rule again until nothing more stays.
+
+The facts are in this file (read it once, it has 144 lines):
+quiz2-materials.txt (in this folder)
+
+Questions. For each set of requests switched off, list the steps OF THE OFF REQUESTS that stay. Everything else of theirs is undone.
+Q1 off: hour-profile
+Q2 off: monthly-trend
+Q3 off: event-days
+Q4 off: event-days, event-annotation
+Q5 off: event-days, event-annotation, event-exclusion
+Q6 off: csv-download
+Q7 off: date-window, csv-download
+Q8 off: monthly-trend, event-annotation
+Q9 off: monthly-trend, date-window
+Q10 off: hour-profile, monthly-trend
+
+Answer with ONLY a JSON object, no other text, in this shape, using the names exactly as they appear in the facts file:
+{"Q1": ["<request> | <definition as written in the facts, e.g. metrics.py · hourly_averages()>", ...], "Q2": [], ...,
+ "hardest": "<which question was hardest and what was unclear in the rule, one or two sentences>",
+ "confidence": <1-5, how sure you are overall>}

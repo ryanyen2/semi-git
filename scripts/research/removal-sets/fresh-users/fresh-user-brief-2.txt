@@ -1,0 +1,118 @@
+You have never seen this tool or the project it is shown on. A colleague hands you the two pages below and asks what you make of it. Read them once, then answer the questions at the end. Do not open any other file, do not search the web. Be candid: criticism is more useful than praise, and "I did not understand X" is a useful answer.
+
+=== PAGE 1: what the tool is, as a user is told ===
+
+The tool sits on top of git. For every save (a commit, or one request to a coding agent) it keeps what that save did to each function or other top-level definition. One save's change to one definition is called a step.
+
+For each step it records what later work stands on it. There are three ways:
+  - later code uses a definition the step created,
+  - a later step changed a definition the step created,
+  - a later step was written on top of the step's change (it rewrote some of the same lines).
+
+You can take any save out, and bring it back later. Taking a save out undoes each of its steps, except the steps that something remaining stands on: those are held in place. A step is held whole or goes whole. The tool shows a preview first, and the preview starts with a verdict: removed completely, only partly removed, or not removed.
+
+The preview also says what the project's own check observes before and after. The check is whatever command the project uses to tell that it works; here it is check.py, which renders every page. The tool never leaves the program in a state that fails that check.
+
+When something is held, the preview shows which request holds it and how, and it shows the set that would remove the thing completely together with what that costs the other requests. You then choose: leave it partly removed, take out the complete set, or hand the leftover to yourself or your coding agent to remove by hand (that becomes a new save).
+
+A feature is the smallest set of steps around a starting point (a request, a function, a line) that nothing outside the set stands on. "Removed completely" means you took out such a set.
+
+Nothing in git history is rewritten. The result is an ordinary change in your working tree, which you commit like any other.
+
+If you keep editing while something is out and later bring it back: edits to different lines of the same function are combined automatically. Where your edit and the returning step replaced the same lines, the tool keeps the version you have now, sets the returning one aside, lists it, and says the save is only partly back. You can switch to the other version or write a combined one. There is no state with conflict markers.
+
+=== PAGE 2: previews from a prototype on a small web project (real output, not edited) ===
+
+THE 12 REQUESTS, oldest first:
+   1. hour-profile: add a by-hour page showing average rides per hour
+   2. weekday-weekend: split the by-hour page into weekday and weekend charts
+   3. event-days: track known non-normal days like storms and holidays
+   4. monthly-trend: add a monthly totals page to see the seasonal swing
+   5. event-annotation: mark tracked event days on the daily and monthly charts
+   6. side-compare: add an east vs west comparison page
+   7. year-table: add a by-year summary table
+   8. event-exclusion: exclude event days from averages, keep them in totals
+   9. csv-download: add a csv download link for daily totals
+  10. quiet-sensor: show the east/west split drifting over time, keep totals summed
+  11. date-window: scope every page to a picked date window, default last complete year
+  12. rounding: round bike counts on the overview page to the nearest 10
+
+With everything in, the project's check passes and renders 5 pages: /, /hourly, /monthly, /sides, /years
+
+TAKE OUT: year-table
+  VERDICT: only partly removed. 5 of its 34 lines go, 29 stay.
+  The project's check (check.py, renders every page): the check passes; pages it renders: 4 of 5 (/years no longer there).
+  Removed (it created them): pages/yearly.py: 3 constants (ORDER, PATH, TITLE), 1 file header
+  Held in place by other requests:
+    event-exclusion changed it later: metrics.py: yearly_summary()
+    quiet-sensor changed it later: pages/yearly.py: render()
+    date-window changed it later: pages/yearly.py: render()
+    and, needed by what is held: pages/yearly.py: 2 imports
+  Left in place, but nothing that remains calls it: metrics.py: yearly_summary(); pages/yearly.py: render()
+  TO REMOVE IT COMPLETELY you would also take out 30 lines of 3 other request(s):
+    event-exclusion: 8 lines in metrics.py: yearly_summary()
+    quiet-sensor: 4 lines in pages/yearly.py: render()
+    date-window: 18 lines in pages/yearly.py: render()
+    after that: 34 of its 34 lines are gone; the check passes; pages it renders: 4 of 5 (/years no longer there).
+
+TAKE OUT: event-days
+  VERDICT: NOT removed. 0 of its 60 lines go, 60 stay.
+  The project's check (check.py, renders every page): the check passes; pages it renders: 5 of 5 (the same pages as before).
+  Held in place by other requests:
+    event-annotation uses: events.py: 1 constant (EVENT_DAYS)
+    event-exclusion uses: events.py: label(), 1 file header
+    and, needed by what is held: events.py: 1 import
+  TO REMOVE IT COMPLETELY you would also take out 23 lines of 2 other request(s):
+    event-annotation: 17 lines in events.py: label_for_month(); pages/monthly.py: render(), 1 import; pages/overview.py: render(), 1 import
+    event-exclusion: 6 lines in metrics.py: hourly_averages(), yearly_summary(), 1 import
+    after that: 60 of its 60 lines are gone; the check passes; pages it renders: 5 of 5 (the same pages as before).
+
+TAKE OUT: event-days, event-annotation, event-exclusion
+  VERDICT: removed completely. 104 of its 104 lines go.
+  The project's check (check.py, renders every page): the check passes; pages it renders: 5 of 5 (the same pages as before).
+  Removed (it created them): events.py: label(), label_for_month(), 1 constant (EVENT_DAYS), 1 import, 1 file header; metrics.py: 1 import
+  Its changes undone inside: charts.py: bar_chart(); metrics.py: hourly_averages(), yearly_summary(); pages/monthly.py: render(), 1 import; pages/overview.py: render(), 1 import
+
+TAKE OUT: csv-download
+  VERDICT: NOT removed. 0 of its 22 lines go, 22 stay.
+  The project's check (check.py, renders every page): the check passes; pages it renders: 5 of 5 (the same pages as before).
+  Held in place by other requests:
+    date-window rewrote lines of it: its change inside pages/__init__.py: shell(); server.py: Handler(), 1 import
+    and, needed by what is held: server.py: daily_csv(), 2 imports
+  Left in place, but nothing that remains calls it: server.py: daily_csv()
+  TO REMOVE IT COMPLETELY you would also take out 48 lines of 1 other request(s):
+    date-window: 48 lines in check.py: main(); pages/__init__.py: shell(); pages/hourly.py: render(); pages/monthly.py: render(); pages/overview.py: render(); pages/sides.py: render(); pages/yearly.py: render(); server.py: Handler(), 1 import
+    after that: 22 of its 22 lines are gone; the check passes; pages it renders: 5 of 5 (the same pages as before).
+
+TAKE OUT: hour-profile
+  VERDICT: only partly removed. 5 of its 28 lines go, 23 stay.
+  The project's check (check.py, renders every page): the check passes; pages it renders: 4 of 5 (/hourly no longer there).
+  Removed (it created them): pages/hourly.py: 3 constants (ORDER, PATH, TITLE), 1 file header
+  Held in place by other requests:
+    weekday-weekend changed it later: pages/hourly.py: render()
+    event-exclusion changed it later: metrics.py: hourly_averages()
+    date-window changed it later: pages/hourly.py: render()
+    and, needed by what is held: pages/hourly.py: 2 imports
+  Left in place, but nothing that remains calls it: pages/hourly.py: render()
+  TO REMOVE IT COMPLETELY you would also take out 30 lines of 3 other request(s):
+    weekday-weekend: 21 lines in metrics.py: hourly_averages_weekday(), hourly_averages_weekend(); pages/hourly.py: render()
+    event-exclusion: 7 lines in metrics.py: hourly_averages()
+    date-window: 2 lines in pages/hourly.py: render()
+    after that: 28 of its 28 lines are gone; the check passes; pages it renders: 4 of 5 (/hourly no longer there).
+
+TAKE OUT: event-annotation
+  VERDICT: removed completely. 28 of its 28 lines go.
+  The project's check (check.py, renders every page): the check passes; pages it renders: 5 of 5 (the same pages as before).
+  Removed (it created them): events.py: label_for_month()
+  Its changes undone inside: charts.py: bar_chart(); pages/monthly.py: render(), 1 import; pages/overview.py: render(), 1 import
+
+
+=== QUESTIONS (answer under these seven headings, about 500 words in total) ===
+
+1. In your own words, in three to five sentences: what does this tool do, and what are a "step" and a "feature"?
+2. Three things from page 2. (a) After "TAKE OUT: csv-download": is the CSV download gone? Name the options you have and what each one costs. (b) After "TAKE OUT: year-table": what exactly is left in the code, does a visitor still see the page, and what would you do next? (c) You want everything about event days gone. What do you take out, and how do you know it is complete?
+3. What confused you or made you re-read? Quote the words.
+4. Where does this differ from what you would expect of "undo this request"? What would surprise or annoy you in real work?
+5. What information is missing at the moment you decide to take something out or bring it back?
+6. Compared with what you use today (git revert, feature flags, asking an agent to remove it): when would you use this, and when not?
+7. Your three most important criticisms, each with one concrete suggestion.
