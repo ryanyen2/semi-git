@@ -12,26 +12,17 @@ def _fail_preview(preview, as_json: bool) -> int:
     return _emit_json({"ok": False, "message": preview.message}) if as_json else _fail(preview.message)
 
 
-def _confirm(repo: str, verb: str, preview) -> bool:
-    """The consequence gate for `feature rename`. Returns False only when the user explicitly
-    declined.
-
-    On an interactive tty this is the consequence pane, or -- when `textual` isn't installed -- the
-    printed summary plus `[y/N]` (`confirm_summary`). Previously the no-`textual` case returned True
-    and applied immediately with nothing shown and nothing asked, which made an *optional*
-    dependency the difference between a previewed re-cut and a silent one.
-
-    Off a tty (a script, CI, an editor shelling out) it still returns True immediately: that
-    machine contract is deliberate and unchanged -- there is nobody there to answer a prompt."""
+def _confirm(verb: str, preview) -> bool:
+    """The `[y/N]` gate for `feature rename` on a tty. Off a tty (a script, CI, an editor shelling
+    out) it returns True: there is nobody there to answer a prompt."""
     import sys
 
-    from ugh.api import _project_feature_preview
-
-    from ._common import confirm_summary
+    from ._common import confirm
 
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
         return True
-    return confirm_summary(_project_feature_preview(repo, verb, preview), f"{verb}?")
+    return confirm([f"  {verb}: {preview.old_label!r} → {preview.new_label!r}",
+                    "    (metadata only — no code changes, reversible)"], f"{verb}?")
 
 
 def register(subs, parent) -> None:
@@ -57,7 +48,7 @@ def _feature_rename(repo: str, feature_id: str, new_label: str, as_json: bool = 
     preview = lens_verbs.plan_rename(repo, feature_id, new_label)
     if not preview.ok:
         return _fail_preview(preview, as_json)
-    if not as_json and not _confirm(repo, "rename", preview):
+    if not as_json and not _confirm("rename", preview):
         print("  skipped — nothing changed.")
         return 1
     lens_verbs.apply_rename(repo, preview)

@@ -29,13 +29,11 @@ def _feature(result):
 
 
 def _a_logged_save_id(repo) -> str:
-    """One id string exactly as `ugh log` prints it in its id column -- taken from the projection
-    the renderer reads, so what is under test is the token the user was actually shown."""
-    from ugh.api import grid_view, map_view
-    from ugh.tui.graph import episode_rail_layout, episodes
+    """One save id exactly as `ugh log` prints it as a column head, so what is under test is the
+    token the user was actually shown."""
+    from ugh.cli.inspect import _log_lines
 
-    rows = episode_rail_layout(episodes(map_view(repo), grid_view(repo)))["rows"]
-    return next(row["sha"][:7] for row in rows if row.get("sha"))
+    return _log_lines(str(repo))[0].split()[-1]
 
 
 # -- safety ------------------------------------------------------------------------------------
@@ -195,7 +193,7 @@ def test_every_suggested_command_is_a_real_dispatchable_verb(tmp_path):
             reason = unrunnable(step["cmd"])
             assert reason is None, f"suggested {step['cmd']!r}: {reason}"
             seen += 1
-    assert seen >= 6, "expected suggestions across the selection kinds"
+    assert seen >= len(targets), "expected suggestions across the selection kinds"
 
 
 # Named explicitly rather than derived: ugh has no runtime "is this verb a write" bit, and inferring
@@ -245,8 +243,8 @@ def test_cli_show_json_and_text_agree_and_exit_codes_are_honest(tmp_path, capsys
 
 
 def test_saves_keep_the_most_recent_and_say_how_many_were_elided(tmp_path):
-    """Two things at once. The saves list is oldest-first (so a feature reads as its story, matching
-    `ugh log --focus`), but when there are more than the cap it keeps the *tail* -- keeping the head
+    """Two things at once. The saves list is oldest-first (so a feature reads as its story), but
+    when there are more than the cap it keeps the *tail* -- keeping the head
     would hide current work behind history. And the count of what isn't shown is reported: stopping
     silently at a cap reads as "that was all of them"."""
     from ugh.store.gitbind import init_store
@@ -346,8 +344,7 @@ def test_the_elided_save_count_comes_with_a_way_to_see_them(tmp_path, capsys, mo
     """"(+2 older save(s))" named a quantity of hidden information and offered no verb to reveal it.
 
     The `save_limit` cap existed only as an API keyword, so from the CLI those saves were unreachable:
-    nothing in `next:` lists a *symbol's* saves (`log --focus` lists a feature's checkpoints,
-    `advanced blame` lists a file's symbols). On the study fixture that is not cosmetic -- the two
+    nothing in `next:` lists a *symbol's* saves. On the study fixture that is not cosmetic -- the two
     saves the default cap hides on `enrollment.py::enroll` are the early links of the waitlist chain,
     which is the whole of Request 2. Saying what isn't shown is half the rule; the other half is
     letting the reader look."""
@@ -436,8 +433,7 @@ def test_a_commit_shaped_miss_says_which_of_the_three_things_went_wrong(tmp_path
 def test_show_answers_a_row_of_work_across_features(tmp_path, monkeypatch):
     """F133. A ◆ row was the one noun `show` could not answer for.
 
-    `ugh log` draws it, `ugh log --focus` opens it, and `ugh revert`/`ugh restore` both act on it by
-    name -- but asked about the piece of work a task actually names, the verb whose whole job is
+    `ugh revert`/`ugh restore` both act on it by name -- but asked about the piece of work a task actually names, the verb whose whole job is
     "what is this, and what would come with it" replied that it was not a known feature, checkpoint,
     op, or symbol. It is felt exactly where it costs most: a ◆ carries no id in the log the way a
     lane does, so its label is the only handle a reader has.
@@ -478,9 +474,8 @@ def test_show_answers_a_row_of_work_across_features(tmp_path, monkeypatch):
     theme_row = next(t for t in api.intent_view(tmp_path)["themes"] if t["theme_id"] == tid)
     assert view["across_features"] == len(theme_row["feature_span"])
     assert view["consequences"]["live_op_count"] >= 0  # a real preview ran, not a stub
-    # The `next:` steps are the two verbs that take this name, spelled the way they must be typed.
+    # The `next:` step is the verb that takes this name, spelled the way it must be typed.
     cmds = [s["cmd"] for s in view["next"]]
-    assert any('ugh log --focus "Event Day Handling"' == c for c in cmds), cmds
     assert any('ugh revert "Event Day Handling"' == c for c in cmds), cmds
 
     # Which acting verb the card offers depends on where the work stands. With it in, `revert`;

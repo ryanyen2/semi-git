@@ -474,7 +474,7 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         tool_log,
     ),
     # `ugh_grid` is deliberately NOT exposed. `grid_view` is a *complete* projection by design --
-    # a grid surface needs every cell to draw -- which is right for the TUI and the VS Code webview
+    # a grid surface needs every cell to draw -- which is right for the VS Code webview
     # and wrong for a language model, because a model never draws it. Measured on a 290-commit repo:
     # ~515 KB, about 129,000 tokens in a single tool result, growing linearly with history (1.5k
     # tokens at 10 commits, 6.5k at 60). One call would consume most of a context window and answer

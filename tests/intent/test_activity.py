@@ -44,15 +44,6 @@ def test_ring_buffer_trims_to_cap_keeping_most_recent(tmp_path):
     assert got[-1]["seq"] == activity._MAX + 4
 
 
-def test_recent_activity_is_newest_first_and_limited(tmp_path):
-    init_store(tmp_path)
-    for i in range(5):
-        activity.record_activity(tmp_path, tool="Edit", file=f"f{i}.py", ts=float(i))
-
-    recent = activity.recent_activity(tmp_path, limit=3)
-    assert [e["file"] for e in recent] == ["f4.py", "f3.py", "f2.py"]
-
-
 def test_empty_tool_is_a_no_op(tmp_path):
     init_store(tmp_path)
     assert activity.record_activity(tmp_path, tool="", file="a.py", ts=1.0) is None

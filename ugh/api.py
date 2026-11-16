@@ -20,7 +20,7 @@ Shapes (stable; additive changes only):
   and every op's derived kind/feature/commit-index, for Gantt-style lifebars.
 * ``grid_view``         — the canonical lane×commit cell join (U1): every (feature, commit) cell
   that carries ops, the commit axis, active-plan ghost cells, and per-commit mining-fidelity marks
-  — the one join every grid surface (CLI `ugh log`, TUI, VS Code webview) renders, computed once.
+  — the one join every grid surface (CLI `ugh log`, VS Code webview) reads, computed once.
 * ``status_view``       — a kernel-backed summary: file/symbol/feature counts, coverage fraction,
   the oracle's overall status, and working-tree drift from `code(current_ideal)`.
 * ``plan_view``         — the U14 plan review surface: every active plan session's steps (with
@@ -44,6 +44,11 @@ Shapes (stable; additive changes only):
 """
 
 from __future__ import annotations
+
+
+def plural(n: int, noun: str) -> str:
+    """`3 symbols`, `1 symbol`, for the regular nouns ugh counts."""
+    return f"{n} {noun}" if n == 1 else f"{n} {noun}s"
 
 
 def oplog_view(repo, *, full: bool = False, limit: int = 100, offset: int = 0) -> dict:
@@ -246,7 +251,7 @@ def _frontier_rows(repo, preview) -> list[dict]:
     * ``foundation`` -- an upstream prerequisite the reverted core is built on (its downset). A
       revert cannot drop it, so it is read-only (``toggleable: false``), never in the kept-set.
 
-    Each row is ``{op_id, bucket, toggleable}``. This is the data the TUI checklist (U9) consumes.
+    Each row is ``{op_id, bucket, toggleable}``.
     ``[]`` for any non-revert verb or a refused preview."""
     if preview.verb != "revert" or not preview.ok:
         return []
@@ -281,13 +286,12 @@ def _frontier_rows(repo, preview) -> list[dict]:
     return rows
 
 
-_REVERSIBLE_VERBS = frozenset({"revert", "restore", "rename"})
+_REVERSIBLE_VERBS = frozenset({"revert", "restore"})
 
 
 def _reversible(verb: str) -> bool:
-    """Whether a verb's effect can be walked back with `ugh undo` -- the ideal-edit verbs and
-    `feature rename` -- or is a shared/one-way advance (`sync`, default False). Feeds the consequence pane's escape line: the one bit that changes how
-    carefully a user reads the rest of the preview."""
+    """Whether a verb's effect can be walked back with `ugh undo` -- the ideal-edit verbs -- or is
+    a shared/one-way advance (`sync`, default False)."""
     return verb in _REVERSIBLE_VERBS
 
 
@@ -334,9 +338,8 @@ def subtraction_fields(preview) -> dict:
 
 def so_what_for(projected: dict, kept: frozenset = frozenset()) -> str:
     """The one-line consequence of a verb preview -- what breaks, what to do next, whether it can
-    be undone -- recomputed live as the pane's kept-set changes. Pure over the projection dict plus
-    the caller's kept op-ids (no store reads), so the TUI can call it on every toggle. `primary`
-    leads with the `file::symbol` the user named when the target is one (not an alphabetically-first
+    be undone. Pure over the projection dict plus the caller's kept op-ids (no store reads).
+    `primary` leads with the `file::symbol` the user named when the target is one (not an alphabetically-first
     dependent from the up-set closure); when the target names a *set* -- a feature, a ◆ theme, a
     checkpoint -- the sentence leads with the size of that set instead of one of its symbols (see
     `scale` below). Carried symbols are never named, though a clean revert reports how many
@@ -391,11 +394,8 @@ def so_what_for(projected: dict, kept: frozenset = frozenset()) -> str:
     # Nothing depends on it" over a revert that took 17 edits out of 7 symbols in 5 files (F140).
     # The terminal never claimed that -- it prints the scale and then the subtracted/pruned lists --
     # so the two surfaces disagreed about the same edit, and only the one with a button was wrong.
-    # Counted exactly as `ugh.tui.graph._render_verb_preview_lines` counts, so they cannot drift.
     scale = ""
     if not (target and "::" in target) and len(real) > 1:
-        from ugh.tui.graph import plural
-
         # The ops the user named (`target_ops`), not `removed`: the default revert is forward
         # subtraction, which keeps an op later work builds on and rewrites the symbol in place, so
         # `removed` was empty for the ordinary checkpoint and the sentence read "Removes 0 edits
@@ -445,8 +445,6 @@ def so_what_for(projected: dict, kept: frozenset = frozenset()) -> str:
         if scale:
             return f"Re-adds {scale}. Nothing to reconcile. {undo}"
         return f"Re-adds {primary} and its prerequisites. Nothing to reconcile. {undo}"
-    if verb == "rename":
-        return f"Relabels to {primary} — metadata only, code untouched. {undo}"
     return f"{verb} {primary}. {undo}"
 
 
@@ -547,9 +545,9 @@ def _project_verb_preview(repo, preview) -> dict:
     # "nothing depends on it" beside two kept conflicts and four broken references (review
     # 2026-10-18 §1.6). One accessor, read here and by the apply view.
     projected.update(subtraction_fields(preview))
-    # The "so-what" layer (consequence pane): reversibility bit, act-required fallout, the hidden
+    # The "so-what" layer: reversibility bit, act-required fallout, the hidden
     # carry count, and the one-line consequence. Pure over `projected`, so every surface that reads
-    # this dict (CLI gate, TUI pane, VS Code) inherits them without extra wiring.
+    # this dict (CLI gate, VS Code) inherits them without extra wiring.
     projected["reversible"] = _reversible(preview.verb)
     projected["fallout"] = _fallout_rows(projected)
     projected["carry_count"] = _carry_count(projected)
@@ -561,7 +559,7 @@ def _project_verb_preview(repo, preview) -> dict:
 def focus_subgraph(preview, repo, *, so_what: str = "") -> dict:
     """The "Focus & Morph" contract for a mutating ideal-edit preview (revert/restore/edit): the
     affected feature subgraph *only*, each node carrying its op-count before and after the edit, so
-    a renderer (VS Code webview, TUI pane) can dim the rest of the graph and morph just these nodes
+    a renderer (the VS Code webview) can dim the rest of the graph and morph just these nodes
     -- instead of printing "removes 64 ops from X to Y, including …" that nobody can read as a
     consequence. Pure over the preview's before/after op-sets plus the current feature tree; it rolls
     those op-sets up through the same `op_leaf` map `_affected_rows`/`_frontier_rows` use, so a node's
@@ -578,8 +576,7 @@ def focus_subgraph(preview, repo, *, so_what: str = "") -> dict:
     up-set, so its feature is a ``blast`` node -- and stays a footnote (`_carry_count`), not a role.
 
     ``so_what`` is passed in (the caller already computed it via `so_what_for`); ``nodes`` is empty
-    when no tree has been built or the preview touched no feature (e.g. a whole-file pseudo-symbol),
-    so the renderer falls back to the ``so_what`` headline alone."""
+    when no tree has been built or the preview touched no feature (e.g. a whole-file pseudo-symbol)."""
     from collections import Counter
 
     from ugh.core.store import Store
@@ -617,7 +614,7 @@ def focus_subgraph(preview, repo, *, so_what: str = "") -> dict:
     if not touched:
         return {"so_what": so_what, "nodes": [], "edges": [], "context_count": 0}
 
-    # target = the feature owning the most touched ops (the same focus_fid heuristic the CLI uses).
+    # target = the feature owning the most touched ops.
     target_fid = touched.most_common(1)[0][0]
 
     # Live prerequisites the revert is built on (frontier `foundation`, never removed): name them so
@@ -661,33 +658,11 @@ def focus_subgraph(preview, repo, *, so_what: str = "") -> dict:
     return {"so_what": so_what, "nodes": nodes, "edges": edges, "context_count": context_count}
 
 
-def _project_feature_preview(repo, verb: str, preview) -> dict:
-    """Project a `feature rename` preview into the shared consequence shape the pane and
-    `so_what_for` consume. A rename touches no code, so `fallout` and `carry_count` are empty and
-    `reversible` is always True; the projection instead carries a short human `summary`. Only call on
-    an `ok` preview -- a refusal is handled by the CLI's `_fail_preview` before this point."""
-    primary = preview.new_label
-    summary = [f"{preview.old_label!r} → {preview.new_label!r}"]
-
-    projected = {
-        "ok": True, "verb": verb, "target": primary,
-        "affected_symbols": [primary] if primary else [],
-        "forked": False, "message": getattr(preview, "message", ""),
-        "files": {}, "fallout": [], "carry_count": 0, "reversible": True,
-        "summary": summary,
-    }
-    projected["so_what"] = so_what_for(projected)
-    return projected
-
-
 def _project_sync_preview(repo, plan) -> dict:
     """Project a `ugh.core.sync.SyncPlan` dry-run into the shared consequence shape. Unlike `land`, a
     sync fork does not block -- the fork-free part still merges and the fork surfaces as state -- so
     `forks` here is *what would surface*, and `ok` is False only to flag that attention is needed,
-    not that nothing happens. No clean-tree precondition, so `clean` is always True; the graph rail
-    is precomputed into `summary` (`render_collab_preview_lines`)."""
-    from ugh.tui.graph import render_collab_preview_lines
-
+    not that nothing happens. No clean-tree precondition, so `clean` is always True."""
     projected = {
         "ok": not plan.forks,
         "verb": "sync",
@@ -712,7 +687,6 @@ def _project_sync_preview(repo, plan) -> dict:
         "theirs_recovery": plan.theirs_recovery,
     }
     projected["so_what"] = so_what_for(projected)
-    projected["summary"] = render_collab_preview_lines(projected, color=True)
     return projected
 
 
@@ -732,7 +706,6 @@ def resolve_apply_preview_view(repo, symbol: str) -> dict:
     run the oracle, commit it, closing the fork. `clean=False` with a reason when there is no open
     fork for `symbol`. A pure read."""
     from ugh.config import load_oracle_config
-    from ugh.tui.graph import render_collab_preview_lines
 
     fork = next((f for f in forks_view(repo)["forks"] if f["symbol"] == symbol), None)
     error = None if fork is not None else f"no open fork for {symbol!r} — `ugh status` lists the open forks"
@@ -755,7 +728,6 @@ def resolve_apply_preview_view(repo, symbol: str) -> dict:
         "tips": list(fork["tips"]) if fork else [],
     }
     projected["so_what"] = so_what_for(projected)
-    projected["summary"] = render_collab_preview_lines(projected, color=True)
     return projected
 
 
@@ -798,8 +770,8 @@ def map_view(repo) -> dict:
     # shared leaf is listed in several parents' `children` yet carries exactly one canonical `parent`.
     # Every projection below -- the emitted `children`, `op_count`, and the session rollup -- walks
     # only the *canonical* children (those whose `parent` points back here), so a shared feature is
-    # rendered once, under its one parent. That keeps the feature tree, the workbench timeline, and
-    # the TUI consistent; a raw double-listing otherwise double-counts the shared ops in every
+    # rendered once, under its one parent. That keeps the feature tree and the workbench timeline
+    # consistent; a raw double-listing otherwise double-counts the shared ops in every
     # ancestor's rollup and draws the feature under whichever parent a surface happens to visit first.
     def canonical_children(nid: str) -> list[str]:
         return [c for c in nodes[nid]["children"] if nodes[c]["parent"] == nid]
@@ -1030,10 +1002,7 @@ def headline_for(subject: str, feature: str | None, labels: dict) -> str:
     label to borrow -- better a weak name than none.
 
     Lives here, in the projection layer, because it is a statement about *what the work was* and
-    every surface listing history needs the same answer: the rail, the save list, `ugh now`'s
-    recently-done, and the extension's Now tree. It used to be TUI-only, so the terminal's history
-    views read as feature work while `ugh now` -- the surface a user hits first -- still listed raw
-    `sss`/`done` subjects for the same commits."""
+    every surface listing history needs the same answer."""
     subj = (subject or "").strip()
     if len(subj) >= 4 and subj.lower() not in _LOW_SIGNAL_SUBJECTS:
         return subject
@@ -1116,7 +1085,7 @@ def _grid_ghosts(repo, known: set) -> list[dict]:
 
 def grid_view(repo) -> dict:
     """The canonical lane×commit cell join (plan U1): the single source of truth for the grid
-    every surface -- the CLI `ugh log`, the TUI, the VS Code webview -- renders, so the (op ->
+    every surface -- the CLI `ugh log`, the VS Code webview -- reads, so the (op ->
     cell) join is computed *once* here and never re-derived per surface (R5). A complete
     projection, not paged: a grid surface needs every cell to draw, so there is no compact/full
     split -- it is `map_view`-shaped, not `oplog_view`-shaped. Pure/offline over an already-mined
@@ -1298,8 +1267,8 @@ def plan_view(repo, *, full: bool = False) -> dict:
     by_id = {op.id: op for op in opindex.index_ops(repo)}
     checkpoint = compute_checkpoint(repo)
     # `full` alone carries per-step file-coverage ("did this step's work land, just under a
-    # different name?") -- the "why isn't this matched" surface. Kept off the compact path (which
-    # `now_view` reads on every refresh) so that hot path stays a pure count read.
+    # different name?") -- the "why isn't this matched" surface. Kept off the compact path so it
+    # stays a pure count read.
     coverage = session_coverage(repo) if full else {}
     # Read-time lanes for unplaced steps (`plan_mod.step_feature`); the map is only read for the
     # full payload, the one that carries steps.
@@ -1518,7 +1487,7 @@ def _open_fork_records(repo) -> list:
     up-sets exactly as for a real divergence -- all 612 records on ugh's own store, costing 91% of the
     ideal -- so these must stay visible. But nobody edited anything and no hand-merge closes them:
     the only remedy is `ugh advanced migrate ops-v3`. Stamped here rather than in one caller because
-    three surfaces read this list (`forks_view`, `status_view`, `now_view`) and each phrased it
+    two surfaces read this list (`forks_view`, `status_view`) and each phrased it
     itself -- the flag has to arrive with the record or a surface silently keeps the old wording."""
     from ugh import state
     from ugh.core.order import resolvable_forks
@@ -1812,7 +1781,6 @@ def show_at_view(repo, at: str, path: str | None = None) -> dict:
     needed a projection: this one is the *time* reading ("as it was at"), and `show_view` below is the
     *identity* reading ("what is this"). Two functions called `show_view` briefly coexisted here after
     a merge, one silently shadowing the other."""
-    from ugh.tui.graph import plural
     view = fold_view(repo, **_parse_show_spec(at))
     if view.get("forked"):
         return {"error": view["message"]}
@@ -2412,173 +2380,6 @@ def segments_view(repo) -> list[dict]:
     return _segments_out(repo, op_leaf, tree_result)
 
 
-def _paused_git_operation(repo) -> str | None:
-    """`"merge"`/`"cherry-pick"`/`"revert"` when that git operation is paused mid-conflict, else
-    `None`. Never raises: an unreadable/unborn repo simply reports nothing paused, since this feeds
-    an orientation view that must not fail on a broken repo."""
-    from ugh.core.lens import merge_in_progress
-    from ugh.store.gitbind import GitBinding
-
-    try:
-        return merge_in_progress(GitBinding(repo))
-    except Exception:  # noqa: BLE001 -- orientation must never fail on a repo it can't read
-        return None
-
-
-def _history_rewritten_flag(repo) -> bool:
-    """Whether git history moved backward under the recorded state (see `lens._history_rewritten`).
-    Never raises -- orientation must not fail on a repo it can't read."""
-    from ugh.core.lens import sync_status
-
-    try:
-        return bool(sync_status(repo).get("history_rewritten"))
-    except Exception:  # noqa: BLE001
-        return False
-
-
-def _next_action(in_flight: dict, needs_you: dict, working: dict | None = None) -> dict:
-    """The single "do this next" recommendation as a STRUCTURED action (not a rendered string, so
-    each surface phrases it in its own idiom), from a fixed priority ladder: an open fork blocks
-    everything (its two tips are excluded from every ideal), a stalled plan is a resumable thread,
-    then dirty work to save, else clean. Shape:
-    `{kind, command, target, label}` -- `command` is a copy-pasteable shell line (or `None` when
-    there's nothing to run, e.g. `clean`, or a fork with no recorded remedy)."""
-    from ugh.tui.graph import plural
-    # A paused git merge/cherry-pick/revert outranks everything, because in that state ugh cannot
-    # act at all: the tree holds conflict-marker bytes, so `save` refuses outright and every
-    # mine-on-contact path skips its dirty pass (F26). Any other suggestion here would be a command
-    # the user cannot successfully run yet -- and "finish the merge" is genuinely their next move.
-    paused = needs_you.get("paused_operation")
-    if paused:
-        return {"kind": "finish_git_operation", "command": f"git {paused} --continue",
-                "target": paused,
-                "label": f"finish the paused git {paused} (or `git {paused} --abort`)"}
-    if needs_you.get("history_rewritten"):
-        # Above forks/save because until the ideal is re-derived, *every* other reading here is
-        # computed over ops from commits that no longer exist -- including the fork list.
-        return {"kind": "resync", "command": "ugh check --repair", "target": None,
-                "label": "git history moved backward — re-derive ugh's state"}
-    forks = needs_you["forks"]
-    if forks:
-        f = forks[0]
-        # Derive the high-level verb from the symbol rather than echoing the stored remedy: a
-        # forks.json committed before the remedy switch still names the old low-level `merge-op`,
-        # and this is the most prominent "what next" surface (`ugh now`).
-        sym = f.get("symbol")
-        command = f"ugh resolve {sym}" if sym else f.get("remedy")
-        return {"kind": "resolve_fork", "command": command, "target": sym,
-                "label": f"resolve fork on {sym}"}
-    stalled = needs_you["stalled_plans"]
-    if stalled:
-        s = stalled[0]
-        # `ugh plan resume <session>` is the entry point: it reads out which steps remain (flagging
-        # any that look already-built under other names) *and* prints the `claude --resume <uuid>`
-        # handle for the conversation that was building it. Suggesting `claude --resume` directly
-        # would drop the user back into a thread without telling them where it had got to.
-        return {"kind": "resume_plan", "command": f"ugh plan resume {s['session_id']}",
-                "target": s["session_id"],
-                "label": f"resume stalled plan ({plural(s['pending_count'], 'step')} left)"}
-    if in_flight["total_op_count"] > 0:
-        # A save is offered by what it *records*, not by the store's unit of accounting. The
-        # developer's own words are already on the surface one line above; if a message can be
-        # suggested from them, the command is copy-pasteable as-is rather than a `-m` to fill in.
-        n = in_flight["total_op_count"]
-        title = (working or {}).get("full_title") if isinstance(working, dict) else None
-        # Only offer a filled-in message when it can be pasted verbatim: a quote in the sentence
-        # would break the shell line, and a suggestion the developer has to repair is worse than
-        # none. Long asks stay as the sentence they were -- a save message may run long.
-        usable = title and '"' not in title and "\\" not in title and "\n" not in title
-        command = f'ugh save -m "{title}"' if usable else "ugh save"
-        return {"kind": "save", "command": command, "target": None,
-                "label": f"save your {plural(n, 'unsaved edit')}"}
-    return {"kind": "clean", "command": None, "target": None, "label": "nothing pending"}
-
-
-def now_view(repo, *, include_preview: bool = True, recent_limit: int = 5) -> dict:
-    """The "state of actions" surface (`ugh log --rail`'s header, the extension's Now tree): one THIN,
-    FAST assembler over child views answering the four questions a developer orienting mid-session has -- what's
-    *in flight*, what *needs me*, what was *recently done*, and what to do *next* -- plus a little
-    *context* (latest human turns + the live agent-action feed). On the hot path (every `ugh log`,
-    every extension refresh), so it deliberately avoids `intent_view` (which decodes op images, ~85%
-    of the store); rationale/feature_span stay a lazy drill-down.
-
-    `include_preview` gates the one mine-on-contact step (`save_preview_view` calls `get(repo)`); the
-    seam ships defaulted-on so a cheaper feed-only tick can be split off later without reshaping
-    callers. Everything else is a pure read of already-mined state."""
-    from ugh.intent import activity as activity_mod
-    from ugh.intent import turns as turns_mod
-
-    in_flight = (save_preview_view(repo) if include_preview
-                 else {"affected": [], "new_work_count": 0, "total_op_count": 0})
-
-    forks = forks_view(repo)
-    sessions = plan_view(repo)["sessions"]
-    stalled = [s for s in sessions if s["derived_status"] == "stalled"]
-    # A plan that is actively being built appeared nowhere: only *stalled* plans reached
-    # `needs_you`, so a working agent was invisible until it had been quiet for an hour, and the
-    # question "what is happening right now" had no answer on the surface built to answer it.
-    # This is deliberately not in `needs_you` -- an agent making progress needs nothing from the
-    # developer, it just needs to be visible.
-    in_progress = [
-        {"session_id": s["session_id"], "claude_session_id": s.get("claude_session_id"),
-         "matched_count": s.get("matched_count", 0), "step_count": s.get("step_count", 0),
-         "pending_count": s["pending_count"],
-         "current_title": (s["remaining_titles"] or [None])[0]}
-        for s in sessions if s["derived_status"] == "building"
-    ]
-    needs_you = {
-        # A half-finished git merge/cherry-pick/revert is the one state that blocks every ugh verb
-        # (`save` refuses on it, F26), so it belongs on the surface whose whole job is "what needs
-        # me". One `rev-parse` per pseudo-ref, so it stays cheap enough for this hot path.
-        "paused_operation": _paused_git_operation(repo),
-        # A backward git move desyncs the recorded ideal, and every count on every surface silently
-        # over-reports until it's repaired -- so it belongs on the "what needs me" list, not only in
-        # `log --summary`.
-        "history_rewritten": _history_rewritten_flag(repo),
-        "forks": forks["forks"],
-        "stalled_plans": [
-            {"session_id": s["session_id"], "claude_session_id": s.get("claude_session_id"),
-             "pending_count": s["pending_count"], "remaining_titles": s["remaining_titles"]}
-            for s in stalled
-        ],
-    }
-
-    recently_done = history_view(repo, limit=recent_limit)["latest_commits"]
-
-    # What the developer is working on, in their own words. The prompt hook has always recorded
-    # every ask verbatim, so this needs no declaration step -- which matters because the common way
-    # to work is Claude Code's plan mode or a planning plugin, neither of which calls
-    # `ugh plan intake`. Without this the surface built to answer "what am I working on" answered
-    # with op counts. A prompt older than the last save has already been answered by it, so the last
-    # save's committer time is the cutoff.
-    from ugh.intent.working import working_on
-
-    # The newest save's time comes off `recently_done`, which `history_view` just returned -- no
-    # extra git call for one integer. It is the newest *real* save, since that list is already
-    # folded, which is what "has this prompt been answered" should compare against.
-    last_save_ts = recently_done[0].get("ts") if recently_done else None
-    # One parse of the turn store, shared: `working_on` needs the newest human prompt and `context`
-    # needs the newest few turns, and the file holds every prompt ever typed with no pruning, so
-    # reading it twice is a cost that grows forever.
-    turns_all = sorted(turns_mod.load_turns(repo).values(), key=lambda t: t["ts"], reverse=True)
-    working = working_on(repo, active_plans=in_progress, last_save_ts=last_save_ts,
-                         has_unsaved=in_flight["total_op_count"] > 0, turns=turns_all)
-    context = {
-        "turns": [{"text": t["text"], "actor": t["actor"], "ts": t["ts"]} for t in turns_all[:recent_limit]],
-        "activity": activity_mod.recent_activity(repo, limit=recent_limit),
-    }
-
-    return {
-        "working_on": working,
-        "in_flight": in_flight,
-        "in_progress": in_progress,
-        "needs_you": needs_you,
-        "recently_done": recently_done,
-        "context": context,
-        "next_action": _next_action(in_flight, needs_you, working),
-    }
-
-
 def show_view(repo, target: str, *, symbol_limit: int = 12, save_limit: int = 5,
               include_ops: bool = False, include_asked: bool = False) -> dict:
     """`ugh show <sel>` -- "what is this thing?" for any id ugh ever printed.
@@ -2615,8 +2416,7 @@ def show_view(repo, target: str, *, symbol_limit: int = 12, save_limit: int = 5,
 
     found = select_resolve.identify(repo, target)
     if found is None:
-        # A ◆ row is a thing `ugh log` draws, `ugh log --focus` opens, and `ugh revert`/`ugh restore`
-        # both act on by name -- and it was the one noun `show` could not answer for. Asked about the
+        # A ◆ row is a thing `ugh revert`/`ugh restore` both act on by name -- and it was the one noun `show` could not answer for. Asked about the
         # piece of work a task actually names ("Event Day Handling"), the verb whose whole job is
         # "what is this and what would come with it" said it was not a known anything. That gap is
         # felt exactly where it costs most: a ◆ carries no id in the log the way a lane does, so its
@@ -2657,8 +2457,6 @@ def show_view(repo, target: str, *, symbol_limit: int = 12, save_limit: int = 5,
                 "asked": _show_asked(repo, op_ids, provenance["witnessing"], include_asked),
                 "consequences": consequences,
                 "next": [
-                    {"cmd": f"ugh log --focus {quoted}",
-                     "why": "this work in the map, with the features it landed on"},
                     # Which of the two acting verbs to offer depends on where the work currently
                     # stands, and `removes == 0` is what says so: reverting it would take nothing
                     # out, so it is not in the project now. Offering `revert` there points at the
@@ -2720,8 +2518,7 @@ def show_view(repo, target: str, *, symbol_limit: int = 12, save_limit: int = 5,
             "message": f"{target!r} is not a known feature, checkpoint, op, or symbol "
                        f"(ids and exact labels only — `show` does not resolve a phrase)",
             "next": [
-                {"cmd": "ugh log", "why": "browse what you did, newest first"},
-                {"cmd": "ugh log --tree", "why": "the feature tree, with each feature's handle"},
+                {"cmd": "ugh log", "why": "every feature with its handle, and its edits per save"},
             ],
         }
 
@@ -2888,7 +2685,7 @@ def _show_provenance(repo, op_ids, limit: int) -> tuple[list[dict], dict]:
     """(saves, span) for a selection's ops, from one pass over the commit graph.
 
     `saves` are the commits that produced these ops, deduped and ordered **oldest-first** so a
-    feature's saves read as its story -- matching how `ugh log --focus` presents the same thing. When
+    feature's saves read as its story. When
     there are more than `limit`, the *most recent* are kept (the tail), because "what happened lately"
     is what a user is usually reconstructing; keeping the head would hide current work behind history.
 
@@ -3010,28 +2807,13 @@ def _show_next(found, consequences: dict) -> list[dict]:
     steps: list[dict] = []
 
     if found.kind == "feature":
-        # `ugh log --focus` prints each checkpoint with its label and message, which is the answer
-        # to "what was each of these for". `ugh intent show` used to be offered here and always
-        # failed: it resolves a COMMIT, and what it is handed here is a feature id, so it exits 1
-        # with "no theme or commit found in the intent overlay" -- the exact silent-no-op this
-        # function's own docstring rules out, on the most-read footer in the tool.
-        steps.append({"cmd": f"ugh log --focus {token}",
-                      "why": "its checkpoints, oldest to newest, and what each was for"})
         steps.append({"cmd": f'ugh feature rename {token} "<name>"',
                       "why": "if the generated label doesn't match what this is"})
-    elif found.kind == "checkpoint":
-        feature = found.feature_id or ""
-        steps.append({"cmd": f"ugh log --focus {feature[2:10] if feature.startswith('f-') else token}",
-                      "why": "this checkpoint in the context of its feature"})
     elif found.kind == "save":
         # `git show` is where the line-by-line diff lives, and saying so is better than implying
         # ugh has its own copy.
         steps.append({"cmd": f"git show {token}",
                       "why": "the line-by-line diff — ugh does not duplicate it"})
-        if found.feature_id:
-            fid = found.feature_id
-            steps.append({"cmd": f"ugh log --focus {fid[2:10] if fid.startswith('f-') else fid[:8]}",
-                          "why": "the checkpoints around this save — the units revert takes"})
     elif found.kind == "symbol" and consequences.get("forked"):
         steps.append({"cmd": f"ugh resolve {found.target}",
                       "why": "two versions of this symbol compete -- guided resolution"})
@@ -3040,8 +2822,7 @@ def _show_next(found, consequences: dict) -> list[dict]:
     # copied. Omitted entirely when nothing here is live -- a revert would be a no-op -- and for a
     # save, because `ugh revert` does not take a commit sha: its ladder is checkpoint/op/symbol/
     # feature, so `ugh revert <sha>` answers "no feature matches handle". The cost line above is
-    # still true and worth reading (it is how entangled this save is), and `log --focus` is the
-    # route from it to a unit revert *does* take, so the number is not a dead end.
+    # still true and worth reading (it is how entangled this save is).
     if consequences.get("live_op_count") and found.kind != "save":
         steps.append({"cmd": f"ugh revert {token}", "why": revert_cost(consequences)})
     return steps

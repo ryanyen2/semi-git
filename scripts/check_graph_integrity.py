@@ -45,7 +45,7 @@ from pathlib import Path
 
 
 def _plural(n, noun):
-    """`3 symbols`, `1 symbol`. Not `1 symbol(s)` -- the same rule `ugh.tui.graph.plural` applies to
+    """`3 symbols`, `1 symbol`. Not `1 symbol(s)` -- the same rule `ugh.api.plural` applies to
     every count ugh prints. Duplicated rather than imported because this script runs against the
     *built* copy's interpreter and must not depend on importing ugh."""
     return "%d %s" % (n, noun) if n == 1 else "%d %ss" % (n, noun)

@@ -5,7 +5,7 @@ A `sync` that can't fold two divergent edits of one symbol records the fork in c
 
     ugh resolve <symbol> --apply  # commit the edited version (gated on the oracle)
 
-On a tty, a bare `ugh resolve <symbol>` shows both tips side by side and applies the side picked.
+A bare `ugh resolve <symbol>` prints both versions of the symbol.
 """
 
 from __future__ import annotations
@@ -44,63 +44,37 @@ def _resolve(repo: str, symbol: str, apply: bool, as_json: bool,
     if not apply:
         if as_json:
             return _emit_json({"ok": True, "symbol": symbol, "file": fork["file"]})
-        if sys.stdin.isatty() and sys.stdout.isatty():
-            if _interactive_pick(repo, symbol, fork["file"]) == "quit":
-                print(f"  nothing resolved — edit {fork['file']} then: ugh resolve {symbol} --apply")
-                return 0
-            return _apply_resolution(repo, symbol, fork, as_json, override=override, reason=reason, by=by)
-        print(f"  edit {fork['file']} to merge both versions, then: ugh resolve {symbol} --apply")
+        _print_tips(repo, symbol, fork["file"])
+        print(f"\n  edit {fork['file']} to merge both versions, then: ugh resolve {symbol} --apply")
         return 0
 
     if not as_json and sys.stdin.isatty() and sys.stdout.isatty():
         from ugh.api import resolve_apply_preview_view
 
-        from ._common import confirm_collab
+        from ._common import confirm
 
-        if not confirm_collab(resolve_apply_preview_view(repo, symbol), f"resolve {symbol}?"):
+        pview = resolve_apply_preview_view(repo, symbol)
+        oracle = ("runs the oracle before landing" if pview["oracle_configured"]
+                  else "no oracle configured — lands unverified")
+        if not confirm([f"  {pview['so_what']}", f"    {oracle}"], f"resolve {symbol}?"):
             print("  aborted — nothing resolved.")
             return 1
 
     return _apply_resolution(repo, symbol, fork, as_json, override=override, reason=reason, by=by)
 
 
-def _interactive_pick(repo: str, symbol: str, file: str) -> str:
-    """Render the two tips side by side and prompt for a resolution. `l`/`r` write the chosen tip's
-    content for the forked file to the working tree; `e` opens `$EDITOR` on it for a manual merge;
-    `q` resolves nothing. Returns the choice ("left"/"right"/"edit"/"quit")."""
-    import os
-    import shutil
-    import subprocess
-    import sys
-    from pathlib import Path
+def _print_tips(repo: str, symbol: str, file: str) -> None:
+    """Each tip's text of `symbol`, or of the whole file when the symbol is not found in it."""
+    from ugh.api import _side_entity_spans, fork_detail_view
 
-    from ugh.api import fork_detail_view
-    from ugh.tui.fork_diff import side_by_side
-
-    detail = fork_detail_view(repo, symbol)
-    tips = detail.get("tips", [])
-    if len(tips) != 2:
-        return "quit"
-    color = sys.stdout.isatty()
-    width = shutil.get_terminal_size((120, 40)).columns
-    files_a = {k: v for k, v in tips[0]["files"].items() if k == file} or tips[0]["files"]
-    files_b = {k: v for k, v in tips[1]["files"].items() if k == file} or tips[1]["files"]
-    print(f"── fork on {symbol} ──  (◀ left = tip A   ▶ right = tip B)")
-    for line in side_by_side(files_a, files_b, width=width, color=color):
-        print(line)
-    choice = (input("pick [l]eft / [r]ight / [e]dit / [q]uit: ").strip().lower() or "q")[0]
-
-    target = Path(repo) / file
-    if choice == "l":
-        target.write_text(tips[0]["files"].get(file, ""), encoding="utf-8")
-        return "left"
-    if choice == "r":
-        target.write_text(tips[1]["files"].get(file, ""), encoding="utf-8")
-        return "right"
-    if choice == "e":
-        subprocess.call([os.environ.get("EDITOR", "vi"), str(target)])
-        return "edit"
-    return "quit"
+    for name, tip in zip("AB", fork_detail_view(repo, symbol).get("tips", [])):
+        text = tip["files"].get(file, "")
+        span = next((s for s in _side_entity_spans(file, text.encode("utf-8"))
+                     if s["symbol"] == symbol), None)
+        if span is not None:
+            text = "\n".join(text.splitlines()[span["start_line"] - 1:span["end_line"]])
+        print(f"version {name} ({tip['op_id'][:8]}):")
+        print(text.rstrip("\n"))
 
 
 def _apply_resolution(repo: str, symbol: str, fork: dict, as_json: bool, *,

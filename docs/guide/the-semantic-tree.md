@@ -42,13 +42,13 @@ produces match what git actually has.
 ## The feature tree
 
 Ops are small, one per symbol edit. The feature tree groups them into features, so you can think
-and work at a larger scale than one function at a time. `ugh log --tree` builds this tree by clustering
+and work at a larger scale than one function at a time. `ugh log --refresh` builds this tree by clustering
 symbols that tend to change together and that reference each other across your history. Each
 feature gets an id like `F3` and a label, and the ids stay the same across rebuilds, so a feature
 keeps its identity as your code grows.
 
 This automatic grouping needs history to learn from. On a brand-new repo there is not enough
-signal yet to split features apart, so `ugh log --tree` reports one feature for everything. As real
+signal yet to split features apart, so `ugh log` lists one feature for everything. As real
 commits build up, the seams start to appear. You can name a feature in your own words at any time
 with `ugh feature rename`. It only changes the label and never touches your code.
 

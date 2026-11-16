@@ -30,7 +30,7 @@ def _cmd_init(args) -> int:
         return _emit_json({"error": str(ex)}) if args.as_json else _fail(str(ex))
     hooked = _install_prompt_hook(args.path)
     activity_hooked = _install_activity_hook(args.path)
-    # Opt-in, because plenty of people run `ugh` from the CLI or the TUI alone and have no use for
+    # Opt-in, because plenty of people run `ugh` from the CLI alone and have no use for
     # an agent config appearing in their repo. `--agent` is what a coding-agent or VS Code user
     # runs instead.
     agent = _install_agent(args.path) if args.agent else None

@@ -4,9 +4,8 @@ tree-mutating subcommands) before argparse is entered.
 
 History is a mined, content-addressed op DAG; a codebase state is an order ideal of that DAG.
 `revert`/`restore` are exact ideal edits (`I \\ ↑X` / `I ∪ ↓X`) with `--emit` previews.
-`log` is the one inspection surface: the feature map, with `--rail`, `--tree`, `--summary` and
-`--ops` modes. `check` verifies the op store's integrity. Every verb mines the working tree on
-contact before acting (R9).
+`log` lists features and their edits per save; `status` says what needs attention. `check` verifies
+the op store's integrity. Every verb mines the working tree on contact before acting (R9).
 """
 
 from __future__ import annotations
@@ -46,7 +45,7 @@ class _Parser(argparse.ArgumentParser):
 def _build_parser() -> _Parser:
     parent = argparse.ArgumentParser(add_help=False)
     # `--json` switches the read verbs to the canonical machine-readable projection (ugh.api),
-    # which the VSCode extension and TUI consume. Shared by every subparser via `parents=`.
+    # which the VSCode extension consumes. Shared by every subparser via `parents=`.
     parent.add_argument("--json", action="store_true", dest="as_json")
     parser = _Parser(prog="ugh")
     subs = parser.add_subparsers(dest="verb")
@@ -165,9 +164,8 @@ def _help() -> int:
         "ugh — semantic operation-ideal version control\n\n"
         "  the daily spine (a selection — symbol / glob / NL / feature / set — is the argument):\n"
         '  ugh save [-m "<msg>"] [--as "<feature>"]   record your edits + show which feature they landed in\n'
-        "  ugh log [--json]            the feature map: one lane per feature, edits over time —\n"
-        "                              --rail (saves, newest first) · --tree (feature tree) ·\n"
-        "                              --summary (what needs attention) · --refresh (reflect new edits)\n"
+        "  ugh log [--refresh]         one row per feature, its edits in each recent save\n"
+        "  ugh status                  what needs attention: forks, drift, untracked files\n"
         "  ugh show <sel>              what is this? — any id ugh printed: what it covers, what\n"
         "                              would go with it, and what you can do next\n"
         "  ugh find <words>            find a feature, save or symbol you can describe but not name\n"

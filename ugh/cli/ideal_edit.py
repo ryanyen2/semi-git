@@ -130,8 +130,8 @@ def _dirty_refusal(exc, as_json: bool) -> int:
 
 def register(subs, parent) -> None:
     r = subs.add_parser("revert", parents=[parent])
-    # `--emit` (machine dry-run: VS Code/MCP) and `--yes` (non-tty apply) stay functional but hidden
-    # -- on a tty the consequence pane is the default confirm step, so a human never types them.
+    # `--emit` (machine dry-run: VS Code/MCP) and `--yes` (non-tty apply) are hidden: on a tty the
+    # preview and its `[y/N]` are the default confirm step.
     r.add_argument("--emit", action="store_true", help=argparse.SUPPRESS)
     r.add_argument("--yes", action="store_true", help=argparse.SUPPRESS)
     r.add_argument("--out", default=None, metavar="DIR",
@@ -160,19 +160,16 @@ def _cmd_restore(args) -> int:
 
 
 def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict | None = None,
-                      *, yes: bool = False, focus_fid: str | None = None,
-                      out: str | None = None) -> int:
+                      *, yes: bool = False, out: str | None = None) -> int:
     """Shared tail for the ideal-edit verbs: `--emit` renders the preview projection; otherwise
     apply the edit (when the preview is ok) and render the plain result view. `extra` (e.g. the intent overlay's `tier`) is
     merged into `view` unconditionally in both branches, before either the JSON or plain-text
     emission call -- so it's visible on both output paths, not JSON only.
 
-    Feedforward (KTD): a plain-text (non-`--json`) apply first *draws* where the edit lands inline
-    in the normal `ugh log` flow -- the target feature's checkpoints with the removed/restored slice
-    marked, plus the other features the dependency blast hits (`render_verb_preview_lines`) -- then
-    gates on `[y/N]`. `--yes` skips the prompt; a non-tty stdin without `--yes` prints the preview
-    and refuses to apply (exit 2), mirroring the did-you-mean guard. `--json` is unchanged (applies
-    immediately -- the machine contract VS Code/TUI depend on)."""
+    A plain-text (non-`--json`) apply first prints the preview (`_preview_lines`), then gates on
+    `[y/N]`. `--yes` skips the prompt; a non-tty stdin without `--yes` prints the preview
+    and refuses to apply (exit 2), mirroring the did-you-mean guard. `--json` applies immediately --
+    the machine contract VS Code depends on."""
     from ugh.core import verbs
     from ugh.core.lens import DirtyWorkingTreeError
 
@@ -226,23 +223,17 @@ def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict
             print(f"  {preview.message}")
             return 0
 
-    # Plain-text apply: the confirm step draws the feedforward inline -- the same before/after
-    # `ugh log` region the edit lands in (`render_verb_preview_lines`) -- in the normal terminal
-    # flow, then gates on `[y/N]`. `--yes` skips the prompt; a non-tty stdin without `--yes` prints
-    # the preview and refuses (exit 2), mirroring the did-you-mean guard.
+    # Plain-text apply: print the preview, then gate on `[y/N]`. `--yes` skips the prompt; a non-tty
+    # stdin without `--yes` prints the preview and refuses (exit 2), mirroring the did-you-mean guard.
     if preview.ok and not as_json:
         import sys
 
-        from ugh.api import _project_verb_preview, grid_view, map_view, segments_view
-        from ugh.tui.graph import render_verb_preview_lines
+        from ugh.api import _project_verb_preview
 
         pview = _project_verb_preview(repo, preview)
         if _brings_nothing_back(pview, preview):
             return _refuse_empty_restore(preview, as_json)
-        mv, gv, sv = map_view(repo), grid_view(repo), segments_view(repo)
-
-        color = sys.stdout.isatty()
-        for line in render_verb_preview_lines(mv, gv, sv, pview, focus_fid=focus_fid, color=color):
+        for line in _preview_lines(pview):
             print(line)
         for line in _subtraction_report(preview):
             print(line)
@@ -330,6 +321,21 @@ def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict
     # a refusal as a success. Report the refusal in the status too.
     _emit_json(view)
     return 0 if preview.ok else 1
+
+
+def _preview_lines(pview: dict) -> list[str]:
+    """What a revert/restore is about to do: the consequence sentence, each feature whose edit
+    count moves, and the files it changes."""
+    from ugh.api import plural
+
+    lines = [f"  {pview['verb']} {pview['target']}", f"  {pview['so_what']}"]
+    for n in pview["focus"]["nodes"]:
+        if n["ops_before"] != n["ops_after"]:
+            lines.append(f"    {n['label']}: {n['ops_before']} → {n['ops_after']} edits")
+    files = sorted(pview["files"])
+    shown = ", ".join(files[:4]) + (f" +{len(files) - 4} more" if len(files) > 4 else "")
+    lines.append(f"  {plural(len(files), 'file')}: {shown}" if files else "  no file changes")
+    return lines
 
 
 def _restore_gap(repo: str, preview) -> dict | None:
@@ -488,7 +494,8 @@ def _applied_magnitude(preview) -> str:
     whole op (`ugh.core.subtract` splices instead), so the op counts read "0 edits removed, 5
     added" for a revert that rewrote a function and dropped a test -- the number said no-op while
     the files moved. `restore`'s "N added" is the real magnitude of a restore, so it is untouched."""
-    from ugh.tui.graph import plural
+    from ugh.api import plural
+
     removed, added = len(preview.removed), len(preview.added)
     if preview.verb == "revert" and not removed:
         syms = [s for s in preview.affected_symbols if "::__" not in s]
@@ -631,14 +638,8 @@ def _kernel_edit_verb(
             preview = (verbs.plan_revert_op_set(repo, target, op_ids)
                        if cmd == "revert" else
                        verbs.plan_restore_op_set(repo, target, op_ids))
-            # The feedforward focus is the feature the checkpoint's ops belong to (all ops in one
-            # segment share a feature); pick any target op and read its leaf feature.
-            from ugh.lens.tree import load as load_tree
-
-            op_leaf = (load_tree(repo) or {}).get("op_leaf", {})
-            focus_fid = next((op_leaf[o] for o in op_ids if o in op_leaf), None)
             return _emit_verb_result(repo, preview, emit, as_json, extra={"checkpoint": label},
-                                     yes=yes, focus_fid=focus_fid, out=out)
+                                     yes=yes, out=out)
 
     from ugh.lens import verbs as lens_verbs
 
@@ -655,11 +656,8 @@ def _kernel_edit_verb(
     # The shape predicates live in `ugh.select.resolve` so `ugh show <x>` classifies `<x>` exactly as
     # this ladder does -- a token that reads as a feature here must not read as an op there.
     handle_shaped = select_resolve.is_handle_shaped(target)
-    focus_fid = None
     if handle_shaped:
-        resolved_feature = lens_verbs.resolve_feature(repo, target)
-        if resolved_feature is not None:
-            focus_fid = resolved_feature[1]  # (op_set, feature_id, label): feature scope wins over the op it shadows
+        if lens_verbs.resolve_feature(repo, target) is not None:
             preview = plan_feature(repo, target)
         else:
             # No feature claims this hex handle -- but a *full* op id (the copy token `log --ops`
@@ -685,9 +683,7 @@ def _kernel_edit_verb(
     else:
         preview = plan_single(repo, target)
         if not preview.ok:
-            resolved_feature = lens_verbs.resolve_feature(repo, target)
-            if resolved_feature is not None:
-                focus_fid = resolved_feature[1]
+            if lens_verbs.resolve_feature(repo, target) is not None:
                 preview = plan_feature(repo, target)
             elif "::" not in target:
                 # A bare CHAPTER name, before any prose rung. Every surface prints these on their
@@ -705,14 +701,8 @@ def _kernel_edit_verb(
                     preview = (verbs.plan_revert_op_set(repo, target, op_ids)
                                if cmd == "revert" else
                                verbs.plan_restore_op_set(repo, target, op_ids))
-                    from ugh.lens.tree import load as load_tree
-
-                    op_leaf = (load_tree(repo) or {}).get("op_leaf", {})
                     return _emit_verb_result(repo, preview, emit, as_json,
-                                             extra={"checkpoint": chapter}, yes=yes,
-                                             focus_fid=next((op_leaf[o] for o in op_ids
-                                                             if o in op_leaf), None),
-                                             out=out)
+                                             extra={"checkpoint": chapter}, yes=yes, out=out)
                 ambiguous = checkpoint_label_candidates(repo, target)
                 if len(ambiguous) > 1:
                     return _fail_json(
@@ -751,18 +741,7 @@ def _kernel_edit_verb(
         # probably reaching for -- with the exact swap commands.
         return _restore_already_live(repo, target, as_json)
 
-    if focus_fid is None and preview.ok:
-        # Single-op target: focus the feedforward on the feature that owns the most touched ops.
-        from collections import Counter
-
-        from ugh.lens.tree import load as load_tree
-
-        op_leaf = (load_tree(repo) or {}).get("op_leaf", {})
-        touched = preview.removed if cmd == "revert" else preview.added
-        tally = Counter(op_leaf[o] for o in touched if o in op_leaf)
-        focus_fid = tally.most_common(1)[0][0] if tally else None
-
-    return _emit_verb_result(repo, preview, emit, as_json, yes=yes, focus_fid=focus_fid, out=out)
+    return _emit_verb_result(repo, preview, emit, as_json, yes=yes, out=out)
 
 
 def _save_named_by(repo: str, target: str) -> tuple[str, str, list[tuple[str, str]]] | None:
@@ -772,9 +751,7 @@ def _save_named_by(repo: str, target: str) -> tuple[str, str, list[tuple[str, st
 
     `ugh save` prints the sha of the commit it just made, which makes `ugh revert <that sha>` the
     obvious next move after a save you regret. A bare hex is handle-shaped, so it lands in
-    `_no_feature_match` and used to be answered with "no feature matches handle '<sha>' -- run `ugh
-    log --map`": the map lists feature handles and never save shas, so the one pointer offered
-    cannot resolve the one id typed, and a name ugh itself printed reads back as unknown."""
+    `_no_feature_match`, which would deny a name ugh itself printed."""
     from ugh.core import opindex
     from ugh.lens.tree import load as load_tree
     from ugh.store.gitbind import GitBinding
@@ -821,7 +798,7 @@ def _no_checkpoint_match(
     for ref, lbl in refs[:8]:
         print(f"  ugh {cmd} {ref}   {lbl}")
     if len(refs) > 8:
-        print(f"  ... and {len(refs) - 8} more — run `ugh log --focus {feat_part}` for all of them.")
+        print(f"  ... and {len(refs) - 8} more — `--json` lists all of them.")
     return 2
 
 
@@ -1097,13 +1074,8 @@ def _resolve_via_ledger(repo: str, cmd: str, target: str, emit: bool, as_json: b
     preview = verbs.plan_revert_op_set(repo, target, op_ids)
     if not preview.ok or not preview.removed:
         return None  # already reverted, or not in the ideal -- fall through rather than a no-op "success"
-
-    from ugh.lens.tree import load as load_tree
-
-    op_leaf = (load_tree(repo) or {}).get("op_leaf", {})
-    focus_fid = next((op_leaf[o] for o in op_ids if o in op_leaf), None)
     return _emit_verb_result(repo, preview, emit, as_json,
-                             extra={"resolved_from": rec["reason"]}, yes=yes, focus_fid=focus_fid)
+                             extra={"resolved_from": rec["reason"]}, yes=yes)
 
 
 def _resolve_via_intent(repo: str, cmd: str, target: str, as_json: bool, yes: bool) -> int:
@@ -1206,7 +1178,8 @@ def _resolve_via_intent(repo: str, cmd: str, target: str, as_json: bool, yes: bo
 
 
 def _print_verb_view(view: dict) -> int:
-    from ugh.tui.graph import plural
+    from ugh.api import plural
+
     icon = "✓" if view["ok"] else "✗"
     print(f"{icon} [{view['verb']}] {view['target']}" + (f" — {view['message']}" if view["message"] else ""))
     if not view["ok"]:
@@ -1250,7 +1223,8 @@ def _print_verb_diff(files: dict, max_lines: int = 60) -> None:
     """Show the actual resulting change (the state you land in), computed by the backend as a
     before/after fold per changed path. A capped unified diff -- the honest answer to 'what does
     reverting this do to my code', not just an op-count."""
-    from ugh.tui.graph import plural
+    from ugh.api import plural
+
     if not files:
         return
     import difflib

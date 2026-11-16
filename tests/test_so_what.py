@@ -70,12 +70,6 @@ def test_restore_says_the_symbol_and_prerequisites_return():
     )
 
 
-def test_rename_says_code_is_untouched():
-    pview = {"verb": "rename", "ok": True, "forked": False,
-             "affected_symbols": ["auth"], "fallout": []}
-    assert so_what_for(pview) == "Relabels to auth — metadata only, code untouched. Undo-able."
-
-
 def test_primary_falls_back_to_target_when_no_symbol_resolved():
     pview = {"verb": "revert", "ok": True, "forked": False,
              "affected_symbols": [], "target": "f-1a2b", "fallout": []}

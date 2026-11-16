@@ -137,6 +137,21 @@ def _open_fork_reminder(repo: str) -> None:
         print(f"      {rec['symbol']} ({rec['file']}): {rec['remedy']}")
 
 
+def _sync_preview_lines(pview: dict) -> list[str]:
+    lines = [f"  {pview['so_what']}"]
+    for sym, _a, _b in pview["forks"]:
+        lines.append(f"    fork on {sym}  →  ugh resolve {sym}")
+    for c in pview["pin_contradictions"]:
+        lines.append(f"    ⚠ pin contradiction: {c['detail']}")
+    if pview["base_recovery"] == "none":
+        lines.append("    ⚠ base recovery: none — no witnessed merge-base; union semantics "
+                     "(cannot delete work one side removed)")
+    if pview["theirs_recovery"] == "none":
+        lines.append("    ⚠ their tip has ugh ops but no witnessed trailers — re-mine on their "
+                     "side, then sync again")
+    return lines
+
+
 def _sync(repo: str, remote: str | None, branch: str | None, as_json: bool) -> int:
     import sys
 
@@ -152,7 +167,7 @@ def _sync(repo: str, remote: str | None, branch: str | None, as_json: bool) -> i
     if not as_json and sys.stdin.isatty() and sys.stdout.isatty():
         from ugh.api import sync_preview_view
 
-        from ._common import confirm_collab
+        from ._common import confirm
 
         try:
             pview = sync_preview_view(repo, remote, branch)
@@ -164,7 +179,7 @@ def _sync(repo: str, remote: str | None, branch: str | None, as_json: bool) -> i
             print(f"✓ sync {pview['remote']}/{pview['target']}: already up to date")
             _open_fork_reminder(repo)
             return 0
-        if not confirm_collab(pview, f"sync {pview['remote']}/{pview['target']}?"):
+        if not confirm(_sync_preview_lines(pview), f"sync {pview['remote']}/{pview['target']}?"):
             print("  aborted — nothing synced.")
             return 1
 

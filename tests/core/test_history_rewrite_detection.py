@@ -120,32 +120,17 @@ def test_resync_clears_it_and_corrects_the_counts(repo):
     assert lens.dropped_ideal_ops(repo) == []
 
 
-def test_the_surfaces_name_resync_and_not_save(repo, capsys, monkeypatch):
-    """The user-facing half. `ugh log --summary` and `ugh log --rail` must both route to
-    `check --repair`; the generic "`ugh save` absorbs them" drift advice must not be what they see
-    here."""
+def test_status_names_resync_and_not_save(repo, capsys, monkeypatch):
+    """The user-facing half. `ugh status` must route to `check --repair`; the generic "`ugh save`
+    absorbs them" drift advice must not be what it says here."""
     _reset_hard(repo, "HEAD~2")
     monkeypatch.chdir(repo)
     capsys.readouterr()
 
-    assert main(["log", "--summary", "--no-color"]) == 0
+    assert main(["status"]) == 0
     summary = capsys.readouterr().out
     assert "ugh check --repair" in summary
     assert "ugh save` absorbs" not in summary
-
-    assert main(["log", "--rail", "--no-color"]) == 0
-    rail = capsys.readouterr().out
-    assert "ugh check --repair" in rail
-
-
-def test_next_action_ranks_resync_above_a_plain_save(repo):
-    """Ordering matters: until the ideal is re-derived, every other reading -- including the fork
-    list and the unsaved-op count -- is computed over ops from commits that no longer exist."""
-    _reset_hard(repo, "HEAD~2")
-    lens.get(repo)
-    action = api.now_view(repo)["next_action"]
-    assert action["kind"] == "resync"
-    assert action["command"] == "ugh check --repair"
 
 
 def test_saving_re_authored_work_after_a_backward_move_is_not_a_rewrite(repo):

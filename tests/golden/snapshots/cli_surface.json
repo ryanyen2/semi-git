@@ -21,7 +21,7 @@
       "help"
     ],
     "exit": 0,
-    "out": "ugh \u2014 semantic operation-ideal version control\n\n  the daily spine (a selection \u2014 symbol / glob / NL / feature / set \u2014 is the argument):\n  ugh save [-m \"<msg>\"] [--as \"<feature>\"]   record your edits + show which feature they landed in\n  ugh log [--json]            the feature map: one lane per feature, edits over time \u2014\n                              --rail (saves, newest first) \u00b7 --tree (feature tree) \u00b7\n                              --summary (what needs attention) \u00b7 --refresh (reflect new edits)\n  ugh show <sel>              what is this? \u2014 any id ugh printed: what it covers, what\n                              would go with it, and what you can do next\n  ugh find <words>            find a feature, save or symbol you can describe but not name\n  ugh undo                    invert the last mutating operation (the unified op log)\n  ugh revert <sel>            remove a selection and everything built on it\n  ugh restore <sel>           bring a selection back, along with what it needs\n  ugh resolve <symbol>        guided fork resolution when two versions of one symbol compete\n  ugh feature rename <feature> <label>   name a feature in your own words\n\n  agentic loop:\n  ugh plan <cmd>              intake/abandon/status a stated plan's predicted hollow ops\n  ugh save --resolve-plan     settle an ambiguous plan-step match a save couldn't auto-confirm\n\n  collaboration + setup:\n  ugh sync [remote] [branch]  fetch + merge a teammate's work; union ops, reconcile, fork\n  ugh push [remote] [branch]  non-forcing git push; a rejection routes you to `ugh sync`\n  ugh check [--tree] [--repair]   verify the op store; --repair re-derives after a history rewrite\n  ugh init [path] [--horizon <ref>]   bind git + the kernel op store; mine existing history\n  ugh mcp [path]              run the MCP stdio server for coding-agent clients\n  ugh git <args...>           pass through to real git (refuses tree-mutating verbs)\n\n  <sel> resolves an op-id / prefix, a `file::name` symbol, a glob, a feature id/label, or\n  an NL phrase; read verbs take --json for the machine-readable ugh.api projection.\n\n"
+    "out": "ugh \u2014 semantic operation-ideal version control\n\n  the daily spine (a selection \u2014 symbol / glob / NL / feature / set \u2014 is the argument):\n  ugh save [-m \"<msg>\"] [--as \"<feature>\"]   record your edits + show which feature they landed in\n  ugh log [--refresh]         one row per feature, its edits in each recent save\n  ugh status                  what needs attention: forks, drift, untracked files\n  ugh show <sel>              what is this? \u2014 any id ugh printed: what it covers, what\n                              would go with it, and what you can do next\n  ugh find <words>            find a feature, save or symbol you can describe but not name\n  ugh undo                    invert the last mutating operation (the unified op log)\n  ugh revert <sel>            remove a selection and everything built on it\n  ugh restore <sel>           bring a selection back, along with what it needs\n  ugh resolve <symbol>        guided fork resolution when two versions of one symbol compete\n  ugh feature rename <feature> <label>   name a feature in your own words\n\n  agentic loop:\n  ugh plan <cmd>              intake/abandon/status a stated plan's predicted hollow ops\n  ugh save --resolve-plan     settle an ambiguous plan-step match a save couldn't auto-confirm\n\n  collaboration + setup:\n  ugh sync [remote] [branch]  fetch + merge a teammate's work; union ops, reconcile, fork\n  ugh push [remote] [branch]  non-forcing git push; a rejection routes you to `ugh sync`\n  ugh check [--tree] [--repair]   verify the op store; --repair re-derives after a history rewrite\n  ugh init [path] [--horizon <ref>]   bind git + the kernel op store; mine existing history\n  ugh mcp [path]              run the MCP stdio server for coding-agent clients\n  ugh git <args...>           pass through to real git (refuses tree-mutating verbs)\n\n  <sel> resolves an op-id / prefix, a `file::name` symbol, a glob, a feature id/label, or\n  an NL phrase; read verbs take --json for the machine-readable ugh.api projection.\n\n"
   },
   "init": {
     "argv": [
@@ -45,7 +45,7 @@
         "log"
       ],
       "exit": 0,
-      "out": " \u001b[1m1 feature\u001b[0m\u001b[2m  \u00b7  \u001b[0m\u001b[2m7 saves\u001b[0m\n\n\u001b[2m   \u001b[0m\u001b[2mFEATURE           \u001b[0m\u001b[2m  \u001b[0m\u001b[2mID      \u001b[0m\u001b[2m  \u001b[0m\u001b[2mc0 \u001b[0m\u001b[2m\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u001b[0m\u001b[2m c6\u001b[0m\u001b[2m  \u001b[0m\u001b[2mEDITS\u001b[0m\u001b[2m  \u001b[0m\u001b[2mLATEST                  \u001b[0m\n\u001b[2m \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u001b[0m\n   \u001b[38;2;201;136;214m\u25cf \u001b[0mbaz qux           \u001b[1;38;2;201;136;214m004\u001b[0m\u001b[2m014ef\u001b[0m  \u001b[30;48;2;201;136;214m@0                          \u001b[0m  \u001b[2m   15\u001b[0m  \u001b[2m@0 add foo, qux, config\u2026\u001b[0m\n\n\u001b[2m \u001b[0m\u001b[2m1 row\u001b[0m\n\u001b[2;3m \u001b[0m\u001b[2;3meach block is one checkpoint \u2014 `ugh show 004014ef@0` says what it is and what reverting it would \u2026\u001b[0m\n\u001b[2;3m \u001b[0m\u001b[2;3m`ugh revert 004014ef@0` removes just that checkpoint  \u00b7  `ugh log --focus 004014ef` lists them all\u001b[0m\n\n"
+      "out": "id        feature                          75b0015 665bf8b 56a3e01 26075c5 4bcd22e bf7218c 7c2b132\n004014ef  baz qux                                4       .       .       .       2       .       1\n          (no feature)                           1       1       2       1       .       1       .\n"
     }
   },
   "map": {
@@ -57,14 +57,6 @@
       ],
       "exit": 0,
       "out": "{\n  \"nodes\": [\n    {\n      \"id\": \"f-004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d\",\n      \"label\": \"baz qux\",\n      \"kind\": \"feature\",\n      \"parent\": null,\n      \"children\": [],\n      \"size\": 10,\n      \"members\": [\n        \"README.md\",\n        \"a.py::__residue__::\\u0000HEAD\\u0000\",\n        \"b.py::__residue__::\\u0000HEAD\\u0000\",\n        \"b.py::__residue__::baz\",\n        \"b.py::baz\",\n        \"c.py::__residue__::\\u0000HEAD\\u0000\",\n        \"c.py::__residue__::qux\",\n        \"c.py::qux\",\n        \"config.yaml\",\n        \"logo.bin\"\n      ],\n      \"own_symbols\": [\n        \"README.md\",\n        \"b.py::baz\",\n        \"c.py::qux\",\n        \"config.yaml\",\n        \"logo.bin\"\n      ],\n      \"op_count\": 15,\n      \"dir\": \"b.py\",\n      \"why\": \"Auto-derived from b.py (no LLM label available).\",\n      \"split_reason\": \"max_leaf\",\n      \"sessions\": []\n    }\n  ],\n  \"roots\": [\n    \"f-004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d\"\n  ],\n  \"identity_events\": [\n    {\n      \"event\": \"birth\",\n      \"feature_id\": \"f-004014efad04ed11d6af5a8fd9585789e0efd3e718ea92b86159dd62b6487f2d\"\n    }\n  ],\n  \"feature_count\": 1,\n  \"edges\": [],\n  \"sync_status\": {\n    \"complete\": true,\n    \"reached_genesis\": true,\n    \"history_rewritten\": false\n  }\n}\n"
-    },
-    "text": {
-      "argv": [
-        "log",
-        "--tree"
-      ],
-      "exit": 0,
-      "out": " \u001b[1m1 feature\u001b[0m\u001b[2m  \u00b7  \u001b[0m\u001b[2m0 subsystems\u001b[0m\n\n\u001b[2m \u001b[0m\u001b[2mFEATURE             \u001b[0m\u001b[2m  \u001b[0m\u001b[2mSYMBOLS\u001b[0m\n\u001b[2m \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u001b[0m\n \u001b[38;2;201;136;214m\u25cf \u001b[0mbaz qux             \u001b[2m      5\u001b[0m\n\n\u001b[2m \u001b[0m\u001b[2m1 row\u001b[0m\n\n"
     }
   },
   "plan_status": {
@@ -127,7 +119,7 @@
         "--yes"
       ],
       "exit": 0,
-      "out": " \u25b8 restore  baz qux  004014ef  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588  14\u219215 edits\n      ugh restore c.py::qux\n\n   \u25d0 (0\u2588\u2588\u2588)  @0 add foo, qux, config, binary             \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588  \u00b7 1/15 edits restored\n\n restores 1 edit across 1 symbol \u00b7 1 file: c.py\n  \u2713 restore applied \u2014 0 edits removed, 1 added. (`ugh undo` reverses this.)\n"
+      "out": "  restore c.py::qux\n  Re-adds c.py::qux and its prerequisites. Nothing to reconcile. Undo-able.\n    baz qux: 14 \u2192 15 edits\n  1 file: c.py\n  \u2713 restore applied \u2014 0 edits removed, 1 added. (`ugh undo` reverses this.)\n"
     }
   },
   "revert": {
@@ -148,7 +140,7 @@
         "--yes"
       ],
       "exit": 0,
-      "out": " \u25b8 rewind  baz qux  004014ef  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2591  15\u219214 edits\n      ugh revert c.py::qux\n\n   \u25d0 (0\u2588\u2588\u2588)  @0 add foo, qux, config, binary             \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2591  \u00b7 1/15 edits removed\n\n removes 1 edit across 1 symbol \u00b7 1 file: c.py\n  \u2713 revert applied \u2014 1 edit removed, 0 added. (`ugh undo` reverses this.)\n"
+      "out": "  revert c.py::qux\n  Removes c.py::qux. No dependent needs a decision \u2014 1 prerequisite locked. Undo-able.\n    baz qux: 15 \u2192 14 edits\n  1 file: c.py\n  \u2713 revert applied \u2014 1 edit removed, 0 added. (`ugh undo` reverses this.)\n"
     }
   },
   "revert_emit": {
@@ -209,7 +201,7 @@
         "add new_file"
       ],
       "exit": 0,
-      "out": "\u2713 save <witness-sha> \"add new_file\"\n\u001b[2m  \u293a undo this save, and take its edits back off the working copy:  ugh undo\u001b[0m\n"
+      "out": "\u2713 save <witness-sha> \"add new_file\"\n  \u293a undo this save, and take its edits back off the working copy:  ugh undo\n"
     }
   },
   "save_nothing_to_save": {
@@ -232,8 +224,7 @@
   "status": {
     "json": {
       "argv": [
-        "log",
-        "--summary",
+        "status",
         "--json"
       ],
       "exit": 0,
@@ -241,11 +232,10 @@
     },
     "text": {
       "argv": [
-        "log",
-        "--summary"
+        "status"
       ],
       "exit": 0,
-      "out": " \u001b[1m6 files\u001b[0m\u001b[2m  \u00b7  \u001b[0m\u001b[1m15 symbols\u001b[0m\u001b[2m  \u00b7  \u001b[0m\u001b[1m1 feature\u001b[0m\u001b[2m  \u00b7  \u001b[0m\u001b[2m33% coverage\u001b[0m\u001b[2m  \u00b7  \u001b[0m\u001b[2moracle unconfigured\u001b[0m\n\n\u001b[32m \u001b[0m\u001b[32m\u2713 in sync\u001b[0m\n\n"
+      "out": "6 files \u00b7 15 symbols \u00b7 1 feature \u00b7 33% coverage \u00b7 oracle unconfigured\n\u2713 in sync\n"
     }
   },
   "sync_refuses_dirty_tree": {

@@ -57,7 +57,7 @@ This is the agentic loop for turning a stated intent into recorded, attributed w
    where exactly one pending step claims the ops, so it cannot silently pick between two candidates.
 4. **Plan drift** — ops mined that *no* active plan predicted — is reported in that same `ugh save`
    output, and an agent can read it on its own via the `ugh_drift` MCP tool. It is not
-   `ugh log --summary`: that reports *working-tree* drift (files on disk differing from the
+   `ugh status`: that reports *working-tree* drift (files on disk differing from the
    recorded state), a different question that kept the same word.
 
 ## Quick don't-confuse-these list

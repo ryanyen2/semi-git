@@ -58,6 +58,5 @@ exits 1 with the places to look. Read the exit code before parsing the output.
 
 ## Reading output as a machine
 
-Always add `--json` when you are the reader. The human-readable form uses ANSI colour and box drawing
-that costs tokens and can break your parsing. `--no-color` exists for the case where you are showing
-output to a person rather than reading it yourself.
+Always add `--json` when you are the reader. The human-readable form is laid out in columns for a
+person, which costs tokens and can break your parsing.

@@ -9,7 +9,7 @@ import json
 
 from ugh import state
 from ugh.api import (
-    drift_view, fold_view, history_view, map_view, now_view, oplog_view, plan_view,
+    drift_view, fold_view, history_view, map_view, oplog_view, plan_view,
     save_preview_view, state_view, status_view,
 )
 from ugh.core import lens
@@ -1036,119 +1036,10 @@ def test_plan_view_derives_building_and_stalled_from_activity_and_candidates(tmp
     assert view["sessions"][0]["derived_status"] == "building"
 
 
-def test_now_view_clean_repo_reports_clean_next_action(tmp_path):
-    """A mined, clean repo has nothing in flight, nothing needing the user, and a `clean`
-    next-action. Every section is always present so the surfaces can render unconditionally."""
-    repo = _mined(tmp_path, "mixed_coverage")
-    v = now_view(repo)
-    assert set(v) == {"working_on", "in_flight", "in_progress", "needs_you", "recently_done",
-                      "context", "next_action"}
-    assert v["in_flight"] == {"affected": [], "new_work_count": 0, "total_op_count": 0}
-    assert v["in_progress"] == []
-    assert v["working_on"] is None  # nothing asked for, so nothing claimed
-    assert v["needs_you"] == {"forks": [], "stalled_plans": [],
-                              "paused_operation": None, "history_rewritten": False}
-    assert v["next_action"]["kind"] == "clean"
-    assert v["next_action"]["command"] is None
-    assert v["recently_done"]  # the fixture's commits show up as recently done
-
-
-def test_now_view_dirty_tree_recommends_save(tmp_path):
-    """Uncommitted work puts ops in flight and makes `ugh save` the next action. The offer is
-    phrased by what it records ("your N unsaved edits"), not by the store's unit of accounting --
-    "pending ops" is a fact about the kernel, and the developer is asking about their work."""
-    repo = tmp_path / "repo"
-    gb, _ = init_store(repo)
-    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("add foo")
-    get(repo)
-    (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
-
-    v = now_view(repo)
-    assert v["in_flight"]["total_op_count"] == 1   # one edited symbol, so the label is singular
-    assert v["next_action"] == {"kind": "save", "command": "ugh save", "target": None,
-                                "label": "save your 1 unsaved edit"}
-
-
-def test_now_view_include_preview_false_skips_the_mine(tmp_path):
-    """`include_preview=False` returns an empty in-flight block without touching the working tree,
-    so a dirty tree is NOT reported -- the seam that lets a cheap feed-tick skip the save preview."""
-    repo = tmp_path / "repo"
-    gb, _ = init_store(repo)
-    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("add foo")
-    get(repo)
-    (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
-
-    v = now_view(repo, include_preview=False)
-    assert v["in_flight"] == {"affected": [], "new_work_count": 0, "total_op_count": 0}
-    assert v["next_action"]["kind"] == "clean"  # save rung never fires without the preview
-
-
-def test_now_view_stalled_plan_recommends_ugh_plan_resume(tmp_path):
-    """A stalled plan session outranks a clean tree. The recommended command is `ugh plan resume
-    <session>`, which reads out which steps remain (flagging any that already look built under other
-    names) *and* prints the `claude --resume <uuid>` handle. It used to recommend `claude --resume`
-    directly, which dropped the user back into a conversation without telling them where it had got
-    to -- the orientation is the part they were missing."""
-    import time
-
-    from ugh.loop.plan import STALLED_SECONDS
-
-    repo = tmp_path / "repo"
-    gb, _ = init_store(repo)
-    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("add foo")
-    get(repo)
-    _seed_plan_session(repo, gb, session_id="s1",
-                       last_activity_ts=time.time() - STALLED_SECONDS - 60,
-                       claude_session_id="sess-xyz")
-
-    v = now_view(repo)
-    assert len(v["needs_you"]["stalled_plans"]) == 1
-    assert v["needs_you"]["stalled_plans"][0]["session_id"] == "s1"
-    assert v["next_action"]["kind"] == "resume_plan"
-    assert v["next_action"]["command"] == "ugh plan resume s1"
-    assert v["next_action"]["target"] == "s1"
-    # The chat handle is still reachable -- `plan resume` prints it -- so nothing was lost.
-    assert v["needs_you"]["stalled_plans"][0]["claude_session_id"] == "sess-xyz"
-
-
-def test_now_view_open_fork_outranks_everything_and_recommends_resolve(tmp_path):
-    """An open fork is the top rung: it blocks even a dirty tree, and the recommended command is the
-    high-level `ugh resolve <symbol>` derived from the fork's symbol -- NOT the stored remedy, so a
-    forks.json committed before the remedy switch (here a stale low-level `merge-op`) still surfaces
-    the working command."""
-    from ugh import state
-    from ugh.core.op import make_op
-    from ugh.core.store import Store
-
-    repo = tmp_path / "repo"
-    gb, _ = init_store(repo)
-    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("add foo")
-    get(repo)
-    (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")  # dirty too
-    # Two genuinely-divergent tips on the same `(symbol, before)` step -- a resolvable fork the read
-    # side won't filter out (`kind` differs so they are distinct ops with distinct after versions).
-    store = Store(repo)
-    tip_a = store.add(make_op({"a.py::foo": ("v0", "v1")}, {"a.py::foo": b"a"}, kind="touched"))
-    tip_b = store.add(make_op({"a.py::foo": ("v0", "v2")}, {"a.py::foo": b"b"}, kind="rebirth"))
-    state.save_json(repo, "forks", [
-        # stale low-level remedy on purpose -- the surfaced command must derive from the symbol instead
-        {"symbol": "a.py::foo", "tips": [tip_a.id, tip_b.id], "remedy": f"ugh merge-op {tip_a.id} {tip_b.id}"},
-    ])
-
-    v = now_view(repo)
-    assert len(v["needs_you"]["forks"]) == 1
-    assert v["next_action"] == {"kind": "resolve_fork", "command": "ugh resolve a.py::foo",
-                                "target": "a.py::foo", "label": "resolve fork on a.py::foo"}
-
-
 def test_open_forks_surface_only_resolvable_divergent_forks(tmp_path):
     """A committed forks.json can carry sentinel-symbol and same-after pseudo-forks (neutralized by
     `fork_free`, no user remedy) alongside a genuinely divergent one. Every fork read surface --
-    `forks_view`, `status_view`, `now_view` -- must filter to the resolvable, divergent fork only."""
+    `forks_view`, `status_view` -- must filter to the resolvable, divergent fork only."""
     from ugh import state
     from ugh.api import forks_view, status_view
     from ugh.core.op import make_op
@@ -1177,21 +1068,6 @@ def test_open_forks_surface_only_resolvable_divergent_forks(tmp_path):
     assert fv["open"] == 1
     assert [f["symbol"] for f in fv["forks"]] == ["c.py::baz"]
     assert [f["symbol"] for f in status_view(repo)["forks"]["records"]] == ["c.py::baz"]
-    assert [f["symbol"] for f in now_view(repo)["needs_you"]["forks"]] == ["c.py::baz"]
-
-
-def test_now_view_context_carries_recent_activity_newest_first(tmp_path):
-    """The context block surfaces the live agent-action feed, newest first -- the "what just
-    happened" signal the `PostToolUse` hook writes."""
-    from ugh.intent import activity
-
-    repo = _mined(tmp_path, "mixed_coverage")
-    activity.record_activity(repo, tool="Edit", file="a.py", ts=1.0)
-    activity.record_activity(repo, tool="Write", file="b.py", ts=2.0)
-
-    v = now_view(repo)
-    feed = v["context"]["activity"]
-    assert [e["file"] for e in feed] == ["b.py", "a.py"]
 
 
 # -- U3: per-dependent revert frontier (R4) -----------------------------------------------------
@@ -1383,85 +1259,6 @@ def test_a_user_save_is_never_marked_as_bookkeeping(tmp_path):
     view = history_view(repo)
     assert view["latest_commits"][0]["subject"] == "add the thing I meant to add"
     assert view["latest_commits"][0]["bookkeeping"] is False
-
-
-def test_now_view_surfaces_a_plan_that_is_actively_being_built(tmp_path):
-    """Only *stalled* plans used to reach any section of `now`, so an agent making progress was
-    invisible on the surface built to answer "what is happening right now" -- for a full hour,
-    until it went quiet enough to count as stalled."""
-    import time as _time
-
-    repo = tmp_path / "repo"
-    gb, _ = init_store(repo)
-    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("add foo")
-    get(repo)
-    _seed_plan_session(repo, gb, session_id="live", last_activity_ts=_time.time(),
-                       claude_session_id="sess-live")
-
-    v = now_view(repo)
-
-    assert [p["session_id"] for p in v["in_progress"]] == ["live"]
-    assert v["in_progress"][0]["current_title"] == "touch foo"
-    assert v["in_progress"][0]["pending_count"] == 1
-    # Progress is not a demand for attention: a building plan must not also show as needing you.
-    assert v["needs_you"]["stalled_plans"] == []
-
-
-def test_now_view_keeps_a_stalled_plan_in_needs_you_not_in_progress(tmp_path):
-    import time as _time
-
-    repo = tmp_path / "repo"
-    gb, _ = init_store(repo)
-    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("add foo")
-    get(repo)
-    _seed_plan_session(repo, gb, session_id="quiet",
-                       last_activity_ts=_time.time() - (plan_mod.STALLED_SECONDS + 60))
-
-    v = now_view(repo)
-
-    assert v["in_progress"] == []
-    assert [p["session_id"] for p in v["needs_you"]["stalled_plans"]] == ["quiet"]
-
-
-def test_now_view_leads_with_the_developers_own_words(tmp_path):
-    """`ugh now` answered "what am I working on" with op counts. The prompt hook had recorded the
-    real answer verbatim all along -- and the common way to work (Claude Code plan mode, a planning
-    plugin) never calls `ugh plan intake`, so nothing else was ever going to supply it."""
-    from ugh.intent.turns import record_turn
-
-    repo = tmp_path / "repo"
-    gb, _ = init_store(repo)
-    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("add foo")
-    get(repo)
-    record_turn(repo, key="chat-1", key_kind="chat", actor="human", channel="hook",
-                text="Add rate limiting to the API")
-    (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
-
-    v = now_view(repo)
-
-    assert v["working_on"]["title"] == "Add rate limiting to the API"
-    assert v["working_on"]["source"] == "prompt"
-    # The suggested save carries those same words, and must paste verbatim.
-    assert v["next_action"]["command"] == 'ugh save -m "Add rate limiting to the API"'
-
-
-def test_now_view_suggests_a_plain_save_when_the_words_would_not_paste(tmp_path):
-    """A suggestion the developer has to repair is worse than none."""
-    from ugh.intent.turns import record_turn
-
-    repo = tmp_path / "repo"
-    gb, _ = init_store(repo)
-    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("add foo")
-    get(repo)
-    record_turn(repo, key="chat-1", key_kind="chat", actor="human", channel="hook",
-                text='Rename the "old" flag to --legacy')
-    (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
-
-    assert now_view(repo)["next_action"]["command"] == "ugh save"
 
 
 def test_forks_across_miner_versions_are_marked_as_store_generations_not_divergent_edits(tmp_path):

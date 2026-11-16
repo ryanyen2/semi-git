@@ -73,21 +73,25 @@ def test_init_and_log_roundtrip(tmp_path, capsys):
     assert "op(s)" in out and "a.py::foo" in out
 
 
-def test_log_human_rail_and_map_wire_state_projections(tmp_path, capsys):
-    # The rail (bare `ugh log`) and the map (`--map`) both build `states` from forks_view and read
-    # grid_view ghosts. A clean repo has no forks/plans -> no banner,
-    # but the projections must still wire through without error and render the tree.
+def test_log_lists_each_feature_with_its_edits_per_save(tmp_path, capsys):
+    """Bare `ugh log`: a header naming each recent save by its short sha, newest to the right, and
+    one row per feature with its handle, label and edit count under each save."""
+    import subprocess
+
     _seed(tmp_path, 3)
+    _in(tmp_path, ["log", "--refresh"])
     capsys.readouterr()
     assert _in(tmp_path, ["log"]) == 0
-    assert "save" in capsys.readouterr().out
-    assert _in(tmp_path, ["log", "--map"]) == 0
-    # The header's counts are styled per-field (the count bold, the separator dim), so the assertion
-    # is on the WORDS, with the escapes stripped -- pinning them together in one run would pin the
-    # styling rather than the content.
-    import re as _re
-    plain = _re.sub(r"\x1b\[[0-9;]*m", "", capsys.readouterr().out)
-    assert "1 feature  ·  3 saves" in plain   # inflected, both nouns
+    head, *rows = capsys.readouterr().out.splitlines()
+    shas = subprocess.run(["git", "log", "--format=%h", "--abbrev=7", "--reverse"], cwd=tmp_path,
+                          capture_output=True, text=True, check=True).stdout.split()
+    assert head.split() == ["id", "feature", *shas]
+    from ugh.lens.tree import load as load_tree
+
+    fid = next(nid for nid, nd in load_tree(tmp_path)["nodes"].items() if not nd["children"])
+    row = next(r for r in rows if r.startswith(fid.removeprefix("f-")[:8]))
+    assert all(cell.isdigit() for cell in row.split()[-3:])
+    assert not any("no feature" in r for r in rows)
 
 
 def _seed_resolvable_fork(tmp_path, symbol="a.py::foo"):
@@ -105,25 +109,15 @@ def _seed_resolvable_fork(tmp_path, symbol="a.py::foo"):
     ])
 
 
-def test_log_surfaces_a_loud_non_blocking_fork_banner(tmp_path, capsys):
-    """A genuine open fork renders the red `⋔` banner on `ugh log`, naming the symbol and its
-    `ugh resolve` remedy -- and the verb does not change its exit code (non-blocking)."""
+def test_status_names_an_open_fork_and_its_remedy(tmp_path, capsys):
+    """A genuine open fork is listed by `ugh status` with its `ugh resolve` remedy -- and the verb
+    does not change its exit code (non-blocking)."""
     _seed(tmp_path, 2)
     _seed_resolvable_fork(tmp_path)
     capsys.readouterr()
 
-    assert _in(tmp_path, ["log", "--no-color"]) == 0
-    log_out = capsys.readouterr().out
-    assert "⋔" in log_out and "ugh resolve a.py::foo" in log_out
-
-
-def test_log_focus_unknown_group_falls_through_to_the_map(tmp_path, capsys):
-    # An unresolvable --focus arg names no group -> resolve_focus_group None -> the single-lane map
-    # path, which reports the missing lane rather than crashing or hanging on the vertical view.
-    _seed(tmp_path, 2)
-    capsys.readouterr()
-    assert _in(tmp_path, ["log", "--focus", "nope-no-such"]) == 0
-    assert capsys.readouterr().out.strip()  # renders something, doesn't crash
+    assert _in(tmp_path, ["status"]) == 0
+    assert "ugh resolve a.py::foo" in capsys.readouterr().out
 
 
 def test_log_json_is_machine_readable(tmp_path, capsys):
@@ -446,8 +440,8 @@ def test_plan_abandon(tmp_path, capsys, monkeypatch):
     assert _in(tmp_path, ["plan", "abandon", "no-such-session"]) == 1
 
 
-def test_log_summary_surfaces_the_residual_of_open_intents(tmp_path, capsys, monkeypatch):
-    """`ugh log --summary` folds in the residual (intent-ledger P1): a plan step stated but never
+def test_status_surfaces_the_residual_of_open_intents(tmp_path, capsys, monkeypatch):
+    """`ugh status` folds in the residual (intent-ledger P1): a plan step stated but never
     landed (its session abandoned with the step pending) resurfaces here as "what needs attention",
     so an unfinished intention isn't lost -- and without a separate open/done queue to groom."""
     from ugh.loop import plan as plan_mod
@@ -459,18 +453,18 @@ def test_log_summary_surfaces_the_residual_of_open_intents(tmp_path, capsys, mon
     _in(tmp_path, ["plan", "abandon", session_id])
     capsys.readouterr()
 
-    assert _in(tmp_path, ["log", "--summary"]) == 0
+    assert _in(tmp_path, ["status"]) == 0
     out = capsys.readouterr().out
     assert "never landed" in out
     assert "wire the retry backoff" in out
 
 
-def test_log_summary_omits_the_residual_when_nothing_is_open(tmp_path, capsys):
+def test_status_omits_the_residual_when_nothing_is_open(tmp_path, capsys):
     """No open intents -> no residual noise in the summary (the section prints only when there is
     something to attend to, like every other warning in `_status`)."""
     _seed(tmp_path, 1)
     capsys.readouterr()
-    assert _in(tmp_path, ["log", "--summary"]) == 0
+    assert _in(tmp_path, ["status"]) == 0
     assert "never landed" not in capsys.readouterr().out
 
 
@@ -637,44 +631,10 @@ def test_map_rebuild_forces_a_full_recluster(tmp_path, capsys):
     everything through verbatim."""
     _seed(tmp_path, n=2)
     capsys.readouterr()
-    assert _in(tmp_path, ["log", "--tree", "--refresh"]) == 0
+    assert _in(tmp_path, ["log", "--tree", "--refresh", "--json"]) == 0
     capsys.readouterr()
-    assert _in(tmp_path, ["log", "--tree", "--rebuild"]) == 0
-    out = capsys.readouterr().out
-    assert "feature" in out
-
-
-def test_tree_drops_phantom_empty_member_leaves():
-    """A feature leaf that owns no symbol is a clustering artifact (an empty split child, or a lane
-    whose ops touch only bookkeeping), not a real feature -- it and any subsystem left with nothing
-    else to show must not print, and must not be counted. A leaf with real members but 0 ops
-    (pre-existing code ugh never mined an op for) is still a real feature and must still print --
-    the tree shows what exists, not just what has history.
-
-    This is asserted against the renderer `ugh log --tree` actually calls. It used to be asserted
-    against a second, unreachable renderer that kept the filter after the live one lost it, so the
-    test passed for months while every real tree printed the phantom rows -- which is how the study
-    bundles shipped a tree listing ten features next to a map drawing nine."""
-    from ugh.tui.views import tree_lines
-
-    view = {
-        "roots": ["N0"],
-        "nodes": [
-            {"id": "N0", "kind": "subsystem", "label": "root", "op_count": 3,
-             "children": ["F1", "N1"], "members": []},
-            {"id": "F1", "kind": "feature", "label": "Real Feature", "op_count": 3,
-             "children": [], "members": ["a.py::foo"]},
-            {"id": "N1", "kind": "subsystem", "label": "phantom subsystem", "op_count": 0,
-             "children": ["F2"], "members": []},
-            {"id": "F2", "kind": "feature", "label": " ·  2", "op_count": 0,
-             "children": [], "members": []},
-        ],
-        "feature_count": 2,
-    }
-    out = "\n".join(tree_lines(view, color=False, width=80))
-    assert "Real Feature" in out
-    assert "phantom subsystem" not in out and "F2" not in out
-    assert "1 feature" in out  # not the inflated view["feature_count"] of 2
+    assert _in(tmp_path, ["log", "--tree", "--rebuild", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["feature_count"] >= 1
 
 
 def test_help_mentions_kernel_verbs(capsys):
@@ -770,102 +730,8 @@ def test_revert_json_still_applies_immediately_without_the_pane(tmp_path, capsys
     assert (tmp_path / "a.py").read_text() == "def foo():\n    return 1\n"  # reverted
 
 
-# -- feature-reorg gate (merge/rename/move share `_confirm`; split has its own inline path) ------
-#
-# Metadata verbs touch no code, so their pane renders a `summary` rather than a code rail; the gate
-# is `_common.maybe_confirm`, monkeypatched here so no TUI launches. `--json` and the non-tty case
-# (maybe_confirm -> None) must keep the immediate-apply / preview-only behaviour byte-for-byte.
-
-def _feature_repo(tmp_path):
-    """A repo with one mined feature; returns its content-addressed feature id."""
-    gb, _ = init_store(tmp_path)
-    (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    (tmp_path / "b.py").write_text("def bar():\n    return 2\n", encoding="utf-8")
-    gb.commit_all("add foo and bar")
-    assert _in(tmp_path, ["log", "--tree", "--refresh"]) == 0
-    from ugh.lens.tree import load as _load_tree
-    return next(nid for nid, nd in _load_tree(tmp_path)["nodes"].items() if not nd["children"])
-
-
-def _as_tty(monkeypatch):
-    """Simulate an interactive terminal. The feature verbs' `_confirm` gates on `isatty` before it
-    consults the pane -- off a tty they apply immediately, which is the deliberate machine/CI
-    contract -- so a test about pane behavior has to say it is on a tty. Without this, these tests
-    passed by taking the non-interactive short-circuit rather than by exercising the pane."""
-    monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
-    monkeypatch.setattr("sys.stdout.isatty", lambda: True, raising=False)
-
-
-def test_rename_on_a_tty_applies_when_the_pane_confirms(tmp_path, monkeypatch, capsys):
-    from ugh.cli import _common
-    from ugh.tui.consequence import Decision
-
-    fid = _feature_repo(tmp_path)
-    _as_tty(monkeypatch)
-    monkeypatch.setattr(_common, "maybe_confirm", lambda *a, **k: Decision(True))
-    capsys.readouterr()
-
-    assert _in(tmp_path, ["feature", "rename", fid, "Renamed"]) == 0
-    assert "renamed" in capsys.readouterr().out
-    from ugh.lens.pins import load_pins
-    assert load_pins(tmp_path).labels[fid] == "Renamed"
-
-
-def test_rename_on_a_tty_changes_nothing_when_the_pane_aborts(tmp_path, monkeypatch, capsys):
-    from ugh.cli import _common
-    from ugh.tui.consequence import Decision
-
-    fid = _feature_repo(tmp_path)
-    _as_tty(monkeypatch)
-    monkeypatch.setattr(_common, "maybe_confirm", lambda *a, **k: Decision(False))
-    capsys.readouterr()
-
-    assert _in(tmp_path, ["feature", "rename", fid, "Renamed"]) == 1
-    assert "skipped" in capsys.readouterr().out
-    from ugh.lens.pins import load_pins
-    assert "Renamed" not in load_pins(tmp_path).labels.values()  # not applied
-
-
-def test_rename_json_never_launches_the_pane_and_applies(tmp_path, monkeypatch, capsys):
-    from ugh.cli import _common
-
-    fid = _feature_repo(tmp_path)
-
-    def boom(*a, **k):
-        raise AssertionError("--json must not launch the consequence pane")
-
-    monkeypatch.setattr(_common, "maybe_confirm", boom)
-    capsys.readouterr()
-
-    assert _in(tmp_path, ["feature", "rename", fid, "Renamed", "--json"]) == 0
-    assert json.loads(capsys.readouterr().out)["new_label"] == "Renamed"
-
-
-def test_rename_non_tty_keeps_immediate_apply(tmp_path, monkeypatch, capsys):
-    """maybe_confirm -> None (no tty / no textual) means proceed: the metadata verb still applies
-    immediately, exactly as it did before the pane existed."""
-    from ugh.cli import _common
-
-    fid = _feature_repo(tmp_path)
-    monkeypatch.setattr(_common, "maybe_confirm", lambda *a, **k: None)
-    capsys.readouterr()
-
-    assert _in(tmp_path, ["feature", "rename", fid, "Renamed"]) == 0
-    from ugh.lens.pins import load_pins
-    assert load_pins(tmp_path).labels[fid] == "Renamed"
-
 
 # -- P0 repair: verb spellings a developer actually types -----------------------------------------
-
-def test_status_is_a_top_level_verb_matching_log_summary(tmp_path, capsys):
-    """`ugh status` is the first command anyone arriving from git types. It used to print the help
-    text, because U14 folded the spelling into `log --summary` and removed the verb."""
-    _seed(tmp_path)
-    assert _in(tmp_path, ["status", "--json"]) == 0
-    status_out = capsys.readouterr().out
-    assert _in(tmp_path, ["log", "--summary", "--json"]) == 0
-    assert json.loads(status_out) == json.loads(capsys.readouterr().out)
-
 
 def test_show_prints_a_file_as_it_was_at_a_past_point(tmp_path, capsys):
     """The bytes were always computable -- `fold_view` reconstructs `code(I)` at any frontier and the

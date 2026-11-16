@@ -28,7 +28,7 @@ class Ideal:
         ids = frozenset(op_ids)
         if not order.is_valid_ideal(ops, ids):
             # Bounded on purpose. This message is not developer-only: it travels up through
-            # `_plan_removal`'s refusal into `--emit`'s `message`, which the TUI and the VS Code
+            # `_plan_removal`'s refusal into `--emit`'s `message`, which the terminal and the VS Code
             # workbench render verbatim to a person. Dumping every id in the ideal produced a wall
             # of hex a reader could neither read nor act on, and buried the one sentence that
             # mattered. The count is the diagnostic; a handful of ids keeps it debuggable.

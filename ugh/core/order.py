@@ -32,7 +32,7 @@ Edge = tuple[str, str]  # (A, B) meaning A <= B: A must be in the ideal whenever
 # no longer has an op in `ops` (a `git switch` can swap the committed store out from under a surviving
 # gitignored ideal table) does not collide with a hit computed while it was still present.
 # Bounded (not `functools.lru_cache`, whose args must be hashable and which never evicts by size)
-# so a long-running MCP/TUI session over an append-only store doesn't accumulate an entry per save.
+# so a long-running MCP session over an append-only store doesn't accumulate an entry per save.
 _REDUCE_CACHE: "OrderedDict[frozenset, frozenset[str]]" = OrderedDict()
 _REDUCE_CACHE_MAX = 64
 

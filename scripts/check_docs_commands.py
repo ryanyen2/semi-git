@@ -28,12 +28,12 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 DEFAULT_TARGETS = ("ugh/agent_assets/skills", "docs/guide", "README.md", "CONTRIBUTING.md",
                    "CLAUDE.md")
 
-# A backticked ugh command: `ugh log --map`, `ugh feature regroup merge <a> <b>`. Stops at the first
+# A backticked ugh command: `ugh log --refresh`, `ugh feature rename <a> <label>`. Stops at the first
 # token that isn't a plain word/flag, so placeholders (`<ref>`, `"text"`) end the verb path cleanly.
 _CMD = re.compile(r"`ugh((?:\s+[a-z][a-z0-9-]*)+)")
 
 # The same command *including* its long flags, so they can be checked against the verb's own parser.
-# `--no-color` on a verb that doesn't take it fails exactly as loudly as a renamed verb, and is
+# `--full` on a verb that doesn't take it fails exactly as loudly as a renamed verb, and is
 # easier to get wrong: the flag exists on sibling verbs, so it reads as universal when it isn't.
 _CMD_WITH_FLAGS = re.compile(r"`ugh((?:\s+(?:[a-z][a-z0-9-]*|--[a-z][a-z0-9-]*))+)")
 
@@ -186,7 +186,7 @@ def _fenced_as_quoted(line: str) -> str:
     guide puts the commands to type in one, and the prose around it names those same verbs in
     backticks only sometimes.
 
-    A block writes a command in a left column and its gloss in a right one (`ugh log --map     one
+    A block writes a command in a left column and its gloss in a right one (`ugh log     one
     row per feature`), so the command ends at the first run of two or more spaces, or at a comment.
     """
     # A `.ts` sheet holds the same markdown inside a template literal, where every backtick is

@@ -22,47 +22,11 @@ def _fail_json(message: str, as_json: bool) -> int:
     return _emit_json({"ok": False, "error": message}) if as_json else _fail(message)
 
 
-def maybe_confirm(pview, map_view=None, grid_view=None, segments=None, *, focus_fid=None):
-    """The shared consequence-pane gate for mutating verbs. On an interactive tty with `textual`
-    installed, launch the pane and return the user's `Decision`; otherwise return `None` so the
-    caller falls back to its own path (the ideal-edit `[y/N]` degrade, or a feature verb's
-    immediate apply). Keeps the isatty + optional-import dance in one place so every verb gates
-    identically. `map_view`/`grid_view`/`segments` are only used for the code rail (revert/restore);
-    a metadata verb passes none and the pane renders its `summary` instead."""
-    import sys
-
-    if not (sys.stdin.isatty() and sys.stdout.isatty()):
-        return None
-    try:
-        from ugh.tui.consequence import run_consequence
-    except ImportError:
-        return None
-    return run_consequence(pview, map_view, grid_view, segments, focus_fid=focus_fid)
-
-
-def confirm_collab(pview, question: str) -> bool:
-    """The interactive confirm step for a shared-state collaboration verb (`sync`/`resolve`). On a
-    tty with `textual` the consequence pane *is* the confirm (its `summary`
-    holds the precomputed collaboration graph); otherwise it degrades to the printed feedforward
-    graph (`render_collab_preview_lines`) plus a `[y/N]` prompt. Returns True to apply. Only call on
-    an interactive tty -- the caller gates `isatty`/`--json` first, so the machine/CI immediate-apply
-    contract never reaches here. Shared across the collab verbs so the pane/degrade dance lives once."""
-    import sys
-
-    decision = maybe_confirm(pview)
-    if decision is not None:  # tty + textual: the pane is the confirm step
-        return decision.apply
-
-    from ugh.tui.graph import render_collab_preview_lines
-
-    for line in render_collab_preview_lines(pview, color=sys.stdout.isatty()):
+def confirm(lines: list[str], question: str) -> bool:
+    """Print a preview and ask `[y/N]`. Only call on an interactive tty: the caller gates
+    `isatty`/`--json` first, so the machine contract applies immediately."""
+    for line in lines:
         print(line)
-    # "Not reversible" tells the user this is one-way but not what their next move can be. When the
-    # projection knows what `ugh undo` will do afterward, say it here, right above the prompt where
-    # the decision is actually made.
-    note = pview.get("undo_note") if isinstance(pview, dict) else None
-    if note:
-        print(f"\n  {note}")
     try:
         reply = input(f"\n{question} [y/N] ").strip().lower()
     except EOFError:
@@ -70,32 +34,21 @@ def confirm_collab(pview, question: str) -> bool:
     return reply in ("y", "yes")
 
 
-def confirm_summary(pview, question: str) -> bool:
-    """The confirm step for a verb whose consequence is already a short human `summary` --
-    `feature rename`. Returns True to apply.
+def fork_lines(forks: list[dict]) -> list[str]:
+    """Open forks, one line each with the command that closes it. A fork whose tips were mined
+    under two miner versions is the same commit stored twice, which `ugh resolve` cannot close."""
+    from ugh.api import plural
 
-    Preview symmetry: `confirm_collab` degrades to a printed feedforward graph plus `[y/N]` when
-    `textual` isn't installed, and the ideal edits degrade to their own `[y/N]`. Without `textual`
-    `maybe_confirm` returns `None`, so this prints the summary the pane would have shown and asks.
-
-    Only call on an interactive tty: the caller gates `isatty`/`--json` first, keeping the
-    machine/CI immediate-apply contract byte-for-byte."""
-    decision = maybe_confirm(pview)
-    if decision is not None:  # tty + textual: the pane is the confirm step
-        return decision.apply
-
-    verb = pview.get("verb", "this")
-    print(f"\n  {verb}:")
-    for line in pview.get("summary") or []:
-        print(f"    {line}")
-    if pview.get("reversible"):
-        # Worth saying: it changes how carefully the user needs to read the rest.
-        print("    (metadata only — no code changes, reversible)")
-    try:
-        reply = input(f"\n{question} [y/N] ").strip().lower()
-    except EOFError:
-        reply = ""
-    return reply in ("y", "yes")
+    real = [f for f in forks if not f.get("cross_version")]
+    stale = [f for f in forks if f.get("cross_version")]
+    lines = []
+    if real:
+        lines.append(f"⚠ {plural(len(real), 'open fork')} — divergent edits to one symbol:")
+        lines += [f"    {f.get('symbol', '?')}  →  ugh resolve {f.get('symbol', '?')}" for f in real]
+    if stale:
+        lines.append(f"⚠ {plural(len(stale), 'fork')} are two mining generations of the same "
+                     "commit — `ugh check` shows the miner versions present")
+    return lines
 
 
 def _add_view_flags(p, *, paged: bool = False) -> None:

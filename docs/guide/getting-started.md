@@ -42,18 +42,13 @@ ops, and commits. It also tells you which feature your edits landed in.
 Here are the commands you'll use to see where you are.
 
 ```bash
-ugh log                      # what you did, one row per save
+ugh log                      # one row per feature, its edits in each recent save
 ugh status                   # files, symbols, features, coverage, and any drift
 ugh show app.py --at 12      # read a file as it was at save 12, without checking anything out
-ugh log --tree               # the feature tree
 ```
 
 `ugh status` tells you whether your working tree matches the state `ugh` has recorded or has drifted
 ahead of it.
-
-`ugh log --rail` leads with what you asked for, in your own words. If you use Claude Code, the prompt
-hook that `ugh init` installs records each prompt as you type it, so ugh can say what you're working
-on without you declaring a plan.
 
 ## Remove a symbol and bring it back
 
@@ -79,7 +74,7 @@ before applying anything, so it needs an API key. See
 
 The daily loop needs no API key. A few steps call a language model, and they're all optional:
 
-- the feature labeler in `ugh log --tree`
+- the feature labeler in `ugh log --refresh`
 - `ugh plan intake`
 - the checkpoint naming in `ugh log --refresh`
 - the plain English forms of `ugh revert` and `ugh restore`
@@ -99,7 +94,7 @@ litellm proxy serving Claude models, and pick the model with `UGH_MODEL`. The de
 | Path | What it holds |
 | --- | --- |
 | `.sgt/ops/` | The op store, committed to git along with your code. |
-| `.sgt/tree/` | The feature tree from `ugh log --tree`, also committed. |
+| `.sgt/tree/` | The feature tree `ugh log --refresh` builds, also committed. |
 | `.sgt/local/` | Working state for this checkout only, and not committed. Holds the current state, the undo journal, plans, and caches. |
 | `.git/` | Ordinary git, where `ugh` commits the files it builds from that state. |
 

@@ -123,8 +123,8 @@ an API key, a plain English phrase.
 | --- | --- |
 | `ugh init` | Read your existing git history into `ugh`. Run once per repo. |
 | `ugh save -m "..."` | Record the edits you just made, and name the feature they landed in. |
-| `ugh log` | What you did, newest first. `--map` shows features over time, `--tree` shows the feature tree, and `--summary` shows what needs attention. |
-| `ugh status` | What needs attention right now. The same view as `ugh log --summary`. |
+| `ugh log` | One row per feature, with how many edits it got in each recent save. `--refresh` re-reads new edits first. |
+| `ugh status` | What needs attention right now: open forks, drift, and files ugh does not track. |
 | `ugh show <target>` | What an id, feature, or symbol is, and what removing it would cost. Add `--at <point>` to read a file as it was then. Nothing is checked out. |
 | `ugh find <words>` | Find a feature, save, or symbol you can describe but not name. |
 | `ugh undo` | Reverse your last `ugh` command as a new change, rather than by rewriting history. It shows what it will do first. |

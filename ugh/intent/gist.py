@@ -1,8 +1,8 @@
 """The ask inside a captured prompt.
 
-Everything that shows captured words -- a checkpoint's name, a recorded reason, `ugh now`'s current
-task, the `asked` attribute on `ugh show` -- needs one short line to put on screen. Until now that
-line was the prompt's first *line* (`ugh.intent.working._first_line`), which is the ask only when
+Everything that shows captured words -- a checkpoint's name, a recorded reason, the `asked`
+attribute on `ugh show` -- needs one short line to put on screen. Until now that line was the
+prompt's first *line*, which is the ask only when
 the prompt was typed like a commit message. The dogfood turn store says they are not: prompts open
 with "so i think we should probably", carry the reasoning after the request, run three asks together
 with commas, and a long one has no line break at all -- so "the first line" is the whole paragraph,

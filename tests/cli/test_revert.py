@@ -72,7 +72,7 @@ def test_revert_confirm_applies_on_yes(tmp_path, capsys, monkeypatch):
     rc = _in(repo, ["revert", feat])
     assert rc == 0
     out = capsys.readouterr().out
-    assert "rewind" in out and "applied" in out  # feedforward graph, then the apply confirmation
+    assert f"revert {feat}" in out and "applied" in out  # the preview, then the apply confirmation
     assert current_ideal(repo).op_ids < before  # y applied the edit
 
 
@@ -119,7 +119,7 @@ def test_revert_non_tty_without_yes_exits_2_and_applies_nothing(tmp_path, capsys
     rc = _in(repo, ["revert", feat])
     assert rc == 2
     out = capsys.readouterr().out
-    assert "rewind" in out and "not applied" in out
+    assert f"revert {feat}" in out and "not applied" in out
     assert current_ideal(repo).op_ids == before  # nothing applied without a confirmation
 
 

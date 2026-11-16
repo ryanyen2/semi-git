@@ -211,8 +211,7 @@ still card is a plan step someone intends where no code exists yet. Each card ca
 name; hovering shows its reason and the symbols it is predicted to touch, and clicking selects that
 step in the inspector. If the pane is too narrow to name every card, the extras collapse into a
 single named stack card rather than shrinking into unreadable stubs. The band is absent when nothing
-is pending, so an idle repo keeps exactly the axis it had. `ugh log --map` draws the same band in the
-terminal, past a `┊` rule.
+is pending, so an idle repo keeps exactly the axis it had.
 
 Hovering a row or a connecting line dims everything else and highlights what you are looking at
 and what it depends on; the time-axis ticks where that feature was actually worked on brighten

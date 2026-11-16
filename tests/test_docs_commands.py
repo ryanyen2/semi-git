@@ -31,7 +31,7 @@ def test_the_checker_catches_a_removed_verb_and_an_invented_one(tmp_path):
     because it converts an unmaintained surface into a green check."""
     doc = tmp_path / "doc.md"
     doc.write_text(
-        "Run `ugh now` first, then `ugh bogusverb`, then `ugh log --map`.\n",
+        "Run `ugh now` first, then `ugh bogusverb`, then `ugh log --refresh`.\n",
         encoding="utf-8",
     )
 
@@ -53,7 +53,7 @@ def test_a_stale_command_inside_a_code_block_is_caught(tmp_path):
         "## Look around\n"
         "\n"
         "```\n"
-        "ugh log --map     one row per feature, across time\n"
+        "ugh log --refresh     one row per feature, across time\n"
         "ugh fsck          check the store\n"
         "```\n",
         encoding="utf-8",
@@ -62,7 +62,7 @@ def test_a_stale_command_inside_a_code_block_is_caught(tmp_path):
     quoted = {q for _p, _l, q, _r in check([str(doc)])}
     assert "ugh fsck" in quoted, "a removed verb inside a code block must be reported"
     assert "ugh log" not in quoted, (
-        "the gloss column is prose, not arguments -- `ugh log --map     one row per feature` "
+        "the gloss column is prose, not arguments -- `ugh log --refresh     one row per feature` "
         f"must not be read as a command with arguments: {quoted}")
 
 
@@ -82,20 +82,20 @@ def test_prose_about_a_removed_verb_is_not_flagged(tmp_path):
 
 def test_the_checker_catches_a_flag_the_verb_does_not_accept(tmp_path):
     """Flags drift the same way verbs do, and are easier to get wrong because they exist on sibling
-    verbs: `--no-color` is on `ugh status` and `ugh log` but not `ugh show`, so it reads as universal.
-    Writing `ugh show --no-color` into a skill hands an agent a command that dies on an argparse
+    verbs: `--full` is on `ugh status` and `ugh log` but not `ugh show`, so it reads as universal.
+    Writing `ugh show --full` into a skill hands an agent a command that dies on an argparse
     error -- which is how this check came to exist."""
     doc = tmp_path / "doc.md"
     doc.write_text(
-        "Show it plainly with `ugh show f-abc --no-color`, or `ugh status --no-color`.\n"
-        "Read it with `ugh show f-abc --json` and `ugh log --map`.\n",
+        "Show all of it with `ugh show f-abc --full`, or `ugh status --full`.\n"
+        "Read it with `ugh show f-abc --json` and `ugh log --refresh`.\n",
         encoding="utf-8",
     )
 
     reported = {(quoted, note) for _p, _l, quoted, note in check([str(doc)])}
     flagged = {q for q, note in reported if note and "not a flag" in note}
 
-    assert any("show" in q for q in flagged), "`--no-color` on `ugh show` must be reported"
-    assert not any("status" in q for q in flagged), "`--no-color` on `ugh status` is valid"
+    assert any("show" in q for q in flagged), "`--full` on `ugh show` must be reported"
+    assert not any("status" in q for q in flagged), "`--full` on `ugh status` is valid"
     assert not any("--json" in q for q in flagged), "`--json` is valid on both"
-    assert not any("--map" in q for q in flagged), "`--map` is a real `log` mode"
+    assert not any("--refresh" in q for q in flagged), "`--refresh` is a real `log` flag"

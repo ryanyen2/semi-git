@@ -382,7 +382,7 @@ def _diverge_for_sync(tmp_path) -> Path:
 
 def test_sync_cli_non_tty_merges_immediately(tmp_path):
     """The machine/CI contract: `ugh sync` on a non-tty (pytest's captured streams) skips the
-    consequence confirm and folds the teammate's work in exactly as before the pane existed."""
+    confirm and folds the teammate's work in."""
     from ugh.cli.sync import _sync
 
     b = _diverge_for_sync(tmp_path)
@@ -392,21 +392,21 @@ def test_sync_cli_non_tty_merges_immediately(tmp_path):
 
 
 def test_sync_cli_tty_abort_merges_nothing(tmp_path, monkeypatch, capsys):
-    """On a tty, the pane is the confirm: an abort leaves the local branch frozen (rc 1)."""
+    """On a tty, sync prints what it would fold in and asks: a no leaves the local branch frozen
+    (rc 1)."""
     import sys
 
-    from ugh.cli import _common
     from ugh.cli.sync import _sync
-    from ugh.tui.consequence import Decision
 
     b = _diverge_for_sync(tmp_path)
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True, raising=False)
     monkeypatch.setattr(sys.stdout, "isatty", lambda: True, raising=False)
-    monkeypatch.setattr(_common, "maybe_confirm", lambda *a, **k: Decision(False))
+    monkeypatch.setattr("builtins.input", lambda *a: "n")
 
     before = GitBinding(b).head()
     assert _sync(str(b), "origin", "main", as_json=False) == 1
-    assert "aborted" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "Folds in" in out and "aborted" in out
     assert GitBinding(b).head() == before  # frozen
 
 
@@ -414,14 +414,12 @@ def test_sync_cli_tty_confirm_merges(tmp_path, monkeypatch):
     """A confirm on a tty runs the real sync and advances the local branch."""
     import sys
 
-    from ugh.cli import _common
     from ugh.cli.sync import _sync
-    from ugh.tui.consequence import Decision
 
     b = _diverge_for_sync(tmp_path)
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True, raising=False)
     monkeypatch.setattr(sys.stdout, "isatty", lambda: True, raising=False)
-    monkeypatch.setattr(_common, "maybe_confirm", lambda *a, **k: Decision(True))
+    monkeypatch.setattr("builtins.input", lambda *a: "y")
 
     before = GitBinding(b).head()
     assert _sync(str(b), "origin", "main", as_json=False) == 0
@@ -429,10 +427,9 @@ def test_sync_cli_tty_confirm_merges(tmp_path, monkeypatch):
 
 
 def test_sync_cli_json_never_confirms(tmp_path, monkeypatch):
-    """`--json` keeps its immediate-apply contract even on a tty: the pane never launches."""
+    """`--json` keeps its immediate-apply contract even on a tty: it never asks."""
     import sys
 
-    from ugh.cli import _common
     from ugh.cli.sync import _sync
 
     b = _diverge_for_sync(tmp_path)
@@ -440,9 +437,9 @@ def test_sync_cli_json_never_confirms(tmp_path, monkeypatch):
     monkeypatch.setattr(sys.stdout, "isatty", lambda: True, raising=False)
 
     def boom(*a, **k):
-        raise AssertionError("--json must not launch the consequence pane")
+        raise AssertionError("--json must not prompt")
 
-    monkeypatch.setattr(_common, "maybe_confirm", boom)
+    monkeypatch.setattr("builtins.input", boom)
     assert _sync(str(b), "origin", "main", as_json=True) == 0
 
 

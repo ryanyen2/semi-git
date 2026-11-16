@@ -167,21 +167,18 @@ def test_identify_matches_the_revert_ladders_reading_of_the_same_token(tmp_path)
 
 
 def _logged_save_ids(repo) -> list[str]:
-    """The id strings `ugh log` actually prints in its id column, taken from the projection the
-    renderer reads (`render_save_list_lines` prints `row["sha"][:7]`). Going through the renderer's
-    own source rather than `git log` is the point: what must resolve is the token the user was
-    shown, not a token that happens to be a commit."""
-    from ugh.api import grid_view, map_view
-    from ugh.tui.graph import episode_rail_layout, episodes
+    """The save ids `ugh log` prints as its column heads. Going through the printer rather than
+    `git log` is the point: what must resolve is the token the user was shown, not a token that
+    happens to be a commit."""
+    from ugh.cli.inspect import _log_lines
 
-    rows = episode_rail_layout(episodes(map_view(repo), grid_view(repo)))["rows"]
-    return [row["sha"][:7] for row in rows if row.get("sha")]
+    return _log_lines(str(repo))[0].split()[2:]
 
 
 def test_a_save_id_from_the_log_resolves_to_that_save(tmp_path):
-    """The rung's whole reason to exist. `ugh log`'s id column is the 7-char commit sha, so it is the
-    single most likely token to be typed back -- and before this it resolved to nothing, which sent
-    the pilot participant back to plain git *while in the ugh condition*."""
+    """The rung's whole reason to exist. `ugh log`'s column heads are 7-char commit shas, so they
+    are the single most likely token to be typed back -- and before this it resolved to nothing,
+    which sent the pilot participant back to plain git *while in the ugh condition*."""
     repo = _repo(tmp_path)
     printed = _logged_save_ids(repo)
     assert printed, "fixture prints no save ids -- the test would prove nothing"

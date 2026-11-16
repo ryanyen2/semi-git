@@ -45,8 +45,8 @@ def test_leading_flag_explains_flag_position(capsys):
 
 
 def test_the_spellings_a_git_user_reaches_for_actually_dispatch(capsys):
-    """`status` is the first word a git user types; it is a thin alias onto `log --summary`'s
-    handler. `show` is where you point at a thing to see it."""
+    """`status` is the first word a git user types. `show` is where you point at a thing to see
+    it."""
     import ugh.cli as cli
 
     for verb in ("status", "show"):

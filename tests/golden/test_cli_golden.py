@@ -8,7 +8,7 @@ Two things are being locked:
   1. **C11 -- byte-identical through the CLI migration.** U18 rewrites the hand-rolled `_strip_opt`
      parser as an argparse package; these snapshots are the contract that its text and (especially)
      `--json` output do not drift for any pre-existing verb. `--json` is the machine surface the
-     VSCode extension / TUI consume (R21), so its byte-stability is the one that must not move.
+     VSCode extension consumes (R21), so its byte-stability is the one that must not move.
   2. **Provenance exclusion, proven end to end.** Op ids appear verbatim in `log`/`map`/…
      output; because these fixtures are byte-identical across independent builds (provenance is
      excluded from `compute_id`), the ids -- and therefore this whole snapshot -- are stable. A
@@ -47,33 +47,15 @@ _SNAPSHOTS = pathlib.Path(__file__).resolve().parent / "snapshots"
 def _capture(repo: pathlib.Path, argv: list[str]) -> dict:
     """Run `ugh <argv>` with `repo` as cwd (the CLI operates on the working directory, like every
     real invocation), capturing exit code and stdout. Determinism: op ids are content-addressed,
-    feature labels use the offline fallback, so the captured bytes are stable across runs.
-
-    The colour environment is pinned for the same reason. `theme.console` builds its rich Console
-    with `force_terminal`, so it emits ANSI into this StringIO -- but *which* ANSI is detected from
-    the environment, and that is not a property of ugh. A developer terminal advertising
-    `COLORTERM=truecolor` captured `\x1b[38;2;201;136;214m` where CI, which sets neither COLORTERM
-    nor TERM, produced `\x1b[37m`, so a snapshot regenerated on a laptop failed on every runner and
-    read as a real CLI drift. Pinned to truecolor rather than to the runner's 8 colours because the
-    snapshot is more useful naming the colours the theme actually chose."""
+    feature labels use the offline fallback, so the captured bytes are stable across runs."""
     cwd = os.getcwd()
     os.chdir(repo)
     buf = io.StringIO()
-    prior = {k: os.environ.get(k) for k in ("COLORTERM", "TERM", "NO_COLOR", "FORCE_COLOR")}
-    os.environ["COLORTERM"] = "truecolor"
-    os.environ["TERM"] = "xterm-256color"
-    os.environ.pop("NO_COLOR", None)
-    os.environ.pop("FORCE_COLOR", None)
     try:
         with contextlib.redirect_stdout(buf):
             code = cli.main(list(argv))
     finally:
         os.chdir(cwd)
-        for k, v in prior.items():
-            if v is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = v
     return {"argv": list(argv), "exit": code, "out": buf.getvalue()}
 
 
@@ -100,7 +82,7 @@ def capture_cli_surface(root: str) -> dict:
         repo = corpus.CORPUS[case].build(root / f"f{seq[0]}")
         get(repo)
         if mapped:
-            _capture(repo, ["log", "--tree", "--refresh"])  # U14: `ugh map` is now a `log` mode
+            _capture(repo, ["log", "--refresh"])
         if prep:
             _capture(repo, prep)
         return repo
@@ -114,11 +96,9 @@ def capture_cli_surface(root: str) -> dict:
     # -- read surface (one mined + mapped linear_history repo; read verbs are idempotent) -------
     rf = fresh(mapped=True)
     views["help"] = _capture(rf, ["help"])
-    for key, argv in (
-        ("log", ["log"]), ("status", ["log", "--summary"]), ("map", ["log", "--tree"]),
-        ("check", ["check"]),
-    ):
+    for key, argv in (("log", ["log"]), ("status", ["status"]), ("check", ["check"])):
         views[key] = _both(rf, argv)
+    views["map"] = {"json": _capture(rf, ["log", "--tree", "--json"])}
     views["plan_status"] = _both(rf, ["plan", "status"])
     views["revert_emit"] = _both(fresh(), ["revert", "--emit", "c.py::qux"])  # --emit writes nothing
 

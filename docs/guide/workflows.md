@@ -20,7 +20,7 @@ This is git's daily loop, with `ugh` reading along.
 ugh init                    # once per repo: read your existing history into the op store
 # edit files with your editor or agent, the same as always
 ugh save -m "add input validation"   # read your edits into ops and commit a record of them
-ugh log --summary                  # files, symbols, features, coverage, and any open forks or drift
+ugh status                  # files, symbols, features, coverage, and any open forks or drift
 ugh undo                    # step back: undo your last save, revert, or restore
 ```
 
@@ -86,7 +86,7 @@ ugh revert <feature>@<n>             # the ops of one checkpoint, as `ugh log` n
 How reliable each of these is depends on where the grouping comes from.
 
 - Symbol-level revert always works. It only needs the op set, nothing else.
-- Feature-level revert needs the feature tree to have grouped the ops first. `ugh log --tree` builds
+- Feature-level revert needs the feature tree to have grouped the ops first. `ugh log --refresh` builds
   that grouping from how symbols tend to change together across your history, so it needs enough
   commits and enough churn to find real seams. On a brand-new repo it reports one feature for
   everything, because there is no history yet to split on. Use `ugh feature rename` to name a
@@ -99,7 +99,7 @@ too, rather than being left in an unbuildable state; the preview always shows th
 before you apply it.
 
 So symbol-level revert is the reliable tool today. Feature-level revert works well once
-`ugh log --tree` has had real history to learn from. Run `ugh show <file>::<symbol>` to see which
+`ugh log --refresh` has had real history to learn from. Run `ugh show <file>::<symbol>` to see which
 feature a symbol landed in before you trust the grouping.
 
 ### When you do not know the exact name
@@ -163,12 +163,14 @@ fork down as shared state in `.sgt/forks.json` and tells Bob what to do next:
 
 ```bash
 ugh status
-# ⋔ 1 open fork — main.py::foo  →  ugh resolve main.py::foo
+# ⚠ 1 open fork — divergent edits to one symbol:
+#     main.py::foo  →  ugh resolve main.py::foo
 ```
 
 Bob resolves it:
 
 ```bash
+ugh resolve main.py::foo          # prints both versions of foo
 # edit main.py so foo holds the version you want, then:
 ugh resolve main.py::foo --apply
 ```
@@ -199,7 +201,7 @@ A review on 2026-07-12 found ways that ordinary git history could break the rule
 depends on. These are fixed now.
 
 - A file or symbol that was deleted and then re-added no longer disappears from your working tree.
-  The case that used to cause a silent delete now keeps the file and reports it in `ugh log --summary`
+  The case that used to cause a silent delete now keeps the file and reports it in `ugh status`
   and `ugh check --tree`. Re-adding a symbol now chains onto its earlier history, which recovered most of
   the ops the old version dropped. One edge case remains: if a symbol is deleted and re-added with
   the exact same content, the two versions still register as a fork.
@@ -217,7 +219,7 @@ These limits remain, either by design or because they are not built yet:
   content rather than pulled out as individual symbols, so you cannot revert them on their own.
 - Imports are ordinary text, not a symbol with its own command. Nothing warns you that a revert
   left an unused import behind, or offers to remove one.
-- `ugh log --summary` is slow on a large op store. On a store of several thousand ops it can take
+- `ugh status` is slow on a large op store. On a store of several thousand ops it can take
   around a minute, because rebuilding the full valid state is expensive and the summary currently
   does it more than once per run. This is a speed problem, not a correctness one.
 

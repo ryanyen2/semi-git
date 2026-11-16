@@ -1,7 +1,7 @@
 """The layer rule, enforced (Phase 2).
 
 ugh is built as a stack: the store and kernel underneath, `ugh.api` as the one canonical projection
-over them, and the surfaces (CLI, TUI, MCP) on top rendering that projection. The rule that keeps it
+over them, and the surfaces (CLI, MCP) on top rendering that projection. The rule that keeps it
 honest is one-directional: **nothing below may import from a surface above it.**
 
 This is worth a test rather than a convention because the violation is easy to introduce and
@@ -24,13 +24,13 @@ import pathlib
 _ROOT = pathlib.Path(__file__).resolve().parent.parent
 _PKG = _ROOT / "ugh"
 
-# layer -> the packages it must never import from. Read as "ugh.api must not import ugh.cli/tui/mcp".
+# layer -> the packages it must never import from. Read as "ugh.api must not import ugh.cli/mcp".
 _FORBIDDEN = {
-    "api.py": ("ugh.cli", "ugh.tui", "ugh.mcp"),
-    "core": ("ugh.cli", "ugh.tui", "ugh.mcp", "ugh.api"),
-    "store": ("ugh.cli", "ugh.tui", "ugh.mcp", "ugh.api", "ugh.core", "ugh.lens"),
-    "entities": ("ugh.cli", "ugh.tui", "ugh.mcp", "ugh.api"),
-    "select": ("ugh.cli", "ugh.tui", "ugh.mcp", "ugh.api"),
+    "api.py": ("ugh.cli", "ugh.mcp"),
+    "core": ("ugh.cli", "ugh.mcp", "ugh.api"),
+    "store": ("ugh.cli", "ugh.mcp", "ugh.api", "ugh.core", "ugh.lens"),
+    "entities": ("ugh.cli", "ugh.mcp", "ugh.api"),
+    "select": ("ugh.cli", "ugh.mcp", "ugh.api"),
 }
 
 
@@ -47,19 +47,6 @@ def _imported_modules(path: pathlib.Path) -> set[str]:
     return found
 
 
-# Known inversions, each one a bug that is allowlisted rather than hidden: the rule stays enforced
-# for everything else, and removing an entry here is the definition of "fixed".
-#
-# `api.py -> ugh.tui.graph`: `_project_sync_preview`/`resolve_apply_preview_view` call
-# `render_collab_preview_lines` to precompute terminal-rendered strings into the projection's
-# `summary` field. So the canonical projection contains presentation, which means the VS Code webview
-# and MCP receive text laid out for a terminal. The fix is to move the rendering up into the CLI/TUI
-# and have `summary` carry structured rows -- deferred because `summary` is consumed by the
-# consequence pane, `so_what_for`, and `confirm_collab`, so it is a real refactor of the collab
-# confirm path rather than a mechanical move.
-_KNOWN_INVERSIONS = {("api.py", "ugh.tui.graph")}
-
-
 def _files_for(target: str) -> list[pathlib.Path]:
     node = _PKG / target
     return [node] if node.is_file() else sorted(node.rglob("*.py"))
@@ -72,8 +59,6 @@ def test_lower_layers_never_import_a_surface():
             for module in _imported_modules(path):
                 for banned in forbidden:
                     if module != banned and not module.startswith(banned + "."):
-                        continue
-                    if (target, module) in _KNOWN_INVERSIONS:
                         continue
                     rel = path.relative_to(_ROOT)
                     violations.append(f"{rel} imports {module} (forbidden for {target})")

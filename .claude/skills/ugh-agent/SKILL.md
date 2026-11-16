@@ -41,24 +41,20 @@ Two things this buys you that a diff cannot, and they are the reason to reach fo
 recorded **reason** a symbol is the way it is, and the exact **cost of removing** something — the
 count of later ops built on top that would come out with it. `ugh_show` answers both.
 
-`ugh log --map` draws this as one lane per feature, foundations at the top, over a shared
-commit-time axis. A lane's glyphs (`▁▂▃▄▅▆▇█`, dim `·` for quiet) read as *how busy* that stretch
-was and *when*; the `@n` chips are its checkpoints, and `@n` is the handle a human hands to
-`ugh revert`; a `◇` is a step a plan predicted but no code fills yet.
+`ugh log` prints this as one row per feature: its handle (what a human hands to `ugh revert`), its
+label, and how many edits it got in each of the last few saves, newest to the right under the save's
+short sha. Edits no feature owns get one row of their own.
 
 ```
-          c0 ───────────────────────────── cN
- enrollment
-   3f9a  waitlist promotion   ·▂▃····▅█·   @1 seed  @3 promote-on-free
-   7c21  enrollment drop      ···▃▄······   @2 drop
- scheduling
-   a4d0  slot-clash guard     ▂···▆······   @1 ranges_clash
-   b8e1  bulk import          ·······◇      ← ◇ = planned, no code yet
+id        feature                          3f2a1c0 9b1e4d2 c0a7e11
+3f9a1b2c  waitlist promotion                     2       .       5
+7c21d0e4  enrollment drop                        .       3       .
+          (no feature)                           .       .       1
 ```
 
-That grid is meant to be *drawn* — live in a terminal or the workbench — not read by you as text; see
-"Showing ugh output to a human" below before you ever put it in a transcript. You read the model
-through the narrow tools next.
+That list is for a person at a terminal, not for you to read as text; see "Showing ugh output to a
+human" below before you ever put it in a transcript. You read the model through the narrow tools
+next.
 
 ## Orient with one call
 
@@ -166,19 +162,17 @@ saved outside a conversation, and saying so is the honest answer.
 
 ## Showing ugh output to a human
 
-ugh's terminal output is built for a terminal: ANSI colour, box drawing, wide aligned columns. Pasted
-into a transcript it renders as noise and costs tokens for the escape codes.
+ugh's terminal output is built for a terminal: wide aligned columns. Pasted into a transcript it
+wraps badly and costs tokens.
 
 - Reading it yourself: use `--json`, or the MCP tool, and summarize in your own words.
-- Showing it to them: only output that is already narrow — `ugh show` (plain text, no colour, so no
-  flag needed), or `ugh log --summary --no-color`.
-- Never paste `ugh log --map` or the rail into a transcript. They are wide, tall, and meant to be
-  read live in a terminal. Point at the command instead and let them run it.
+- Showing it to them: only output that is already narrow — `ugh show` or `ugh status`.
+- Never paste `ugh log` into a transcript. It is wide and tall, and meant to be read in a terminal.
+  Point at the command instead and let them run it.
 
 When you name a command, name one that runs. An unrecognised verb exits non-zero and prints the
 closest real verbs, so a wrong guess is recoverable — but it still costs a round trip, and a wrong
-command in a message *to the human* costs their trust. `--no-color` is not universal either:
-`ugh log` and `ugh status` take it, `ugh show` does not need it.
+command in a message *to the human* costs their trust.
 
 ## When there is no MCP
 

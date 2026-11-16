@@ -58,9 +58,7 @@ new plan no longer has are cleaned up.
 
 **Working without a plan.** This loop is worth the ceremony for multi-step work, and most work is
 not that. If you are just doing what was asked, skip it: edit, then `ugh_save` with your own words.
-`ugh log --rail` prints where things stand at the top — including what the user is working on, in
-their own words, which is what to read when picking work back up rather than inferring the task from
-a diff. `ugh_show` reads a file as it was at a past point without checking anything out.
+`ugh_show` reads a file as it was at a past point without checking anything out.
 
 Between steps 3 and 4, `ugh_drift` lists ops no active plan predicted. Drift is not a chore to
 resolve; it is a read-only diff of what happened outside your stated plan. Read it to confirm no

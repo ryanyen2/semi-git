@@ -1,53 +1,30 @@
-"""Read/inspection verbs: `ugh log` is the one inspection surface -- the lane×commit grid, with
-modes `--tree` (the feature tree), `--rail` (the save rail), `--summary` (scalars, also `ugh
-status`), and `--ops` (the raw op DAG). `check` verifies op-store integrity and, with `--repair`,
-re-derives the current ref after a git history rewrite. Every verb mines the working tree on contact
-before reading (R9)."""
+"""Read/inspection verbs: `ugh log` lists features with their edits per recent save, `--ops` the
+raw op DAG; `ugh status` prints what needs attention. `check` verifies op-store integrity and, with
+`--repair`, re-derives the current ref after a git history rewrite. Every verb mines the working
+tree on contact before reading (R9)."""
 
 from __future__ import annotations
 
 import argparse as _dep
 import sys
 
-from ._common import _add_view_flags, _emit_json, _fail
+from ._common import _add_view_flags, _emit_json, _fail, fork_lines
 
 
 def register(subs, parent) -> None:
     lp = subs.add_parser("log", parents=[parent])
     lmode = lp.add_mutually_exclusive_group()
-    # The map is now the bare `ugh log` default; --map stays as a hidden alias. --tree/--summary
-    # back the VS Code MapView/StatusView JSON, --saves the spine save-list -- all kept functional
-    # but off the help surface so the daily view is just `ugh log` (map) and `ugh log --rail`.
-    lmode.add_argument("--map", action="store_true", dest="map", help=_dep.SUPPRESS)
-    lmode.add_argument("--rail", action="store_true",
-                       help="the save rail: what happened, newest first, one line per save")
+    # `--tree --json` is the feature tree (`map_view`) the editor reads; `--ops` the raw op list.
     lmode.add_argument("--tree", action="store_true", help=_dep.SUPPRESS)
-    lmode.add_argument("--summary", action="store_true", help=_dep.SUPPRESS)
-    lmode.add_argument("--saves", action="store_true", help=_dep.SUPPRESS)
     lmode.add_argument("--ops", action="store_true", help=_dep.SUPPRESS)
     _add_view_flags(lp, paged=True)  # --full/--limit/--offset (used by --ops)
-    lp.add_argument("--at", type=int, default=None, metavar="COMMIT",
-                    help="map: fold frontier — only ops up to this commit-index count")
-    lp.add_argument("--no-color", action="store_true", help="plain text, no ANSI color")
     lp.add_argument("--refresh", action="store_true",
                     help="re-mine + rebuild the map first (default: fast read of the last-built map)")
     lp.add_argument("--rebuild", action="store_true",
                     help="refresh with a full from-scratch recluster")
-    lp.add_argument("--focus", default=None, metavar="FEATURE",
-                    help="zoom in: one feature (its checkpoints), or a subsystem/theme name "
-                         "(its features as a vertical commit-tree). Implies --map")
-    lp.add_argument("--links", action="store_true",
-                    help="map: show the co-change ↔ annotation trailing each lane")
     lp.set_defaults(func=_cmd_log)
-    # `ugh status` is the first thing anyone arriving from git types. U14 folded it into
-    # `log --summary` for surface economy, which meant the single most predictable command in the
-    # tool answered "invalid choice". Surface economy is about what a user must *learn*, not about
-    # refusing the word they already know, so the spelling is restored as a thin alias onto the
-    # same handler -- one verb's worth of muscle memory, zero new concepts.
-    st = subs.add_parser("status", parents=[parent],
-                         help="what needs attention (alias of `ugh log --summary`)")
+    st = subs.add_parser("status", parents=[parent], help="what needs attention")
     _add_view_flags(st)
-    st.add_argument("--no-color", action="store_true", help="plain text, no ANSI color")
     st.set_defaults(func=_cmd_status)
     pc = subs.add_parser("check", parents=[parent])
     pc.add_argument("--tree", action="store_true",
@@ -62,40 +39,24 @@ def register(subs, parent) -> None:
 
 
 def _cmd_log(args) -> int:
-    """`ugh log` is the daily inspection surface (KTD9). Bare `ugh log` is the feature map (one
-    lane per feature, edit-density over time) -- the spatial overview, and `--map` stays as an
-    alias for it. `--rail` is the recurring-feature lane rail (a vertical git-log with a ●/◆/○
-    topology column tying each save back to the commit graph), the previous bare default. The rest
-    are kept functional but off the help surface: `--tree`/`--summary` back the VS Code
-    MapView/StatusView JSON, `--saves` is the lane-less spine save-list, `--ops` the op-log.
-    `--focus`/`--links`/`--at` are map refinements of the default. `--json` returns the canonical
-    view for the mode: `grid_view` (default, `--map`, `--rail`, `--saves` — all rotations of the
-    same cells), the feature tree (`--tree`), or the status scalars (`--summary`)."""
+    """`ugh log`: one row per feature with its edits per recent save. `--json` returns
+    `grid_view`, `--tree --json` the feature tree (`map_view`), `--ops` the op list."""
     if args.ops:
         return _log_ops(".", args.as_json, args.full, args.limit, args.offset)
-    if args.tree:
-        return _log_tree(".", args.as_json, args.refresh, args.rebuild,
-                         color=not args.no_color)
-    if args.summary:
-        return _status(".", args.as_json, full=args.full, color=not args.no_color)
-    if args.saves:
-        return _log_default(".", as_json=args.as_json, color=not args.no_color,
-                            refresh=args.refresh, rebuild=args.rebuild)
-    if args.rail:
-        return _log_rail(".", as_json=args.as_json, color=not args.no_color,
-                         refresh=args.refresh, rebuild=args.rebuild)
-    # Bare `ugh log` and the `--map` alias both land here: the feature map is the default view
-    # (study pilots read the rail as "commit messages again" and never met the lanes; the map is
-    # the representation the tool is about, so it is what the bare verb shows).
-    return _log_grid(".", as_json=args.as_json, frontier=args.at, color=not args.no_color,
-                     refresh=args.refresh, rebuild=args.rebuild, focus=args.focus,
-                     links=args.links)
+    if args.tree and args.as_json:
+        return _log_tree(".", args.refresh, args.rebuild)
+    _map_for_view(".", args.refresh, not args.as_json, rebuild=args.rebuild)
+    if args.as_json:
+        from ugh.api import grid_view
+
+        return _emit_json(grid_view("."))
+    for line in _log_lines("."):
+        print(line)
+    return 0
 
 
 def _cmd_status(args) -> int:
-    """`ugh status` -- the same projection `ugh log --summary` renders, reached by the name a git
-    user already has. One handler, so the two spellings can never drift."""
-    return _status(".", args.as_json, full=args.full, color=not args.no_color)
+    return _status(".", args.as_json, full=args.full)
 
 
 def _cmd_check(args) -> int:
@@ -198,253 +159,59 @@ def _resync(repo: str, reseed: bool, as_json: bool = False) -> int:
     return 0
 
 
-def _log_grid(repo: str, *, as_json: bool = False, frontier: int | None = None, color: bool = True,
-              refresh: bool = False, rebuild: bool = False, focus: str | None = None,
-              links: bool = False) -> int:
-    """`ugh log` (the default grid, KTD9): the lane×commit timeline. `--json` returns the canonical
-    `grid_view`; the text render reuses the feature-timeline machinery (`render_graph_lines`) over
-    the last-built map. A pure cached read by default (fast, glanceable); `--refresh` re-mines and
-    rebuilds features + checkpoints first (see `_map_for_view`); `--rebuild` refreshes with a full
-    from-scratch recluster."""
-    from ugh import state
-    from ugh.api import forks_view, grid_view, segments_view
-    from ugh.tui.graph import _state_banner, render_graph_lines, resolve_focus_group, theme_spans
-
-    mv = _map_for_view(repo, refresh, color and not as_json, rebuild=rebuild)
-    gv = grid_view(repo)  # the canonical cell join; the text render and --json now read one shape
-    if as_json:
-        return _emit_json(gv)
-    # The loud fork banner (⋔ + per-symbol remedy) leads, exactly as `now`/`status` lead with it:
-    # a fork is divergence to resolve, and bare `ugh log` is the view people actually look at.
-    # Printed here once, so neither renderer below reports it a second time.
-    states = {"forks": forks_view(repo)["forks"]}
-    for line in _state_banner(states, color=color):
-        print(line)
-    themes_raw = state.load_json(repo, "intent_themes", default={}) or {}
-    # `--focus <subsystem|theme>` is a category zoom, rendered TableLens-style: the whole map
-    # stays on screen, the group's lanes keep full detail, every other lane compresses to its
-    # density spark -- then the group's own chapters (the revertable units) are tabled below.
-    # A single-feature `--focus` names no group, so it falls through to the map's own emphasized
-    # single-lane path inside `render_graph_lines`.
-    group = None
-    if focus is not None:
-        group = resolve_focus_group(focus, mv, gv, themes_raw)
-    # Spatial LOD: with no focus the map folds LEAF subsystems (ones whose children are all
-    # features) to a single meta-lane each, but only while the map is over its row budget, and it
-    # folds the largest first. Under a focus nothing folds, since a fold could hide the very lanes
-    # the emphasis is trying to show. The root is never folded: on a small repo the root IS a leaf
-    # subsystem, and folding it puts the whole codebase on one lane under a header still counting
-    # its features.
-    collapsed = _default_collapsed(mv) if focus is None else ()
-    segs = segments_view(repo)
-    for line in render_graph_lines(
-        mv, gv, segs, frontier=frontier, color=color,
-        focus=None if group is not None else focus, group=group, show_links=links,
-        collapsed=collapsed,
-        themes=theme_spans(themes_raw, mv, gv) if focus is None else None,
-    ):
-        print(line)
-    if group is not None:
-        for line in _group_chapter_lines(group, segs, focus, color=color):
-            print(line)
-    return 0
+SAVE_COLUMNS = 8
 
 
-MAP_ROW_BUDGET = 24  # feature lanes plus headers a reader takes in without scrolling
+def _log_lines(repo: str) -> list[str]:
+    """A fixed-column list: one row per feature (handle, label, edits per save), the newest saves
+    to the right under their short shas, then one row for edits no feature owns. An edit is an
+    op that touches a named symbol; residue, anchor and import ops are not counted."""
+    from collections import Counter
 
+    from ugh.api import _grid_labels, _named_symbols, history_view
+    from ugh.core.opindex import index_ops
 
-def _default_collapsed(map_view: dict) -> tuple[str, ...]:
-    """The leaf subsystems the map folds when nothing is focused, largest first.
+    hv = history_view(repo, full=True)
+    edits = {op.id for op in index_ops(repo) if _named_symbols(op)}
+    counts: dict = {}
+    for op in hv["ops"]:
+        if op["id"] in edits:
+            counts.setdefault(op["feature_id"], Counter())[op["commit_index"]] += 1
+    carrying = {i for c in counts.values() for i in c}
+    saves = [c for c in hv["commits"] if not c["bookkeeping"] and c["index"] in carrying]
+    saves = saves[-SAVE_COLUMNS:]
+    if not saves:
+        return ["(no saves yet — `ugh save` records your edits)"]
+    labels = _grid_labels(repo)
 
-    Folding every leaf subsystem by tree shape hid work the reader was looking for: on the
-    Sketchpad demo the five hand-named constraint features, one of them named a minute earlier,
-    sat behind a single row reading `Geometric Constraints (5)`, and `--full` does not open it
-    (finding 81). The fold earns its place on a repository with more features than a screen, so
-    it is spent by row budget instead: a map that already fits stays open, and a map that does
-    not folds its biggest leaf subsystems until it does.
+    def row(handle: str, label: str, per: Counter) -> str:
+        label = label if len(label) <= 32 else label[:31] + "…"
+        cells = "".join(f"{per.get(c['index'], 0) or '.':>8}" for c in saves)
+        return f"{handle:<8}  {label:<32}{cells}"
 
-    A fold trades one subsystem's feature rows for the one meta-lane its header becomes, so the
-    largest subsystem buys the most room per fold. Husk features (no `own_symbols`) are not
-    counted, because `graph_layout` drops them from the render as well."""
-    nodes = {n["id"]: n for n in map_view.get("nodes", [])}
-    kind = {nid: n.get("kind") for nid, n in nodes.items()}
-
-    def is_row(nid: str) -> bool:  # the husk filter `graph_layout` applies to leaves
-        own = nodes[nid].get("own_symbols")
-        return own is None or len(own) > 0
-
-    rows = sum(1 for nid, n in nodes.items()
-               if (kind[nid] == "subsystem") or (kind[nid] == "feature" and is_row(nid)))
-    leaf_subs = [
-        nid for nid, n in nodes.items()
-        if kind[nid] == "subsystem" and n.get("parent") is not None
-        and not any(kind.get(c) == "subsystem" for c in n.get("children") or [])
-    ]
-    saved = {nid: sum(1 for c in nodes[nid].get("children") or []
-                      if kind.get(c) == "feature" and is_row(c))
-             for nid in leaf_subs}
-    collapsed: list[str] = []
-    for nid in sorted(leaf_subs, key=lambda i: (-saved[i], i)):
-        if rows <= MAP_ROW_BUDGET:
-            break
-        collapsed.append(nid)
-        rows -= saved[nid]  # the header row stays, as the meta-lane
-    return tuple(collapsed)
-
-
-def _group_chapter_lines(group: dict, segments: list[dict], typed: str, color: bool) -> list[str]:
-    """The chapters inside a focused group, tabled under the map: one line per member checkpoint
-    (feature-colored dot, feature, `@n` chip name), then -- for a theme -- the two whole-group
-    commands, spelled with the exact name the user just typed. This table is where the map's
-    emphasis cashes out: the blocks it highlighted, as the handles `revert`/`restore` take."""
-    from ugh.tui.color import color_for
-    from ugh.tui.graph import _bold, _dim, _paint
-
-    ids = set(group.get("feature_ids") or ())
-    idxs = group.get("commit_indices")
-    rows = []
-    for s in segments:
-        if s.get("feature_id") not in ids:
-            continue
-        if idxs and not any(s.get("first_index", -1) <= i <= s.get("last_index", -1) for i in idxs):
-            continue  # a theme emphasizes only the chapters its commits sit in
-        rows.append(s)
-    rows.sort(key=lambda s: (s.get("first_index", 0), s.get("feature_label", "")))
-    if not rows:
-        return []
-    lines = ["", _dim(" in this group:", color=color)]
-    flab_w = min(30, max(len(s.get("feature_label", "")) for s in rows))
-    for s in rows[:20]:
-        fid = s["feature_id"]
-        dot = _paint(color_for(fid), "●", color=color)
-        flab = s.get("feature_label", "")[:flab_w].ljust(flab_w)
-        handle = f"{fid[2:10] if fid.startswith('f-') else fid[:8]}@{s['seg_index']}"
-        lines.append(f"   {dot} {flab}  @{s['seg_index']} {s.get('intent', '')}  "
-                     + _dim(f"({handle})", color=color))
-    if len(rows) > 20:
-        lines.append(_dim(f"   … and {len(rows) - 20} more", color=color))
-    if group.get("kind") == "theme":
-        name = typed if typed else group.get("label", "")
-        lines.append("")
-        lines.append(" " + _bold(f'ugh revert "{name}"', color=color)
-                     + _dim("   removes this work everywhere it landed", color=color))
-        lines.append(" " + _bold(f'ugh restore "{name}"', color=color)
-                     + _dim("  brings it back", color=color))
+    lines = [f"{'id':<8}  {'feature':<32}" + "".join(f"{c['sha'][:7]:>8}" for c in saves)]
+    features = sorted((fid for fid in counts if fid is not None),
+                      key=lambda fid: (min(counts[fid]), labels.get(fid, fid)))
+    for fid in features:
+        handle = (fid[2:] if fid.startswith("f-") else fid)[:8]
+        lines.append(row(handle, labels.get(fid, fid), counts[fid]))
+    if None in counts:
+        lines.append(row("", "(no feature)", counts[None]))
     return lines
 
 
-def _log_rail(repo: str, *, as_json: bool = False, color: bool = True, refresh: bool = False,
-              rebuild: bool = False) -> int:
-    """`ugh log --rail`: the episode rail / vertical git-log --
-    "where am I + what I did, in order." A compact state block (from `now_view`) sits atop the rail;
-    the rail carries a ●/◆/○ topology column tying each save back to the commit graph. `--json`
-    returns `grid_view` (the rail is a time-major rotation of the same cells); the text render
-    reuses `render_rail_lines`."""
-    from ugh.api import grid_view
-    from ugh.store.gitbind import GitBinding
-    from ugh.tui.graph import render_rail_lines
-
-    mv = _map_for_view(repo, refresh, color and not as_json, rebuild=rebuild)
-    gv = grid_view(repo)
-    if as_json:
-        return _emit_json(gv)
-    topology = GitBinding(repo).graph_topology()
-    for line in _state_block_lines(repo, color=color):
-        print(line)
-    for line in render_rail_lines(mv, gv, color=color, topology=topology):
-        print(line)
-    return 0
-
-
-def _log_default(repo: str, *, as_json: bool = False, color: bool = True, refresh: bool = False,
-                 rebuild: bool = False) -> int:
-    """Bare `ugh log` (Phase 4 default): a compact state block (from `now_view` -- what's in flight,
-    what needs you, the single next action) atop a lane-less per-save list ("where am I + what I
-    did"), the legible replacement for the recurring-feature lane wall (now `ugh log --rail`).
-    `--json` still returns the canonical `grid_view` (R21/C11), byte-identical to the other modes'."""
-    from ugh.api import grid_view
-    from ugh.store.gitbind import GitBinding
-    from ugh.tui.graph import render_save_list_lines
-
-    mv = _map_for_view(repo, refresh, color and not as_json, rebuild=rebuild)
-    gv = grid_view(repo)
-    if as_json:
-        return _emit_json(gv)
-    topology = GitBinding(repo).graph_topology()
-    for line in _state_block_lines(repo, color=color):
-        print(line)
-    for line in render_save_list_lines(mv, gv, topology=topology, color=color):
-        print(line)
-    return 0
-
-
-def _state_block_lines(repo: str, *, color: bool = False) -> list[str]:
-    """The compact state header bare `ugh log` prints above its save list: in-flight + needs-you +
-    the one recommended next action, read from `api.now_view` (which mines the working tree on
-    contact so in-flight is live, R9). Recently-done is omitted -- the save list below already is
-    that. The leading space aligns it under the list rows. Open forks get the loud red `_state_banner`
-    (⋔ + per-symbol remedy) atop the block instead of a muted count buried in `needs you` -- a fork
-    is divergence you must resolve, not a passing note (still non-blocking; save/switch never refuse)."""
-    from ugh.api import now_view
-
-    lines = state_lines(now_view(repo), color=color, indent=" ")
-    lines.append("")
-    return lines
-
-
-def state_lines(view: dict, *, color: bool = False, indent: str = "") -> list[str]:
-    """The state-of-actions block `ugh log --rail`/`--saves` print above the save list."""
-    from ugh.tui.graph import _state_banner
-
-    inflight, needs = view["in_flight"], view["needs_you"]
-    action, working = view["next_action"], view.get("working_on")
-    lines: list[str] = _state_banner({"forks": needs["forks"]}, color=color)
-
-    if working:
-        lines.append(f"{indent}working on  {working['title']}{_ago(working.get('ts'), color=color)}")
-    if inflight["total_op_count"]:
-        total, fresh = inflight["total_op_count"], inflight["new_work_count"]
-        n_feat = len(inflight["affected"])
-        where = f" in {n_feat} feature{'s' if n_feat != 1 else ''}" if n_feat else ""
-        what = f"{total} new edit(s)" if fresh == total else f"{total} edit(s)"
-        if fresh and fresh != total:
-            what += f", {fresh} new"
-        lines.append(f"{indent}unsaved     {what}{where}")
-    for p in view.get("in_progress", []):
-        lines.append(f"{indent}            step {p['matched_count'] + 1} of {p['step_count']}")
-    activity = (view.get("context") or {}).get("activity") or []
-    if activity:
-        last = activity[0]
-        where = f" {last['file']}" if last.get("file") else ""
-        more = f" (+{len(activity) - 1} more)" if len(activity) > 1 else ""
-        lines.append(f"{indent}agent       {last['tool']}{where}{more}")
-    parts = _needs_you_parts(needs)
-    if parts:
-        lines.append(f"{indent}needs you   " + " · ".join(parts))
-    cmd = f"   ({action['command']})" if action["command"] else ""
-    lines.append(f"{indent}→ next      {action['label']}{cmd}")
-    return lines
-
-
-def _log_tree(repo: str, as_json: bool = False, refresh: bool = False, rebuild: bool = False,
-              color: bool = True) -> int:
-    """`ugh log --tree` (the feature tree, no time axis — what `ugh map` shows): a read of the
-    last-built tree (`--refresh` rebuilds it first). `--json` returns `map_view`. `--rebuild` is the
-    former `ugh map --rebuild`: a full from-scratch recluster (delegates to `_map`)."""
-    from ugh.api import map_view
-
+def _log_tree(repo: str, refresh: bool, rebuild: bool) -> int:
+    """`ugh log --tree --json`: the feature tree (`map_view`). `--rebuild` reclusters it from
+    scratch first; `--refresh` re-mines and rebuilds it."""
     if rebuild:
-        return _map(repo, as_json, rebuild=True, color=color)
-    _map_for_view(repo, refresh, not as_json)
-    view = map_view(repo)
-    if as_json:
-        return _emit_json(view)
-    # The same `├─ └─ │` guides the map draws, so the two views of one hierarchy read as one view.
-    from ugh.tui.views import tree_lines
+        from ugh.api import map_view
+        from ugh.core.lens import get
+        from ugh.lens.map import build_map
 
-    for line in tree_lines(view, color=color):
-        print(line)
-    return 0
+        get(repo)  # mine-on-contact so the map reflects current reality (R9)
+        build_map(repo, rebuild=True)
+        return _emit_json(map_view(repo))
+    return _emit_json(_map_for_view(repo, refresh, False))
 
 
 def _log_ops(repo: str, as_json: bool = False, full: bool = False,
@@ -474,31 +241,8 @@ def _log_ops(repo: str, as_json: bool = False, full: bool = False,
     return 0
 
 
-def _map(repo: str, as_json: bool = False, rebuild: bool = False, *,
-         color: bool = True) -> int:
-    """`ugh log --tree` (formerly `ugh map`, plan U13/U14): (re)build the feature tree from the live
-    op store -- clustering, Greene identity, pins, labeling -- then print the kernel-backed
-    projection (`api.map_view`). `--rebuild` forces a full from-scratch recluster, bypassing
-    dirty-subtree splicing (the former `ugh map --rebuild`, now `ugh log --tree --rebuild`)."""
-    from ugh.api import map_view
-    from ugh.core.lens import get
-    from ugh.lens.map import build_map
-
-    get(repo)  # mine-on-contact so the map reflects current reality (R9)
-    build_map(repo, rebuild=rebuild)
-    view = map_view(repo)
-    if as_json:
-        return _emit_json(view)
-    # The same `├─ └─ │` guides the map draws, so the two views of one hierarchy read as one view.
-    from ugh.tui.views import tree_lines
-
-    for line in tree_lines(view, color=color):
-        print(line)
-    return 0
-
-
-def _map_for_view(repo: str, refresh: bool, color: bool, rebuild: bool = False) -> dict:
-    """The shared read/refresh path behind the `ugh log` grid/rail modes. The daily command is a
+def _map_for_view(repo: str, refresh: bool, human: bool, rebuild: bool = False) -> dict:
+    """The shared read/refresh path behind `ugh log`. The daily command is a
     pure read of the *last-built* map (~sub-second) -- NOT a re-mine + re-cluster (which costs ~30s
     and would make a glanceable command unusable). `--refresh` is the *one* command that reflects
     brand-new edits: it re-mines and rebuilds BOTH layers the graph shows -- the feature tree
@@ -525,7 +269,7 @@ def _map_for_view(repo: str, refresh: bool, color: bool, rebuild: bool = False) 
             # stderr, not stdout: a person still reads it, but `--json` stays parseable. It used to
             # print above the `{`, so `ugh log --json | jq` failed on any repo with unmined edits --
             # which is every freshly cloned or copied one, i.e. an agent's first contact.
-            print(f"\x1b[2m{line}\x1b[0m" if color else line, file=sys.stderr)
+            print(line, file=sys.stderr)
         return mv
 
     from ugh.core.lens import get
@@ -533,9 +277,8 @@ def _map_for_view(repo: str, refresh: bool, color: bool, rebuild: bool = False) 
     from ugh.intent.theme_segment import build_segments
     from ugh.lens.map import build_map
 
-    if color:
-        print("\x1b[2m refreshing: mining edits + naming features and checkpoints…\x1b[0m",
-              file=sys.stderr)
+    if human:
+        print(" refreshing: mining edits + naming features and checkpoints…", file=sys.stderr)
     get(repo)  # mine-on-contact (R9)
     build_map(repo, rebuild=rebuild)  # feature tree + labels (the "what exists" layer)
     build_segments(repo)     # per-feature checkpoints (the "what I did, in chapters" layer)
@@ -552,8 +295,8 @@ def _map_staleness(repo: str) -> str | None:
     stays affordable on a surface the developer hits constantly."""
     from ugh.core.lens import current_ideal
     from ugh.lens.tree import load as load_tree
+    from ugh.api import plural
     from ugh.store.gitbind import GitBinding
-    from ugh.tui.graph import plural
 
     parts: list[str] = []
     try:
@@ -572,45 +315,45 @@ def _map_staleness(repo: str) -> str | None:
     return " and ".join(parts) if parts else None
 
 
-def _status(repo: str, as_json: bool = False, full: bool = False, *, color: bool = False) -> int:
-    """`ugh log --summary` (formerly `ugh status`, plan U13/U14): file/symbol/feature counts,
-    coverage, oracle status, drift. Path lists are capped at 5 (`--full` for all of them) --
-    a summary that dumps three hundred paths answers nothing. Open forks lead with the loud red
-    `_state_banner` (⋔ + per-symbol remedy), not a muted `⚠` count -- divergence to resolve."""
-    from ugh.api import status_view
+def _status(repo: str, as_json: bool = False, full: bool = False) -> int:
+    """`ugh status`: file/symbol/feature counts, coverage, oracle status, then what needs you
+    (forks, drift, unreproducible files) and what does not. Path lists show four (`--full` for
+    all of them)."""
+    from ugh.api import plural, status_view
     from ugh.core.lens import get
-    from ugh.tui.graph import _state_banner, plural
 
     get(repo)
     view = status_view(repo)
     if as_json:
         return _emit_json(view)
 
-    # The block is `views.summary_lines`: a scalar header, then WHAT NEEDS YOU, then FOR
-    # INFORMATION.
-    from ugh.tui.views import summary_lines
+    def paths(items) -> str:
+        shown = items if full else items[:4]
+        return "      " + ", ".join(shown) + ("" if len(items) == len(shown)
+                                              else f"  +{len(items) - len(shown)} more (--full)")
 
-    for line in _state_banner({"forks": view["forks"]["records"]}, color=color):
-        print(line)
-    for line in summary_lines(view, color=color, full=full):
+    print(f"{plural(view['files'], 'file')} · {plural(view['symbols'], 'symbol')} · "
+          f"{plural(view['features'], 'feature')} · {view['coverage_fraction'] * 100:.0f}% coverage"
+          f" · oracle {view['oracle']['status']}")
+    lines = fork_lines(view["forks"]["records"])
+    if view["sync_status"].get("history_rewritten"):
+        lines.append("⚠ git history moved backward — `ugh check --repair`")
+    elif view["drift"]["any"]:
+        n = len(view["drift"]["paths"])
+        lines += [f"⚠ {plural(n, 'file')} {'differs' if n == 1 else 'differ'} from the recorded "
+                  "state — `ugh save`", paths(view["drift"]["paths"])]
+    if view["backstop_kept"]:
+        lines += [f"⚠ {plural(len(view['backstop_kept']), 'unreproducible file')} kept on disk — "
+                  "`ugh check --tree`", paths(view["backstop_kept"])]
+    if view["never_recorded"]:
+        lines += [f"· {plural(len(view['never_recorded']), 'file')} ugh does not track, left alone",
+                  paths(view["never_recorded"])]
+    if view["unmanaged"]:
+        lines.append(f"· {plural(len(view['unmanaged']), 'unmanaged path')} (symlinks, untouched)")
+    for line in lines or ["✓ in sync"]:
         print(line)
     _print_residual(repo, full)
     return 0
-
-
-def _needs_you_parts(needs: dict) -> list[str]:
-    """The "needs you" summary items of the save-list header block."""
-    parts: list[str] = []
-    if needs.get("history_rewritten"):
-        parts.append("git history moved backward — run `ugh check --repair`")
-    if needs.get("paused_operation"):
-        # First, and phrased as a blocker rather than a note: while a git merge/cherry-pick/revert is
-        # paused the tree holds conflict markers and `ugh save` refuses outright (F26), so every
-        # other item here describes work the user cannot actually do yet.
-        parts.append(f"a paused git {needs['paused_operation']} is blocking ugh")
-    if needs["stalled_plans"]:
-        parts.append(f"{len(needs['stalled_plans'])} stalled plan(s)")
-    return parts
 
 
 def _fmt_age(seconds: float) -> str:
@@ -627,7 +370,7 @@ def _fmt_age(seconds: float) -> str:
 def _print_residual(repo: str, full: bool) -> None:
     """The residual (intent-ledger P1): things you *stated* but that never landed -- plan steps
     whose sessions closed with the step still pending (`open_intents`, each carrying a
-    `predicted_fp`). Folded into `ugh log --summary` as "what needs attention" so unfinished
+    `predicted_fp`). Folded into `ugh status` as "what needs attention" so unfinished
     intentions resurface here rather than needing a separate queue to groom. Only plan-derived opens
     surface: a chat utterance that failed to align is an alignment miss, not stated-but-never-landed,
     so it stays out of this list (it is the P2 review band, not a to-do). Nothing prints when the
@@ -647,20 +390,6 @@ def _print_residual(repo: str, full: bool) -> None:
         print(f"      · {r['reason'] or '(unknown)'}  ({age})")
     if not full and len(opens) > 5:
         print(f"      (+{len(opens) - 5} more — --full lists them)")
-
-
-def _ago(ts: float | None, *, color: bool = False) -> str:
-    """A dim, relative "when" -- ` (4m ago)` -- or nothing when there is no timestamp. Relative,
-    because the only thing a developer reads this for is whether it is still the thing they were
-    just doing, and a clock time makes them do that subtraction themselves. The wording is
-    `_fmt_age`'s, so the two places this file states an age cannot drift into two vocabularies."""
-    if not ts:
-        return ""
-    import time as _t
-
-    from ugh.tui.graph import _dim
-
-    return _dim(f"  ({_fmt_age(max(0.0, _t.time() - ts))})", color=color)
 
 
 def _show_at(repo: str, at: str, path: str | None, as_json: bool = False) -> int:

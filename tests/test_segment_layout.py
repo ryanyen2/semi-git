@@ -2,8 +2,7 @@
 
 `computeSegmentLayout` in `editor/vscode/media/workbench.js` is a pure function (no DOM/color) that
 threads intent-segment "cars" onto `computeGraphLayout`'s gutter -- the visual atom becomes the
-`<feature>@<n>` checkpoint, not the raw op. Mirrors `tests/tui/test_graph.py`'s Python coverage of
-`segment_layout`, kept behaviour-parallel per project convention.
+`<feature>@<n>` checkpoint, not the raw op.
 """
 
 from __future__ import annotations

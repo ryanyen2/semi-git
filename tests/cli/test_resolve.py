@@ -78,11 +78,8 @@ def test_resolve_apply_preview_view_states(tmp_path):
 
 
 def test_resolve_cli_tty_abort_resolves_nothing(tmp_path, monkeypatch, capsys):
-    """On a tty the pane is the confirm: aborting a `resolve --apply` leaves the fork open (rc 1)."""
+    """On a tty `resolve --apply` asks first: a no leaves the fork open (rc 1)."""
     import sys
-
-    from ugh.cli import _common
-    from ugh.tui.consequence import Decision
 
     b = _forked_clone(tmp_path)
     _configure_true_oracle(b)
@@ -90,54 +87,32 @@ def test_resolve_cli_tty_abort_resolves_nothing(tmp_path, monkeypatch, capsys):
 
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True, raising=False)
     monkeypatch.setattr(sys.stdout, "isatty", lambda: True, raising=False)
-    monkeypatch.setattr(_common, "maybe_confirm", lambda *a, **k: Decision(False))
+    monkeypatch.setattr("builtins.input", lambda *a: "n")
 
     assert _resolve(str(b), "main.py::foo", apply=True, as_json=False) == 1
     assert "aborted" in capsys.readouterr().out
     assert forks_view(b)["open"] == 1  # still open
 
 
-def test_resolve_cli_interactive_pick_left_closes_the_fork(tmp_path, monkeypatch):
-    """On a tty, a bare `ugh resolve <symbol>` shows a side-by-side diff and lets the user pick a side
-    in one step: `l` writes tip A's content, then the flow lands and closes the fork -- no second
-    `--apply` command."""
-    import builtins
-    import sys
-
+def test_bare_resolve_prints_both_versions_and_resolves_nothing(tmp_path, capsys):
+    """A bare `ugh resolve <symbol>` prints each tip's version of the symbol and how to finish;
+    it changes nothing."""
     b = _forked_clone(tmp_path)
-    _configure_true_oracle(b)
-
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: True, raising=False)
-    monkeypatch.setattr(sys.stdout, "isatty", lambda: True, raising=False)
-    monkeypatch.setattr(builtins, "input", lambda *a, **k: "l")
-
-    # apply=False on a tty is the whole flow: diff -> pick left -> land.
-    assert _resolve(str(b), "main.py::foo", apply=False, as_json=False) == 0
-    assert forks_view(b)["open"] == 0  # closed by the single interactive pick
-
-
-def test_resolve_cli_interactive_quit_keeps_the_fork(tmp_path, monkeypatch):
-    """Quitting the interactive pick (`q`) leaves the fork in place; `--apply` is still available."""
-    import builtins
-    import sys
-
-    b = _forked_clone(tmp_path)
-    _configure_true_oracle(b)
-
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: True, raising=False)
-    monkeypatch.setattr(sys.stdout, "isatty", lambda: True, raising=False)
-    monkeypatch.setattr(builtins, "input", lambda *a, **k: "q")
+    before = (b / "main.py").read_text(encoding="utf-8")
+    capsys.readouterr()
 
     assert _resolve(str(b), "main.py::foo", apply=False, as_json=False) == 0
-    assert forks_view(b)["open"] == 1  # still open -- nothing resolved
+    out = capsys.readouterr().out
+    assert "return 999" in out and "return 42" in out
+    assert "def bar" not in out  # the symbol, not the whole file
+    assert "ugh resolve main.py::foo --apply" in out
+    assert (b / "main.py").read_text(encoding="utf-8") == before
+    assert forks_view(b)["open"] == 1
 
 
 def test_resolve_cli_tty_confirm_closes_the_fork(tmp_path, monkeypatch):
-    """A confirm on a tty runs the real guided apply and closes the fork."""
+    """A yes on a tty runs the real guided apply and closes the fork."""
     import sys
-
-    from ugh.cli import _common
-    from ugh.tui.consequence import Decision
 
     b = _forked_clone(tmp_path)
     _configure_true_oracle(b)
@@ -145,7 +120,7 @@ def test_resolve_cli_tty_confirm_closes_the_fork(tmp_path, monkeypatch):
 
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True, raising=False)
     monkeypatch.setattr(sys.stdout, "isatty", lambda: True, raising=False)
-    monkeypatch.setattr(_common, "maybe_confirm", lambda *a, **k: Decision(True))
+    monkeypatch.setattr("builtins.input", lambda *a: "y")
 
     assert _resolve(str(b), "main.py::foo", apply=True, as_json=False) == 0
     assert forks_view(b)["open"] == 0  # closed

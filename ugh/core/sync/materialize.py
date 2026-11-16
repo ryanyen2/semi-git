@@ -54,7 +54,7 @@ def _fork_records(forks: tuple[tuple[str, str, str], ...]) -> list[dict]:
     """The committed `.sgt/forks.json` body (C4): one record per open same-symbol fork, each with
     its two tips and the `ugh resolve <symbol>` remedy that closes it. Sorted for a deterministic
     blob. The excluded tips live only here -- never in any verb-visible ideal -- so a fork is shared
-    state a teammate's next sync (and `ugh log --summary`) reads, not a lost
+    state a teammate's next sync (and `ugh status`) reads, not a lost
     edit."""
     return [
         {"symbol": sym, "tips": [tip_a, tip_b], "remedy": f"ugh resolve {sym}"}

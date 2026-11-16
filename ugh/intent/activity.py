@@ -1,5 +1,5 @@
 """Local agent-action feed: a bounded ring buffer of the last few tool events a `PostToolUse` hook
-appends (one row per Edit/Write), so `now_view` can surface a live "what the agent just did" signal.
+appends (one row per Edit/Write).
 
 Deliberately unlike `ugh.intent.turns`: a *turn* is a keep-everything, content-addressed record of
 human utterance (idempotent re-capture is the point). An activity *event* is the opposite -- two
@@ -50,9 +50,3 @@ def record_activity(repo: str | Path, *, tool: str, file: str | None = None,
             events = events[-_MAX:]
         state.save_json_if_changed(repo, _ARTIFACT, events)
     return rec
-
-
-def recent_activity(repo: str | Path, limit: int = 10) -> list[dict]:
-    """The most recent `limit` events, newest first -- the glanceable tail `now_view` renders."""
-    events = load_activity(repo)
-    return list(reversed(events[-limit:])) if limit > 0 else []

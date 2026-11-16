@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import argparse
 
-from ._common import _emit_json, _fail, _fail_json
+from ._common import _emit_json, _fail, _fail_json, fork_lines
 
 # D2 routing table (design doc §1): git subcommand -> the ugh verb that owns that job. A subcommand
 # here is refused by `ugh git`; anything absent passes through untouched (read/inspect verbs, and
@@ -70,7 +70,6 @@ def register(subs, parent) -> None:
     sv.add_argument("--confirm-hollow", action="append", dest="confirm_hollow", default=[],
                     help="(with --resolve-plan) the plan step hollow(s) to confirm against --confirm-op")
     sv.add_argument("--confirm-op", action="append", dest="confirm_op", default=[])
-    sv.add_argument("--no-color", action="store_true", help="plain text, no ANSI color")
     sv.set_defaults(func=_cmd_save)
 
     uv = subs.add_parser("undo", parents=[parent])
@@ -87,7 +86,7 @@ def register(subs, parent) -> None:
 def _cmd_save(args) -> int:
     return _save(".", args.message, args.as_json, resolve_plan=args.resolve_plan,
                  confirm_hollow=args.confirm_hollow, confirm_op=args.confirm_op,
-                 as_label=args.as_label, color=not args.no_color)
+                 as_label=args.as_label)
 
 
 def _cmd_undo(args) -> int:
@@ -129,7 +128,7 @@ def save(repo: str, *, message: str | None = None, as_label: str | None = None) 
 
 def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool = False,
           confirm_hollow: list[str] = (), confirm_op: list[str] = (),
-          as_label: str | None = None, color: bool = False, return_payload: bool = False):
+          as_label: str | None = None, return_payload: bool = False):
     """`ugh save [-m]` (D3): the put-path sugar -- mine the working tree (R9), then materialize a
     witness commit for the resulting ideal and record it. "Nothing to save" is decided by the
     ideal, not git's dirty flag: with no uncommitted ops the mined ideal equals the recorded one
@@ -251,7 +250,7 @@ def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool =
     plan = _fold_plan_matches(repo)
     # Drain the residual (intent-ledger P1): a save is when new work lands, so this is the beat to
     # retire any stated-but-never-landed intent the save (or its plan confirmations) fulfilled, and
-    # to age out stale ones -- so `ugh log --summary`'s "what needs attention" stays honest without
+    # to age out stale ones -- so `ugh status`'s "what needs attention" stays honest without
     # an open/done queue to groom. Guarded like every intent side-effect: it must never fail a save.
     if saved:
         try:
@@ -285,7 +284,7 @@ def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool =
     words = _echo_words(repo, message, plan) if saved else None
     why = _aligned_why(repo, new_op_ids, words) if saved else None  # pure read; the ledger already
     # Open forks are non-blocking (save never refuses on them), but a divergence you must resolve
-    # shouldn't hide -- surface it loudly at the end of every save (⋔ banner + per-symbol remedy).
+    # shouldn't hide -- surface it at the end of every save, each with its remedy.
     from ugh.api import forks_view
     open_forks = forks_view(repo)["forks"]
     if return_payload:
@@ -293,7 +292,7 @@ def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool =
                             features=features, renamed=renamed, open_forks=open_forks)
     return _render_save(as_json, saved, sha, n, plan, resolve_plan, words=words,  # holds only ALIGN
                         message=message, features=features, renamed=renamed, why=why,  # + confirmed
-                        open_forks=open_forks, color=color)
+                        open_forks=open_forks)
 
 
 def _fold_plan_matches(repo: str) -> dict | None:
@@ -568,7 +567,7 @@ def _render_save(as_json: bool, saved: bool, sha: str | None, n: int,
                  plan: dict | None, resolve_plan: bool, *, message: str | None = None,
                  features: list[dict] = (), renamed: dict | None = None,
                  words: str | None = None, why: str | None = None,
-                 open_forks: list[dict] = (), color: bool = False) -> int:
+                 open_forks: list[dict] = ()) -> int:
     if as_json:
         return _emit_json(save_payload(
             saved=saved, sha=sha, n=n, plan=plan, words=words, why=why,
@@ -576,13 +575,8 @@ def _render_save(as_json: bool, saved: bool, sha: str | None, n: int,
         ))
 
     if saved:
-        from ugh.tui.color import color_for
-        from ugh.tui.graph import _dim, _paint
-        # Feature-colored sha, matching the rail's own coding (the dominant feature = most-touched).
-        dom = features[0]["feature_id"] if features else ""
-        sha_s = _paint(color_for(dom), sha[:7], color=color) if (color and dom) else sha[:7]
         title = f' "{message}"' if message else ""
-        print(f"✓ save {sha_s}{title}")
+        print(f"✓ save {sha[:7]}{title}")
         # Capture legibility (intent-ledger P1): when the header didn't already echo an `-m`
         # message, show what capture actually holds for this save -- the plan step's words, or an
         # explicit empty state. Never the temporally-nearest turn: the echo shows only words truly
@@ -594,24 +588,16 @@ def _render_save(as_json: bool, saved: bool, sha: str | None, n: int,
         if why:
             import textwrap
             print(f'  · why (aligned): {textwrap.shorten(why, width=60, placeholder="…")}')
-        # Post-save graph (Issue 4): the save node branching into the feature lane(s) its new ops
-        # landed in, drawn in the rail's own vocabulary (feature-colored ● live / ○ freshly minted)
-        # so `ugh save` and `ugh log` read the same -- not a stale full-map rail (a save doesn't
-        # rebuild the map), but the accurate save-time attribution rendered as a compact tree.
-        for i, f in enumerate(features):
-            conn = "└─" if i == len(features) - 1 else "├─"
-            hexc = color_for(f["feature_id"])
-            glyph = _paint(hexc, "○" if f["new"] else "●", color=color)
+        # The feature(s) this save's ops landed in, as attributed at save time.
+        for f in features:
             syms = ", ".join(f["symbols"][:3]) + (f" +{len(f['symbols']) - 3} more"
                                                   if len(f["symbols"]) > 3 else "")
             if f["new"]:
-                name = _paint(hexc, "new feature", color=color)
-                tail = _dim(f'({f["handle"]}) — unnamed; name it: '
-                            f'ugh feature rename {f["handle"]} "<label>"', color=color)
+                name = (f'new feature ({f["handle"]}) — unnamed; name it: '
+                        f'ugh feature rename {f["handle"]} "<label>"')
             else:
-                name = _paint(hexc, f["label"], color=color)
-                tail = _dim(f'({f["handle"]})', color=color)
-            print(f"  {conn} {glyph} {name} {tail}  {syms}")
+                name = f'{f["label"]} ({f["handle"]})'
+            print(f"  · {name}  {syms}")
         if renamed is not None:
             if renamed["ok"]:
                 print(f'  ✓ named "{renamed["label"]}"')
@@ -635,8 +621,7 @@ def _render_save(as_json: bool, saved: bool, sha: str | None, n: int,
         # leave the working copy and a following `save` finds nothing to mine. "Reverse this save"
         # is heard as "put me back where I was" -- edits in hand and unsaved -- so it had to say the
         # other half.
-        print(_dim("  ⤺ undo this save, and take its edits back off the working copy:  ugh undo",
-                   color=color))
+        print("  ⤺ undo this save, and take its edits back off the working copy:  ugh undo")
     if plan is not None:
         for e in plan["auto_confirmed"]:
             steps = ", ".join(h[:12] for h in e["hollow_ids"])
@@ -662,10 +647,8 @@ def _render_save(as_json: bool, saved: bool, sha: str | None, n: int,
                   "than predicted)")
     elif resolve_plan and not saved:
         print("✓ no plan matches to resolve")
-    if open_forks:
-        from ugh.tui.graph import _state_banner
-        for line in _state_banner({"forks": open_forks}, color=color):
-            print(line)
+    for line in fork_lines(open_forks):
+        print(line)
     return 0
 
 
@@ -693,8 +676,8 @@ def _undo(repo: str, as_json: bool, *, force: bool = False, emit: bool = False) 
     would clobber work committed after the edit (0.2c)."""
     from ugh.core import oplog
     from ugh.core.lens import DirtyWorkingTreeError
+    from ugh.api import plural
     from ugh.store.gitbind import GitError
-    from ugh.tui.graph import plural
 
     # Show what it will do before doing it. `undo` is what a developer reaches for when something
     # has gone wrong, and it used to apply on contact -- so the one command whose whole job is

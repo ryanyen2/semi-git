@@ -180,8 +180,8 @@ _ARTIFACTS: dict[str, _Artifact] = {
     # rework (2026-07-31-001 Phase 1.2). Content-addressed + append-only, so re-reflection is a no-op.
     "intent_rationale": _Artifact(("local", "rationale.json"), committed=False),
     # local, gitignored agent-action feed (`ugh.intent.activity`): a bounded ring buffer of the
-    # last N tool events (one row per Edit/Write) the `PostToolUse` hook appends -- the live "what
-    # the agent is doing right now" signal `now_view` surfaces. Unlike turns it is NOT content-
+    # last N tool events (one row per Edit/Write) the `PostToolUse` hook appends, which each save's
+    # capture manifest copies its window of. Unlike turns it is NOT content-
     # addressed (repeated edits to one file are distinct rows) and is trimmed to a fixed cap, so it
     # never grows unbounded. Never travels.
     "intent_activity": _Artifact(("local", "activity.json"), committed=False),

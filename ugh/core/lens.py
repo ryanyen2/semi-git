@@ -1059,8 +1059,8 @@ def dropped_ideal_ops(repo: str | Path, ref: str | None = None) -> list[str]:
     This is the P0-1 desync made observable. `_sync` seeds `base_ids` from `ideal_table[key]` and
     treats it as authoritative from then on (deliberately: that is what keeps an explicit revert
     durable, F11/F20), but it never intersects it with the ref's *current* ancestry. So after a
-    backward move the ideal still names ops from dropped commits: `log --summary` counts files that
-    no longer exist, `--map` shows vanished symbols, and a later `save` can dead-end.
+    backward move the ideal still names ops from dropped commits: `ugh status` counts files that
+    no longer exist, `ugh log` shows vanished symbols, and a later `save` can dead-end.
 
     Comparing the recorded *witness* to HEAD does not detect this -- mine-on-contact advances the
     witness to the new head while leaving the ideal untouched, so by the time any surface reads,

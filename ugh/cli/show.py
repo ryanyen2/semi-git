@@ -105,8 +105,8 @@ def _print_show(view: dict) -> None:
     if elided > 0:
         # Say what isn't shown *and* how to see it. Stopping silently at the cap reads as "that was
         # all of them"; naming a count with no way to reach it is the same problem one step later --
-        # nothing else lists a symbol's saves (`log --focus` lists a feature's checkpoints), so
-        # without the flag those saves were unreachable from the CLI.
+        # nothing else lists a symbol's saves, so without the flag those saves were unreachable
+        # from the CLI.
         print(f"               (+{elided} older save(s) — `--saves {view['save_count']}` for all)")
 
     _print_consequences(view["consequences"])
