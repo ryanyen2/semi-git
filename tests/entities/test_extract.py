@@ -103,6 +103,37 @@ def test_jsx_is_parsed_through_the_tsx_grammar():
     assert ents["Panel.render"].kind == "method"
 
 
+def test_top_level_bindings_are_entities_that_own_their_line():
+    src = (
+        "TITLE = 'x'\n"
+        "a = b = 1\n"
+        "obj.attr = 2\n"
+        "if True:\n"
+        "    NESTED = 3\n"
+        "def f():\n"
+        "    local = 4\n"
+        "    return local\n"
+    )
+    ents = _by_name(extract_file("m.py", src))
+    assert set(ents) == {"TITLE", "a", "f"}
+    assert ents["TITLE"].kind == "binding"
+    assert src.encode()[ents["TITLE"].start_byte:ents["TITLE"].end_byte] == b"TITLE = 'x'\n"
+
+    ts = (
+        "export const K = 1;\n"
+        "const f = () => K;\n"
+        "type T = number;\n"
+        "enum E { One }\n"
+        "const routes = { handler() { return 1 } };\n"
+    )
+    ents = _by_name(extract_file("m.ts", ts))
+    assert {n: e.kind for n, e in ents.items()} == {
+        "K": "binding", "f": "function", "T": "binding", "E": "binding",
+        "routes": "binding", "routes.handler": "method",
+    }
+    assert ents["routes.handler"].container == "routes"
+
+
 def test_empty_comment_only_and_broken_files_yield_no_entities_without_raising():
     assert extract_file("a.py", "") == []
     assert extract_file("a.py", "# just a comment\n") == []

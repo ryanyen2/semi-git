@@ -1,7 +1,7 @@
 """Tree-sitter entity extraction for Python and TypeScript (deterministic, offline).
 
-An *entity* is an addressable code unit — a function, class, or method — named by a
-scope-qualified path (``Bar.m``) that mirrors the effect-model address space in
+An *entity* is an addressable code unit — a function, class, method, top-level binding or
+import — named by a scope-qualified path (``Bar.m``) that mirrors the effect-model address space in
 ``ugh/effects/model.py:units`` so a Python entity lines up with the effect targets and
 blame spans that paint it. Extraction is pure over the source **bytes**: same bytes in, same
 entity list out (no LLM, no network, no dict-order nondeterminism — tree-sitter's walk is
@@ -66,7 +66,7 @@ class Entity:
     id: str  # f"{file}::{name}" — unique across the repo
     name: str  # scope-qualified path within the file, e.g. "Bar.m"
     file: str  # repo-relative path
-    kind: str  # "function" | "class" | "method"
+    kind: str  # "function" | "class" | "method" | "binding" | "import"
     start_line: int  # 1-based inclusive, display only
     end_line: int  # 1-based inclusive, display only
     container: str | None  # enclosing scope-qualified name, or None for top level
@@ -225,14 +225,7 @@ def _import_entities(root: Node, src: bytes, path: str, lang: str) -> list[Entit
         spec = _import_specifier(node, src, lang)
         if spec is None:
             continue
-        # Swallow the statement's own line terminator. Without it, removing an import leaves its
-        # trailing gap anchored to a symbol that is no longer live, and `_fold_file` relocates
-        # orphaned residue to the end of the file -- so dropping one import silently moved a
-        # newline to the bottom. Owning the terminator makes the gap empty, and an empty gap is
-        # skipped rather than orphaned.
-        end = node.end_byte
-        if end < len(src) and src[end : end + 1] == b"\n":
-            end += 1
+        end = _owned_end(node, src)
         seen[spec] = seen.get(spec, 0) + 1
         # `__import__::` marker, not a bare `import:` prefix: `_symbol_kind` splits entity from
         # nested on "does the name contain a dot", and specifiers are full of dots.
@@ -255,6 +248,63 @@ def _import_entities(root: Node, src: bytes, path: str, lang: str) -> list[Entit
     return out
 
 
+def _owned_end(node: Node, src: bytes) -> int:
+    """A root statement's end, swallowing its own line terminator. Without it, removing the
+    statement leaves its trailing gap anchored to a symbol that is no longer live, and `_fold_file`
+    relocates orphaned residue to the end of the file -- so dropping one import silently moved a
+    newline to the bottom. Owning the terminator makes the gap empty, and an empty gap is skipped
+    rather than orphaned."""
+    end = node.end_byte
+    return end + 1 if src[end : end + 1] == b"\n" else end
+
+
+_NAME_NODES = {"identifier", "type_identifier", "shorthand_property_identifier_pattern"}
+_PATTERN_FIELD = {"pair_pattern": "value", "object_assignment_pattern": "left", "assignment_pattern": "left"}
+_PATTERN_NODES = {
+    "pattern_list", "tuple_pattern", "list_pattern", "tuple", "list", "parenthesized_expression",
+    "list_splat_pattern", "list_splat", "dictionary_splat_pattern", "as_pattern_target",
+    "object_pattern", "array_pattern", "rest_pattern",
+}
+
+
+def binding_targets(node: Node | None) -> list[str]:
+    """The names an assignment target or destructuring pattern binds (`a`, `a, b`, `{ x, y: [z] }`)."""
+    if node is None:
+        return []
+    if node.type in _NAME_NODES:
+        return [node.text.decode("utf-8", "replace")]
+    if node.type in _PATTERN_FIELD:
+        return binding_targets(node.child_by_field_name(_PATTERN_FIELD[node.type]))
+    if node.type in _PATTERN_NODES:
+        return [n for c in node.named_children for n in binding_targets(c)]
+    return []
+
+
+def binding_names(node: Node, lang: str) -> list[str]:
+    """The names a root statement binds when it is a binding entity (a module-level assignment,
+    `const`/`let`/`var`, `type`, `enum`), else []. A declaration holding an arrow function or
+    function expression is not one: those declarators are function entities already."""
+    if lang == "python":
+        if node.type != "expression_statement" or not node.named_children:
+            return []
+        names: list[str] = []
+        stmt = node.named_children[0]
+        while stmt is not None and stmt.type in ("assignment", "augmented_assignment"):
+            names += binding_targets(stmt.child_by_field_name("left"))
+            stmt = stmt.child_by_field_name("right")
+        return names
+    decl = node.child_by_field_name("declaration") if node.type == "export_statement" else node
+    if decl is None:
+        return []
+    if decl.type in ("type_alias_declaration", "enum_declaration"):
+        return binding_targets(decl.child_by_field_name("name"))
+    if decl.type not in _DECLARATION_TYPES:
+        return []
+    declarators = [c for c in decl.named_children if c.type == "variable_declarator"]
+    if any((d.child_by_field_name("value") or d).type in _ARROW_VALUES for d in declarators):
+        return []
+    return [n for d in declarators for n in binding_targets(d.child_by_field_name("name"))]
+
 
 def _language_for(path: str) -> str | None:
     for ext, lang in _EXT_LANG.items():
@@ -266,13 +316,6 @@ def _language_for(path: str) -> str | None:
 # Comment node types across the supported grammars — stripped from the structural hash so a
 # comment/docstring edit doesn't read as a code change.
 _COMMENT_NODES = {"comment", "line_comment", "block_comment", "doc_comment", "tag_comment"}
-
-
-def _content_hash_range(start: Node, end: Node, src: bytes) -> str:
-    """Hash the verbatim bytes from ``start``'s beginning to ``end``'s end -- a single slice,
-    since decorator-widening and collision-coalescing only ever combine sibling nodes that are
-    already contiguous (or safely so) in the source. Any textual change flips it."""
-    return hashlib.sha1(src[start.start_byte : end.end_byte]).hexdigest()
 
 
 def _structural_hash_range(start: Node, end: Node, src: bytes) -> str:
@@ -374,6 +417,7 @@ class _Hit:
     container: str | None
     start_node: Node
     end_node: Node
+    end_byte: int
 
 
 def _coalesce(hits: list[_Hit], all_hits_by_name: dict[str, list[_Hit]], src: bytes) -> list[_Hit]:
@@ -416,6 +460,7 @@ def _coalesce(hits: list[_Hit], all_hits_by_name: dict[str, list[_Hit]], src: by
             container=ordered[0].container,
             start_node=ordered[0].start_node,
             end_node=ordered[-1].end_node,
+            end_byte=ordered[-1].end_byte,
         )
         return [merged]
     # Non-contiguous collision (rare: a conditional redefinition) -- keep the first occurrence's
@@ -424,7 +469,8 @@ def _coalesce(hits: list[_Hit], all_hits_by_name: dict[str, list[_Hit]], src: by
     out: list[_Hit] = []
     for i, h in enumerate(ordered):
         name = h.name if i == 0 else f"{h.name}${i + 1}"
-        out.append(_Hit(name=name, kind=h.kind, container=h.container, start_node=h.start_node, end_node=h.end_node))
+        out.append(_Hit(name=name, kind=h.kind, container=h.container, start_node=h.start_node,
+                        end_node=h.end_node, end_byte=h.end_byte))
     return out
 
 
@@ -453,7 +499,7 @@ _EXTRACT_CACHE_MAX = 4096
 # returns import entities for bytes it already parsed. Without this, promoting imports would read
 # stale pre-import lists straight off disk and the change would look like it did nothing.
 # Bump on any change to what extract_file returns for unchanged input.
-_EXTRACT_WALK = 2
+_EXTRACT_WALK = 3
 
 _PERSIST_REPO = None
 _PERSIST_SEEN: set[tuple] = set()  # keys touched since the last flush
@@ -552,12 +598,20 @@ def extract_file(path: str, source: bytes | str, *, language: str | None = None)
             if kind == "function" and stack and stack[-1][1] == "class":
                 kind = "method"
             start_node, end_node = _entity_span(def_node, lang)
-            hits.append(_Hit(name=name, kind=kind, container=container, start_node=start_node, end_node=end_node))
+            hits.append(_Hit(name=name, kind=kind, container=container, start_node=start_node,
+                             end_node=end_node, end_byte=end_node.end_byte))
             child_stack = [*stack, (leaf, kind)]
         for child in node.children:
             walk(child, child_stack)
 
-    walk(tree.root_node, [])
+    for child in tree.root_node.children:
+        names = binding_names(child, lang)
+        if names:
+            hits.append(_Hit(name=names[0], kind="binding", container=None, start_node=child,
+                             end_node=child, end_byte=_owned_end(child, src)))
+            walk(child, [(names[0], "binding")])
+        else:
+            walk(child, [])
 
     by_name: dict[str, list[_Hit]] = {}
     for h in hits:
@@ -575,10 +629,10 @@ def extract_file(path: str, source: bytes | str, *, language: str | None = None)
                     start_line=h.start_node.start_point[0] + 1,
                     end_line=h.end_node.end_point[0] + 1,
                     container=h.container,
-                    content_hash=_content_hash_range(h.start_node, h.end_node, src),
+                    content_hash=hashlib.sha1(src[h.start_node.start_byte : h.end_byte]).hexdigest(),
                     structural_hash=_structural_hash_range(h.start_node, h.end_node, src),
                     start_byte=h.start_node.start_byte,
-                    end_byte=h.end_node.end_byte,
+                    end_byte=h.end_byte,
                 )
             )
     out.extend(_import_entities(tree.root_node, src, path, lang))

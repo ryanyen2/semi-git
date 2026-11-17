@@ -14,14 +14,14 @@ from tests.laws import corpus
 
 
 def _hub_repo(tmp_path):
-    """Two commits: commit 1 tangles ``foo`` (calls ``shared``) with ``shared`` itself, plus an
-    unrelated ``bar``; commit 2 edits only ``shared``. ``shared`` is touched by 2 of the 3 mined
+    """Two commits: commit 1 adds ``shared``, ``foo`` (which uses ``shared``) and an unrelated
+    ``bar``; commit 2 edits only ``shared``. ``shared`` is touched by 2 of the 3 mined
     ops, ``foo``/``bar`` by 1 each -- enough to cross the hub floor (``max(2, ...)``) for exactly
     one symbol on a tiny history."""
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
     (repo / "hub.py").write_text("def shared():\n    return 0\n", encoding="utf-8")
-    (repo / "a.py").write_text("def foo():\n    return shared()\n", encoding="utf-8")
+    (repo / "a.py").write_text("from hub import shared\n\ndef foo():\n    return shared()\n", encoding="utf-8")
     (repo / "b.py").write_text("def bar():\n    return 1\n", encoding="utf-8")
     gb.commit_all("feat(core): add shared, foo, bar")
 
@@ -56,12 +56,11 @@ def test_hub_symbol_stripped_from_cochange_but_not_structural(tmp_path):
     assert "a.py::foo" not in hubs
     assert "b.py::bar" not in hubs
 
-    # foo+shared were mined as one tangled op (foo calls shared) -- would be a cochange edge,
-    # except shared is hub-stripped before pairs are formed.
+    # One op per definition: no op pairs foo with shared (or with its import).
     assert ("a.py::foo", "hub.py::shared") not in cochange
-    assert not cochange  # no other pair ever shares an op's footprint in this fixture
+    assert not cochange
 
-    # Hub-stripping only affects the co-change signal; the structural (calls) edge survives.
+    # Hub-stripping only affects the co-change signal; the structural (uses) edge survives.
     assert ("a.py::foo", "hub.py::shared") in structural
 
 

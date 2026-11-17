@@ -43,6 +43,12 @@ def _op_with(ops, sym: str, needle: bytes):
     )
 
 
+def _steps_of(repo, sha: str) -> frozenset[str]:
+    """A save's steps: its ops on top-level definitions, one per definition it changed."""
+    return frozenset(o.id for o in Store(repo).all_ops()
+                     if sha in o.provenance and not any("::__" in sym for sym in o.footprint))
+
+
 def test_default_revert_of_overlapping_midchain_keeps_later_work_and_reports(tmp_path):
     """The safe default never demolishes: subtracting a mid-chain op whose lines the tip also
     rewrote is a conflict, so the symbol is KEPT byte-identical and reported for a manual edit --
@@ -242,7 +248,7 @@ def test_default_revert_subtracts_cleanly_and_keeps_interleaved_later_work(tmp_p
     (repo / "util.py").write_text(
         "def build():\n    a()\n    wl()\n    b()\n\ndef wl():\n    return 1\n",
         encoding="utf-8")
-    gb.commit_all("feature F: wl plus wiring")
+    feature = gb.commit_all("feature F: wl plus wiring")
     (repo / "util.py").write_text(
         "def build():\n    a()\n    wl()\n    b()\n    c()\n\ndef wl():\n    return 1\n"
         "\ndef c_helper():\n    return 2\n",
@@ -250,17 +256,15 @@ def test_default_revert_subtracts_cleanly_and_keeps_interleaved_later_work(tmp_p
     gb.commit_all("later feature: c")
 
     get(repo)
-    ops = Store(repo).all_ops()
-    target = next(o for o in ops
-                  if "util.py::wl" in o.footprint and o.footprint["util.py::wl"][0] is None)
+    steps = _steps_of(repo, feature)  # wl's birth and build's wiring
 
-    preview = verbs.revert(repo, target.id, emit=True)
+    preview = verbs.plan_revert_op_set(repo, "F", steps)
     assert preview.ok, preview.message
     assert "util.py::wl" in preview.pruned_symbols
     assert "util.py::build" in preview.subtracted_symbols
     assert not preview.kept_conflicts
 
-    verbs.revert(repo, target.id)  # apply
+    verbs.apply(repo, preview)
     text = code(get(repo), Store(repo).all_ops())["util.py"].decode()
     assert "def wl" not in text
     assert "wl()" not in text
@@ -540,7 +544,7 @@ def test_restore_peels_the_splice_a_subtraction_revert_minted(tmp_path):
     (repo / "util.py").write_text(
         "def build():\n    a()\n    wl()\n    b()\n\ndef wl():\n    return 1\n",
         encoding="utf-8")
-    gb.commit_all("feature F: wl plus wiring")
+    feature = gb.commit_all("feature F: wl plus wiring")
     (repo / "util.py").write_text(
         "def build():\n    a()\n    wl()\n    b()\n    c()\n\ndef wl():\n    return 1\n"
         "\ndef c_helper():\n    return 2\n",
@@ -548,15 +552,15 @@ def test_restore_peels_the_splice_a_subtraction_revert_minted(tmp_path):
     gb.commit_all("later feature: c")
 
     get(repo)
-    target = next(o for o in Store(repo).all_ops()
-                  if "util.py::wl" in o.footprint and o.footprint["util.py::wl"][0] is None)
+    steps = _steps_of(repo, feature)
 
-    verbs.revert(repo, target.id)
+    verbs.apply(repo, verbs.plan_revert_op_set(repo, "F", steps))
     text = code(get(repo), Store(repo).all_ops())["util.py"].decode()
     assert "def wl" not in text and "wl()" not in text
 
-    preview = verbs.restore(repo, target.id)
+    preview = verbs.plan_restore_op_set(repo, "F", steps)
     assert preview.ok, preview.message
+    verbs.apply(repo, preview)
     text = code(get(repo), Store(repo).all_ops())["util.py"].decode()
     assert "def wl" in text
     assert "wl()" in text          # the splice was peeled, not merely out-voted
@@ -612,12 +616,12 @@ def test_restore_declines_the_event_inverse_when_later_work_built_on_the_splice(
     (repo / "util.py").write_text(
         "def build():\n    a()\n    wl()\n    b()\n\ndef wl():\n    return 1\n",
         encoding="utf-8")
-    gb.commit_all("feature F")
+    feature = gb.commit_all("feature F")
     get(repo)
-    target = next(o for o in Store(repo).all_ops()
-                  if "util.py::wl" in o.footprint and o.footprint["util.py::wl"][0] is None)
+    steps = _steps_of(repo, feature)
+    wiring = next(o for o in Store(repo).all_ops() if o.id in steps and "util.py::build" in o.footprint)
 
-    verbs.revert(repo, target.id)
+    verbs.apply(repo, verbs.plan_revert_op_set(repo, "F", steps))
 
     text = code(get(repo), Store(repo).all_ops())["util.py"].decode()
     (repo / "util.py").write_text(text.replace("    b()\n", "    b()\n    d()\n"),
@@ -626,7 +630,7 @@ def test_restore_declines_the_event_inverse_when_later_work_built_on_the_splice(
     get(repo)
     before = get(repo).op_ids
 
-    preview = verbs.plan_restore(repo, target.id)
+    preview = verbs.plan_restore(repo, wiring.id)
     assert not preview.ok and preview.forked
     assert "util.py::build" in preview.message  # names the symbol, not a wall of op ids
     assert preview.conflicts and preview.conflicts[0]["symbol"] == "util.py::build"

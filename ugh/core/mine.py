@@ -8,8 +8,8 @@ which entity (if any) immediately precedes it -- born with the entity and *revis
 later commit changes its immediate predecessor (an insertion before it, a deletion of its
 predecessor), diffed old-tree-vs-new-tree exactly like residue segments; independent per
 entity, not one shared chain per file, so two unrelated insertions from different features
-never fork ("anchor-disjoint additions commute", ADR S3.5) -- def-use untangling of a single commit's
-touched entities into separate ops (ClusterChanges-style -- BET-A), and content-addressed `Op`
+never fork ("anchor-disjoint additions commute", ADR S3.5) -- one op per touched top-level
+definition of a commit, and content-addressed `Op`
 construction stamped with the miner version (R12) via `ugh.core.op.make_op`.
 
 Determinism: every dict/set iterated below is sorted or processed in a fixed insertion order;
@@ -86,12 +86,12 @@ class _Touch:
     # by basename) -- advisory only, folded into the built op's `derived` flag.
 
 
-def _requires_of(sym: str, calls_by_src: dict[str, set[str]], entity_version: dict[str, str]) -> frozenset[tuple[str, str]]:
+def _requires_of(sym: str, uses_by_src: dict[str, set[str]], entity_version: dict[str, str]) -> frozenset[tuple[str, str]]:
     """The (symbol id, version) pairs `sym`'s current image depends on -- pinned to the exact
     version visible when this op is mined (R4), not just the symbol name, so U4's reference
     edges point at the specific op that produced that version."""
     return frozenset(
-        (dst, entity_version[dst]) for dst in calls_by_src.get(sym, ()) if dst in entity_version
+        (dst, entity_version[dst]) for dst in uses_by_src.get(sym, ()) if dst in entity_version
     )
 
 
@@ -217,7 +217,7 @@ def _top_level_anchor_facts(entities: list[Entity]) -> dict[str, str | None]:
 
 
 def _emit_scope_reshape(
-    emit_entity, old: Snap, new: Snap, new_raw: bytes, calls_by_src, entity_version, bottom: str
+    emit_entity, old: Snap, new: Snap, new_raw: bytes, uses_by_src, entity_version, bottom: str
 ) -> None:
     """A link the identity matcher found by body/structure similarity, but across a *kind*
     change (function -> method or vice versa) -- a genuine scope reshape, not a rename. The
@@ -228,7 +228,7 @@ def _emit_scope_reshape(
     emit_entity(old.ent.id, _positional_version(old.ent.id, old.content_hash), bottom, None, frozenset())
     emit_entity(
         new.ent.id, None, _positional_version(new.ent.id, new.content_hash),
-        _entity_bytes(new_raw, new.ent), _requires_of(new.ent.id, calls_by_src, entity_version),
+        _entity_bytes(new_raw, new.ent), _requires_of(new.ent.id, uses_by_src, entity_version),
     )
 
 
@@ -351,11 +351,8 @@ def _apply_rebirth_chaining(gb: GitBinding, sha: str, parent: str | None, touche
 
 
 def _untangle(touched_ids: set[str], edges: list[EntityEdge]) -> list[frozenset[str]]:
-    """Split a commit's touched entities into groups by *direct* def-use connectivity (calls,
-    imports, containment) -- ClusterChanges-style (BET-A). Two touched entities with no direct
-    edge between them become separate ops even if both call some third, untouched helper: this
-    errs toward finer granularity, which `merge-op` (U11) can always undo, whereas a wrongly-
-    tangled op cannot be split without `split-op`'s manual image authoring."""
+    """Split a commit's touched entities into one group per top-level definition with its nested
+    members. Uses between definitions are not grouped; they are `requires`."""
     parent = {t: t for t in touched_ids}
 
     def find(x: str) -> str:
@@ -368,7 +365,7 @@ def _untangle(touched_ids: set[str], edges: list[EntityEdge]) -> list[frozenset[
         parent[find(a)] = find(b)
 
     for e in edges:
-        if e.src in touched_ids and e.dst in touched_ids:
+        if e.type == "contains" and e.src in touched_ids and e.dst in touched_ids:
             union(e.src, e.dst)
 
     groups: dict[str, set[str]] = {}
@@ -396,12 +393,14 @@ def _mine_one(
     tier_cfg_parent = tier_cfgs.get(parent) if parent else None
     codebase_after = gb.tree_at(sha)
     graph_after = build_entity_graph(codebase_after)
-    calls_by_src: dict[str, set[str]] = {}
+    uses_by_src: dict[str, set[str]] = {}
     for e in graph_after.edges:
-        if e.type in ("calls", "imports"):
-            calls_by_src.setdefault(e.src, set()).add(e.dst)
+        if e.type == "uses":
+            uses_by_src.setdefault(e.src, set()).add(e.dst)
+    # Only entities some op produces: a requires on any other version never grounds.
+    mined_files = {f for f in {e.file for e in graph_after.entities} if tiers.resolve_tier(f, tier_cfg) == "entity"}
     entity_version: dict[str, str] = {
-        e.id: _positional_version(e.id, e.content_hash) for e in graph_after.entities
+        e.id: _positional_version(e.id, e.content_hash) for e in graph_after.entities if e.file in mined_files
     }
     container_of: dict[str, str | None] = {e.id: e.container for e in graph_after.entities}
 
@@ -583,18 +582,18 @@ def _mine_one(
                 a.ent.id,
                 _positional_version(a.ent.id, b.content_hash),
                 _positional_version(a.ent.id, a.content_hash),
-                _entity_bytes(new_bytes, a.ent), _requires_of(a.ent.id, calls_by_src, entity_version),
+                _entity_bytes(new_bytes, a.ent), _requires_of(a.ent.id, uses_by_src, entity_version),
             )
         for old, new in m.links:  # rename / move within one file
             if old.ent.kind != new.ent.kind:
-                _emit_scope_reshape(emit_entity, old, new, new_bytes, calls_by_src, entity_version, bottom)
+                _emit_scope_reshape(emit_entity, old, new, new_bytes, uses_by_src, entity_version, bottom)
                 continue
             uf.union(old.ent.id, new.ent.id)
             emit_entity(
                 new.ent.id,
                 _positional_version(old.ent.id, old.content_hash),
                 _positional_version(new.ent.id, new.content_hash),
-                _entity_bytes(new_bytes, new.ent), _requires_of(new.ent.id, calls_by_src, entity_version),
+                _entity_bytes(new_bytes, new.ent), _requires_of(new.ent.id, uses_by_src, entity_version),
                 via_move=True,
             )
 
@@ -673,14 +672,14 @@ def _mine_one(
         # here would re-spawn git once per cross-file-moved symbol.
         new_file_raw = new_blobs.get((sha, new.ent.file)) or gb.blob_bytes(sha, new.ent.file) or b""
         if old.ent.kind != new.ent.kind:
-            _emit_scope_reshape(emit_entity, old, new, new_file_raw, calls_by_src, entity_version, bottom)
+            _emit_scope_reshape(emit_entity, old, new, new_file_raw, uses_by_src, entity_version, bottom)
             continue
         uf.union(old.ent.id, new.ent.id)
         emit_entity(
             new.ent.id,
             _positional_version(old.ent.id, old.content_hash),
             _positional_version(new.ent.id, new.content_hash),
-            _entity_bytes(new_file_raw, new.ent), _requires_of(new.ent.id, calls_by_src, entity_version),
+            _entity_bytes(new_file_raw, new.ent), _requires_of(new.ent.id, uses_by_src, entity_version),
             via_move=True,
         )
     res_added = [s for s in commit_added if s.ent.id not in matched_a]
@@ -689,7 +688,7 @@ def _mine_one(
         raw = new_blobs.get((sha, s.ent.file)) or gb.blob_bytes(sha, s.ent.file) or b""
         emit_entity(
             s.ent.id, None, _positional_version(s.ent.id, s.content_hash),
-            _entity_bytes(raw, s.ent), _requires_of(s.ent.id, calls_by_src, entity_version),
+            _entity_bytes(raw, s.ent), _requires_of(s.ent.id, uses_by_src, entity_version),
         )
     for s in res_removed:
         emit_entity(s.ent.id, _positional_version(s.ent.id, s.content_hash), bottom, None, frozenset())
@@ -697,8 +696,8 @@ def _mine_one(
     # Anchor facts are emitted inside the per-file loop above (diffed old-vs-new alongside the
     # residue segments), so insertions and deletions revise the displaced neighbors' facts too.
 
-    # Untangle this commit's touched entities into def-use-connected groups (BET-A), then
-    # bucket each touch by its group's deterministic anchor (lexicographically-smallest
+    # One group per top-level definition, then bucket each touch by its group's deterministic
+    # anchor (lexicographically-smallest
     # member) so grouping doesn't depend on dict/set iteration order.
     touched_ids = {t.surface_id for t in entity_touches}
     for group in _untangle(touched_ids, graph_after.edges):
@@ -803,8 +802,10 @@ def _build_ops(touches: list[_Touch], uf: _UnionFind) -> list[Op]:
     """Second pass: resolve rename-stable canonical ids now that every union is known, then
     fold each bucket's touches into one content-addressed Op."""
     by_bucket: dict[str, list[_Touch]] = {}
+    saved_with: dict[str, set[str]] = {}  # commit -> every symbol it touched
     for t in touches:
         by_bucket.setdefault(t.bucket, []).append(t)
+        saved_with.setdefault(t.bucket.split(":", 1)[0], set()).add(uf.find(t.surface_id))
 
     ops: list[Op] = []
     for bucket, group in by_bucket.items():
@@ -827,7 +828,8 @@ def _build_ops(touches: list[_Touch], uf: _UnionFind) -> list[Op]:
             any_move = any_move or t.via_move
             any_derived = any_derived or t.derived
 
-        requires = {(r_id, r_ver) for r_id, r_ver in requires if r_id not in footprint}  # never self
+        # A save never stands on itself: `_grounded` would drop two ops of one save that require each other.
+        requires = {(r_id, r_ver) for r_id, r_ver in requires if r_id not in saved_with[sha]}
         if any_move and not any_added and not any_removed:
             kind = "move"
         elif any_removed and all(is_bottom(t.after_version) for t in group):

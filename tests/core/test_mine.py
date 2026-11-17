@@ -539,6 +539,31 @@ def _materialized(repo):
     return code(get(repo), Store(repo).all_ops())
 
 
+def test_mutually_recursive_functions_in_one_save_are_two_grounded_ops(tmp_path):
+    """One op per top-level definition: `even` and `odd` use each other, and neither op may
+    require the other (a save does not stand on itself), or grounding would drop both."""
+    gb, _ = init_store(tmp_path)
+    src = ("def even(n):\n    return n == 0 or odd(n - 1)\n\n"
+           "def odd(n):\n    return n != 0 and even(n - 1)\n")
+    (tmp_path / "a.py").write_text(src, encoding="utf-8")
+    sha = gb.commit_all("add even and odd")
+
+    ops, _ = mine(tmp_path)
+    entity_ops = _entity_ops(_ops_for_commit(ops, sha))
+    assert sorted(sym for op in entity_ops for sym in op.footprint) == ["a.py::even", "a.py::odd"]
+    assert len(entity_ops) == 2 and not any(op.requires for op in entity_ops)
+    assert order.reduce_to_ideal({op.id for op in ops}, ops) == {op.id for op in ops}
+    assert _materialized(tmp_path)["a.py"] == src.encode()
+
+    # A later save does stand on them.
+    (tmp_path / "a.py").write_text(src + "\ndef check(n):\n    return even(n)\n", encoding="utf-8")
+    later = gb.commit_all("add check")
+    ops, _ = mine(tmp_path)
+    (check_op,) = _entity_ops(_ops_for_commit(ops, later))
+    even_op = next(op for op in _entity_ops(_ops_for_commit(ops, sha)) if "a.py::even" in op.footprint)
+    assert check_op.requires == {("a.py::even", even_op.footprint["a.py::even"][1])}
+
+
 def test_top_of_file_insertion_round_trips(tmp_path):
     """A new first entity displaces the old first entity's FIRST fact; without a revision op the
     fold materializes the newcomer at the end of the file."""
