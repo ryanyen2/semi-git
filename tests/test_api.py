@@ -22,6 +22,20 @@ from ugh.store.gitbind import init_store
 from tests.laws import corpus
 
 
+def _take_out(repo, op_ids):
+    from ugh.core import planner
+
+    return planner.apply(repo, planner.plan(repo, frozenset(op_ids), target="t"))
+
+
+def _head_ops(repo):
+    from ugh.core.opindex import index_ops
+    from ugh.store.gitbind import GitBinding
+
+    head = GitBinding(repo).head()
+    return {o.id for o in index_ops(repo) if head in o.provenance}
+
+
 def _mined(tmp_path, name):
     """Build a deterministic kernel git fixture and mine it (get) so the store is populated."""
     repo = corpus.CORPUS[name].build(tmp_path / "repo")
@@ -329,7 +343,6 @@ def test_segments_view_reports_which_chapters_are_still_in_head(tmp_path):
     the removal the revert preview already draws; `None` means the ideal could not be read (an unborn
     or unmined ref), which a renderer must read as "no claim", never as "removed"."""
     from ugh.api import segments_view
-    from ugh.core import verbs
 
     gb, _ = init_store(tmp_path)
     for i in range(3):
@@ -350,30 +363,21 @@ def test_segments_view_reports_which_chapters_are_still_in_head(tmp_path):
     assert all(s["present_op_count"] == s["op_count"] for s in before)  # nothing reverted yet
 
     last = before[-1]
-    # The same op-set revert `ugh revert <feature>@<n>` runs (ugh.intent.segment's docstring).
-    verbs.apply(tmp_path, verbs.plan_revert_op_set(tmp_path, last["checkpoint"],
-                                                  frozenset(last["op_ids"])))
+    _take_out(tmp_path, last["op_ids"])  # what `ugh revert <feature>@<n>` takes out
 
     after = {s["checkpoint"]: s for s in segments_view(tmp_path)}
     assert last["checkpoint"] in after, "a reverted chapter stays listed -- restore needs it"
-    assert after[last["checkpoint"]]["present_op_count"] == 0
     assert after[last["checkpoint"]]["state"] == "reverted"
+    assert after[last["checkpoint"]]["taken_out_by"]
     for s in before[:-1]:
-        assert after[s["checkpoint"]]["present_op_count"] == s["op_count"]  # untouched chapters
         assert after[s["checkpoint"]]["state"] == "live"
 
 
 def test_segment_state_is_read_per_symbol_not_per_op_count(tmp_path):
-    """`present_op_count` cannot say "taken out". A revert of one chapter takes the later chapter's
-    rework of the same function with it (its up-set) and leaves the function the later chapter added
-    on its own, so the later chapter keeps three of its five ops in the ideal and the workbench drew it
-    solid, as if untouched. Measured on the footfall study repo the other way round too: forward
-    subtraction kept ops in the ideal under a masking rework on 15 of 22 reverted chapters. `state`
-    asks the question that has an answer, per named symbol: is this chapter's contribution to it
-    still in the code. The reverted chapter reads `reverted`; the later one reads `partial`, and its
-    `symbols` say which function is gone and which is still there."""
+    """A chapter whose steps are partly out reads `partial`, and its `symbols` say which function
+    is gone and which is still there."""
     from ugh.api import segments_view
-    from ugh.core import verbs
+    from ugh.core.opindex import index_ops
 
     gb, _ = init_store(tmp_path)
     (tmp_path / "a.py").write_text("def g():\n    return 1\n", encoding="utf-8")
@@ -392,18 +396,13 @@ def test_segment_state_is_read_per_symbol_not_per_op_count(tmp_path):
 
     before = {s["checkpoint"]: s for s in segments_view(tmp_path)}
     assert len(before) == 2 and all(s["state"] == "live" for s in before.values())
-    first = min(before.values(), key=lambda s: s["seg_index"])
-    assert [(x["symbol"], x["kind"]) for x in first["symbols"]] == [("a.py::g", "added")]
+    later = max(before.values(), key=lambda s: s["seg_index"])
+    h_op = next(o.id for o in index_ops(tmp_path) if o.id in later["op_ids"] and "a.py::h" in o.footprint)
+    _take_out(tmp_path, {h_op})
 
-    verbs.apply(tmp_path, verbs.plan_revert_op_set(tmp_path, first["checkpoint"],
-                                                  frozenset(first["op_ids"])))
-
-    after = {s["checkpoint"]: s for s in segments_view(tmp_path)}
-    gone, later = after[first["checkpoint"]], after[max(after, key=lambda k: after[k]["seg_index"])]
-    assert gone["state"] == "reverted", gone
-    assert later["present_op_count"] > 0, "the old field still reads this chapter as untouched"
-    assert later["state"] == "partial", later
-    assert {x["symbol"]: x["live"] for x in later["symbols"]} == {"a.py::g": False, "a.py::h": True}
+    after = {s["checkpoint"]: s for s in segments_view(tmp_path)}[later["checkpoint"]]
+    assert after["state"] == "partial", after
+    assert {x["symbol"]: x["live"] for x in after["symbols"]} == {"a.py::g": True, "a.py::h": False}
 
 
 def test_grid_view_marks_no_partial_commits_until_a_reduction_is_recorded(tmp_path):
@@ -431,24 +430,21 @@ def test_grid_view_names_reverted_work_no_lane_can_show(tmp_path):
     grid then draws each chapter solid and each lane whole while the code is still missing from disk
     -- a read layer asserting a state the working tree contradicts. Ops the ideal excludes that no
     cell accounts for are reported instead of dropped, so a surface can say what it cannot draw."""
+    from ugh import api
     from ugh.api import grid_view
-    from ugh.core import verbs
     from ugh.lens.map import build_map
 
     repo = _mined(tmp_path, "linear_history")
     build_map(repo)
     assert grid_view(repo)["reverted_unaccounted"]["op_count"] == 0  # nothing reverted yet
 
-    ops = Store(repo).all_ops()
-    victim = sorted(
-        (op for op in ops if any(_is_code_symbol(s) for s in op.footprint)), key=lambda op: op.id,
-    )[-1]
-    verbs.apply(repo, verbs.plan_revert_op_set(repo, "victim", frozenset({victim.id})))
-    build_map(repo)  # the rebuild that orphans the reverted symbol's ops
+    from ugh.core.opindex import index_ops
 
-    gap = grid_view(repo)["reverted_unaccounted"]
-    shown = {oid for c in grid_view(repo)["cells"] for oid in c["op_ids"]}
-    assert victim.id not in shown, "this test only means anything if the rebuild dropped the op"
+    baz = next(o for o in index_ops(repo) if o.footprint.get("b.py::baz", ("x",))[0] is None)
+    done = _take_out(repo, {baz.id})
+    assert done.undone
+    build_map(repo)
+    gap = api._reverted_unaccounted(repo, set())
     assert gap["op_count"] >= 1
     assert any(_is_code_symbol(s) for s in gap["symbols"]), gap["symbols"]
 
@@ -459,8 +455,8 @@ def test_a_stale_ideal_table_is_not_read_as_a_revert(tmp_path):
     table while `ideal_for_ref` rescans provenance, so a table written by an earlier derivation reads
     as 1500-odd "reverted edits" on a repo where nothing was ever reverted -- measured on this repo's
     own history. A warning that fires when nothing happened teaches a reader to ignore the warning,
-    which costs more than the case it was built for. The claim is only ever about work a *user edit*
-    removed, so the ops come from the applied `ideal_edit` events in the operation log."""
+    which costs more than the case it was built for. The claim is only ever about work a revert
+    took out, so the ops come from the planner's `out` table."""
     from ugh import api
     from ugh.api import grid_view
     from ugh.core import lens
@@ -481,29 +477,6 @@ def test_a_stale_ideal_table_is_not_read_as_a_revert(tmp_path):
     # no cell may be left to absorb the disagreement. With the old formula this returns the victim.
     assert api._reverted_unaccounted(repo, set())["op_count"] == 0
     assert grid_view(repo)["reverted_unaccounted"]["op_count"] == 0
-
-
-def test_coupling_flags_a_shared_residue_removal():
-    """U4/R3: `_coupling_rows` names when a removal drops a residue op in a file a *different*
-    surviving feature still occupies -- the shared whitespace the U32 corruption cuts through --
-    so a preview shows which feature it reaches into. No flag when the shared file has no surviving
-    other-feature entity, or when no residue is dropped."""
-    from ugh.api import _coupling_rows
-
-    foo = make_op({"a.py::foo": (None, "v1")}, {"a.py::foo": b"1"})
-    bar = make_op({"a.py::bar": (None, "v1")}, {"a.py::bar": b"1"})
-    residue = make_op({"a.py::__residue__::foo": (None, "v1")}, {"a.py::__residue__::foo": b" "})
-    ops = [foo, bar, residue]
-    op_leaf = {foo.id: "A", residue.id: "A", bar.id: "B"}  # residue follows foo's lane (U4)
-
-    # revert A drops foo + its residue; B's bar survives in a.py -> coupling flagged.
-    coupling = _coupling_rows(ops, op_leaf, {foo.id, residue.id}, {bar.id})
-    assert coupling == [{"file": "a.py", "removed_feature": "A", "coupled_feature": "B"}]
-
-    # no surviving other-feature entity in the file -> no coupling.
-    assert _coupling_rows(ops, op_leaf, {foo.id, residue.id}, set()) == []
-    # a removal that drops no residue -> no coupling (nothing shared was cut).
-    assert _coupling_rows(ops, op_leaf, {foo.id}, {bar.id}) == []
 
 
 def test_grid_view_marks_partial_commits_over_a_fork(tmp_path):
@@ -668,7 +641,7 @@ def test_fold_view_requires_exactly_one_frontier_kwarg(tmp_path):
 def test_fold_view_rejects_an_ungrounded_op_id_set_without_raising(tmp_path):
     """An explicit `op_ids` set that isn't downward-closed (here: a single non-root op missing
     its own chain prerequisites) is refused as `{"forked": True, "message": ...}` -- the same
-    `Ideal.from_ops` refusal `ugh.core.verbs._validated` turns into a preview outcome elsewhere,
+    `Ideal.from_ops` refusal turns into a preview outcome elsewhere,
     never a raised `ValueError` through the API."""
     repo = _mined(tmp_path, "linear_history")
     hist = history_view(repo, full=True)
@@ -1070,100 +1043,6 @@ def test_open_forks_surface_only_resolvable_divergent_forks(tmp_path):
     assert [f["symbol"] for f in status_view(repo)["forks"]["records"]] == ["c.py::baz"]
 
 
-# -- U3: per-dependent revert frontier (R4) -----------------------------------------------------
-
-def _chain_repo(tmp_path):
-    """helper <- user <- caller <- deep, each in its own commit. Reverting `user` exercises all
-    three frontier buckets: `helper` is a foundation (user builds on it), `caller` is a blast
-    (direct reference-edge dependent of user), `deep` is a carry (transitive, via caller)."""
-    repo = tmp_path / "repo"
-    gb, _ = init_store(repo)
-    (repo / "a.py").write_text("def helper():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("helper")
-    (repo / "b.py").write_text("from a import helper\n\ndef user():\n    return helper() + 1\n", encoding="utf-8")
-    gb.commit_all("user")
-    (repo / "c.py").write_text("from b import user\n\ndef caller():\n    return user() + 1\n", encoding="utf-8")
-    gb.commit_all("caller")
-    (repo / "d.py").write_text("from c import caller\n\ndef deep():\n    return caller() + 1\n", encoding="utf-8")
-    gb.commit_all("deep")
-    get(repo)
-    return repo
-
-
-# -- focus_subgraph: the "Focus & Morph" preview contract ---------------------------------------
-
-def _per_file_leaf_tree(tmp_path):
-    """The small-repo clusterer fuses the whole `_chain_repo` into one Leiden community, so to test a
-    *multi*-feature subgraph we hand-reshape the built tree to one leaf per file (mirroring
-    `_shared_feature_dag`): a.py→f-a, b.py→f-b, ... . Reverting `user` (b.py) then removes ops from
-    the user/caller/deep leaves (blast/target) and leaves the helper leaf they build on (foundation).
-    Returns (repo, ops)."""
-    from ugh.lens import tree as tree_mod
-    from ugh.lens.map import build_map
-
-    repo = _chain_repo(tmp_path)
-    build_map(repo)
-    ops = Store(repo).all_ops()
-
-    def leaf_of(op) -> str:
-        path = next((s.partition("::")[0] for s in op.footprint), "?")
-        return "f-" + path.removesuffix(".py")
-
-    op_leaf = {op.id: leaf_of(op) for op in ops}
-    leaves = sorted(set(op_leaf.values()))
-
-    def node(nid, parent, children, label):
-        return {"id": nid, "parent": parent, "children": list(children), "depth": 0,
-                "members": [], "size": 1, "dir": "", "label": label, "why": "", "split_reason": None}
-
-    res = tree_mod.load(repo)
-    res["nodes"] = {"N0": node("N0", None, leaves, "root"),
-                    **{lf: node(lf, "N0", [], lf) for lf in leaves}}
-    res["roots"] = ["N0"]
-    res["op_leaf"] = op_leaf
-    tree_mod.save(repo, res)
-    return repo, ops
-
-
-def test_focus_subgraph_restore_grows_the_restored_features_lane(tmp_path):
-    """The reverse morph: a `restore` adds ops back, so the touched leaf's `ops_after` exceeds its
-    `ops_before` and it grows against the dim field -- nothing shrinks. Built from a preview whose
-    `after_ids` re-adds a removed op, so the direction flips without a full apply round-trip."""
-    from ugh.api import focus_subgraph
-    from ugh.core import verbs
-
-    repo, ops = _per_file_leaf_tree(tmp_path)
-    deep_op = next(o for o in ops if "d.py::deep" in o.footprint)
-    all_ids = frozenset(o.id for o in ops)
-
-    preview = verbs._preview("restore", deep_op.id, all_ids - {deep_op.id}, all_ids, ops)
-    focus = focus_subgraph(preview, repo)
-    by_fid = {n["feature_id"]: n for n in focus["nodes"]}
-
-    # the restored op's leaf is the one acted-on lane, and it grows.
-    assert by_fid["f-d"]["role"] == "target"
-    assert by_fid["f-d"]["ops_after"] > by_fid["f-d"]["ops_before"]
-    assert all(n["role"] != "blast" for n in focus["nodes"])  # nothing shrinks on a pure restore
-    assert sum(n["ops_after"] - n["ops_before"] for n in focus["nodes"]) == 1
-
-
-def test_focus_subgraph_is_empty_when_no_feature_tree_is_built(tmp_path):
-    """Degrade cleanly: before `ugh map` builds the tree there is no `op_leaf` to roll ops up
-    through, so the subgraph is empty (`nodes: []`) and the renderer falls back to the `so_what`
-    headline alone -- never an error."""
-    from ugh.api import focus_subgraph
-    from ugh.core import verbs
-
-    repo = _chain_repo(tmp_path)  # mined, but no `build_map` -> no op_leaf
-    ops = Store(repo).all_ops()
-    user_op = next(o for o in ops if "b.py::user" in o.footprint)
-    all_ids = frozenset(o.id for o in ops)
-
-    preview = verbs._preview("revert", user_op.id, all_ids, all_ids - {user_op.id}, ops)
-    focus = focus_subgraph(preview, repo, so_what="X")
-    assert focus == {"so_what": "X", "nodes": [], "edges": [], "context_count": 0}
-
-
 def test_headline_for_falls_back_to_the_feature_label_on_a_low_signal_subject():
     """`headline_for` is the one definition of "what to call this commit", shared by the rail, the
     save list, `ugh now`'s recently-done, and the extension's Now tree. It used to be TUI-only, so
@@ -1217,13 +1096,9 @@ def test_history_view_folds_ugh_s_own_materialization_commits(tmp_path):
     """History is append-only, so a revert is itself a forward commit. Unmarked, it is
     indistinguishable from real work, and `ugh now` reported `ugh revert <hex>` back to the
     developer as something they had done."""
-    from ugh.core import verbs
-
     repo = _mined(tmp_path, "linear_history")
     before = history_view(repo)
-    op_id = sorted(get(repo).op_ids)[-1]
-
-    verbs.revert(repo, op_id)  # materializes a real commit for its own mechanics
+    _take_out(repo, _head_ops(repo))  # materializes a real commit for its own mechanics
 
     after = history_view(repo)
     assert after["commit_count"] == before["commit_count"] + 1  # the axis grew
@@ -1236,11 +1111,8 @@ def test_history_view_folds_ugh_s_own_materialization_commits(tmp_path):
 def test_bookkeeping_commits_keep_their_place_on_the_time_axis(tmp_path):
     """Folding is display-only. Every op's `commit_index` refers to the full axis, so dropping a
     commit from the axis (rather than from a list) would silently move every later op."""
-    from ugh.core import verbs
-
     repo = _mined(tmp_path, "linear_history")
-    op_id = sorted(get(repo).op_ids)[-1]
-    verbs.revert(repo, op_id)
+    _take_out(repo, _head_ops(repo))
 
     full = history_view(repo, full=True)
     indices = [c["index"] for c in full["commits"]]

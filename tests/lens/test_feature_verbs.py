@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 from ugh import api
-from ugh.core import order
 from ugh.core.lens import get
 from ugh.core.store import Store
 from ugh.lens import map as lensmap
@@ -42,39 +41,6 @@ def test_resolve_feature_matches_by_id_and_by_label(tmp_path):
     assert by_id is not None and by_label is not None
     assert by_id[1] == by_label[1] == fid
     assert verbs.resolve_feature(repo, "no-such-feature") is None
-
-
-def test_plan_revert_feature_removes_the_grouped_upset(tmp_path):
-    repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
-    ideal = get(repo)
-    ops = Store(repo).all_ops()
-    result = lensmap.build_map(repo)
-    fid = next(iter(result["nodes"]))
-
-    preview = verbs.plan_revert_feature(repo, fid)
-    assert preview.ok
-    assert preview.verb == "revert"
-    assert preview.target == fid
-
-    expected_removed: set[str] = set()
-    for op_id, leaf in result["op_leaf"].items():
-        if leaf == fid:
-            expected_removed |= order.upset_in(op_id, ideal.op_ids, ops)
-    assert preview.removed == frozenset(expected_removed)
-    assert order.is_valid_ideal(ops, preview.after_ids)
-
-
-def test_plan_revert_feature_refuses_on_an_unresolvable_ref(tmp_path):
-    repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
-    get(repo)
-    lensmap.build_map(repo)
-
-    preview = verbs.plan_revert_feature(repo, "no-such-feature")
-    assert not preview.ok
-    assert preview.after_ids == preview.before_ids
-
-
-# -- labels pin ---------------------------------------------------------------------------------
 
 
 def test_labels_pin_round_trips_and_overrides_the_fallback_label(tmp_path):

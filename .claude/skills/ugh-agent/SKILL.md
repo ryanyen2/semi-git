@@ -107,10 +107,11 @@ Before editing anything unfamiliar, run `ugh_show` on the symbols you are about 
 `asked` attribute carries the words that produced that code, and a constraint you would otherwise
 rediscover by breaking it is usually sitting right there.
 
-Before proposing anything destructive, run `ugh_show` on the target. It reports how many edits a
-revert would remove and how many of those are *later work built on top* — the number that decides
-whether a revert is a small correction or a demolition. It writes nothing and never calls an LLM, so
-run it freely. Then state that number to the human instead of the bare command.
+Before proposing anything destructive, run `ugh_show` on the target, or `ugh_revert` with
+`emit=true`. They report how many steps a revert would take out and how many are held because other
+work stands on them (with the reason and the saves that hold each), and how big the removal set is
+— what `whole=true` would take. Neither writes anything or calls an LLM, so run them freely. Then
+state those numbers to the human instead of the bare command.
 
 ## What is yours and what is theirs
 

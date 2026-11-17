@@ -818,62 +818,6 @@ def test_the_meter_never_hides_a_side_that_happened():
     assert _meter(0, 0)["rest"] == "....."
 
 
-def test_the_real_projection_reaches_the_tree_at_entity_granularity(tmp_path):
-    """The seam, end to end: `ugh revert --emit --json` into `changeTree`, no hand-written payload
-    in between.
-
-    Both halves above pass with the span keys renamed -- the JS is tested against a fixture and the
-    projection against its own shape -- and a rename degrades the panel to file granularity in
-    silence, which looks like a design choice rather than a break. This is the only test that fails
-    when the two stop agreeing."""
-    import os
-
-    from ugh.cli import main
-    from ugh.core.lens import get
-    from tests.laws import corpus
-
-    repo = tmp_path / "demo"
-    corpus._init(repo)
-    corpus._write(repo, "app/metrics.py", "import math\n\n\ndef mean(xs):\n    return sum(xs) / len(xs)\n")
-    corpus._commit(repo, "mean", 1)
-    corpus._write(repo, "app/metrics.py",
-                  "import math\nimport statistics\n\n\ndef mean(xs):\n    return sum(xs) / len(xs)\n"
-                  "\n\ndef spread(xs):\n    return max(xs) - min(xs)\n")
-    corpus._commit(repo, "spread", 2)
-    get(repo)
-
-    cwd = os.getcwd()
-    os.chdir(repo)
-    try:
-        import contextlib
-        import io
-
-        out = io.StringIO()
-        with contextlib.redirect_stdout(out):
-            main(["revert", "app/metrics.py::spread", "--emit", "--json"])
-    finally:
-        os.chdir(cwd)
-    view = json.loads(out.getvalue())
-    assert view["ok"], view
-
-    tree = _tree(view["files"], "before")
-    rows = []
-
-    def walk(node):
-        for child in node.get("children", []):
-            rows.append(child)
-            walk(child)
-
-    walk(tree["root"])
-    named = {r["name"]: r for r in rows if r["kind"] == "entity"}
-    assert "spread" in named, sorted(named)
-    assert named["spread"]["added"] == 2 and named["spread"]["removed"] == 0
-    assert named["spread"]["symbol"] == "app/metrics.py::spread", "the diff reveal needs the id"
-    # The extractor's `__import__::` marker is machinery. It must not reach a row verbatim, and the
-    # import must still be its own row -- a revert can take one out on its own.
-    assert not any(r["name"].startswith("__") for r in rows), [r["name"] for r in rows]
-
-
 # ── What a chapter was asked for ──────────────────────────────────────────────────────────────────
 #
 # Three pure derivations behind the `asked` block on the checkpoint card. They are here rather than

@@ -138,7 +138,6 @@ def _op(repo: str | Path, target: str) -> Selection | None:
     """An exact op id, a unique op-id prefix, or a `file::name` symbol (its frontier tip). Uses the
     kernel's own `resolve_target`, so an id `show` accepts is exactly an id `revert` accepts."""
     from ugh.core import lens, opindex, order
-    from ugh.core.verbs import resolve_target
 
     repo = Path(repo)
     ops = opindex.index_ops(repo)
@@ -152,6 +151,27 @@ def _op(repo: str | Path, target: str) -> Selection | None:
     is_symbol = target in order.frontier(ideal.op_ids, ops)
     return Selection(kind="symbol" if is_symbol else "op", target=target,
                      op_ids=frozenset({op_id}), feature_id=_owning_feature(repo, [op_id]))
+
+
+def resolve_target(ideal, ops, ref: str) -> tuple[str | None, str]:
+    """`ref` -> one op id in `ideal`: an exact op id, a `file::name` symbol or whole-file path
+    (its frontier tip), or a unique op-id prefix. `(op_id, "")`, or `(None, reason)`."""
+    from ugh.core import order
+
+    ids = ideal.op_ids
+    if ref in ids:
+        return ref, ""
+    tip = order.frontier(ids, ops).get(ref)
+    if tip is not None:
+        return tip, ""
+    if "::" in ref:
+        return None, f"symbol {ref!r} is not in the code"
+    matches = sorted(oid for oid in ids if oid.startswith(ref))
+    if len(matches) == 1:
+        return matches[0], ""
+    if matches:
+        return None, f"ambiguous op-id prefix {ref!r}: {matches[:5]}"
+    return None, f"{ref!r} is neither an op-id in the code nor a symbol"
 
 
 def _save(repo: str | Path, target: str) -> Selection | None:

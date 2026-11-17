@@ -34,7 +34,7 @@ from pathlib import Path
 import pytest
 
 from ugh import state
-from ugh.core import lens, sync, verbs
+from ugh.core import lens, sync
 from ugh.core.lens import get
 from ugh.core.store import Store
 from ugh.lens import tree
@@ -51,6 +51,12 @@ from tests.laws import corpus
 # which now live on the ref, off the branch tree -- actually travel between these replicas. The
 # higher-level `_replicas`/`_edit_and_commit` stay local (their shapes are suite-specific).
 
+
+
+def _revert(repo, op_id):
+    from ugh.core import planner
+
+    return planner.apply(repo, planner.plan(repo, {op_id}, target=op_id))
 
 def _edit_and_commit(repo: Path, path: str, content: str, message: str) -> str:
     """A real commit that carries `Sgt-Op:` trailers, exactly like `lens.put` does outside tests
@@ -380,10 +386,10 @@ def test_u8_a_revert_travels_to_every_replica(tmp_path):
     _, (r0, r1) = _replicas(tmp_path, _THREE, 2)
     baz = next(o for o in Store(r0).all_ops() if "main.py::baz" in o.footprint)
 
-    verbs.revert(r0, baz.id)  # r0 reverts baz on its own clone...
+    taken = _revert(r0, baz.id)  # r0 reverts baz on its own clone...
     _push(r0)
 
     _sync_and_push(r1)  # ...and the revert travels on r1's next sync
-    assert baz.id not in lens.current_ideal(r1).op_ids
+    assert {op.id for op in taken.new_ops} <= lens.current_ideal(r1).op_ids
     assert "def baz" not in (r1 / "main.py").read_text(encoding="utf-8")
     assert _sync_and_push(r1).message == "already up to date"  # idempotent with a removal in play

@@ -1,7 +1,6 @@
 """Feature verbs (plan U13, R16): `merge`/`split`/`rename`/`move` over the feature tree, plus
-`revert <feature>` which bridges into the kernel's ideal-edit algebra. Mirrors the `plan_* /
-apply` shape of `ugh.core.verbs`, but each verb here is an **in-place patch of the loaded
-`tree.json` + one durable pin write** -- instant (no re-cluster), reversible, and, critically,
+`resolve_feature`, which `revert`/`restore` use to read a feature name. Each verb here is an
+**in-place patch of the loaded `tree.json` + one durable pin write** -- instant (no re-cluster), reversible, and, critically,
 content-untouched: `code(I)` is a pure function of ops + ideal and never reads pins or the tree
 (``ugh.core.fold.code``), so every verb below changes zero bytes of any file by construction --
 the "fold before == fold after" byte-neutrality property is guaranteed, not merely tested.
@@ -18,16 +17,13 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from ugh.core import lens as kernel_lens
-from ugh.core import opindex
-from ugh.core import order
-from ugh.core import verbs as core_verbs
 from ugh.lens import authored as authored_features
 from ugh.lens import tree
 from ugh.lens.pins import Pins, load_pins, save_pins
 from ugh.store.gitbind import GitBinding
 
-VerbError = core_verbs.VerbError
+class VerbError(Exception):
+    """`apply_*` was called on a refused plan."""
 
 
 @dataclass(frozen=True)
@@ -231,58 +227,3 @@ def resolve_feature(repo: str | Path, ref: str) -> tuple[frozenset[str], str, st
         return None
     op_ids = frozenset(op for op, leaf in result["op_leaf"].items() if leaf == feature_id)
     return op_ids, feature_id, nodes[feature_id].get("label", feature_id)
-
-
-def plan_revert_feature(repo: str | Path, ref: str) -> core_verbs.VerbPreview:
-    """Resolve `ref` to a feature's op-set X, then plan its removal through the same
-    `core.verbs._plan_removal` every revert shape uses: it subtracts X from shared symbols at
-    their tips and keeps interleaved later work."""
-    repo = Path(repo)
-    ops = opindex.index_ops(repo)  # previews never materialize bytes -- footprints suffice
-    ideal = kernel_lens.current_ideal(repo)
-
-    resolved = resolve_feature(repo, ref)
-    if resolved is None:
-        return core_verbs._preview("revert", ref, ideal.op_ids, ideal.op_ids, ops, ok=False,
-                                    message=f"feature {ref!r} not found; run `ugh log --refresh`")
-    op_ids, feature_id, label = resolved
-    if not op_ids:
-        return core_verbs._preview("revert", feature_id, ideal.op_ids, ideal.op_ids, ops,
-                                    message=f"feature {label!r} has no ops in the current ideal; no change")
-
-    return core_verbs._plan_removal(repo, "revert", feature_id, op_ids, ops, ideal)
-
-
-def plan_restore_feature(repo: str | Path, ref: str) -> core_verbs.VerbPreview:
-    """`revert`'s inverse: resolve `ref` to a feature's op-set X (via `op_leaf`, which still
-    names a reverted feature's ops -- it's built from every mined op, not just the ones live in
-    the current ideal), then the exact ideal edit `I ∪ downset_in_many(X)` against the full
-    provenance ideal (`HEAD`, which still holds reverted ops) -- the feature-grouped
-    generalization of `core.verbs.plan_restore`'s single-op case. `downset_in_many` equals the
-    per-op union exactly (reachability distributes over union) but builds its chain/producer
-    indexes once for the whole set instead of once per op."""
-    repo = Path(repo)
-    ops = opindex.index_ops(repo)  # previews never materialize bytes -- footprints suffice
-    ideal = kernel_lens.current_ideal(repo)
-
-    resolved = resolve_feature(repo, ref)
-    if resolved is None:
-        return core_verbs._preview("restore", ref, ideal.op_ids, ideal.op_ids, ops, ok=False,
-                                    message=f"feature {ref!r} not found; run `ugh log --refresh`")
-    op_ids, feature_id, label = resolved
-    if not op_ids:
-        return core_verbs._preview("restore", feature_id, ideal.op_ids, ideal.op_ids, ops,
-                                    message=f"feature {label!r} has no ops; no change")
-
-    # When the journal holds the revert of this same feature, reverse it exactly rather than
-    # re-deriving an inverse the downset cannot express (see `core.verbs._plan_restore_via_journal`).
-    exact = core_verbs._plan_restore_via_journal(repo, feature_id, op_ids, ops, ideal)
-    if exact is not None:
-        return exact
-
-    # Ahead of `ideal_for_ref` too -- reconstructing the provenance ideal is real work the exact
-    # path never needs, the same reason `core.verbs.plan_restore_op_set` defers it.
-    source = kernel_lens.ideal_for_ref(repo, "HEAD")
-    after = ideal.op_ids | order.downset_in_many(op_ids, source.op_ids, ops)
-    return core_verbs._named(
-        core_verbs._validated("restore", feature_id, ideal.op_ids, after, ops), op_ids)

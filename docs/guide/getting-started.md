@@ -52,10 +52,10 @@ ahead of it.
 
 ## Remove a symbol and bring it back
 
-You name a target as `file::symbol`, an op id, or a feature id or label. In a terminal, `revert` and
-`restore` first show you the consequence, meaning what the edit removes and which dependents it
-lands on. They wait for you to confirm before writing anything, so the preview is the default rather
-than a flag.
+You name a target as `file::symbol`, an op id, a save's commit sha, or a feature id or label. In a
+terminal, `revert` and `restore` first show you what would go, what is held and why, and which saves
+stand on it. They wait for you to confirm before writing anything, so the preview is the default
+rather than a flag.
 
 ```bash
 ugh revert app.py::validate_email

@@ -21,10 +21,16 @@ before running an ambiguous verb, don't guess from the name alone.
 
 | You want | Command | What happens |
 |---|---|---|
-| Drop one op and everything built on it | `ugh revert <ref>` | exact ideal edit `I \ ↑X`; refuses / surfaces a fork if the up-set is ambiguous |
-| Drop a whole feature's op-set | `ugh revert <feature-id-or-label>` | same edit, grouped: resolves the feature to its op-set first |
-| Drop one checkpoint of a feature | `ugh revert <feature>@<n>` | the ops of that chapter, as `ugh log` numbers them |
-| Drop work that ran across several features | `ugh revert "<theme label>"` | the ◆ rows `ugh log` draws, resolved by label or `theme-` id |
+| Take one save's work out | `ugh revert <sha>` | the save's steps un-applied as a new edit; what other work stands on is held, with the reason and the saves holding it |
+| Take one definition's latest edit out | `ugh revert <file::name>` or `<op-id>` | the same, for one step |
+| Take a whole feature's work out | `ugh revert <feature-id-or-label>` | the same, for the feature's op-set |
+| Take one checkpoint of a feature out | `ugh revert <feature>@<n>` | the ops of that chapter, as `ugh log` numbers them |
+| Take work that ran across several features out | `ugh revert "<theme label>"` | the ◆ rows `ugh log` draws, resolved by label or `theme-` id |
+| Take the work and everything standing on it out | `ugh revert <ref> --whole` | the removal set the preview names; never cuts another save in two |
+| Bring back what a revert took out | `ugh restore <ref>` | takes out the edit that took it out; edits made since combine, same-line conflicts are shown as two versions and nothing is written |
+
+Every revert and restore runs the project's check (`.sgt/oracle.json`, or the parser when none is
+configured) on the result before committing, and holds the steps a failure points at.
 
 Every ideal-edit verb (`revert`, `restore`) also accepts a natural-language target once no
 op-id/symbol/feature-label matches exactly (`ugh revert "the caching layer"`) — it proposes

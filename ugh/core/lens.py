@@ -579,7 +579,7 @@ def ideal_for_ref(repo: str | Path, ref: str = "HEAD", store: Store | None = Non
        ancestry, exactly as `_committed_ids_by_provenance` does for the current ref.
 
     Rung 1 exists because rung 2 alone is not merely approximate, it collapses. `op.provenance` is
-    stamped only by *mining* pre-existing git history; ops minted by `ugh save` and by `verbs.apply`
+    stamped only by *mining* pre-existing git history; ops minted by `ugh save` and by the planner
     carry none, so no ref can ever select them. Measured on a React app authored the way ugh asks
     people to author -- 13 commits, all but the scaffold made by `ugh save` -- provenance projection
     returned **10 of 151 ops and 7 of 30 files, with 0 of its 23 source files**, while its trailers
@@ -1282,13 +1282,18 @@ def put(repo: str | Path, ideal: Ideal, message: str = "ugh: materialize ideal",
     return sha
 
 
-def commit_materialized(repo: str | Path, ideal: Ideal, message: str) -> str:
-    """Commit an `ideal` whose `code(I)` bytes are *already* on the working tree (`ugh resolve`).
-    Unlike `put`, this neither re-mines the tree nor re-materializes: it just commits with the op
-    trailers."""
+def commit_materialized(repo: str | Path, ideal: Ideal, message: str, *,
+                        bookkeeping: bool = False) -> str:
+    """Commit an `ideal` whose `code(I)` bytes are *already* on the working tree (`ugh resolve`,
+    a judged take-out). Unlike `put`, this neither re-mines the tree nor re-materializes: it just
+    commits with the op trailers."""
     repo = Path(repo)
     gb = GitBinding(repo)
-    sha = gb.commit_all(message, trailers=format_op_trailers(sorted(ideal.op_ids)))
+    trailers = format_op_trailers(sorted(ideal.op_ids))
+    if bookkeeping:
+        from ugh.store.gitbind import format_bookkeeping_trailer
+        trailers = f"{trailers}\n{format_bookkeeping_trailer()}" if trailers else format_bookkeeping_trailer()
+    sha = gb.commit_all(message, trailers=trailers)
     from ugh.core.sync import state_ref as _state_ref  # lazy: avoid the sync<->lens import cycle
     _state_ref.publish_from_local(gb, repo)
     return sha
@@ -1413,6 +1418,8 @@ def _apply_ideal_edit_inverse(repo: str | Path, event: dict) -> UndoResult:
     prev = Ideal.from_ops(frozenset(event["ideal"]), all_ops)
     sha = put(repo, prev, message="ugh undo: restore prior ideal", bookkeeping=True)
     record_ideal(repo, prev, sha, journal=False)
+    if "out" in event:
+        state.save_json(repo, "out", event["out"])
     return UndoResult(prev, sha, removed=current.op_ids - prev.op_ids, added=prev.op_ids - current.op_ids)
 
 
@@ -1561,8 +1568,8 @@ def materialization_skips(
     fixing anything is worse than none, because it also removes the reason to keep looking.
 
     `prior_ideal` mirrors `_write_working_tree`'s parameter of the same name, and every caller
-    predicting a *specific* edit must pass it (`api.verb_result_out_view` passes the preview's
-    `before_ids`; `status`, which asks about no particular edit, does not). These two functions are
+    predicting a *specific* edit must pass it (`status`, which asks about no particular edit,
+    does not). These two functions are
     a matched pair -- this one exists only to say what that one would do -- so a keep-condition
     added there and not here silently makes the prediction disagree with the apply. Not
     hypothetical: when `prior_ideal` landed in the writer alone, `revert --emit --out` went on
@@ -1662,7 +1669,7 @@ def _write_working_tree(
 
     `prior_ideal` is the ideal this write is editing *away from* (`put` passes it; nobody else has
     one). It counts as a second regenerating ideal for the backstop, and it has to: an edit that
-    removes a path mints the ops that express the removal, `verbs.apply` stores them before `put`
+    removes a path mints the ops that express the removal, which are stored before `put`
     runs, and `_reproducible_content`'s maximal ideal then takes every chain to its tip -- this
     edit's own prunes included. The one ideal the backstop consults is therefore the one ideal that
     can no longer produce the bytes being deleted, so a revert that empties a file whose entity was

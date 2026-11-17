@@ -54,22 +54,22 @@ def _user_symbols(op: dict) -> list[str]:
 def _vocab(repo: Path, verb: str):
     """The verb-aware pool of features/ops `_context` renders into prompt text and `_shown_refs`
     reduces to a confinement set -- factored out so both read the exact same vocabulary rather
-    than risking the two lists drifting apart. `revert` removes something live, so its vocabulary
-    is the ops in the current ideal. `restore` re-adds something *removed*, so its vocabulary is
-    the ops in HEAD's provenance that are no longer in the ideal (the same set `plan_restore`
-    resolves against) -- listing the live frontier there would only ever yield no-op candidates.
+    than risking the two lists drifting apart. `revert` takes out something in the code, so its
+    vocabulary is the ops in the current ideal that are not out and did not take anything out.
+    `restore` brings back what is out, so its vocabulary is the steps the out table lists.
     Synthetic anchor/residue symbols are filtered from both (`_user_symbols`)."""
     from ugh.api import map_view, oplog_view
-    from ugh.core.lens import current_ideal, provenance_ideal_for_ref
+    from ugh.core.lens import current_ideal
+    from ugh.core.planner import load_out
 
     tree = map_view(repo)
     features = [n for n in tree["nodes"] if n["kind"] == "feature"]
 
-    ideal_ids = current_ideal(repo).op_ids
+    out = load_out(repo)
+    ideal_ids = current_ideal(repo).op_ids - set(out) - {t for v in out.values() for t in v}
     all_ops = oplog_view(repo, full=True)["ops"]  # needs each op's footprint (`_user_symbols`)
     if verb == "restore":
-        restorable = provenance_ideal_for_ref(repo, "HEAD").op_ids
-        pool = [op for op in all_ops if op["id"] in restorable and op["id"] not in ideal_ids]
+        pool = [op for op in all_ops if op["id"] in out]
         op_header = "Removed ops that `restore` can bring back (id | intent | symbols)"
         sym_header = "Removed symbols that can be restored (file::name)"
     else:

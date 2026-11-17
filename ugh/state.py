@@ -119,6 +119,8 @@ _ARTIFACTS: dict[str, _Artifact] = {
     "verdicts": _Artifact(("local", "oracle.json"), committed=False),
     "witness": _Artifact(("local", "witness.json"), committed=False),
     "ideal_table": _Artifact(("local", "ideal.json"), committed=False),
+    # local: step op id -> the ids of the ops that took it out (`ugh.core.planner`).
+    "out": _Artifact(("local", "out.json"), committed=False),
     # committed, ref-carried per-ref exclusion OR-Set (1.1, promoted to shared in 1.2 §E):
     # {ref_key: {"adds": [[op_id, tag], ...], "tombstones": [tag, ...]}}. The *positive* record of
     # the ops an explicit edit (revert/pin, U8) removed -- the source of truth

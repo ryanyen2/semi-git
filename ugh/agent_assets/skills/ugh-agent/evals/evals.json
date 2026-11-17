@@ -20,10 +20,10 @@
       "name": "states-revert-consequence-before-reverting",
       "prompt": "The backoff helper in fetch.py turned out to be the wrong approach. Can you take it back out? Tell me what that costs before you do anything irreversible.",
       "fixture": "healthy",
-      "expected_output": "Inspects the target with ugh show first and reports the consequence in edits -- how many a revert removes and how many of those are later work built on top -- before applying anything.",
+      "expected_output": "Inspects the target with ugh show (or a revert preview) first and reports the consequence -- how many steps would go and how many are held because other work stands on them, and why -- before applying anything.",
       "assertions": [
         {"id": "inspects_first", "text": "Runs ugh show (or the ugh_show tool) on the target before any mutating command"},
-        {"id": "reports_dependents", "text": "States the consequence numerically: how many edits a revert removes, distinguishing the target's own edits from work built on top of it"},
+        {"id": "reports_dependents", "text": "States the consequence numerically: how many steps a revert takes out and how many are held, naming what holds them"},
         {"id": "uses_ugh_not_git", "text": "Uses ugh's revert rather than hand-editing the file or a git revert"}
       ]
     },

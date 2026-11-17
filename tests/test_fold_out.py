@@ -24,18 +24,15 @@ def _mined(tmp_path, name):
 
 
 def _forward_subtracting_target(repo):
-    """An op whose revert *rewrites* shared symbols at their tip (minting `new_ops`) rather than
-    dropping the target's own ops -- the ordinary case for reverting one checkpoint of a symbol
-    later work has since touched, and the only case in which `result_op_ids` says something a
-    client could not have derived. Found rather than hardcoded so a re-mine that reshuffles op-ids
-    fails loudly here instead of silently weakening every assertion downstream."""
-    from ugh.core import verbs
+    """An op whose revert changes files. Found rather than hardcoded so a re-mine that reshuffles
+    op-ids fails loudly here instead of silently weakening every assertion downstream."""
+    from ugh.core import planner
 
     for op_id in sorted(current_ideal(repo).op_ids):
-        preview = verbs.plan_revert(repo, op_id)
-        if preview.ok and preview.added:
+        p = planner.plan(repo, {op_id}, target=op_id)
+        if p.ok and p.files and p.new_ops:
             return op_id
-    raise AssertionError("fixture no longer exercises forward subtraction")
+    raise AssertionError("fixture has no revert that changes a file")
 
 
 def _in(repo, argv):
@@ -151,16 +148,9 @@ def test_at_now_parses_to_the_current_ideal_and_never_to_a_ref(tmp_path):
     assert fold_view(repo, **_parse_show_spec("now"))["op_count"] == len(current_ideal(repo).op_ids)
 
 
-def test_emit_out_materializes_the_state_result_op_ids_names(tmp_path):
-    """G3's round trip. `revert --emit` reports `result_op_ids`, the op-set of the ideal the edit
-    lands on; `--emit --out` materializes exactly that state. Applying the same revert for real
-    on a second copy must produce a byte-identical tree.
-
-    The materialization cannot go through `fold --at op:<result_op_ids>`: a safe revert mints
-    forward-subtraction ops that live only on the preview until `apply` stores them, so the fold
-    refuses that id set as ungrounded -- which is why `verb_result_out_view` folds the preview
-    object instead. That refusal is pinned below.
-    """
+def test_emit_out_materializes_the_tree_the_apply_leaves(tmp_path):
+    """`revert --emit --out <dir>` writes the tree the plan describes; applying the same revert for
+    real on a second copy produces a byte-identical tree."""
     repo = _mined(tmp_path, "linear_history")
     applied = corpus.CORPUS["linear_history"].build(tmp_path / "applied")
     get(applied)
@@ -170,17 +160,14 @@ def test_emit_out_materializes_the_state_result_op_ids_names(tmp_path):
 
     view = _emit(repo, ["revert", target, "--emit", "--out", str(out), "--json"])
     assert view["ok"] and view["out"]["ok"]
-    assert view["out"]["op_count"] == len(view["result_op_ids"])
 
     assert _in(applied, ["revert", target, "--json"]) == 0
     assert _tree(out) == code(current_ideal(applied), Store(applied).all_ops())
 
 
 def test_restore_emit_out_round_trips_the_same_way(tmp_path):
-    """The inverse verb gets the same treatment: `restore --emit` names the ideal it lands on and
-    `--out` materializes it. Restoring is a pure re-addition of stored ops, so this also covers
-    the case where `result_op_ids` *is* addressable through the store -- both verbs answer in the
-    same field either way, which is the point of putting it on the shared projection."""
+    """The inverse verb gets the same treatment: `restore --emit --out` writes the tree restoring
+    would leave, and the applied restore on a second copy matches it byte for byte."""
     repo = _mined(tmp_path, "linear_history")
     applied = corpus.CORPUS["linear_history"].build(tmp_path / "applied")
     get(applied)
@@ -191,8 +178,7 @@ def test_restore_emit_out_round_trips_the_same_way(tmp_path):
 
     out = tmp_path / "counterfactual"
     view = _emit(repo, ["restore", target, "--emit", "--out", str(out), "--json"])
-    assert view["ok"] and view["out"]["ok"]
-    assert view["out"]["op_count"] == len(view["result_op_ids"])
+    assert view["ok"] and view["out"]["ok"] and view["files"]
 
     assert _in(applied, ["restore", target, "--json"]) == 0
     assert _tree(out) == code(current_ideal(applied), Store(applied).all_ops())
@@ -321,90 +307,23 @@ def test_emit_out_writes_the_tree_the_apply_leaves_not_the_strict_fold(tmp_path)
     assert _tree(out) == _worktree_managed(applied)
 
 
-def test_emit_out_carries_a_backstop_kept_path_at_its_on_disk_bytes(tmp_path):
-    """The specific branch the general test above cannot reach on this corpus: no fixture here
-    produces a revert that leaves a backstop-kept path (bikecount does -- `bikecount/pages/
-    monthly.py`, which is how the defect was found). So the mechanism is pinned directly.
-
-    A backstop-kept path is carried at its *current on-disk* bytes, because the apply keeps it by
-    not touching it -- never at whatever the ideal would have folded for it."""
-    from ugh.core import lens
+def test_emit_out_writes_nothing_for_a_refused_plan(tmp_path):
+    """A refused plan would write today's tree and read as a counterfactual: nothing is written
+    and the view carries no `out` key to mistake for one."""
+    from ugh.cli.ideal_edit import _answer
+    from ugh.core import planner
 
     repo = _mined(tmp_path, "linear_history")
-    kept_path = "c.py"
-    kept_bytes = (repo / kept_path).read_bytes()
-    assert kept_bytes, "fixture must have a non-empty file to keep"
-
-    real = lens.materialization_skips
-
-    # `**kwargs` on purpose, not a fixed signature: this stub stands in for the real predictor, and
-    # pinning its parameter list here would make the stub the thing under test. It already caught
-    # one drift -- when `prior_ideal` was added, a fixed-signature stub failed with `unexpected
-    # keyword argument` rather than silently passing.
-    def monkey(r, materialized, ops=None, **kwargs):
-        return {**real(r, materialized, ops, **kwargs), "backstop_kept": [kept_path]}
-
-    lens.materialization_skips = monkey
-    try:
-        target = _forward_subtracting_target(repo)
-        out = tmp_path / "counterfactual"
-        assert _emit(repo, ["revert", target, "--emit", "--out", str(out), "--json"])["ok"]
-    finally:
-        lens.materialization_skips = real
-
-    assert (out / kept_path).read_bytes() == kept_bytes
-    assert kept_path in json.loads((out / FOLD_MANIFEST).read_text())["paths"]
-
-
-def test_emit_out_writes_nothing_for_a_refused_preview(tmp_path):
-    """A refused preview carries `after_ids == before_ids`, so materializing it would write the
-    *current* state into the overlay and read back as a successful counterfactual -- the render
-    panel would show today's app and call it "today minus this feature". Nothing is written and
-    the view carries no `out` key to mistake for one."""
-    from ugh.cli.ideal_edit import _emit_verb_result
-    from ugh.core.verbs import VerbPreview
-
-    repo = _mined(tmp_path, "linear_history")
-    ids = current_ideal(repo).op_ids
-    refused = VerbPreview(
-        ok=False, verb="revert", target="c.py::qux", before_ids=ids, after_ids=ids,
-        affected_symbols=(), forked=True, message="would leave two live versions",
-    )
     out = tmp_path / "counterfactual"
+    refused = planner.Plan("revert", "x", ok=False, message="refused")
 
     import contextlib
     import io
+    from unittest import mock
 
     buf = io.StringIO()
-    with contextlib.redirect_stdout(buf):
-        _emit_verb_result(str(repo), refused, emit=True, as_json=True, out=str(out))
+    with mock.patch.object(planner, "plan", lambda *a, **k: refused), contextlib.redirect_stdout(buf):
+        _answer(str(repo), "revert", frozenset(), "x", True, True, False, out=str(out))
 
     assert "out" not in json.loads(buf.getvalue())
     assert not out.exists()
-
-
-def test_result_op_ids_is_not_the_current_ideal_minus_removed(tmp_path):
-    """The shortcut a client reaches for first, pinned as wrong. A safe revert rewrites shared
-    symbols at their tip with new ops (`added`) rather than dropping the target's ops, so
-    `before - removed` is a materially different tree -- which is the reason this field exists at
-    all instead of a note in the docs."""
-    repo = _mined(tmp_path, "linear_history")
-    target = _forward_subtracting_target(repo)
-
-    view = _emit(repo, ["revert", target, "--emit", "--json"])
-    shortcut = current_ideal(repo).op_ids - set(view["removed"])
-
-    assert view["added"]  # the forward-subtraction ops the shortcut cannot know about
-    assert set(view["result_op_ids"]) != shortcut
-
-
-def test_fold_refuses_result_op_ids_because_the_new_ops_are_not_stored_yet(tmp_path):
-    """Why `--emit --out` exists rather than piping `result_op_ids` into `fold --at op:<ids>`.
-    Documented as a test so the day forward-subtraction ops do become addressable, this fails and
-    someone deletes the workaround."""
-    repo = _mined(tmp_path, "linear_history")
-    target = _forward_subtracting_target(repo)
-    view = _emit(repo, ["revert", target, "--emit", "--json"])
-
-    assert view["added"]
-    assert fold_view(repo, op_ids=view["result_op_ids"]).get("forked") is True

@@ -98,26 +98,31 @@ also holds the two features you want.
 a run against a scratch repo.
 
 ```
-$ ugh revert cache.py::get_cached
- ▸ rewind  cache.py::get_cached
-
- removes 1 edit(s) across 1 symbol(s) · 1 file(s): cache.py
-  ✓ revert applied — 1 edit(s) removed, 0 added. (`ugh undo` reverses this.)
+$ ugh revert cache.py::get_cached --yes
+  revert cache.py::get_cached
+  goes: 1 step(s) (787d66b "agent pass: rate limit, caching")
+  files: cache.py
+  check: not run yet
+  ✓ revert applied — 1 step(s) undone, 0 held, the parser passes. (`ugh undo` reverses this.)
 ```
 
 `get_cached` is gone from `cache.py`. The other function in that file, `set_cached`, is untouched,
-and every symbol in `rate_limit.py` and `retry.py` is byte for byte what it was before. `ugh restore
-cache.py::get_cached` puts it back.
+and every symbol in `rate_limit.py` and `retry.py` is byte for byte what it was before. The take-out
+is a new commit, and the project's check (or, with none configured, the parser) ran on the result
+before it was made. `ugh restore cache.py::get_cached` puts it back.
 
-The same command works on a whole feature with `ugh revert <feature>`, once the edits have been
-grouped that way.
+A step that other remaining work stands on is held, with the reason (other code uses it, a later
+save changed it, a later save rewrote the same lines) and the saves that hold it. `--whole` takes
+the work out together with everything that stands on it. The same command works on a save (its
+commit sha), a feature, or a checkpoint.
+[docs/guide/workflows.md](docs/guide/workflows.md) covers the details.
 [docs/guide/workflows.md](docs/guide/workflows.md) covers when that grouping is reliable and when it
 isn't.
 
 ## Daily commands
 
-A target for `revert` or `restore` can be a `file::symbol` name, an op id, a feature, or, if you set
-an API key, a plain English phrase.
+A target for `revert` or `restore` can be a `file::symbol` name, an op id, a save's commit sha, a
+feature, or, if you set an API key, a plain English phrase.
 
 | Command | What it's for |
 | --- | --- |
@@ -128,8 +133,8 @@ an API key, a plain English phrase.
 | `ugh show <target>` | What an id, feature, or symbol is, and what removing it would cost. Add `--at <point>` to read a file as it was then. Nothing is checked out. |
 | `ugh find <words>` | Find a feature, save, or symbol you can describe but not name. |
 | `ugh undo` | Reverse your last `ugh` command as a new change, rather than by rewriting history. It shows what it will do first. |
-| `ugh revert <target>` | Remove one symbol, feature, or checkpoint's work, along with anything built on it. |
-| `ugh restore <target>` | Bring a removed thing back, along with anything it needs. |
+| `ugh revert <target>` | Take a save's, symbol's, feature's or checkpoint's work out as a new edit; what other work stands on is held, with the reason. `--whole` takes what stands on it too. |
+| `ugh restore <target>` | Bring back what a revert took out, combined with edits made since. |
 | `ugh resolve <symbol>` | Walk through reconciling a symbol that was edited two different ways at once. |
 | `ugh plan ...` | State a plan up front so later saves can be matched against it. |
 | `ugh feature rename` | Rename a feature. Labels only, and it never touches your code. |

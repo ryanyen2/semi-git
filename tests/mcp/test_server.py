@@ -147,10 +147,11 @@ def test_fsck_reports_clean_store(tmp_path):
 
 
 # -- write tools --------------------------------------------------------------
-def test_revert_tool_removes_the_upset(tmp_path):
+def test_revert_tool_takes_the_step_out(tmp_path):
     repo = _seed(tmp_path, 2)
     _, payload = _call(repo, "ugh_revert", {"ref": "a.py::foo"})
-    assert payload["ok"] and payload["removed"]
+    assert payload["ok"] and payload["applied"] and payload["undone"]
+    assert payload["check"]["passed"]
     assert (tmp_path / "a.py").read_text() == "def foo():\n    return 1\n"
 
 
@@ -166,7 +167,7 @@ def test_restore_tool_is_reverts_inverse(tmp_path):
     _call(repo, "ugh_revert", {"ref": "a.py::foo"})
     assert (tmp_path / "a.py").read_text() == "def foo():\n    return 1\n"
     _, payload = _call(repo, "ugh_restore", {"ref": "a.py::foo"})
-    assert payload["ok"] and payload["added"]
+    assert payload["ok"] and payload["applied"] and payload["undone"]
     assert (tmp_path / "a.py").read_text() == "def foo():\n    return 2\n"
 
 
@@ -473,21 +474,20 @@ def test_a_cross_feature_label_resolves_the_way_it_does_in_the_terminal(tmp_path
     _, payload = _call(repo, "ugh_revert", {"ref": "Event Day Handling", "emit": True})
     assert payload["ok"], payload["message"]
     assert payload["target"] == "Event Day Handling"
-    assert payload["removed"], "resolved the name but planned no removal"
+    assert payload["undone"], "resolved the name but planned no take-out"
     assert (tmp_path / "a.py").read_text() == "def foo():\n    return 2\n"  # emit writes nothing
 
 
-def test_restore_answers_to_the_name_a_revert_was_recorded_under(tmp_path):
-    """F141 through MCP: the handle outlives the op ids it resolved to. A re-mine renames the ◆,
-    so the name the person holds stops resolving -- and `ugh undo` could still reverse the edit,
-    because it replays the journal instead of re-resolving a name. So does this."""
-    repo = _seed(tmp_path, 2)
-    _, rev = _call(repo, "ugh_revert", {"ref": "a.py::foo"})
-    assert rev["ok"]
-    assert (tmp_path / "a.py").read_text() == "def foo():\n    return 1\n"
+def test_revert_whole_takes_what_stands_on_the_target(tmp_path):
+    repo = _seed(tmp_path, 1)
+    (tmp_path / "a.py").write_text("def foo():\n    return 1\n\n\ndef bar():\n    return foo()\n")
+    from ugh.store.gitbind import GitBinding
 
-    # The name it was recorded under is the op id here; what matters is that resolution goes
-    # through the journal rung rather than through anything that has to still resolve.
-    _, back = _call(repo, "ugh_restore", {"ref": rev["target"]})
-    assert back["ok"], back["message"]
-    assert (tmp_path / "a.py").read_text() == "def foo():\n    return 2\n"
+    sha = GitBinding(tmp_path).commit_all("bar")
+    (tmp_path / "a.py").write_text("def foo():\n    return 1\n\n\ndef bar():\n    return foo() + 1\n")
+    GitBinding(tmp_path).commit_all("bar plus one")
+    _, held = _call(repo, "ugh_revert", {"ref": sha[:7], "emit": True})
+    assert [h["reason"] for h in held["held"]] == ["changed_later"]
+    _, payload = _call(repo, "ugh_revert", {"ref": sha[:7], "whole": True})
+    assert payload["applied"] and not payload["held"]
+    assert (tmp_path / "a.py").read_text() == "def foo():\n    return 1\n"

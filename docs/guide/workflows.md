@@ -44,17 +44,17 @@ turns out to be wrong. In plain git, undoing only that means finding every line 
 touched and reverting those lines by hand, or cherry-picking around a commit that also holds the
 two features you want to keep, and hoping the surgery does not damage anything else.
 
-`ugh` already tracked every edit as a change to one symbol, so you can name the exact symbol and
-remove it along with anything built on top of it. This is real output from a scratch repo built
-for this doc: three files, one function each, committed together the way a single agent pass
-would land them.
+`ugh` already tracked every edit as a change to one definition, so you can name the work and take
+it out. This is real output from a scratch repo built for this doc: three files committed, then an
+agent pass that changed two of them in one commit.
 
 ```
-$ ugh revert cache.py::get_cached
- ▸ rewind  cache.py::get_cached
-
- removes 1 edit(s) across 1 symbol(s) · 1 file(s): cache.py
-  ✓ revert applied — 1 edit(s) removed, 0 added. (`ugh undo` reverses this.)
+$ ugh revert cache.py::get_cached --yes
+  revert cache.py::get_cached
+  goes: 1 step(s) (787d66b "agent pass: rate limit, caching")
+  files: cache.py
+  check: not run yet
+  ✓ revert applied — 1 step(s) undone, 0 held, the parser passes. (`ugh undo` reverses this.)
 ```
 
 After that command, `get_cached` is gone from `cache.py`. `set_cached`, the other function in the
@@ -62,43 +62,46 @@ same file, is untouched. `rate_limit.py` and `retry.py` are byte for byte what t
 `ugh restore cache.py::get_cached` puts it back:
 
 ```
-$ ugh restore cache.py::get_cached
- ▸ restore  cache.py::get_cached
-
- restores 1 edit(s) across 1 symbol(s) · 1 file(s): cache.py
-  ✓ restore applied — 0 edit(s) removed, 1 added. (`ugh undo` reverses this.)
+$ ugh restore cache.py::get_cached --yes
+  restore cache.py::get_cached
+  comes back: 1 step(s) (f7d23f8 "ugh revert cache.py::get_cached")
+  files: cache.py
+  check: not run yet
+  ✓ restore applied — 1 step(s) undone, 0 held, the parser passes. (`ugh undo` reverses this.)
 ```
 
-If the symbol already has a *different* live version (you reverted, kept working, and now want the
-old one back), `restore` does not silently do nothing and does not fork: it explains that only one
-version of a symbol can be live, names both versions by the save each came from, and prints the
-two ways forward — swap (`ugh revert <live>` then `ugh restore <ghost>`) or reconcile
-(`ugh resolve <symbol>`, which combines them).
+Taking a step out is a new edit: the step's change un-applied onto the definition as it is now.
+Bringing it back is taking out the edit that took it out, so edits you made in between combine
+with it. Where they rewrote the same lines, nothing is written for that step and both versions are
+shown.
 
-The target here was a `file::symbol` name. It can also be an op id, a feature, or one of a
-feature's checkpoints:
+A step is held when other remaining work stands on it, and the preview says why: other code uses
+the definition it created (`uses`), a later save changed that definition (`changed_later`), or a
+later save rewrote the same lines (`same_lines`). The preview also names the removal set: the work
+plus everything that stands on it, never cutting another save in two. `ugh revert <target> --whole`
+takes that whole set out. Before anything is committed the project's check runs on the result (the
+tiers in `.sgt/oracle.json`; with none configured, every file that parsed must still parse), and a
+step the check points at is held too.
+
+The target here was a `file::symbol` name. It can also be an op id, a save's commit sha, a feature,
+or one of a feature's checkpoints:
 
 ```bash
+ugh revert <sha>                     # every step one save made
 ugh revert <feature-id-or-label>     # every op the feature tree grouped under that feature
 ugh revert <feature>@<n>             # the ops of one checkpoint, as `ugh log` numbers them
 ```
 
-How reliable each of these is depends on where the grouping comes from.
+How reliable the grouped forms are depends on where the grouping comes from.
 
-- Symbol-level revert always works. It only needs the op set, nothing else.
+- Symbol-level and save-level revert always work. They only need the op set, nothing else.
 - Feature-level revert needs the feature tree to have grouped the ops first. `ugh log --refresh` builds
   that grouping from how symbols tend to change together across your history, so it needs enough
   commits and enough churn to find real seams. On a brand-new repo it reports one feature for
   everything, because there is no history yet to split on. Use `ugh feature rename` to name a
   feature in your own words.
 
-Reverting a set (a feature or a checkpoint) removes those ops *and* anything left dangling once the
-whole set is gone -- the same "along with anything built on top of it" rule as a single-symbol
-revert, applied to the set as a unit. So a dependent that two removed ops both propped up comes out
-too, rather than being left in an unbuildable state; the preview always shows the full removal
-before you apply it.
-
-So symbol-level revert is the reliable tool today. Feature-level revert works well once
+So symbol-level and save-level revert are the reliable tools today. Feature-level revert works well once
 `ugh log --refresh` has had real history to learn from. Run `ugh show <file>::<symbol>` to see which
 feature a symbol landed in before you trust the grouping.
 
@@ -111,7 +114,7 @@ back to a plain-English target.
 $ ugh revert "the caching layer"
 ? [revert] 'the caching layer' did not resolve; did you mean:
   1. cache.py::get_cached (symbol) — the only caching-related function in the diff
-     would apply — 1 edit(s) removed, 0 added
+     would undo 1 step(s), hold 0
      re-invoke: ugh revert cache.py::get_cached
 ```
 
@@ -217,8 +220,9 @@ These limits remain, either by design or because they are not built yet:
   symbol at a time in those files.
 - Some TypeScript constructs, such as enums, `type` aliases, and namespaces, are kept as exact file
   content rather than pulled out as individual symbols, so you cannot revert them on their own.
-- Imports are ordinary text, not a symbol with its own command. Nothing warns you that a revert
-  left an unused import behind, or offers to remove one.
+- A revert takes out an import its own work added once nothing else needs it, and holds one that
+  remaining code still uses. Code that reaches a definition without naming it (`getattr` with a
+  string, a callback registered elsewhere) is only caught by the project's check.
 - `ugh status` is slow on a large op store. On a store of several thousand ops it can take
   around a minute, because rebuilding the full valid state is expensive and the summary currently
   does it more than once per run. This is a speed problem, not a correctness one.

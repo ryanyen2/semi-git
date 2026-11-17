@@ -12,13 +12,19 @@ import json
 import os
 
 import ugh.cli as cli
-from ugh.core import lens, verbs
+from ugh.core import lens
 from ugh.core.store import Store
 from ugh.lens import map as lensmap
 from ugh.lens import tree
 from ugh.lens import verbs as fverbs
 from ugh.store.gitbind import init_store
 
+
+
+def _revert(repo, op_id):
+    from ugh.core import planner
+
+    return planner.apply(repo, planner.plan(repo, {op_id}, target=op_id))
 
 def _in(repo, argv):
     cwd = os.getcwd()
@@ -69,7 +75,7 @@ def test_three_undos_walk_back_through_save_revert_rename(tmp_path, capsys):
 
     # 2) revert: drop an independent seed symbol (one ideal_edit event).
     bar = next(o for o in Store(repo).all_ops() if "a.py::bar" in o.footprint)
-    verbs.revert(repo, bar.id)
+    _revert(repo, bar.id)
     ideal_after_revert = lens.get(repo).op_ids
     assert ideal_after_revert != ideal_after_save
 
@@ -105,7 +111,7 @@ def test_undo_refuses_when_it_would_clobber_a_raw_commit_and_force_overrides(tmp
     repo = tmp_path / "repo"
     gb = _seed(repo)
     bar = next(o for o in Store(repo).all_ops() if "a.py::bar" in o.footprint)
-    verbs.revert(repo, bar.id)  # one applied ideal_edit event to undo
+    _revert(repo, bar.id)  # one applied ideal_edit event to undo
 
     # a raw commit between the revert and the undo -- intervening work absent from the edit's result
     (repo / "a.py").write_text(
@@ -136,7 +142,7 @@ def test_emit_says_what_undo_would_reverse_without_reversing_it(tmp_path, capsys
     repo = tmp_path / "repo"
     _seed(repo)
     bar = next(o for o in Store(repo).all_ops() if "a.py::bar" in o.footprint)
-    verbs.revert(repo, bar.id)
+    _revert(repo, bar.id)
     assert b"def bar" not in (repo / "a.py").read_bytes()
 
     capsys.readouterr()
@@ -144,7 +150,7 @@ def test_emit_says_what_undo_would_reverse_without_reversing_it(tmp_path, capsys
     view = json.loads(capsys.readouterr().out)
     assert view["ok"] is True
     assert view["kind"] == "ideal_edit"
-    assert view["restored"], "the revert's op comes back -- the preview has to say so"
+    assert view["dropped"], "the take-out's ops go -- the preview has to say so"
     assert any("bar" in s for s in view["symbols"])
     # A dry run that mutates is not a dry run.
     assert b"def bar" not in (repo / "a.py").read_bytes()
@@ -156,7 +162,7 @@ def test_emit_reports_the_refusal_before_the_undo_is_attempted(tmp_path, capsys)
     repo = tmp_path / "repo"
     gb = _seed(repo)
     bar = next(o for o in Store(repo).all_ops() if "a.py::bar" in o.footprint)
-    verbs.revert(repo, bar.id)
+    _revert(repo, bar.id)
     (repo / "a.py").write_text(
         (repo / "a.py").read_text(encoding="utf-8") + "\n\ndef baz():\n    return 3\n", encoding="utf-8"
     )

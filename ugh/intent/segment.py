@@ -26,7 +26,7 @@ The critical safety invariant (mirrors `ugh.intent.theme`): **op membership is a
 function of `(feature_id, the whole per-commit runs a segment covers)`.** The boundary decision --
 here a heuristic, in `ugh.intent.theme_segment` an LLM -- only ever chooses *where* to cut and
 *what to call it*; it never emits an op-id. So `ugh revert <feature>@<n>` resolves to a
-deterministic op-set and runs the identical `verbs.plan_revert_op_set` path every revert uses.
+deterministic op-set and runs the same planner every revert uses.
 """
 
 from __future__ import annotations
@@ -392,8 +392,8 @@ def resolve_checkpoint(repo: str | Path, spec: str) -> tuple[frozenset[str], str
     `checkpoint_slug` of the segment's label -- the meaningful handle, since `@n` is a positional
     counter reassigned on every rebuild. A slug matching two segments (identical labels) is
     ambiguous and does not resolve -- `@n` stays the disambiguator. The returned `op_ids` is the
-    segment's deterministic op-set -- exactly what `ugh revert` removes -- so a checkpoint revert
-    runs the identical `plan_revert_op_set` path every other revert uses (the KTD6 safety
+    segment's deterministic op-set -- exactly what `ugh revert` takes out -- so a checkpoint revert
+    runs the same planner every other revert uses (the KTD6 safety
     invariant: the boundary/label may be LLM-chosen, the op membership never is)."""
     resolved = resolve_checkpoint_segment(repo, spec)
     if resolved is None:

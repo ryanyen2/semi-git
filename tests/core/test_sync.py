@@ -15,12 +15,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ugh.core import lens, sync, verbs
+from ugh.core import lens, sync
+from ugh.core.fold import code
 from ugh.core.store import Store
 from ugh.lens.pins import Pins, load_pins, save_pins
 from ugh.store.gitbind import GitBinding
 from tests.conftest import _clone, _init_bare, _push
 
+
+
+def _revert(repo, op_id):
+    from ugh.core import planner
+
+    return planner.apply(repo, planner.plan(repo, {op_id}, target=op_id))
 
 def _edit_and_commit(repo: Path, path: str, content: str, message: str) -> str:
     """Write content, commit it for real (works whether or not HEAD exists yet -- dirty-tree
@@ -243,18 +250,18 @@ def test_sync_revert_travels_and_removes_the_bytes(tmp_path):
     assert "def baz" in (b / "main.py").read_text(encoding="utf-8")  # B has it after the first sync
 
     baz_op = next(o for o in Store(a).all_ops() if "main.py::baz" in o.footprint)
-    verbs.revert(a, baz_op.id)  # A reverts baz on its own clone
+    taken = _revert(a, baz_op.id)  # A reverts baz on its own clone
     _push(a)
 
     sync.sync(b, remote="origin", branch="main")
     assert "def baz" not in (b / "main.py").read_text(encoding="utf-8")  # the revert traveled
-    assert baz_op.id not in lens.current_ideal(b).op_ids  # ...in the ideal, not just the bytes
+    assert {op.id for op in taken.new_ops} <= lens.current_ideal(b).op_ids  # ...as the edit it is
 
 
-def test_sync_revert_of_a_base_op_removes_the_dependents_that_rode_its_upset(tmp_path):
-    """Scenario 3: A reverts a base op while B extended that op's symbol. The extension rides the
-    reverted op's up-set and is removed with it (it stops being grounded once its base is gone) --
-    B's work is not silently duplicated onto a resurrected base."""
+def test_sync_of_a_revert_against_a_concurrent_extension_surfaces_a_fork(tmp_path):
+    """Scenario 3: A takes out a base op while B extended that op's symbol. The take-out and the
+    extension are two edits of the same version of `baz`, so the sync surfaces a fork rather than
+    silently keeping either side."""
     a, b = _two_clones(tmp_path, _BASE)
     _edit_and_commit(a, "main.py", _WITH_BAZ, "A: add baz")  # base op for baz
     _push(a)
@@ -263,14 +270,11 @@ def test_sync_revert_of_a_base_op_removes_the_dependents_that_rode_its_upset(tmp
     # B extends baz (a new op chaining onto A's baz), A reverts baz's original add.
     _edit_and_commit(b, "main.py", _BASE + "\n\ndef baz():\n    return 43\n", "B: bump baz")
     baz_add = next(o for o in Store(a).all_ops() if "main.py::baz" in o.footprint)
-    verbs.revert(a, baz_add.id)
+    _revert(a, baz_add.id)
     _push(a)
 
-    sync.sync(b, remote="origin", branch="main")
-    # baz's whole chain (add + B's extension) leaves the ideal: reverting the base removes its up-set.
-    live = lens.current_ideal(b)
-    assert not any("main.py::baz" in Store(b).get(oid).footprint for oid in live.op_ids)
-    assert "def baz" not in (b / "main.py").read_text(encoding="utf-8")
+    result = sync.sync(b, remote="origin", branch="main")
+    assert [f[0] for f in result.forks] == ["main.py::baz"]
 
 
 def test_revert_travels_to_a_fresh_clone_and_does_not_resurrect(tmp_path):
@@ -288,15 +292,15 @@ def test_revert_travels_to_a_fresh_clone_and_does_not_resurrect(tmp_path):
     _push(a)
 
     baz_op = next(o for o in Store(a).all_ops() if "main.py::baz" in o.footprint)
-    verbs.revert(a, baz_op.id)  # A reverts baz on its own clone
+    _revert(a, baz_op.id)  # A reverts baz on its own clone
     _push(a)
-    assert baz_op.id not in lens.current_ideal(a).op_ids
+    assert "def baz" not in (a / "main.py").read_text(encoding="utf-8")
 
     c = _clone(remote, tmp_path / "c")  # a brand-new teammate, no local state to inherit the revert
-    lens.get(c)  # cold bootstrap: mine branch history + read the shared state ref
-    # The exclusion travelled on the ref, so C subtracts baz rather than resurrecting it by provenance.
-    assert baz_op.id not in lens.current_ideal(c).op_ids
+    ideal = lens.get(c)  # cold bootstrap: mine branch history + read the shared state ref
+    # The take-out is a commit in the history C mines, so baz stays out of C's fold too.
     assert "def baz" not in (c / "main.py").read_text(encoding="utf-8")
+    assert b"def baz" not in code(ideal, Store(c).all_ops()).get("main.py", b"")
 
 
 # -- plan_sync: the side-effect-free dry run behind the `ugh sync` feedforward pane ------------

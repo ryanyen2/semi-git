@@ -1,10 +1,9 @@
-"""Exact ideal-edit verbs (plan U8, flipped onto the kernel in U10): `revert` (`I \\ ↑X`) and
-`restore` (`I ∪ ↓X`), with `--emit` previews and chain-fork surfacing (AE2)."""
+"""`revert` and `restore`: resolve what the reference names, then ask the planner
+(`ugh.core.planner`) what taking it out, or bringing it back, would take."""
 
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 
 from ugh.select import resolve as select_resolve
 
@@ -59,62 +58,6 @@ def _resolve_theme(repo: str, target: str) -> tuple[frozenset[str], str] | None:
     return op_ids, label
 
 
-def _oracle_after_apply(repo: str, verb: str) -> list[str]:
-    """Run the project's own checks after a destructive edit and say if they now fail.
-
-    The counts a preview gives are about the op set, and an op set can shrink by one symbol while
-    the program stops running. The case that prompted this: reverting one checkpoint reported
-    "removes 1 edit across 1 symbol · 1 file" and left `NameError: name 'events' is not defined`,
-    because the import it took with it was still wanted by a function it never mentioned. Nothing
-    in the preview was wrong; it was answering a narrower question than the one being asked.
-
-    So ask the wider one, with the thing that already knows the answer. The oracle is configured
-    per project (`.sgt/oracle.json`) and is normally run on demand. Quiet when it passes, quiet
-    when no oracle is configured, and never fatal: the edit is already applied and this only
-    reports.
-
-    Only the *first* configured tier runs. Tiers are declared cheapest first, so tier one is the
-    parse-or-smoke check that answers "does this still start", which is the failure this exists to
-    catch. Running the whole pipeline would put a full test suite on the end of every revert, and a
-    verb that becomes slow is a verb people stop previewing with.
-    """
-    import sys
-
-    # Only on an interactive terminal. This exists to stop a person walking away from a green
-    # tick, and it costs a real build every time it runs. On the automated paths -- the test
-    # suite, an agent driving the MCP server, a script -- nobody is reading the sentence and the
-    # cost lands on every revert. The suite went from minutes to a thirty-minute CI timeout before
-    # this gate: hundreds of reverts, each paying for a build nobody read.
-    if not (sys.stdin.isatty() and sys.stdout.isatty()):
-        return []
-
-    from ugh.config import load_oracle_config
-
-    try:
-        cfg = load_oracle_config(repo)
-        if cfg is None or not cfg.tiers:
-            return []
-        from ugh.core import oracle
-
-        verdict = oracle.run(repo, tier=cfg.tiers[0].name)
-    except Exception:  # noqa: BLE001 -- a check that cannot run must never fail the edit
-        return []
-
-    if not isinstance(verdict, dict) or not verdict.get("configured", True):
-        return []
-    # `run` reports one record per tier, stopping at the first failure.
-    failed = [name for name, rec in (verdict.get("tiers") or {}).items()
-              if isinstance(rec, dict) and rec.get("status") not in (None, "pass", "green")]
-    if not failed:
-        return []
-    failing = failed[0]
-    return [
-        f"  ⚠ {failing} now fails after this {verb}. The edit did what it said; something it "
-        f"did not name depends on what went.",
-        "     `ugh undo` puts it back, or fix the break and `ugh save`.",
-    ]
-
-
 def _dirty_refusal(exc, as_json: bool) -> int:
     """Render a `DirtyWorkingTreeError` from a materializing verb as a clean refusal, not a raw
     traceback with a half-written `.sgt` (F4/F5). The guard's message already names the offending
@@ -134,9 +77,10 @@ def register(subs, parent) -> None:
     # preview and its `[y/N]` are the default confirm step.
     r.add_argument("--emit", action="store_true", help=argparse.SUPPRESS)
     r.add_argument("--yes", action="store_true", help=argparse.SUPPRESS)
+    r.add_argument("--whole", action="store_true",
+                   help="take out the removal set: the target and everything that stands on it")
     r.add_argument("--out", default=None, metavar="DIR",
-                   help="with --emit: materialize the previewed result onto DIR as raw "
-                        "bytes -- the render overlay's counterfactual sync")
+                   help="with --emit: write the previewed tree onto DIR as raw bytes")
     r.add_argument("ref", nargs="*")
     r.set_defaults(func=_cmd_revert)
 
@@ -144,14 +88,14 @@ def register(subs, parent) -> None:
     s.add_argument("--emit", action="store_true", help=argparse.SUPPRESS)
     s.add_argument("--yes", action="store_true", help=argparse.SUPPRESS)
     s.add_argument("--out", default=None, metavar="DIR",
-                   help="with --emit: materialize the previewed result onto DIR as raw "
-                        "bytes -- the render overlay's counterfactual sync")
+                   help="with --emit: write the previewed tree onto DIR as raw bytes")
     s.add_argument("ref", nargs="*")
     s.set_defaults(func=_cmd_restore)
 
 
 def _cmd_revert(args) -> int:
-    return _kernel_edit_verb(".", "revert", args.ref, args.emit, args.as_json, args.yes, out=args.out)
+    return _kernel_edit_verb(".", "revert", args.ref, args.emit, args.as_json, args.yes,
+                             whole=args.whole, out=args.out)
 
 
 def _cmd_restore(args) -> int:
@@ -159,430 +103,64 @@ def _cmd_restore(args) -> int:
                              out=args.out)
 
 
-def _emit_verb_result(repo: str, preview, emit: bool, as_json: bool, extra: dict | None = None,
-                      *, yes: bool = False, out: str | None = None) -> int:
-    """Shared tail for the ideal-edit verbs: `--emit` renders the preview projection; otherwise
-    apply the edit (when the preview is ok) and render the plain result view. `extra` (e.g. the intent overlay's `tier`) is
-    merged into `view` unconditionally in both branches, before either the JSON or plain-text
-    emission call -- so it's visible on both output paths, not JSON only.
+def _restorable_on(repo: str, symbol: str) -> frozenset[str] | None:
+    """For `restore file::name`: the out steps on that symbol."""
+    from ugh.core import opindex, planner
 
-    A plain-text (non-`--json`) apply first prints the preview (`_preview_lines`), then gates on
-    `[y/N]`. `--yes` skips the prompt; a non-tty stdin without `--yes` prints the preview
-    and refuses to apply (exit 2), mirroring the did-you-mean guard. `--json` applies immediately --
-    the machine contract VS Code depends on."""
-    from ugh.core import verbs
-    from ugh.core.lens import DirtyWorkingTreeError
-
-    if emit:
-        from ugh.api import _project_verb_preview
-
-        view = _project_verb_preview(repo, preview)
-        if extra:
-            view = {**view, **extra}
-        # F124. `--emit --json` is the dry run and plain `--json` applies, which is the contract the
-        # extension and the tests here depend on -- but the two emitted the same keys, so a machine
-        # caller could not tell the preview it asked for from the mutation it caused.
-        view = {"applied": False, **view}
-        # F129. The projection carries the consequence *summary* (`so_what`, `fallout`, `carry_count`)
-        # and none of the subtraction report, which only the apply view hand-built -- so the two
-        # warnings a developer is supposed to read *before* deciding arrived only in the result of the
-        # mutation, and a dry run named neither. Same four keys as the apply view below, off the same
-        # preview object, so the two formats of the preview and the result all agree.
-        view = {**view, **_subtraction_fields(preview)}
-        # `--emit --out <dir>` materializes the counterfactual this preview describes. It has to
-        # go through the preview object rather than `fold --at op:<result_op_ids>`, because a safe
-        # revert's forward-subtraction ops live only on the preview until `apply` stores them and
-        # the fold would (correctly) refuse the id set as ungrounded. Guarded on `ok`: a refused
-        # preview has `after_ids == before_ids`, so writing it would silently materialize the
-        # *current* state and read as a successful counterfactual.
-        if out is not None and preview.ok:
-            from ugh.api import verb_result_out_view
-
-            view = {**view, "out": verb_result_out_view(repo, preview, out)}
-        if as_json:
-            return _emit_json(view)
-        rc = _print_verb_view(view)
-        for line in _subtraction_report(preview):
-            print(line)
-        return rc
-
-    # A plan that changes nothing is an answer, not a proposal. Restoring work nobody removed
-    # reaches here with `after_ids == before_ids`, and the confirm path below then drew an empty
-    # blast radius, printed `restores 0 edits`, and asked `apply this restore? [y/N]` -- offering
-    # to do a thing it had just finished saying there was nothing to do. Say the one sentence and
-    # stop.
-    #
-    # Only when the sentence is the whole answer. A no-op restore can still have something to
-    # report -- an earlier revert that took work this restore does not bring back -- and that
-    # report is the reason anyone would run it. `--json` keeps the full view either way: a machine
-    # caller reads the counts, not the prose.
-    if preview.ok and not as_json and preview.message and preview.after_ids == preview.before_ids:
-        tail = _subtraction_report(preview) + (
-            _restore_gap_report(repo, preview) if preview.verb == "restore" else [])
-        if not tail:
-            print(f"  {preview.message}")
-            return 0
-
-    # Plain-text apply: print the preview, then gate on `[y/N]`. `--yes` skips the prompt; a non-tty
-    # stdin without `--yes` prints the preview and refuses (exit 2), mirroring the did-you-mean guard.
-    if preview.ok and not as_json:
-        import sys
-
-        from ugh.api import _project_verb_preview
-
-        pview = _project_verb_preview(repo, preview)
-        if _brings_nothing_back(pview, preview):
-            return _refuse_empty_restore(preview, as_json)
-        for line in _preview_lines(pview):
-            print(line)
-        for line in _subtraction_report(preview):
-            print(line)
-        # Computed before apply, on purpose: apply journals this restore's own
-        # entry, and the gap walk would find that entry instead of the revert.
-        gap_lines = _restore_gap_report(repo, preview) if preview.verb == "restore" else []
-        for line in gap_lines:
-            print(line)
-        if not yes:
-            if not sys.stdin.isatty():
-                print("\n  not applied — this was the preview. re-run with --yes to apply.")
-                return 2
-            try:
-                reply = input(f"\napply this {preview.verb}? [y/N] ").strip().lower()
-            except EOFError:
-                reply = ""
-            if reply not in ("y", "yes"):
-                print("  skipped — nothing changed.")
-                return 1
-        try:
-            verbs.apply(repo, preview)
-        except DirtyWorkingTreeError as e:
-            return _dirty_refusal(e, as_json)
-        if _changed_nothing(preview):
-            print(f"  · {preview.verb} changed nothing — no edit left the ideal and no file moved. "
-                  f"(nothing was recorded, so there is nothing to reverse.)")
-        else:
-            print(f"  ✓ {preview.verb} applied — {_applied_magnitude(preview)}. "
-                  f"(`ugh undo` reverses this.)")
-        # Same rule as `gap_lines` below, which already had it: repeat the report
-        # after the apply only when a confirm prompt scrolled the first copy away.
-        # Under `--yes` nothing intervenes, so the three consequence lines printed
-        # twice with the ✓ sandwiched between them -- which reads as two rounds of
-        # damage rather than one report shown twice.
-        if not yes:
-            for line in _subtraction_report(preview):
-                print(line)
-        for line in _oracle_after_apply(repo, preview.verb):
-            print(line)
-        # Repeated after the apply only when a confirm scrolled the preview away. Under `--yes` there
-        # is no prompt between the two prints, so the same warning landed twice, two lines apart, and
-        # a warning about work that stays gone reads as two separate problems when it repeats.
-        if not yes:
-            for line in gap_lines:
-                print(line)
-        return 0
-
-    # The machine path takes the same refusal. This is the path the editor's Restore button and an
-    # agent's MCP call come through, and a ✓ over an unchanged file is worse there than in a
-    # terminal: nobody is reading the diff.
-    if preview.ok and preview.verb == "restore":
-        from ugh.api import _project_verb_preview
-
-        if _brings_nothing_back(_project_verb_preview(repo, preview), preview):
-            return _refuse_empty_restore(preview, as_json)
-
-    gap = _restore_gap(repo, preview) if preview.ok and preview.verb == "restore" else None
-    applied = False
-    if preview.ok:
-        try:
-            verbs.apply(repo, preview)
-        except DirtyWorkingTreeError as e:
-            return _dirty_refusal(e, as_json)
-        applied = True
-    view = {
-        "applied": applied,
-        "ok": preview.ok, "verb": preview.verb, "target": preview.target,
-        "removed": sorted(preview.removed), "added": sorted(preview.added),
-        "affected_symbols": list(preview.affected_symbols), "forked": preview.forked,
-        "conflicts": [dict(c) for c in getattr(preview, "conflicts", ())],
-        "message": preview.message,
-        **_subtraction_fields(preview),
-    }
-    if gap:
-        # Machine consumers (the extension, MCP) get the same warning the
-        # terminal prints: what the earlier revert removed that this restore
-        # leaves removed. Omitted when there is no gap.
-        view["restore_gap"] = gap
-    if extra:
-        view = {**view, **extra}
-    if not as_json:
-        return _print_verb_view(view)
-    # `_emit_json` keys its exit status off an `error` field this view does not carry, so a refusal
-    # rendered here exited 0 while saying `"ok": false` -- a machine caller reading the exit code saw
-    # a refusal as a success. Report the refusal in the status too.
-    _emit_json(view)
-    return 0 if preview.ok else 1
+    out = planner.load_out(repo)
+    ops = [o for o in opindex.index_ops(repo) if o.id in out and symbol in o.footprint]
+    return frozenset(o.id for o in ops) or None
 
 
-def _preview_lines(pview: dict) -> list[str]:
-    """What a revert/restore is about to do: the consequence sentence, each feature whose edit
-    count moves, and the files it changes."""
-    from ugh.api import plural
+def resolve_ref(repo: str, cmd: str, target: str) -> tuple[frozenset[str], str] | None:
+    """The deterministic reading of `target`: a theme (id or label), a checkpoint, a feature, a
+    save (commit sha), an op id or prefix, or a symbol. `(op ids, label)`, or None."""
+    from ugh.core import lens, opindex
+    from ugh.lens import verbs as lens_verbs
 
-    lines = [f"  {pview['verb']} {pview['target']}", f"  {pview['so_what']}"]
-    for n in pview["focus"]["nodes"]:
-        if n["ops_before"] != n["ops_after"]:
-            lines.append(f"    {n['label']}: {n['ops_before']} → {n['ops_after']} edits")
-    files = sorted(pview["files"])
-    shown = ", ".join(files[:4]) + (f" +{len(files) - 4} more" if len(files) > 4 else "")
-    lines.append(f"  {plural(len(files), 'file')}: {shown}" if files else "  no file changes")
-    return lines
+    theme = target if target.startswith("theme-") else _theme_id_for_label(repo, target)
+    if theme is not None:
+        themed = _resolve_theme(repo, theme)
+        if themed is not None:
+            return themed
+    if select_resolve.is_checkpoint_shaped(target):
+        from ugh.intent.segment import resolve_checkpoint
 
+        resolved = resolve_checkpoint(repo, target)
+        if resolved is not None:
+            return frozenset(resolved[0]), target
+    if cmd == "restore" and "::" in target:
+        hit = _restorable_on(repo, target)
+        if hit:
+            return hit, target
+    feature = lens_verbs.resolve_feature(repo, target)
+    if select_resolve.is_handle_shaped(target) and feature is not None:
+        return frozenset(feature[0]), feature[2]
+    op_id, _err = select_resolve.resolve_target(lens.current_ideal(repo), opindex.index_ops(repo),
+                                                target)
+    if op_id is not None:
+        return frozenset({op_id}), target
+    if feature is not None:
+        return frozenset(feature[0]), feature[2]
+    save = select_resolve._save(repo, target) if select_resolve.is_handle_shaped(target) else None
+    if save is not None:
+        return frozenset(save.op_ids), save.sha[:7]
+    if "::" not in target and not select_resolve.is_handle_shaped(target):
+        from ugh.intent.segment import resolve_checkpoint_label
 
-def _restore_gap(repo: str, preview) -> dict | None:
-    """What this restore did NOT bring back, when it follows a revert.
-
-    Revert and restore are not inverses, though every natural reading of the two
-    words says they are. Revert removes a target *and everything built on it* --
-    which can include ops that belong to other features -- while restore brings
-    back the target and what it needs, and nothing else. The gap is real work
-    that stays gone: reverting "Enrollment Drop" removed `enrollment.drop` as a
-    dependent from the *other* drop feature, and restoring "Enrollment Drop"
-    then printed a bare ✓ while the function every kept test calls was still
-    missing. This is that gap, computed from the journal the undo stack already
-    keeps (a revert's entry holds its before/after sets), plus the one command
-    that actually is the revert's inverse.
-    """
-    from ugh.core import oplog
-
-    try:
-        key = oplog._ref_key(Path(repo))
-        events = oplog.load(repo).get(key, []) if key else []
-    except Exception:
-        return None
-
-    # Which revert is this restore reversing? Recency is not the answer. Revert `bar`, revert
-    # `baz`, restore `bar`, and the newest entry carrying a delta is the `baz` revert, so the
-    # report named work this restore never claimed and pointed at `ugh undo` -- which would have
-    # thrown away the restore that had just worked. `plan_restore` answers this exactly, from the
-    # `verb` and `target_ops` the entry now carries, so ask it rather than guessing again here.
-    # Entries written before those keys existed match nothing, and fall back to the walk.
-    candidates = None
-    if getattr(preview, "target_ops", None):
-        from ugh.core import verbs as _verbs
-
-        try:
-            found = _verbs._matching_revert_event(Path(repo), frozenset(preview.target_ops))
-        except Exception:
-            found = None
-        if found is not None:
-            candidates = [found[0]]
-
-    for event in candidates if candidates is not None else reversed(events):
-        prior = set(event.get("ideal") or ())
-        result = set(event.get("result") or ())
-        removed = prior - result
-        introduced = result - prior
-        if not removed and not introduced:
-            continue
-
-        after = set(preview.after_ids)
-        # Two ways a revert takes something out. Dropping the op outright:
-        # caught by the op still being absent. Splicing it out of shared code:
-        # the revert *introduces* a subtraction op, and the symbol is still
-        # subtracted exactly when that op is still the tip of its chain after
-        # the restore -- which is why the first version of this check, a bare
-        # removed-minus-after diff, reported nothing on the very repro that
-        # motivated it.
-        still_gone = removed - after
-        surviving_splices = introduced & after
-        if surviving_splices:
-            from ugh.core import opindex, order
-
-            ops = opindex.index_ops(Path(repo))
-            tips = set(order.frontier(frozenset(after), ops).values())
-            surviving_splices &= tips
-        still = frozenset(still_gone | surviving_splices)
-        if not still:
-            return None
-        try:
-            from ugh.core import opindex as _oi
-
-            by_id = {op.id: op for op in _oi.index_ops(Path(repo))}
-            # Splice footprints name layout entities (`file::__anchor__::name`);
-            # collapse the infix so the report says `file::name`, the spelling
-            # every other line in this tool uses.
-            names = set()
-            for oid in still:
-                op = by_id.get(oid)
-                for sym in op.footprint if op else ():
-                    for infix in ("::__anchor__::", "::__residue__::"):
-                        sym = sym.replace(infix, "::")
-                    # `\x00HEAD\x00` (`mine._RESIDUE_HEAD`) is the gap before a file's first
-                    # entity, not an entity. It survives the infix collapse above because it
-                    # carries no `__`, and printing it puts a raw null byte on the terminal and
-                    # into the MCP payload.
-                    if "__" not in sym and "\x00" not in sym:
-                        names.add(sym)
-            symbols = sorted(names)
-        except Exception:
-            symbols = []
-        return {"still_removed_op_count": len(still), "still_removed_symbols": symbols}
+        by_label = resolve_checkpoint_label(repo, target)
+        if by_label is not None:
+            return frozenset(by_label[0]), target
     return None
-
-
-def _restore_gap_report(repo: str, preview) -> list[str]:
-    gap = _restore_gap(repo, preview)
-    if not gap:
-        return []
-    symbols = gap["still_removed_symbols"]
-    shown = ", ".join(symbols[:6]) + (f" +{len(symbols) - 6} more" if len(symbols) > 6 else "")
-    return [
-        f"  ⚠ the earlier revert also removed {gap['still_removed_op_count']} op(s) this restore"
-        f" does not bring back{': ' + shown if shown else ''}",
-        "    `ugh undo` reverses that revert whole, if that is what you meant.",
-    ]
-
-def _brings_nothing_back(pview: dict, preview) -> bool:
-    """A restore that would move ops in the record and not a single byte of code.
-
-    The one shape a restore must never report as success. Measured on a live study session
-    (2026-09-03): `ugh restore "Event Day Handling"` previewed `restores 32 edits across 6 symbols ·
-    no file changes`, asked `apply this restore? [y/N]`, and printed `✓ restore applied — 5 edits
-    removed, 32 added` -- after which the page still read the removed number. `_changed_nothing`
-    did not catch it, because that asks whether the RECORD moved and the record moved plenty; what
-    did not move is the thing the person asked for.
-
-    The shape is the algebraic union answering a request the journal should have: re-adding the
-    closure of the removed ops while the stand-ins a revert minted still hold the current bytes,
-    so before and after fold to identical text. `files` is empty exactly then -- it is built by
-    diffing the two folds (`ugh.api._project_verb_preview`) -- which makes this cheap to ask and
-    impossible to disagree with the preview the reader was just shown.
-
-    Revert is not covered: a revert whose edit is entirely held by later work legitimately changes
-    no file, says so, and `_changed_nothing` already handles the honest no-op.
-    """
-    return (preview.verb == "restore" and preview.ok
-            and bool(preview.added) and not pview.get("files"))
-
-
-def _refuse_empty_restore(preview, as_json: bool) -> int:
-    """Say what it would have done, and name the verb that does work here."""
-    if as_json:
-        return _fail_json(
-            f"restore of {preview.target!r} would add {len(preview.added)} edit(s) to the record "
-            f"and change no file, so nothing would come back. `ugh undo` reverses a recorded edit "
-            f"exactly.", as_json)
-    print(f"\n  ✗ restore refused — it would put {len(preview.added)} edit(s) back into the record "
-          f"and change no file,")
-    print("    so nothing would come back: what removed them is still holding the current bytes.")
-    print("    `ugh undo` reverses a recorded edit exactly, and is the way back from here.")
-    return 1
-
-
-def _changed_nothing(preview) -> bool:
-    """F33. A revert whose removal is entirely held by later work removes no op, adds none, and
-    splices nothing -- so `verbs.apply` appends no journal event. The apply line used to promise
-    "`ugh undo` reverses this" anyway, and undo, finding no event of its own, pops the *previous*
-    save and silently drops that edit. Don't offer an undo for an edit that was never recorded."""
-    return not preview.removed and not preview.added and not [
-        s for s in preview.affected_symbols if "::__" not in s
-    ]
-
-
-def _applied_magnitude(preview) -> str:
-    """What the applied edit actually changed. A revert realized as a forward subtraction removes no
-    whole op (`ugh.core.subtract` splices instead), so the op counts read "0 edits removed, 5
-    added" for a revert that rewrote a function and dropped a test -- the number said no-op while
-    the files moved. `restore`'s "N added" is the real magnitude of a restore, so it is untouched."""
-    from ugh.api import plural
-
-    removed, added = len(preview.removed), len(preview.added)
-    if preview.verb == "revert" and not removed:
-        syms = [s for s in preview.affected_symbols if "::__" not in s]
-        return f"{len(syms)} symbol(s) changed, no whole edit removed"
-    return f"{plural(removed, 'edit')} removed, {added} added"
-
-
-def _subtraction_fields(preview) -> dict:
-    """The four subtraction-report keys, read off the preview. The definition moved to
-    `ugh.api.subtraction_fields` so the projection can hand them to `so_what_for` before the
-    sentence is written; this is the apply view's reader of the same accessor (F129: the two views
-    drifted for eight months when each built its own)."""
-    from ugh.api import subtraction_fields
-
-    return subtraction_fields(preview)
-
-
-def _readable_symbols(symbols) -> list[str]:
-    """Footprint symbol names as a person should read them.
-
-    A footprint names layout entities as well as code: `file::__anchor__::name` for a splice
-    position, and `file::__residue__::\\x00HEAD\\x00` for the gap before a file's first entity.
-    Neither is a thing anyone wrote or can act on, and the residue head prints its null bytes
-    straight to the terminal -- the consequence report showed
-    `bikecount/pages/monthly.py::__residue__:: HEAD ` in the middle of the line that tells a
-    person what a revert is about to touch. Anchors collapse to the entity they position; residue
-    entries are dropped, because there is no entity behind them to name.
-
-    The same collapse `_still_removed` does for its own report; both call here now, so the two
-    lists cannot disagree about how a symbol is spelled."""
-    out: set[str] = set()
-    for sym in symbols or ():
-        sym = str(sym)
-        if "::__residue__::" in sym:
-            continue
-        sym = sym.replace("::__anchor__::", "::")
-        if "__" in sym or "\x00" in sym:
-            continue
-        out.add(sym)
-    return sorted(out)
-
-
-def _subtraction_report(preview) -> list[str]:
-    """The safe-revert consequence report, printed with the preview AND after apply: what was
-    spliced out of shared code, what was bottomed, and -- most important -- what was deliberately
-    left alone and still needs a human: conflicting symbols kept byte-identical, and surviving
-    code that still names something removed."""
-    lines: list[str] = []
-    subtracted = _readable_symbols(getattr(preview, "subtracted_symbols", ()))
-    pruned = _readable_symbols(getattr(preview, "pruned_symbols", ()))
-    kept = _readable_symbols(getattr(preview, "kept_conflicts", ()))
-    broken = _readable_symbols(getattr(preview, "broken_references", ()))
-    if subtracted:
-        lines.append(f"  subtracted from shared code (later work kept): {', '.join(subtracted)}")
-    if pruned:
-        lines.append(f"  removed going forward: {', '.join(pruned)}")
-    if kept:
-        lines.append(f"  ⚠ kept unchanged (the removal overlaps later edits — needs your edit): "
-                     f"{', '.join(kept)}")
-    if broken:
-        # The consequence, not the mechanism. "still references removed code" is true and was read
-        # by nobody: it printed as one dim line in the middle of a dozen, and the next thing that
-        # happened was a dashboard that would not start with an ImportError naming a module the
-        # reader had not asked about. Say what it costs, and say the way back, on the line where
-        # the decision is still open.
-        lines.append(f"  ⚠ code that stays still calls what this removes: {', '.join(broken)}")
-        lines.append("    the project will not run until those are fixed — `ugh undo` puts it back")
-    return lines
 
 
 def _kernel_edit_verb(
     repo: str, cmd: str, ref_tokens: list[str], emit: bool, as_json: bool, yes: bool = False,
-    out: str | None = None,
+    *, whole: bool = False, out: str | None = None,
 ) -> int:
-    """revert/restore (plan U8, flipped onto the kernel in U10): exact ideal edits (`I \\ ↑X` /
-    `I ∪ ↓X`) with `--emit` previews and chain-fork surfacing (AE2). Both verbs' targets
-    additionally accept a feature id/label (plan U13): when it doesn't resolve as an op-id or
-    symbol, `ugh.lens.verbs.resolve_feature` is tried next, routing to the feature-grouped
-    `plan_revert_feature`/`plan_restore_feature` preview -- applied through the exact same
-    `ugh.core.verbs.apply` path as a single-op revert/restore, since both produce the same
-    `VerbPreview` shape.
-
-    Once every symbol/feature rung above is exhausted (single-op plan refused and `resolve_feature`
-    found no feature either), the target falls to two NL rungs in order: first the deterministic
-    ledger rung (`_resolve_via_ledger` -- match the phrase against captured intent reasons, offline),
-    then the LLM rung (`_resolve_via_intent`, plan U8/U13's fallback ladder's last step)."""
-    from ugh.core import verbs
+    """revert/restore: resolve the reference to op ids, plan, then preview or apply. A reference
+    the deterministic reading cannot place falls to the ledger of recorded reasons (revert only)
+    and then to the natural-language rung."""
     from ugh.core.lens import get
 
     if not ref_tokens:
@@ -593,188 +171,139 @@ def _kernel_edit_verb(
     with busy(f"working out what `{target}` covers…"):
         get(repo)  # mine-on-contact before planning/applying the edit (R9)
 
-    # A `<feature>@<n>` or `<feature>:<slug>` checkpoint (the intent-segment rewind unit): resolve
-    # it to its deterministic op-set and run the op-set edit. Tried first because `@`/`:` name a checkpoint unambiguously; a non-match returns None
-    # and falls through. Both verbs enter here: `@n` is the rewind unit the map and the checkpoint
-    # detail tell users to type, so a rewind whose inverse could not be addressed the same way was a
-    # one-way door -- `ugh restore <feature>@<n>` used to fall past every deterministic rung to the
-    # NL one and exit `could not resolve ... set OPENAI_API_KEY`.
-    # A theme id names an intent that runs across several features -- exactly the shape a job that
-    # was done over three afternoons has. By id, or by the label `ugh log` prints -- see
-    # `_theme_id_for_label` for why the label has to resolve here rather than fall through to the
-    # fuzzy rung.
-    theme_target = target if target.startswith("theme-") else _theme_id_for_label(repo, target)
-    if theme_target is not None:
-        from ugh.intent import group as intent_group
-
-        themed = _resolve_theme(repo, theme_target)
-        if themed is not None:
-            op_ids, label = themed
-            preview = (verbs.plan_revert_op_set(repo, label, op_ids)
-                       if cmd == "revert" else
-                       verbs.plan_restore_op_set(repo, label, op_ids))
-            # `yes` is keyword-only; passing it positionally lands it in `extra` and the apply
-            # silently degrades to a preview that says "re-run with --yes" when --yes was given.
-            return _emit_verb_result(repo, preview, emit, as_json, yes=yes, out=out)
-
-    if select_resolve.is_checkpoint_shaped(target):
-        from ugh.intent.segment import resolve_checkpoint
-
-        resolved = resolve_checkpoint(repo, target)
-        if resolved is None:
-            # The feature part resolved and only the selector missed -- an index past the last
-            # chapter, or an unknown/ambiguous slug. `resolve_checkpoint` cannot say so in its
-            # return type, so this used to fall through every remaining rung to the NL one and
-            # answer `set OPENAI_API_KEY`: F94's defect again, on the handle the practice sheet
-            # types verbatim. `checkpoint_miss` returns None for every spec this cannot improve
-            # on, so an unknown *feature* still reaches `_no_feature_match` below.
+    resolved = resolve_ref(repo, cmd, target)
+    if resolved is None:
+        if select_resolve.is_checkpoint_shaped(target):
             from ugh.intent.segment import checkpoint_miss
 
             miss = checkpoint_miss(repo, target)
             if miss is not None:
                 return _no_checkpoint_match(cmd, target, miss, as_json)
-        if resolved is not None:
-            op_ids, label = resolved
-            preview = (verbs.plan_revert_op_set(repo, target, op_ids)
-                       if cmd == "revert" else
-                       verbs.plan_restore_op_set(repo, target, op_ids))
-            return _emit_verb_result(repo, preview, emit, as_json, extra={"checkpoint": label},
-                                     yes=yes, out=out)
+        if select_resolve.is_handle_shaped(target):
+            return _no_feature_match(repo, cmd, target, as_json)
+        if "::" in target:
+            return _fail_json(f"{target!r} names no definition in the code" if cmd == "revert"
+                              else f"nothing on {target!r} is out; nothing to restore", as_json)
+        from ugh.intent.segment import checkpoint_label_candidates
 
-    from ugh.lens import verbs as lens_verbs
+        ambiguous = checkpoint_label_candidates(repo, target)
+        if len(ambiguous) > 1:
+            return _fail_json(
+                f"{target!r} names {len(ambiguous)} checkpoints: " + ", ".join(ambiguous)
+                + f". Say which -- e.g. `ugh {cmd} {ambiguous[0]}`.", as_json)
+        resolved = _resolve_via_ledger(repo, cmd, target)
+        if resolved is None:
+            return _resolve_via_intent(repo, cmd, target, as_json, yes, whole)
+    op_ids, label = resolved
+    return _answer(repo, cmd, op_ids, label, emit, as_json, yes, whole=whole, out=out)
 
-    if cmd == "revert":
-        plan_single = verbs.plan_revert
-        plan_feature = lens_verbs.plan_revert_feature
-    else:
-        plan_single = verbs.plan_restore
-        plan_feature = lens_verbs.plan_restore_feature
-    # A bare-hex / `f-` handle (the copy token the graph prints) *is* a founding op id, so `plan_single`
-    # would target that one op. But the handle names the whole feature -- resolve it as a feature first,
-    # the feature scope winning over the op it shadows. Symbols (`a.py::foo`) and `@n`/`:slug` never
-    # match this shape (handled earlier / carry `::@:`), so single-op-by-symbol is unchanged.
-    # The shape predicates live in `ugh.select.resolve` so `ugh show <x>` classifies `<x>` exactly as
-    # this ladder does -- a token that reads as a feature here must not read as an op there.
-    handle_shaped = select_resolve.is_handle_shaped(target)
-    if handle_shaped:
-        if lens_verbs.resolve_feature(repo, target) is not None:
-            preview = plan_feature(repo, target)
+
+def _answer(repo: str, cmd: str, op_ids, label: str, emit: bool, as_json: bool, yes: bool,
+            *, whole: bool = False, out: str | None = None) -> int:
+    """Plan, then print the preview (`--emit`), ask, or apply."""
+    import sys
+
+    from ugh.core import planner
+    from ugh.core.lens import DirtyWorkingTreeError
+
+    p = planner.plan(repo, op_ids, verb=cmd, target=label, whole=whole)
+    if emit:
+        view = planner.to_json(p)
+        if out is not None and p.ok:
+            from ugh.api import verb_result_out_view
+
+            view["out"] = verb_result_out_view(repo, p, out)
+        if as_json:
+            _emit_json(view)
         else:
-            # No feature claims this hex handle -- but a *full* op id (the copy token `log --ops`
-            # prints) is all-hex too, so it lands here while genuinely naming an op. Try the single-op
-            # plan before giving up. Only a hex string that is *neither* feature nor op is a
-            # typo'd/stale handle; answer that deterministically (no NL rung a bare hex never deserves).
-            preview = plan_single(repo, target)
-            if not preview.ok:
-                if cmd == "restore":
-                    # The id a `revert` just printed names an op the *reduced* ideal no longer
-                    # holds, so plan_restore can't see it -- explain the block instead of
-                    # "no feature matches".
-                    explained = _explain_restore_block(repo, target, as_json)
-                    if explained is not None:
-                        return explained
-                if not _names_a_stored_op(repo, target):
-                    return _no_feature_match(repo, cmd, target, as_json)
-                # F39's collateral defect: the hex names an op the store *is* holding and this verb
-                # cannot apply it -- `_explain_restore_block` returns None for every reason other
-                # than a competing live sibling, and a `revert` refusal never had a rung here at
-                # all. `_no_feature_match` would deny the op exists and send the reader looking for
-                # a feature; fall through to the planner's own reason instead.
-    else:
-        preview = plan_single(repo, target)
-        if not preview.ok:
-            if lens_verbs.resolve_feature(repo, target) is not None:
-                preview = plan_feature(repo, target)
-            elif "::" not in target:
-                # A bare CHAPTER name, before any prose rung. Every surface prints these on their
-                # own -- `@1 Mark Event Days` in the rail, the name inside the block on the map, the
-                # workbench's Restore button -- and typing one back reached the NL rung and was
-                # answered `set OPENAI_API_KEY`, for a name the tool had just printed. Ambiguity
-                # answers with the handles to choose between instead of guessing.
-                from ugh.intent.segment import (
-                    checkpoint_label_candidates, resolve_checkpoint_label,
-                )
-
-                by_label = resolve_checkpoint_label(repo, target)
-                if by_label is not None:
-                    op_ids, chapter = by_label
-                    preview = (verbs.plan_revert_op_set(repo, target, op_ids)
-                               if cmd == "revert" else
-                               verbs.plan_restore_op_set(repo, target, op_ids))
-                    return _emit_verb_result(repo, preview, emit, as_json,
-                                             extra={"checkpoint": chapter}, yes=yes, out=out)
-                ambiguous = checkpoint_label_candidates(repo, target)
-                if len(ambiguous) > 1:
-                    return _fail_json(
-                        f"{target!r} names {len(ambiguous)} checkpoints: "
-                        + ", ".join(ambiguous)
-                        + f". Say which -- e.g. `ugh {cmd} {ambiguous[0]}`.",
-                        as_json,
-                    )
-                if cmd == "restore":
-                    # Before any prose rung: the name of a revert this repo actually recorded.
-                    # A re-mine renames the ◆ cross-feature work, so the handle the person was
-                    # given ("Event Day Handling") stops resolving and this fell through to
-                    # `set OPENAI_API_KEY` -- for an edit `ugh undo` could still reverse, because
-                    # undo replays the journal instead of re-resolving a name. So does this now
-                    # (F141). Nothing recorded under the name, or a removal no longer standing,
-                    # falls on through: `restore` on an untouched project keeps saying so.
-                    recorded = verbs.ops_removed_by_named_revert(repo, target)
-                    if recorded:
-                        return _emit_verb_result(
-                            repo, verbs.plan_restore_op_set(repo, target, recorded),
-                            emit, as_json, yes=yes, out=out)
-                ledgered = _resolve_via_ledger(repo, cmd, target, emit, as_json, yes)
-                if ledgered is not None:
-                    return ledgered
-                return _resolve_via_intent(repo, cmd, target, as_json, yes)
-            # F94, F91's defect one rung down: a `file::Symbol` target is a deterministic reference,
-            # not prose, so the NL rung cannot improve on it and its refusal ("set OPENAI_API_KEY to
-            # enable natural-language targets") names a remedy that would not help. Fall through with
-            # the planner's own reason instead -- the same fall-through the handle-shaped branch
-            # takes. This is the rung WP-V4's recoverability ladder uses, so every refusal it
-            # recorded blamed a missing key where a true reason had already been computed.
-
-    if cmd == "restore" and preview.ok and not preview.added and "::" in target:
-        # "restores 0 op" is an honest set answer but a useless human one: the symbol is already
-        # live. Say that, and surface any parked (ghost) versions -- the thing the user was
-        # probably reaching for -- with the exact swap commands.
-        return _restore_already_live(repo, target, as_json)
-
-    return _emit_verb_result(repo, preview, emit, as_json, yes=yes, out=out)
+            _print_plan(p)
+        return 0 if p.ok else 1
+    if not p.ok:
+        return _fail_json(p.message, as_json)
+    if not p.files:
+        if as_json:
+            _emit_json(planner.to_json(p))
+        else:
+            _print_plan(p)
+        return 0
+    if not as_json:
+        _print_plan(p)
+        if not yes:
+            if not sys.stdin.isatty():
+                print("\n  not applied — this was the preview. re-run with --yes to apply.")
+                return 2
+            try:
+                reply = input(f"\napply this {cmd}? [y/N] ").strip().lower()
+            except EOFError:
+                reply = ""
+            if reply not in ("y", "yes"):
+                print("  skipped — nothing changed.")
+                return 1
+    try:
+        done = planner.apply(repo, p)
+    except DirtyWorkingTreeError as e:
+        return _dirty_refusal(e, as_json)
+    applied = bool(done.check != "not_run" and done.check["passed"] and done.files)
+    if as_json:
+        _emit_json(planner.to_json(done, applied=applied))
+        return 0 if applied else 1
+    if applied:
+        print(f"  ✓ {cmd} applied — {len(done.undone)} step(s) undone, {len(done.held)} held, "
+              f"{_judged(done)}. (`ugh undo` reverses this.)")
+        if done.held != p.held:
+            _print_held(done)
+        return 0
+    print(f"  ✗ nothing applied — {_judged(done)}; the tree is as it was.")
+    _print_held(done)
+    return 1
 
 
-def _save_named_by(repo: str, target: str) -> tuple[str, str, list[tuple[str, str]]] | None:
-    """``(short sha, subject, [(handle, label)])`` when `target` names a *save* -- a commit in this
-    branch's history -- listing the features whose ops that save recorded. ``None`` when it names no
-    commit here, so the caller's handle ladder continues.
+def _judged(p) -> str:
+    check = p.check
+    if check == "not_run":
+        return "check not run"
+    what = "the project's check" if check["judge"] == "check" else "the parser"
+    return f"{what} {'passes' if check['passed'] else 'fails'}"
 
-    `ugh save` prints the sha of the commit it just made, which makes `ugh revert <that sha>` the
-    obvious next move after a save you regret. A bare hex is handle-shaped, so it lands in
-    `_no_feature_match`, which would deny a name ugh itself printed."""
-    from ugh.core import opindex
-    from ugh.lens.tree import load as load_tree
-    from ugh.store.gitbind import GitBinding
 
-    gb = GitBinding(repo)
-    if not gb.is_repo():
-        return None
-    full = gb.rev_parse(target)
-    if full is None:
-        return None
-    rows = gb.history()
-    subject = next((subj for sha, _parent, subj in rows if sha == full), None)
-    if subject is None:
-        return None  # resolves to an object, but not to a commit on this history
-    tree = load_tree(repo) or {}
-    op_leaf, nodes = tree.get("op_leaf", {}), tree.get("nodes", {})
-    sha_of = opindex.earliest_commit_sha(gb, rows, opindex.index_ops(repo))
-    fids = {op_leaf[oid] for oid, sha in sha_of.items() if sha == full and oid in op_leaf}
-    feats = sorted(
-        ((fid[2:] if fid.startswith("f-") else fid)[:8], nodes.get(fid, {}).get("label", fid))
-        for fid in fids
-    )
-    return full[:7], subject.strip(), feats
+def _short(p, op_id: str) -> str:
+    sha, subject = p.saves.get(op_id, (op_id[:7], ""))
+    return f'{sha} "{subject}"' if subject else sha
+
+
+def _print_held(p) -> None:
+    for hd in p.held:
+        st = hd["step"]
+        holders = ", ".join(dict.fromkeys(_short(p, h) for h in hd["holders"]))
+        print(f"    {st.symbol} ({_short(p, st.op)}) — {hd['reason'].replace('_', ' ')}"
+              + (f": {holders}" if holders else ""))
+
+
+def _print_plan(p) -> None:
+    """The three parts, plain: what goes, what is held and why; the removal set; where the held
+    part is and which saves must keep working."""
+    print(f"  {p.verb} {p.target}")
+    if p.message:
+        print(f"  {p.message}")
+    if not p.steps:
+        return
+    saves = sorted({_short(p, st.op) for st in p.undone})
+    print(f"  {'goes' if p.verb == 'revert' else 'comes back'}: {len(p.undone)} step(s)"
+          + (f" ({', '.join(saves)})" if saves else ""))
+    if p.held:
+        print(f"  held: {len(p.held)} step(s)")
+        _print_held(p)
+    if p.removal_set and p.removal_set["steps"] > len(p.undone):
+        rows = ", ".join(f'{s["sha"]} ({s["steps"]})' for s in p.removal_set["saves"])
+        print(f"  --whole takes {p.removal_set['steps']} step(s): {rows}")
+    if p.held:
+        symbols = sorted({hd["step"].symbol for hd in p.held})
+        keep = sorted({_short(p, h) for hd in p.held for h in hd["holders"]})
+        print(f"  by hand: {', '.join(symbols)}"
+              + (f"; keep working: {', '.join(keep)}" if keep else ""))
+    files = sorted(p.files)
+    print(f"  files: {', '.join(files)}" if files else "  no file changes")
+    print("  check: not run yet" if p.check == "not_run" else f"  check: {_judged(p)}")
 
 
 def _no_checkpoint_match(
@@ -818,9 +347,6 @@ def _no_feature_match(repo: str, cmd: str, target: str, as_json: bool) -> int:
         (nid for nid, nd in nodes.items() if not nd["children"] and body(nid).startswith(bare)),
         key=lambda nid: nodes[nid].get("label", nid),
     )
-    save = _save_named_by(repo, target) if not hits else None
-    if save is not None:
-        return _revert_a_save(cmd, target, save, as_json)
     if as_json:
         import json
 
@@ -846,207 +372,15 @@ def _no_feature_match(repo: str, cmd: str, target: str, as_json: bool) -> int:
     return 2
 
 
-def _revert_a_save(cmd: str, target: str, save: tuple[str, str, list[tuple[str, str]]],
-                   as_json: bool) -> int:
-    """The refusal for a save sha: say what the sha is, then name the moves that do work -- one
-    `ugh <cmd> <handle>` per feature that save recorded, plus `ugh undo` (step the last save back)
-    and `ugh show <sha>` (what it was). Exit 2 like every other unresolved target."""
-    sha, subject, feats = save
-    if feats:
-        # The message is self-contained: the extension shows `view.message` and nothing else, so
-        # "the features are listed" would name a listing that surface does not render. `candidates`
-        # still carries them all, for a consumer that can.
-        named = "; ".join(f"{label} ({ref})" for ref, label in feats[:3])
-        more = f"; and {len(feats) - 3} more" if len(feats) > 3 else ""
-        message = (f"{target!r} is a save ({subject!r}), not a feature handle -- {cmd} takes one "
-                   f"feature or symbol at a time. It recorded: {named}{more}. "
-                   f"`ugh undo` steps the most recent save back.")
-    else:
-        message = (f"{target!r} is a save ({subject!r}), not a feature handle, and it recorded no "
-                   f"feature ops -- try `ugh undo` to step the most recent save back")
-    if as_json:
-        import json
-
-        print(json.dumps({"ok": False, "verb": cmd, "target": target, "message": message,
-                          "candidates": [{"ref": ref, "label": label} for ref, label in feats]},
-                         indent=2))
-        return 2
-    print(f"? [{cmd}] {target!r} is a save, not a feature handle: {subject!r}")
-    if feats:
-        print(f"  a save is a point in time; `{cmd}` takes what it changed, one feature at a time:")
-        for ref, label in feats[:8]:
-            print(f"    ugh {cmd} {ref}   {label}")
-        if len(feats) > 8:
-            print(f"    ... and {len(feats) - 8} more (`ugh log`)")
-    else:
-        print("  it recorded no feature ops.")
-    print("  or:")
-    print("    ugh undo            step the most recent save back")
-    print(f"    ugh show {sha}    what that save was")
-    return 2
 
 
-def _save_of(repo: str, op_ids) -> dict[str, tuple[str, str]]:
-    """``op_id -> (short sha, subject)`` of the save that produced each op -- the anchor users
-    actually remember. Reads the same earliest-witness rule every time-aware view uses."""
-    from ugh.core import opindex
-    from ugh.store.gitbind import GitBinding
-
-    gb = GitBinding(repo)
-    rows = gb.history()
-    ops = [op for op in opindex.index_ops(repo) if op.id in set(op_ids)]
-    sha_of = opindex.earliest_commit_sha(gb, rows, ops)
-    subject = {sha: subj for sha, _parent, subj in rows}
-    return {oid: (sha[:7], subject.get(sha, "")) for oid, sha in sha_of.items()}
-
-
-def _live_and_ghosts(repo: str, symbol: str):
-    """(live tip op-id or None, [out-of-ideal op-ids touching `symbol`, oldest-first])."""
-    from ugh.core import lens, opindex, order
-
-    ops = opindex.index_ops(repo)
-    ideal = lens.current_ideal(repo)
-    tip = order.frontier(ideal.op_ids, ops).get(symbol)
-    ghosts = sorted(op.id for op in ops if symbol in op.footprint and op.id not in ideal.op_ids)
-    return tip, ghosts
-
-
-def _names_a_stored_op(repo: str, target: str) -> bool:
-    """Does this hex handle name an op the store holds? One that does is not a typo or a stale
-    handle, so a verb that cannot apply it owes the reader its own refusal rather than
-    `_no_feature_match`'s denial that the id exists."""
-    from ugh.core import opindex
-
-    return any(op.id == target or op.id.startswith(target) for op in opindex.index_ops(repo))
-
-
-def _explain_restore_block(repo: str, target: str, as_json: bool) -> int | None:
-    """A hex restore target that names a real stored op the current ideal can't legally re-admit.
-    `plan_restore` resolves against the reduced HEAD ideal, which parks a superseded or forked
-    version -- so the very id a `revert` printed reads as "not found". Resolve it against the
-    whole store instead and, when another version of its symbol is live, explain the one-live-
-    version rule and the two ways out (swap / reconcile). Returns None when no stored op matches
-    (the caller's ladder continues)."""
-    from ugh.core import lens, opindex, order
-    from ugh.core.op import _symbol_kind
-
-    ops = opindex.index_ops(repo)
-    ids = {op.id for op in ops}
-    matches = sorted(oid for oid in ids if oid == target or oid.startswith(target))
-    if not matches:
-        return None
-    if len(matches) > 1:
-        msg = f"ambiguous op-id prefix {target!r}: {[m[:12] for m in matches[:5]]}"
-        return _fail_json(msg, as_json)
-    op_id = matches[0]
-    ideal = lens.current_ideal(repo)
-    if op_id in ideal.op_ids:
-        if as_json:
-            return _emit_json({"ok": True, "verb": "restore", "target": target,
-                               "removed": [], "added": [], "message": "already live"})
-        print(f"✓ {op_id[:8]} is already live — nothing to restore.")
-        return 0
-
-    op = next(o for o in ops if o.id == op_id)
-    tips = order.frontier(ideal.op_ids, ops)
-    blocked = []
-    for sym in sorted(op.footprint):
-        if _symbol_kind(sym) not in ("entity", "nested", "whole_file"):
-            continue
-        tip = tips.get(sym)
-        if tip is not None and tip != op_id:
-            blocked.append((sym, tip))
-    if not blocked:
-        return None  # parked for some other reason -- let the normal ladder report it
-
-    saves = _save_of(repo, [op_id] + [tip for _s, tip in blocked])
-    if as_json:
-        # Shape-compatible with the verb-preview projection (`forked` is what a client keys the
-        # refusal overlay on), plus the block detail no other field carries.
-        return _emit_json({
-            "ok": False, "verb": "restore", "target": target, "forked": True, "blocked": True,
-            "removed": [], "added": [],
-            "symbols": [{"symbol": s, "live_op": t, "ghost_op": op_id} for s, t in blocked],
-            "message": "another version of the symbol is live; revert it first or resolve",
-        })
-    sym, tip = blocked[0]
-    g_sha, g_subj = saves.get(op_id, ("?", ""))
-    t_sha, t_subj = saves.get(tip, ("?", ""))
-    print(f"✗ can't restore {op_id[:8]} — another version of {sym} is live")
-    print(f"    one live version per symbol: {tip[:8]}"
-          + (f" (save {t_sha} \"{t_subj}\")" if t_subj else "") + " is live;")
-    print(f"    {op_id[:8]}" + (f" (save {g_sha} \"{g_subj}\")" if g_subj else "")
-          + " waits behind it as a ghost.")
-    print(f"      swap       ugh revert {tip[:8]}   then   ugh restore {op_id[:8]}")
-    print(f"      reconcile  ugh resolve {sym}   (combine both versions)")
-    for sym_extra, _tip in blocked[1:]:
-        print(f"    (also blocked on {sym_extra})")
-    return 2
-
-
-def _restore_already_live(repo: str, symbol: str, as_json: bool) -> int:
-    """`ugh restore <file::symbol>` when the symbol is already live: name that plainly, then list
-    any parked versions with the swap commands -- the likely reason the user reached for restore."""
-    tip, ghosts = _live_and_ghosts(repo, symbol)
-    if as_json:
-        return _emit_json({"ok": True, "verb": "restore", "target": symbol, "removed": [],
-                           "added": [], "already_live": True, "parked_versions": ghosts})
-    print(f"✓ {symbol} is already live — nothing to restore.")
-    if ghosts and tip:
-        from ugh.core import verbs
-
-        saves = _save_of(repo, ghosts + [tip])
-        print(f"  {len(ghosts)} parked version(s) of this symbol exist:")
-        for g in ghosts[:4]:
-            sha, subj = saves.get(g, ("?", ""))
-            note = f"  from save {sha} \"{subj}\"" if subj else ""
-            print(f"    {g[:8]}{note}")
-            # Re-plan for a truthful hint: a ghost whose live tip is its own ancestor restores
-            # directly (a chain extension); a competing sibling needs the swap.
-            replan = verbs.plan_restore(repo, g)
-            if replan.ok and replan.added:
-                print(f"      bring it back:  ugh restore {g[:8]}")
-            else:
-                print(f"      swap it in:  ugh revert {tip[:8]}  then  ugh restore {g[:8]}")
-        if len(ghosts) > 4:
-            print(f"    +{len(ghosts) - 4} more")
-    return 0
-
-
-def _plan_for(verb: str, repo: str, ref: str, kind: str = ""):
-    """The one piece of verb-specific glue `resolve_intent`'s candidates need: re-plan a
-    candidate ref through the same pure `plan_*` the deterministic rungs already used, so its
-    preview is truthful (and a hallucinated/no-longer-live ref reports `ok=False`).
-
-    A `feature`-kind candidate is routed through `plan_revert_feature`/`plan_restore_feature` --
-    the same feature-grouped plan the deterministic feature rung uses (mirroring
-    `_kernel_edit_verb`'s ladder) -- since the prompt invites feature ids and a plain single-op
-    `plan_revert`/`plan_restore` can't resolve one (it would drop the very target the LLM found)."""
-    from ugh.core import verbs
-
-    plan_single = verbs.plan_revert if verb == "revert" else verbs.plan_restore
-    if kind == "feature":
-        from ugh.lens import verbs as lens_verbs
-
-        plan_feature = lens_verbs.plan_revert_feature if verb == "revert" else lens_verbs.plan_restore_feature
-        return plan_feature(repo, ref)
-    return plan_single(repo, ref)
-
-
-def _resolve_via_ledger(repo: str, cmd: str, target: str, emit: bool, as_json: bool, yes: bool) -> int | None:
-    """The deterministic NL rung, tried *before* the LLM (plan U8): match the prose `target` against
-    the intent ledger's captured `reason` texts (M1's topic tokenizer, typo-tolerant) and revert the
-    best-matching record's subject op-set -- so "drop the retry logic" resolves offline once the
-    ledger holds a reason mentioning retry, no `OPENAI_API_KEY` needed.
-
-    Revert-only: a reason indexes the op-set that *landed* it, which is what `revert` removes; there
-    is no op-set counterpart for `restore` (the same reason the `@`/`:` checkpoint branch is
-    revert-only). Returns an exit code when it resolved and emitted, or `None` to fall through to the
-    LLM rung -- for `restore`, an empty target phrase, no ledgered reason overlapping the phrase, an
-    ambiguous tie between records, or a matched record whose op-set no longer re-plans cleanly."""
+def _resolve_via_ledger(repo: str, cmd: str, target: str) -> tuple[frozenset[str], str] | None:
+    """The deterministic NL rung, tried *before* the LLM (plan U8): match the prose `target`
+    against the intent ledger's captured `reason` texts and take the best-matching record's subject
+    op-set -- so "drop the retry logic" resolves offline. Revert-only. None when nothing matches
+    uniquely."""
     if cmd != "revert":
         return None
-    from ugh.core import verbs
     from ugh.intent import rationale
 
     phrase = set(rationale._content_words(target))
@@ -1067,32 +401,22 @@ def _resolve_via_ledger(repo: str, cmd: str, target: str, emit: bool, as_json: b
     best = scored[0][0]
     if len([s for s in scored if s[0] == best]) > 1:
         return None  # a tie is genuinely ambiguous -- let the LLM rung disambiguate rather than guess
-    rec = scored[0][2]
-    op_ids = frozenset(s["op"] for s in rec.get("subject", []))
-    if not op_ids:
-        return None  # an open/unlanded intent has no op-set to revert
-    preview = verbs.plan_revert_op_set(repo, target, op_ids)
-    if not preview.ok or not preview.removed:
-        return None  # already reverted, or not in the ideal -- fall through rather than a no-op "success"
-    return _emit_verb_result(repo, preview, emit, as_json,
-                             extra={"resolved_from": rec["reason"]}, yes=yes)
+    op_ids = frozenset(s["op"] for s in scored[0][2].get("subject", []))
+    return (op_ids, target) if op_ids else None
 
 
-def _resolve_via_intent(repo: str, cmd: str, target: str, as_json: bool, yes: bool) -> int:
-    """The NL rung (plan B2/B3): an LLM (`ugh.intent.resolve.resolve_intent`) proposes candidate
-    refs for `target`; each is re-planned via `_plan_for` for a truthful preview, dropping any
-    that isn't `ok`. Default UX is did-you-mean -- print the survivors and the exact re-invoke
-    command, exit 2, apply nothing. `--yes` applies the top survivor directly. No key, no
-    network, or zero surviving candidates all report a clear message and exit 1 -- never a
-    crash, never a guess."""
+def _resolve_via_intent(repo: str, cmd: str, target: str, as_json: bool, yes: bool,
+                        whole: bool = False) -> int:
+    """The NL rung: an LLM (`ugh.intent.resolve.resolve_intent`) proposes candidate refs for
+    `target`; each is resolved deterministically and planned, dropping any that would change
+    nothing. Default UX is did-you-mean -- print the survivors and the exact re-invoke command,
+    exit 2, apply nothing. `--yes` applies the top survivor. No key, no network, or no surviving
+    candidate reports a clear message and exits 1."""
+    from ugh.core import planner
     from ugh.intent.resolve import resolve_intent
 
     resolution = resolve_intent(repo, target, verb=cmd)
     if resolution is None:
-        # Two different failures wore one sentence. `resolve_intent` returns None when there is no
-        # credential AND when there is one and the call got nowhere, and the message named the key
-        # either way -- so a participant with a provisioned key was told to set the key they had,
-        # about a target the tool could not match. Ask the config which case this is.
         try:
             from ugh.config import load_env, resolve_api_key
 
@@ -1109,59 +433,33 @@ def _resolve_via_intent(repo: str, cmd: str, target: str, as_json: bool, yes: bo
             "natural-language targets",
             as_json,
         )
-
     if not resolution.candidates:
         return _fail_json(
             f"nothing in this codebase's tracked history plausibly matches {target!r}", as_json,
         )
 
     survivors = []
-    seen_effects: set[tuple] = set()
+    seen: set[frozenset[str]] = set()
     for cand in resolution.candidates:
-        preview = _plan_for(cmd, repo, cand.ref, cand.kind)
-        # Drop refs that don't re-plan, and refs whose edit is a no-op (e.g. a `restore` of an
-        # already-live symbol, or a `revert` the LLM proposed for something not actually in the
-        # ideal): a candidate the user can't tell apart from doing nothing isn't a real choice.
-        if not preview.ok or not (preview.removed or preview.added):
+        resolved = resolve_ref(repo, cmd, cand.ref)
+        if resolved is None or resolved[0] in seen:
             continue
-        # Collapse candidates that re-plan to the *same* edit (e.g. an op-id and its `file::symbol`
-        # both resolving to one op) -- the higher-ranked phrasing wins, so the user sees one entry
-        # per distinct outcome rather than the same revert spelled several ways.
-        effect = (frozenset(preview.removed), frozenset(preview.added))
-        if effect in seen_effects:
+        p = planner.plan(repo, resolved[0], verb=cmd, target=cand.ref, whole=whole)
+        if not p.ok or not p.files:
             continue
-        seen_effects.add(effect)
-        survivors.append((cand, preview))
+        seen.add(resolved[0])
+        survivors.append((cand, resolved, p))
     if not survivors:
-        return _fail_json(f"no live candidate for {target!r} survived re-planning", as_json)
+        return _fail_json(f"no live candidate for {target!r} survived planning", as_json)
 
     if yes:
-        from ugh.core import verbs
-        from ugh.core.lens import DirtyWorkingTreeError
-
-        _, top_preview = survivors[0]
-        try:
-            verbs.apply(repo, top_preview)
-        except DirtyWorkingTreeError as e:
-            return _dirty_refusal(e, as_json)
-        view = {
-            "ok": True, "verb": cmd, "target": top_preview.target,
-            "removed": sorted(top_preview.removed), "added": sorted(top_preview.added),
-            "affected_symbols": list(top_preview.affected_symbols), "forked": top_preview.forked,
-            "message": f"resolved {target!r} -> {top_preview.target!r}",
-        }
-        return _emit_json(view) if as_json else _print_verb_view(view)
+        _cand, (op_ids, label), _p = survivors[0]
+        return _answer(repo, cmd, op_ids, label, False, as_json, True, whole=whole)
 
     candidates_view = [
-        {
-            "ref": preview.target, "kind": cand.kind, "rationale": cand.rationale,
-            "removed": len(preview.removed), "added": len(preview.added),
-            # Same reason as `_applied_magnitude`: a candidate whose revert is a subtraction removes
-            # no whole op, and "would remove 0 op(s)" read as "this candidate does nothing".
-            "cost": _applied_magnitude(preview),
-            "reinvoke": f"ugh {cmd} {preview.target}",
-        }
-        for cand, preview in survivors
+        {"ref": cand.ref, "kind": cand.kind, "rationale": cand.rationale,
+         "undone": len(p.undone), "held": len(p.held), "reinvoke": f"ugh {cmd} {cand.ref}"}
+        for cand, _r, p in survivors
     ]
     if as_json:
         import json
@@ -1172,76 +470,6 @@ def _resolve_via_intent(repo: str, cmd: str, target: str, as_json: bool, yes: bo
     print(f"? [{cmd}] {target!r} did not resolve; did you mean:")
     for i, c in enumerate(candidates_view, 1):
         print(f"  {i}. {c['ref']} ({c['kind']}) — {c['rationale']}")
-        print(f"     would apply — {c['cost']}")
+        print(f"     would undo {c['undone']} step(s), hold {c['held']}")
         print(f"     re-invoke: {c['reinvoke']}")
     return 2
-
-
-def _print_verb_view(view: dict) -> int:
-    from ugh.api import plural
-
-    icon = "✓" if view["ok"] else "✗"
-    print(f"{icon} [{view['verb']}] {view['target']}" + (f" — {view['message']}" if view["message"] else ""))
-    if not view["ok"]:
-        return 1
-    # Human units: symbols, not op ids (the ids stay in --json; `ugh undo` is the recovery path,
-    # and a blocked restore lists parked versions by symbol).
-    syms = [s for s in view.get("affected_symbols", []) if "::__" not in s]
-    sym_note = (": " + ", ".join(syms[:6]) + (f" +{len(syms) - 6} more" if len(syms) > 6 else "")) if syms else ""
-    if view["removed"]:
-        print(f"    removed {plural(len(view['removed']), 'edit')}{sym_note}")
-    if view["added"]:
-        print(f"    added {len(view['added'])} edit(s){sym_note}")
-    # The dependent frontier: what reverting *lands on*. blast = a direct dependent; carry = a
-    # transitive dependent; foundation = an upstream prerequisite a revert cannot drop.
-    frontier = view.get("frontier") or []
-    if frontier:
-        buckets: dict[str, int] = {}
-        for row in frontier:
-            buckets[row.get("bucket", "?")] = buckets.get(row.get("bucket", "?"), 0) + 1
-        parts = []
-        if buckets.get("blast"):
-            parts.append(f"{buckets['blast']} to re-draft (blast)")
-        if buckets.get("carry"):
-            parts.append(f"{buckets['carry']} auto-repoint (carry)")
-        if buckets.get("foundation"):
-            parts.append(f"{plural(buckets['foundation'], 'prerequisite')} locked (foundation)")
-        if parts:
-            print("    dependents: " + ", ".join(parts))
-    affected = view.get("affected") or []
-    if affected:
-        rows = ", ".join(
-            f"{a['feature_id'][:12]} ({a['direction']} {a['op_count']})" for a in affected[:6]
-        )
-        more = f" +{len(affected) - 6}" if len(affected) > 6 else ""
-        print(f"    features touched: {rows}{more}")
-    _print_verb_diff(view.get("files") or {})
-    return 0
-
-
-def _print_verb_diff(files: dict, max_lines: int = 60) -> None:
-    """Show the actual resulting change (the state you land in), computed by the backend as a
-    before/after fold per changed path. A capped unified diff -- the honest answer to 'what does
-    reverting this do to my code', not just an op-count."""
-    from ugh.api import plural
-
-    if not files:
-        return
-    import difflib
-
-    print(f"    ── resulting change ({plural(len(files), 'file')}) ──")
-    shown = 0
-    for path in sorted(files):
-        pair = files[path]
-        before = (pair.get("before") or "").splitlines()
-        after = (pair.get("after") or "").splitlines()
-        diff = list(difflib.unified_diff(before, after, lineterm="", n=2))[2:]  # drop the ---/+++ header
-        if not diff:
-            continue
-        print(f"    {path}")
-        for line in diff:
-            if shown >= max_lines:
-                print("    … (diff truncated; use --json for the full before/after)")
-                return
-            print(f"      {line}")
-            shown += 1

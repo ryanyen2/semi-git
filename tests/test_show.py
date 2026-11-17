@@ -54,7 +54,7 @@ _DERIVED_CACHES = frozenset({
 
 def test_show_writes_nothing(tmp_path):
     """`show` is a read. Pinned by hashing every file under `.sgt/` before and after: the consequence
-    number comes from `plan_revert_op_set`, and a plan that leaked a write would make the safe
+    number comes from the planner, and a plan that leaked a write would make the safe
     pre-flight check itself destructive. Derived caches are excluded -- what must not move is the
     op store, the ideal, and the journal."""
     repo, result = _repo(tmp_path)
@@ -126,8 +126,6 @@ def test_show_omits_bookkeeping_sentinels_from_the_footprint(tmp_path):
     view = api.show_view(repo, _feature(result))
     assert view["symbols"], "a feature touches something"
     assert not [s for s in view["symbols"] if "__residue__" in s or "__anchor__" in s]
-    assert not [s for s in view["consequences"]["affected_symbols"]
-                if "__residue__" in s or "__anchor__" in s]
 
 
 def test_a_whole_file_path_is_shown_as_a_symbol(tmp_path):
@@ -142,15 +140,14 @@ def test_a_whole_file_path_is_shown_as_a_symbol(tmp_path):
 # -- consequence -------------------------------------------------------------------------------
 
 
-def test_consequences_separate_the_selection_from_what_sits_on_top(tmp_path):
-    """`removes` is the total a revert would drop; `dependents` is the part that is *not* the
-    selection's own ops. That split is the number that decides whether a revert is a small
-    correction or a demolition, and it is invisible in every other view."""
+def test_consequences_say_what_would_go_and_what_is_held(tmp_path):
+    """The planner's answer, before anyone asks for a revert: how many steps would go, how many
+    are held because other work stands on them, and how big the removal set is."""
     repo, result = _repo(tmp_path)
-    view = api.show_view(repo, _feature(result))
-    cons = view["consequences"]
-    assert cons["removes"] >= cons["live_op_count"]
-    assert cons["dependents"] == cons["removes"] - cons["live_op_count"]
+    cons = api.show_view(repo, _feature(result))["consequences"]
+    assert cons["live_op_count"] > 0
+    assert cons["undone"] + cons["held"] > 0
+    assert cons["removal_set_steps"] >= cons["undone"] + cons["held"]
 
 
 def test_a_dead_selection_says_a_revert_would_do_nothing(tmp_path):
@@ -159,16 +156,16 @@ def test_a_dead_selection_says_a_revert_would_do_nothing(tmp_path):
     repo, result = _repo(tmp_path)
     fid = _feature(result)
     # Revert the whole feature, then ask about it again.
-    from ugh.core import verbs
+    from ugh.core import planner
     from ugh.lens import verbs as lens_verbs
 
-    preview = lens_verbs.plan_revert_feature(repo, fid)
-    assert preview.ok and preview.removed, preview.message
-    verbs.apply(repo, preview)
+    ops = lens_verbs.resolve_feature(repo, fid)[0]
+    done = planner.apply(repo, planner.plan(repo, ops, target=fid, whole=True))
+    assert done.undone and not done.held
 
     view = api.show_view(repo, fid)
     assert view["ok"], view.get("message")
-    assert view["consequences"]["live_op_count"] == 0
+    assert view["consequences"]["undone"] == 0
     assert not [s for s in view["next"] if s["cmd"].startswith("ugh revert")]
 
 
@@ -287,17 +284,12 @@ def test_op_ids_are_omitted_by_default_and_complete_when_asked_for(tmp_path):
     assert len(full["ops"]) == full["op_count"] == view["op_count"]
 
 
-def test_affected_symbols_are_capped_with_an_honest_count(tmp_path):
-    """Reverting a large feature moves many symbols. Uncapped, that list was 5.3 KB of a single
-    `ugh show` payload on this project's own repo, and no surface renders it -- the actionable part
-    of a consequence is the magnitude (`removes`/`dependents`), not the roll call. Capped, with the
-    real count beside it so the cap doesn't read as completeness."""
+def test_held_symbols_are_capped(tmp_path):
+    """The held symbols are a capped list beside counts that are always present."""
     repo, result = _repo(tmp_path)
     cons = api.show_view(repo, _feature(result), symbol_limit=2)["consequences"]
-    assert len(cons["affected_symbols"]) <= 2
-    assert cons["affected_symbol_count"] >= len(cons["affected_symbols"])
-    # The magnitude is always present regardless of the cap.
-    assert isinstance(cons["removes"], int) and isinstance(cons["dependents"], int)
+    assert len(cons["held_symbols"]) <= 2
+    assert isinstance(cons["undone"], int) and isinstance(cons["held"], int)
 
 
 def _rewritten_symbol(tmp_path):
@@ -337,7 +329,7 @@ def test_show_symbol_provenance_covers_its_whole_history_not_just_its_current_op
     assert view["op_count"] >= 2                              # not "1 edit"
 
     # The revert target is untouched: consequences still describe the frontier tip alone.
-    assert view["consequences"]["affected_symbol_count"] >= 1
+    assert view["consequences"]["live_op_count"] == 1
 
 
 def test_the_elided_save_count_comes_with_a_way_to_see_them(tmp_path, capsys, monkeypatch):
@@ -398,24 +390,15 @@ def test_a_save_id_from_the_log_is_shown_as_a_save(tmp_path):
     assert subprocess.run(git_show.split(), cwd=repo, capture_output=True).returncode == 0
 
 
-def test_a_save_is_not_offered_a_revert_that_revert_cannot_take(tmp_path):
-    """`ugh revert`'s ladder is checkpoint/op/symbol/feature -- it does not take a commit sha, and
-    answers `no feature matches handle` for one. So the revert offer, which every other live
-    selection gets, must be withheld here.
-
-    The second half is what keeps this honest: it asserts revert really does still reject the sha.
-    If revert ever learns saves, this test fails and says to put the offer back, rather than
-    quietly leaving `show` less useful than the tool it describes."""
-    from ugh.lens.verbs import resolve_feature
-
+def test_a_save_is_offered_the_revert_that_takes_it(tmp_path):
+    """`ugh revert <sha>` takes a save out, so a live save's card offers it, spelled with the
+    handle the log printed."""
     repo, _result = _repo(tmp_path)
     token = _a_logged_save_id(repo)
 
     view = api.show_view(repo, token)
     assert view["consequences"]["live_op_count"], "precondition: this save is live"
-    assert not [s for s in view["next"] if s["cmd"].startswith("ugh revert")]
-    assert resolve_feature(repo, token) is None, "revert now takes a sha -- restore the offer"
-
+    assert any(s["cmd"] == f"ugh revert {token}" for s in view["next"]), view["next"]
 
 def test_a_commit_shaped_miss_says_which_of_the_three_things_went_wrong(tmp_path):
     """A commit-shaped token that reaches the refusal has already been past the save rung, so the
@@ -438,7 +421,7 @@ def test_show_answers_a_row_of_work_across_features(tmp_path, monkeypatch):
     op, or symbol. It is felt exactly where it costs most: a ◆ carries no id in the log the way a
     lane does, so its label is the only handle a reader has.
 
-    The answer has to carry the consequence too, from the same `plan_revert_op_set` every other kind
+    The answer has to carry the consequence too, from the same planner every other kind
     uses -- "what comes out with it" is the question the stage before the removal asks."""
     from ugh import state
     from ugh.intent import theme
@@ -484,7 +467,7 @@ def test_show_answers_a_row_of_work_across_features(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     assert main(["revert", "Event Day Handling", "--yes"]) == 0
     out_view = api.show_view(tmp_path, "Event Day Handling")
-    assert out_view["consequences"]["removes"] == 0, "the revert did not take it out"
+    assert out_view["consequences"]["undone"] == 0, "the revert did not take it out"
     assert any(c["cmd"] == 'ugh restore "Event Day Handling"' for c in out_view["next"]), \
         [c["cmd"] for c in out_view["next"]]
 

@@ -85,8 +85,8 @@ def test_segments_carry_documented_keys_and_addressable_checkpoint(tmp_path):
         # so a card can say "1 change · 1 function · 1 save" without a dry run, and never an op
         # count (most ops are residue/anchor bookkeeping a reader does not recognise).
         "symbols", "symbol_count", "change_count", "symbols_truncated", "state", "taken_out_by",
-        # What stands on the chapter before any preview: the later live chapters a revert would
-        # rewrite or leave naming removed code, and whether that revert removes it outright.
+        # What stands on the chapter before any preview: the chapters that hold its revert, and
+        # whether that revert would go whole.
         "dependents", "clean",
     }
     assert s["checkpoint"] == "F-A@0"
@@ -105,12 +105,11 @@ def test_segments_carry_documented_keys_and_addressable_checkpoint(tmp_path):
 
 
 def test_segments_say_what_stands_on_them_and_which_revert_is_clean(tmp_path):
-    """Before any preview, each checkpoint says which later live checkpoints a revert of it would
-    rewrite or leave naming removed code, and whether that revert removes it outright. `foo` is
-    called by `bar`, and a later save edits both: taking out F-A leaves `bar` calling a removed
-    `foo`; taking out F-B rewrites the later edit of `bar`; nothing stands on `baz`. A chapter
-    already taken out has nothing to say (`clean` None)."""
-    from ugh.core import verbs
+    """Before any preview, each checkpoint says which other checkpoints hold its revert (the
+    planner's holders) and whether its revert would go whole. `foo` is called by `bar`: taking out
+    F-A is held by F-B; nothing stands on `bar` or `baz`. A chapter already taken out has nothing
+    to say (`clean` None)."""
+    from ugh.core import planner
     from ugh.core.store import Store
     from ugh.lens import tree
 
@@ -136,24 +135,22 @@ def test_segments_say_what_stands_on_them_and_which_revert_is_clean(tmp_path):
     by_ref = {s["checkpoint"]: s for s in intent_view(tmp_path)["segments"]}
     assert (by_ref["F-A@0"]["dependents"], by_ref["F-A@0"]["clean"]) == (
         [{"ref": "F-B@0", "symbols": ["a.py::foo"]}], False)
-    assert (by_ref["F-B@0"]["dependents"], by_ref["F-B@0"]["clean"]) == (
-        [{"ref": "F-A@0", "symbols": ["b.py::bar"]}], False)
+    assert (by_ref["F-B@0"]["dependents"], by_ref["F-B@0"]["clean"]) == ([], True)
     assert (by_ref["F-C@0"]["dependents"], by_ref["F-C@0"]["clean"]) == ([], True)
 
     baz_ops = frozenset(by_ref["F-C@0"]["op_ids"])
-    verbs.apply(tmp_path, verbs.plan_revert_op_set(tmp_path, "F-C@0", baz_ops))
+    planner.apply(tmp_path, planner.plan(tmp_path, baz_ops, target="F-C@0"))
     taken_out = next(s for s in intent_view(tmp_path)["segments"] if s["checkpoint"] == "F-C@0")
     assert (taken_out["state"], taken_out["dependents"], taken_out["clean"]) == ("reverted", [], None)
 
 
 def test_a_save_and_a_revert_after_the_last_map_build_are_on_their_lanes(tmp_path):
-    """The persisted map files ops only when it is rebuilt, so a save that only modified existing
-    functions, and the prune a revert minted, sat on no lane until a refresh: missing from the
-    timeline, the checkpoints, their counts and their dependents. Both are filed at read time by
-    the lane that owns what they touch, and nothing is written back."""
+    """The persisted map files ops only when it is rebuilt, so a save after the build, and the ops
+    a revert minted, sat on no lane until a refresh. Both are filed at read time by the lane that
+    owns what they touch, and nothing is written back."""
     from ugh import state
     from ugh.api import _named_symbols, history_view
-    from ugh.core import opindex, verbs
+    from ugh.core import opindex, planner
     from ugh.core.store import Store
     from ugh.lens import tree
 
@@ -167,27 +164,26 @@ def test_a_save_and_a_revert_after_the_last_map_build_are_on_their_lanes(tmp_pat
     tree.save(tmp_path, {"nodes": nodes, "roots": sorted(nodes),
                          "op_leaf": tree.assign_ops_to_leaves(nodes, Store(tmp_path).all_ops()),
                          "max_depth": 0, "cannot_link_moves": [], "identity_events": []})
-    foo_birth = next(o.id for o in opindex.index_ops(tmp_path)
-                     if o.footprint.get("a.py::foo", (0,))[0] is None)
     persisted = state.load_json(tmp_path, "tree")
-    # After the build: a save that only modifies existing functions (baz now calls foo, so the
-    # miner makes one op of both), then a revert of foo's creation that has to prune foo forward.
     (tmp_path / "a.py").write_text("def foo():\n    return 2\n\n\ndef baz():\n    return foo()\n",
                                    encoding="utf-8")
-    gb.commit_all("foo returns two and baz calls it")
+    sha = gb.commit_all("foo returns two and baz calls it")
     get(tmp_path)
-    plan = verbs.plan_revert_op_set(tmp_path, "foo", frozenset({foo_birth}))
-    assert plan.pruned_symbols == ("a.py::foo",)
-    verbs.apply(tmp_path, plan)
+    foo_change = next(o.id for o in opindex.index_ops(tmp_path)
+                      if sha in o.provenance and "a.py::foo" in o.footprint)
+    done = planner.apply(tmp_path, planner.plan(tmp_path, {foo_change}, target="foo"))
+    assert done.new_ops
 
     by_id = {o.id: o for o in opindex.index_ops(tmp_path)}
     late = [o for o in history_view(tmp_path, full=True)["ops"]
             if o["commit_index"] >= 1 and _named_symbols(by_id[o["id"]])]
-    assert {o["kind"] for o in late} >= {"rework", "prune"}
-    assert all(o["feature_id"] == "F-A" for o in late), late
+    assert {o["id"] for o in late} >= {op.id for op in done.new_ops if _named_symbols(op)}
+    for o in late:
+        owner = "F-A" if "a.py::foo" in by_id[o["id"]].footprint else "F-B"
+        assert o["feature_id"] == owner, o
     on_lane = {oid for s in intent_view(tmp_path)["segments"] if s["feature_id"] == "F-A"
                for oid in s["op_ids"]}
-    assert {o["id"] for o in late} <= on_lane
+    assert {o["id"] for o in late if "a.py::foo" in by_id[o["id"]].footprint} <= on_lane
     assert state.load_json(tmp_path, "tree") == persisted  # read-time only
 
 

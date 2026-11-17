@@ -14,12 +14,17 @@ import json
 import os
 
 import ugh.cli as cli
-from ugh.core import verbs
 from ugh.core import oplog
 from ugh.core.lens import current_ideal, get
 from ugh.core.store import Store
 from ugh.store.gitbind import init_store
 from tests.laws import corpus
+
+
+def _revert(repo, op_id):
+    from ugh.core import planner
+
+    return planner.apply(repo, planner.plan(repo, {op_id}, target=op_id))
 
 
 @contextlib.contextmanager
@@ -58,25 +63,25 @@ def test_undo_reports_empty_when_nothing_has_been_recorded(tmp_path):
 
 
 def test_undo_restores_the_ideal_from_before_the_last_apply(tmp_path):
-    """`verbs.revert`'s apply path calls `lens.put` + `lens.record_ideal`, which appends the
-    outgoing ideal as an `ideal_edit` event; `oplog.undo` pops that event and restores it exactly
-    (set arithmetic), reporting the delta via its `UndoResult`."""
+    """A revert's apply calls `lens.record_ideal`, which appends the outgoing ideal as an
+    `ideal_edit` event; `oplog.undo` pops that event and restores it exactly (set arithmetic),
+    reporting the delta via its `UndoResult`."""
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     original_ids = get(repo).op_ids
     ops = Store(repo).all_ops()
     baz = next(o for o in ops if "b.py::baz" in o.footprint)
 
-    verbs.revert(repo, baz.id)
+    _revert(repo, baz.id)
     reverted_ids = get(repo).op_ids
-    assert baz.id not in reverted_ids
+    assert reverted_ids > original_ids  # a take-out only adds ops
 
     outcome = oplog.undo(repo)
     assert outcome.status == "ideal_edit"
     result = outcome.ideal
     assert result.ideal.op_ids == original_ids
     assert get(repo).op_ids == original_ids
-    assert result.removed == set()  # nothing left over from the revert
-    assert result.added == original_ids - reverted_ids  # baz.id came back
+    assert result.removed == reverted_ids - original_ids  # the take-out's ops left
+    assert result.added == set()
 
 
 def test_repeated_undo_walks_back_through_two_independent_edits(tmp_path):
@@ -88,9 +93,9 @@ def test_repeated_undo_walks_back_through_two_independent_edits(tmp_path):
     qux_ops = [o for o in ops if "c.py::qux" in o.footprint]
     qux_tip = max(qux_ops, key=lambda o: len(o.footprint["c.py::qux"]))
 
-    verbs.revert(repo, baz.id)
+    _revert(repo, baz.id)
     after_first = get(repo).op_ids
-    verbs.revert(repo, qux_tip.id)
+    _revert(repo, qux_tip.id)
     after_second = get(repo).op_ids
     assert after_second != after_first
 

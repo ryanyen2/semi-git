@@ -12,7 +12,7 @@ Tool surface:
   covers, or a file at a past point), ``ugh_find`` (rank features/saves/symbols against a phrase),
   ``ugh_advanced_fsck`` (op-store integrity).
 * **write**: ``ugh_init`` (bind git + the kernel store, mine existing history), ``ugh_save``,
-  ``ugh_revert`` / ``ugh_restore`` (exact ideal edits, `I \\ ↑X` / `I ∪ ↓X`, with an `emit` dry-run
+  ``ugh_revert`` / ``ugh_restore`` (take work out and bring it back, with an `emit` dry-run
   preview).
 * **agentic loop** (plan U14): ``ugh_plan_intake`` (decompose a plan into predicted hollow
   ops), ``ugh_checkpoint`` (the pure step<->op footprint-overlap preview, or -- given
@@ -73,104 +73,25 @@ def tool_fsck(repo_path: str, args: dict) -> dict:
     }
 
 
-def _verb_result(preview) -> dict:
-    return {
-        "ok": preview.ok, "verb": preview.verb, "target": preview.target,
-        "removed": sorted(preview.removed), "added": sorted(preview.added),
-        "affected_symbols": list(preview.affected_symbols), "forked": preview.forked,
-        "message": preview.message,
-    }
+def _verb(repo_path: str, verb: str, ref: str, emit: bool, whole: bool = False) -> dict:
+    """Resolve `ref` the way the CLI does, plan, and apply unless `emit`."""
+    from ugh.cli.ideal_edit import resolve_ref
+    from ugh.core import planner
+    from ugh.core.lens import DirtyWorkingTreeError
 
-
-def _by_the_name_it_is_printed_under(repo_path: str, verb: str, ref: str):
-    """The handles the CLI resolves and this tool did not: a ◆ label, a `<feature>@<n>` checkpoint,
-    and -- for restore -- the name of a revert this repo actually recorded.
-
-    A feature is not the only unit the map draws. The one the study hands a participant is a ◆:
-    "Event Day Handling", five features wide, and the whole task is to take that work out. Typed
-    into the terminal it resolves; asked of an assistant it came back `'Event Day Handling' is
-    neither an op-id in the ideal nor a live symbol`, and an assistant that cannot name the unit
-    goes back to editing files by hand -- which is what the tool exists to replace, and the same
-    reason the feature rung above it was added.
-
-    Same rungs, same order and the same op-set planners as `ugh.cli.ideal_edit`, so a name cannot
-    resolve to one thing in the terminal and another through MCP. `None` when nothing claims it,
-    leaving the caller's own refusal to speak.
-    """
-    from ugh.cli.ideal_edit import _resolve_theme, _theme_id_for_label
-    from ugh.core import verbs as core_verbs
-    from ugh.select import resolve as select_resolve
-
-    plan_op_set = (core_verbs.plan_revert_op_set if verb == "revert"
-                   else core_verbs.plan_restore_op_set)
-
-    theme = ref if ref.startswith("theme-") else _theme_id_for_label(repo_path, ref)
-    if theme is not None:
-        resolved = _resolve_theme(repo_path, theme)
-        if resolved is not None:
-            op_ids, label = resolved
-            return plan_op_set(repo_path, label, op_ids)
-
-    if select_resolve.is_checkpoint_shaped(ref):
-        from ugh.intent.segment import resolve_checkpoint
-
-        resolved = resolve_checkpoint(repo_path, ref)
-        if resolved is not None:
-            return plan_op_set(repo_path, ref, resolved[0])
-
-    if verb == "restore":
-        recorded = core_verbs.ops_removed_by_named_revert(repo_path, ref)
-        if recorded:
-            return plan_op_set(repo_path, ref, recorded)
-    return None
-
-
-def _verb_with_feature_fallback(repo_path: str, verb: str, ref: str, emit: bool) -> dict:
-    """An op or symbol first, then the feature of that name.
-
-    The CLI has resolved a feature id or label since U13; this tool did not, so
-    an agent asked to take a feature out got "neither an op-id in the ideal nor a
-    live symbol" for the id every other surface prints. There is no version of
-    this tool being useful without it: features are the unit the graph is drawn
-    in, and an agent that cannot name one falls back to editing files by hand,
-    which is the behaviour the tool exists to replace.
-    """
-    from ugh.core import verbs as core_verbs
-    from ugh.lens import verbs as lens_verbs
-
-    single = core_verbs.revert if verb == "revert" else core_verbs.restore
-    preview = single(repo_path, ref, emit=True)
-    if not preview.ok and lens_verbs.resolve_feature(repo_path, ref) is not None:
-        plan = (
-            lens_verbs.plan_revert_feature if verb == "revert" else lens_verbs.plan_restore_feature
-        )
-        preview = plan(repo_path, ref)
-    if not preview.ok:
-        named = _by_the_name_it_is_printed_under(repo_path, verb, ref)
-        if named is not None:
-            preview = named
-    gap = None
-    if verb == "restore" and preview.ok:
-        # Computed before apply: apply journals this restore's own entry, and
-        # the gap walk would find that instead of the revert it looks for.
-        from ugh.cli.ideal_edit import _restore_gap
-
-        gap = _restore_gap(repo_path, preview)
-    if preview.ok and not emit:
-        core_verbs.apply(repo_path, preview)
-    result = _verb_result(preview)
-    if verb == "restore" and preview.ok:
-        # The agent is the consumer most likely to read "✓ restore" as "the
-        # earlier revert is undone" and report success to a person. Say what
-        # stays removed, in the same shape the CLI's JSON carries.
-        if gap:
-            result["restore_gap"] = gap
-            result["message"] = (
-                (result.get("message") or "")
-                + f" note: {gap['still_removed_op_count']} op(s) the earlier revert removed stay"
-                  " removed; `ugh undo` reverses that revert whole."
-            ).strip()
-    return result
+    resolved = resolve_ref(repo_path, verb, ref)
+    if resolved is None:
+        return {"ok": False, "verb": verb, "target": ref,
+                "message": f"{ref!r} names no feature, checkpoint, save, op or symbol here"}
+    op_ids, label = resolved
+    p = planner.plan(repo_path, op_ids, verb=verb, target=label, whole=whole)
+    if emit or not p.ok or not p.files:
+        return planner.to_json(p)
+    try:
+        done = planner.apply(repo_path, p)
+    except DirtyWorkingTreeError as e:
+        return {"ok": False, "verb": verb, "target": label, "message": str(e)}
+    return planner.to_json(done, applied=done.check != "not_run" and done.check["passed"])
 
 
 def _carry_prompt(repo_path: str, args: dict, *, key: str | None = None,
@@ -196,7 +117,8 @@ def _carry_prompt(repo_path: str, args: dict, *, key: str | None = None,
 
 
 def tool_revert(repo_path: str, args: dict) -> dict:
-    """`I \\ ↑X`: remove an op and everything built on it. `emit=true` previews with no write."""
+    """Take a piece of work out. `emit=true` previews with no write; `whole=true` takes the
+    removal set."""
     from ugh.core.lens import get
 
     ref = (args.get("ref") or "").strip()
@@ -205,11 +127,11 @@ def tool_revert(repo_path: str, args: dict) -> dict:
     if not args.get("emit"):  # a preview is a read; only the applying call carries intent
         _carry_prompt(repo_path, args)
     get(repo_path)  # mine-on-contact before planning/applying the edit (R9)
-    return _verb_with_feature_fallback(repo_path, "revert", ref, bool(args.get("emit", False)))
+    return _verb(repo_path, "revert", ref, bool(args.get("emit", False)), bool(args.get("whole", False)))
 
 
 def tool_restore(repo_path: str, args: dict) -> dict:
-    """`I ∪ ↓X`: revert's inverse. `emit=true` previews with no write."""
+    """Bring back what a revert took out. `emit=true` previews with no write."""
     from ugh.core.lens import get
 
     ref = (args.get("ref") or "").strip()
@@ -218,7 +140,7 @@ def tool_restore(repo_path: str, args: dict) -> dict:
     if not args.get("emit"):
         _carry_prompt(repo_path, args)
     get(repo_path)
-    return _verb_with_feature_fallback(repo_path, "restore", ref, bool(args.get("emit", False)))
+    return _verb(repo_path, "restore", ref, bool(args.get("emit", False)))
 
 
 def tool_plan_intake(repo_path: str, args: dict) -> dict:
@@ -531,20 +453,23 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         tool_find,
     ),
     "ugh_revert": (
-        "Remove a piece of work and everything built on top of it from the current state. "
-        "`ref` is anything the map prints: a feature id or label, the label of a ◆ piece of work "
-        "spanning several features, a `<feature>@<n>` checkpoint, an op-id or its prefix, or a "
-        "`file::name` symbol (resolves to its latest edit). "
-        "Pass emit=true for a dry-run preview -- writes nothing.",
+        "Take a piece of work out of the code as a new edit. Steps that other remaining work "
+        "stands on are held, each with its reason and the saves that hold it; the project's "
+        "check runs on the result before anything is committed. `ref` is anything the map "
+        "prints: a feature id or label, a ◆ label, a `<feature>@<n>` checkpoint, a save's commit "
+        "sha, an op-id or its prefix, or a `file::name` symbol (its latest edit). "
+        "Pass emit=true for a dry-run preview -- writes nothing. Pass whole=true to take out the "
+        "removal set: the work plus everything that stands on it.",
         _schema({"ref": {"type": "string"}, "emit": {"type": "boolean", "description": "dry-run preview only"},
+                 "whole": {"type": "boolean", "description": "take out the removal set"},
                  "prompt": _DRIVING_PROMPT_PROP, "claude_session_id": _CHAT_KEY_PROP}, ["ref"]),
         tool_revert,
     ),
     "ugh_restore": (
-        "Bring a piece of work back, along with everything it needs -- revert's inverse. "
-        "`ref` is anything the map prints (feature, ◆ label, `<feature>@<n>` checkpoint, op-id, "
-        "`file::name` symbol), or the name of a revert already recorded here. Pass emit=true for "
-        "a dry-run preview -- writes nothing.",
+        "Bring back what a revert took out, by taking out the edit that took it out. Edits "
+        "made since combine; where they rewrote the same lines nothing is written and both "
+        "versions are reported. `ref` is anything revert takes. Pass emit=true for a dry-run "
+        "preview -- writes nothing.",
         _schema({"ref": {"type": "string"}, "emit": {"type": "boolean", "description": "dry-run preview only"},
                  "prompt": _DRIVING_PROMPT_PROP, "claude_session_id": _CHAT_KEY_PROP}, ["ref"]),
         tool_restore,

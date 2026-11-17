@@ -1,7 +1,7 @@
 """Tests for ugh.core.oracle -- async tiered build/test verdicts (plan U9, R13).
 
 Materialization never calls this module -- that's the whole of the "async" requirement, and is
-exercised directly below (a `verbs.revert` with no `.sgt/oracle.json` writes nothing to the
+exercised directly below (a revert with no `.sgt/oracle.json` writes nothing to the
 verdict table). A verdict is keyed to the exact ideal it was run against, so an edit produces a
 fresh key rather than resetting anything.
 """
@@ -11,11 +11,17 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from ugh.core import oracle, verbs
+from ugh.core import oracle
 from ugh.core.lens import get
 from ugh.core.store import Store
 from ugh.store.gitbind import init_store
 
+
+
+def _revert(repo, op_id):
+    from ugh.core import planner
+
+    return planner.apply(repo, planner.plan(repo, {op_id}, target=op_id))
 
 def _foo_chain(repo_path, n: int):
     """A repo whose a.py::foo is a linear chain of `n` versions, one per commit."""
@@ -107,7 +113,7 @@ def test_verdict_is_keyed_to_the_ideal_and_resets_on_edit(tmp_path):
     assert oracle.overall_status(oracle.verdict_for(repo, before)) == "pass"
 
     tip = before.frontier(Store(repo).all_ops())["a.py::foo"]
-    verbs.revert(repo, tip)  # apply -- edits the ideal
+    _revert(repo, tip)  # apply -- edits the ideal
     after = get(repo)
 
     assert after.op_ids != before.op_ids
@@ -122,6 +128,6 @@ def test_apply_with_no_oracle_configured_never_touches_the_verdict_table(tmp_pat
     ideal = get(repo)
     tip = ideal.frontier(Store(repo).all_ops())["a.py::foo"]
 
-    verbs.revert(repo, tip)  # a materializing verb -- must never invoke the oracle
+    _revert(repo, tip)  # a materializing verb -- must never invoke the oracle
 
     assert not (repo / ".sgt" / "local" / "oracle.json").is_file()

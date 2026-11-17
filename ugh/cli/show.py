@@ -221,8 +221,8 @@ def _print_consequences(cons: dict) -> None:
     from ugh.api import revert_cost
 
     print(f"  reverting this {revert_cost(cons)}")
-    if cons["forked"]:
-        print("  ⚠ this selection is forked: two versions of a symbol compete")
+    if cons["held_symbols"]:
+        print(f'  held: {", ".join(cons["held_symbols"])}')
     if not cons["ok"] and cons["message"]:
         print(f'  ⚠ {cons["message"]}')
 

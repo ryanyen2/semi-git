@@ -116,8 +116,10 @@ def capture_cli_surface(root: str) -> dict:
     # would otherwise draw the preview and refuse, exit 2). The gate itself is covered in
     # tests/cli/test_revert.py; here we freeze the applied surface.
     views["revert"] = both_isolated(lambda r: ["revert", "c.py::qux", "--yes"], mapped=True)
-    views["restore"] = both_isolated(lambda r: ["restore", "c.py::qux", "--yes"],
-                                     prep=["revert", "c.py::qux", "--yes"], mapped=True)
+    views["restore"] = {
+        k: _redact_bookkeeping_sha(v) for k, v in both_isolated(
+            lambda r: ["restore", "c.py::qux", "--yes"],
+            prep=["revert", "c.py::qux", "--yes"], mapped=True).items()}
     views["rename"] = both_isolated(
         lambda r: ["feature", "rename", _feature_ids(r)[0], "Renamed Feature"], mapped=True
     )
@@ -176,6 +178,15 @@ def _redact_witness_sha(capture: dict) -> dict:
     else:
         out = _WITNESS_SHA_TEXT_RE.sub(r"\1<witness-sha>", out)
     return {**capture, "out": out}
+
+
+_BOOKKEEPING_SHA_RE = re.compile(r'([("]|"save": ")[0-9a-f]{7}(" ?,?\s*(?:"subject": )?"ugh |\s"ugh )')
+
+
+def _redact_bookkeeping_sha(capture: dict) -> dict:
+    """A restore names the save that took the step out: ugh's own commit, made with the real
+    wall-clock date, so its sha is not reproducible across runs."""
+    return {**capture, "out": _BOOKKEEPING_SHA_RE.sub(r"\1<witness-sha>\2", capture["out"])}
 
 
 def _dump(views: dict) -> str:

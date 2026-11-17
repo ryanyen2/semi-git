@@ -1,6 +1,6 @@
 """The oracle: async tiered build/test verdicts attached to ideals (ADR S6; plan U9, R13).
 
-Ordinary materialization (`lens.put`/`verbs.apply`) never touches this module: a verdict
+Ordinary materialization (`lens.put`) never touches this module: a verdict
 doesn't exist ("pending") until something explicitly runs it. A verdict is keyed to the exact ideal
 it was run against (a hash of its sorted op-id set, `ideal_key`), never to a ref, so an edit that
 changes the ideal produces a new key and the old verdict silently stops applying.
@@ -56,6 +56,24 @@ def _run_tier(repo: Path, command: str) -> dict:
         }
     except OSError as e:
         return {"status": "fail", "exit_code": -1, "output_tail": str(e)}
+
+
+def check(repo: str | Path) -> tuple[bool, str] | None:
+    """Run the configured tiers on the working tree as it is, stopping at the first failure:
+    `(passed, output)`, or None when no check is configured. Records nothing."""
+    cfg = load_oracle_config(repo)
+    if cfg is None or not cfg.tiers:
+        return None
+    output = []
+    for t in cfg.tiers:
+        try:
+            proc = subprocess.run(t.command, shell=True, cwd=repo, capture_output=True, text=True)
+        except OSError as e:
+            return False, str(e)
+        output.append(proc.stdout + proc.stderr)
+        if proc.returncode != 0:
+            return False, "".join(output)
+    return True, "".join(output)
 
 
 def verdict_for(repo: str | Path, ideal: Ideal) -> dict | None:

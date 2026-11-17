@@ -110,7 +110,7 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"applied\": true,\n  \"ok\": true,\n  \"verb\": \"restore\",\n  \"target\": \"c.py::qux\",\n  \"removed\": [],\n  \"added\": [\n    \"d24d9c86571c9b77678e97cb50583d7cb8202156751efbe750fd425135d93beb\"\n  ],\n  \"affected_symbols\": [\n    \"c.py::qux\"\n  ],\n  \"forked\": false,\n  \"conflicts\": [],\n  \"message\": \"\",\n  \"subtracted_symbols\": [],\n  \"pruned_symbols\": [],\n  \"kept_conflicts\": [],\n  \"broken_references\": []\n}\n"
+      "out": "{\n  \"ok\": true,\n  \"applied\": true,\n  \"verb\": \"restore\",\n  \"target\": \"c.py::qux\",\n  \"message\": \"\",\n  \"undone\": [\n    {\n      \"op\": \"0512430f013892bbcaa525886658521c2e4d09b3e6e4bbbc3cdd9874ccce18bd\",\n      \"save\": \"<witness-sha>\",\n      \"subject\": \"ugh revert c.py::qux\",\n      \"symbol\": \"c.py::qux\"\n    }\n  ],\n  \"held\": [],\n  \"removal_set\": null,\n  \"files\": {\n    \"c.py\": {\n      \"before\": \"def qux():\\n    return 'unrelated'\\n\",\n      \"after\": \"def qux():\\n    return 'changed independently'\\n\"\n    }\n  },\n  \"check\": {\n    \"judge\": \"parser\",\n    \"passed\": true,\n    \"rounds\": 1,\n    \"output\": \"\"\n  }\n}\n"
     },
     "text": {
       "argv": [
@@ -119,7 +119,7 @@
         "--yes"
       ],
       "exit": 0,
-      "out": "  restore c.py::qux\n  Re-adds c.py::qux and its prerequisites. Nothing to reconcile. Undo-able.\n    baz qux: 14 \u2192 15 edits\n  1 file: c.py\n  \u2713 restore applied \u2014 0 edits removed, 1 added. (`ugh undo` reverses this.)\n"
+      "out": "  restore c.py::qux\n  comes back: 1 step(s) (<witness-sha> \"ugh revert c.py::qux\")\n  files: c.py\n  check: not run yet\n  \u2713 restore applied \u2014 1 step(s) undone, 0 held, the parser passes. (`ugh undo` reverses this.)\n"
     }
   },
   "revert": {
@@ -131,7 +131,7 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"applied\": true,\n  \"ok\": true,\n  \"verb\": \"revert\",\n  \"target\": \"c.py::qux\",\n  \"removed\": [\n    \"d24d9c86571c9b77678e97cb50583d7cb8202156751efbe750fd425135d93beb\"\n  ],\n  \"added\": [],\n  \"affected_symbols\": [\n    \"c.py::qux\"\n  ],\n  \"forked\": false,\n  \"conflicts\": [],\n  \"message\": \"\",\n  \"subtracted_symbols\": [],\n  \"pruned_symbols\": [],\n  \"kept_conflicts\": [],\n  \"broken_references\": []\n}\n"
+      "out": "{\n  \"ok\": true,\n  \"applied\": true,\n  \"verb\": \"revert\",\n  \"target\": \"c.py::qux\",\n  \"message\": \"\",\n  \"undone\": [\n    {\n      \"op\": \"d24d9c86571c9b77678e97cb50583d7cb8202156751efbe750fd425135d93beb\",\n      \"save\": \"4bcd22e\",\n      \"subject\": \"tangled: add baz to b.py and edit unrelated qux in c.py\",\n      \"symbol\": \"c.py::qux\"\n    }\n  ],\n  \"held\": [],\n  \"removal_set\": {\n    \"saves\": [\n      {\n        \"sha\": \"4bcd22e\",\n        \"subject\": \"tangled: add baz to b.py and edit unrelated qux in c.py\",\n        \"steps\": 1\n      }\n    ],\n    \"steps\": 1\n  },\n  \"files\": {\n    \"c.py\": {\n      \"before\": \"def qux():\\n    return 'changed independently'\\n\",\n      \"after\": \"def qux():\\n    return 'unrelated'\\n\"\n    }\n  },\n  \"check\": {\n    \"judge\": \"parser\",\n    \"passed\": true,\n    \"rounds\": 1,\n    \"output\": \"\"\n  }\n}\n"
     },
     "text": {
       "argv": [
@@ -140,7 +140,7 @@
         "--yes"
       ],
       "exit": 0,
-      "out": "  revert c.py::qux\n  Removes c.py::qux. No dependent needs a decision \u2014 1 prerequisite locked. Undo-able.\n    baz qux: 15 \u2192 14 edits\n  1 file: c.py\n  \u2713 revert applied \u2014 1 edit removed, 0 added. (`ugh undo` reverses this.)\n"
+      "out": "  revert c.py::qux\n  goes: 1 step(s) (4bcd22e \"tangled: add baz to b.py and edit unrelated qux in c.py\")\n  files: c.py\n  check: not run yet\n  \u2713 revert applied \u2014 1 step(s) undone, 0 held, the parser passes. (`ugh undo` reverses this.)\n"
     }
   },
   "revert_emit": {
@@ -152,7 +152,7 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"applied\": false,\n  \"ok\": true,\n  \"verb\": \"revert\",\n  \"target\": \"c.py::qux\",\n  \"removed\": [\n    \"d24d9c86571c9b77678e97cb50583d7cb8202156751efbe750fd425135d93beb\"\n  ],\n  \"added\": [],\n  \"result_op_ids\": [\n    \"02aa2459ac3337a87097ec534e8fbe3c8c221a82dab64fbbba2cd4bfdec0c8cd\",\n    \"0ba3f5bf475359b8fb9033b92ec037327f8bfc9c41a656ab8c16f9639afa810a\",\n    \"15020e0400232a4f00c658da53d4c47f82d1171681d2a443a4ffaa34ccba6729\",\n    \"1917beb7c3b361852d887ea0610c514910d8eae53e198db2ad3ed9cecd80b87f\",\n    \"1e254a7e4be1f4469a8de620923352acf238475e12b9fa6ac007f2cf90083a2c\",\n    \"21a020f228c794fc0f8dba68644059c6013e8a319e2fc3a05dee00bae67cee0c\",\n    \"29359049169e45c1d743394558e01893ed574f7d2e5953112c5c451a81745553\",\n    \"32eefb1829bf7e553808b863a527ddf882ae8d7d7f1ad8f133f374aa1f9d63fd\",\n    \"331e61e79b699407d0ef7265addfb3dcee9e3b3550a648e8d528e50544c25c55\",\n    \"3493e26dcef58089e147bcc05fdd28374d60bacb9beb20f2d7662a7827c36292\",\n    \"35c7907a5cf7350e7079a69654d903697fa78cad377fdc275618e1d05c479d48\",\n    \"3babbc554dd4fbb08a07565dfb41c966311aea53df1daae8e156208200a9a4bb\",\n    \"5c4be71523920758e041503bb711051e1c936a0f3878e328c2b6ee99e094e92f\",\n    \"5c868f9306b10e2520442d68df5fa96987abc9f6bf1a65fc0e78812f2eb49adb\",\n    \"6ac187e423aa4c4dd9cdcb5f43def3e285154510c7b19739f741ce962b2cb4de\",\n    \"6e9bd50f2c71630758b38f02d9ab2c6014a815bb92b0bae53da6da77a325025c\",\n    \"722ed6c4248eba2bd53623f05b921fd0983864b7b01288f38ea53d0cd47a1318\",\n    \"7a2623b50450ada6828c2e23a1b08284292009b80a89751ce40248cdde8498ac\",\n    \"7cfa60e30311cbd1038bec4d36f4aea6f4e60fdd629e8794abc76705c36f3dd6\",\n    \"84e692a38f43ff665107b1f2c64120bc29f4d433f099e4f16411cc798666b704\",\n    \"86ed914281555bf8691adae2f9d551ac27dd4638433d6462e364d63e55085bb6\",\n    \"92e0e0f2c53654b204e638bd5bfb646333a65b9a40b492a5b4bc9fb7a8a4989b\",\n    \"9f6279be8e9f3d771916e8375c5724f7cadb8ec13b8f26bf1253dbda1c7d1431\",\n    \"aef11c2099d1bfd92f6d027ddb6370f6a7f7170538afad42ca8794f3000ce679\",\n    \"d63751ce99e9bd44b8d9966c8998128274cfa2c1924296a743f46d946a56d784\",\n    \"dff1d07010c6d03528f5efb04b0a979e7e8ff6506c00d88b5e6179d3de06a80d\",\n    \"e3274a77879fc446722501a04680045e80cf91981a0c9421056a321b2ec6b049\",\n    \"e340e0344317f1b76a4a61567f534a048c153a614fa19c255089d485cf5ba1aa\",\n    \"f9fa3eb520768adb297e078b5ccecb9e90b7e93ddc9a5d0a606896a183500d55\",\n    \"fe928a9267e916446ac8b7317ca047dbd06fd29b531d6f769276ea17fe1e6367\"\n  ],\n  \"affected_symbols\": [\n    \"c.py::qux\"\n  ],\n  \"target_ops\": [\n    \"d24d9c86571c9b77678e97cb50583d7cb8202156751efbe750fd425135d93beb\"\n  ],\n  \"forked\": false,\n  \"conflicts\": [],\n  \"files\": {\n    \"c.py\": {\n      \"before\": \"def qux():\\n    return 'changed independently'\\n\",\n      \"after\": \"def qux():\\n    return 'unrelated'\\n\",\n      \"before_spans\": [\n        {\n          \"symbol\": \"c.py::qux\",\n          \"kind\": \"function\",\n          \"start_line\": 1,\n          \"end_line\": 2\n        }\n      ],\n      \"after_spans\": [\n        {\n          \"symbol\": \"c.py::qux\",\n          \"kind\": \"function\",\n          \"start_line\": 1,\n          \"end_line\": 2\n        }\n      ]\n    }\n  },\n  \"message\": \"\",\n  \"affected\": [],\n  \"coupling\": [],\n  \"frontier\": [\n    {\n      \"op_id\": \"d63751ce99e9bd44b8d9966c8998128274cfa2c1924296a743f46d946a56d784\",\n      \"bucket\": \"foundation\",\n      \"toggleable\": false\n    }\n  ],\n  \"subtracted_symbols\": [],\n  \"pruned_symbols\": [],\n  \"kept_conflicts\": [],\n  \"broken_references\": [],\n  \"reversible\": true,\n  \"fallout\": [],\n  \"carry_count\": 0,\n  \"so_what\": \"Removes c.py::qux. No dependent needs a decision \\u2014 1 prerequisite locked. Undo-able.\",\n  \"focus\": {\n    \"so_what\": \"Removes c.py::qux. No dependent needs a decision \\u2014 1 prerequisite locked. Undo-able.\",\n    \"nodes\": [],\n    \"edges\": [],\n    \"context_count\": 0\n  }\n}\n"
+      "out": "{\n  \"ok\": true,\n  \"applied\": false,\n  \"verb\": \"revert\",\n  \"target\": \"c.py::qux\",\n  \"message\": \"\",\n  \"undone\": [\n    {\n      \"op\": \"d24d9c86571c9b77678e97cb50583d7cb8202156751efbe750fd425135d93beb\",\n      \"save\": \"4bcd22e\",\n      \"subject\": \"tangled: add baz to b.py and edit unrelated qux in c.py\",\n      \"symbol\": \"c.py::qux\"\n    }\n  ],\n  \"held\": [],\n  \"removal_set\": {\n    \"saves\": [\n      {\n        \"sha\": \"4bcd22e\",\n        \"subject\": \"tangled: add baz to b.py and edit unrelated qux in c.py\",\n        \"steps\": 1\n      }\n    ],\n    \"steps\": 1\n  },\n  \"files\": {\n    \"c.py\": {\n      \"before\": \"def qux():\\n    return 'changed independently'\\n\",\n      \"after\": \"def qux():\\n    return 'unrelated'\\n\"\n    }\n  },\n  \"check\": \"not_run\"\n}\n"
     },
     "text": {
       "argv": [
@@ -161,7 +161,7 @@
         "c.py::qux"
       ],
       "exit": 0,
-      "out": "\u2713 [revert] c.py::qux\n    removed 1 edit: c.py::qux\n    dependents: 1 prerequisite locked (foundation)\n    \u2500\u2500 resulting change (1 file) \u2500\u2500\n    c.py\n      @@ -1,2 +1,2 @@\n       def qux():\n      -    return 'changed independently'\n      +    return 'unrelated'\n"
+      "out": "  revert c.py::qux\n  goes: 1 step(s) (4bcd22e \"tangled: add baz to b.py and edit unrelated qux in c.py\")\n  files: c.py\n  check: not run yet\n"
     }
   },
   "revert_unknown": {
@@ -172,7 +172,7 @@
         "--json"
       ],
       "exit": 1,
-      "out": "{\n  \"applied\": false,\n  \"ok\": false,\n  \"verb\": \"revert\",\n  \"target\": \"nope::nothing\",\n  \"removed\": [],\n  \"added\": [],\n  \"affected_symbols\": [],\n  \"forked\": false,\n  \"conflicts\": [],\n  \"message\": \"symbol 'nope::nothing' is not live in the ideal\",\n  \"subtracted_symbols\": [],\n  \"pruned_symbols\": [],\n  \"kept_conflicts\": [],\n  \"broken_references\": []\n}\n"
+      "out": "{\n  \"ok\": false,\n  \"error\": \"'nope::nothing' names no definition in the code\"\n}\n"
     },
     "text": {
       "argv": [
@@ -180,7 +180,7 @@
         "nope::nothing"
       ],
       "exit": 1,
-      "out": "\u2717 [revert] nope::nothing \u2014 symbol 'nope::nothing' is not live in the ideal\n"
+      "out": "\u2717 'nope::nothing' names no definition in the code\n"
     }
   },
   "save": {
@@ -262,14 +262,14 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"undone\": true,\n  \"commit\": \"<witness-sha>\",\n  \"restored_ops\": 31,\n  \"removed\": [],\n  \"added\": [\n    \"d24d9c86571c9b77678e97cb50583d7cb8202156751efbe750fd425135d93beb\"\n  ]\n}\n"
+      "out": "{\n  \"ok\": true,\n  \"undone\": true,\n  \"commit\": \"<witness-sha>\",\n  \"restored_ops\": 31,\n  \"removed\": [\n    \"0512430f013892bbcaa525886658521c2e4d09b3e6e4bbbc3cdd9874ccce18bd\"\n  ],\n  \"added\": []\n}\n"
     },
     "text": {
       "argv": [
         "undo"
       ],
       "exit": 0,
-      "out": "\u2713 undo <witness-sha>: the record is back to how it was before \u2014 1 op restored\n"
+      "out": "\u2713 undo <witness-sha>: the record is back to how it was before \u2014 1 op(s) taken out of the record\n  those edits are off the working copy too \u2014 they are in this commit's parent if you want them back\n"
     }
   },
   "undo_nothing_to_undo": {

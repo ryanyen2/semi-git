@@ -158,7 +158,7 @@ def test_revert_emit_previews_without_writing(tmp_path, capsys):
     _seed(tmp_path, 2)
     assert _in(tmp_path, ["revert", "--emit", "a.py::foo"]) == 0
     out = capsys.readouterr().out
-    assert "[revert] a.py::foo" in out
+    assert "revert a.py::foo" in out and "check: not run yet" in out
     assert (tmp_path / "a.py").read_text() == "def foo():\n    return 2\n"  # untouched
 
 
@@ -170,7 +170,7 @@ def test_revert_then_restore_roundtrip(tmp_path, capsys):
 
     assert _in(tmp_path, ["restore", "--json", "a.py::foo"]) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["ok"] is True and payload["added"]
+    assert payload["ok"] is True and payload["applied"] and payload["undone"]
     assert (tmp_path / "a.py").read_text() == "def foo():\n    return 2\n"
 
 
@@ -330,9 +330,8 @@ def test_restore_nl_drops_noop_candidate(tmp_path, monkeypatch, capsys):
 
 
 def test_revert_nl_feature_candidate_routes_through_feature_plan(tmp_path, monkeypatch, capsys):
-    """A `feature`-kind NL candidate must re-plan through `plan_revert_feature` (as the
-    deterministic feature rung does), not a single-op `plan_revert` that can't resolve a feature
-    id -- otherwise the prompt invites feature ids the survivor filter then silently drops."""
+    """A `feature`-kind NL candidate must resolve the way the deterministic feature rung does --
+    otherwise the prompt invites feature ids the survivor filter then silently drops."""
     from ugh.api import map_view
     from ugh.lens.map import build_map
 
@@ -348,7 +347,7 @@ def test_revert_nl_feature_candidate_routes_through_feature_plan(tmp_path, monke
 
     assert _in(tmp_path, ["revert", "--json", "the entire foo feature"]) == 2
     payload = json.loads(capsys.readouterr().out)
-    assert payload["candidates"] and payload["candidates"][0]["removed"] >= 1  # survived + actionable
+    assert payload["candidates"] and payload["candidates"][0]["undone"] >= 1  # survived + actionable
 
 
 def test_revert_nl_offline_reports_clear_message(tmp_path, monkeypatch, capsys):
@@ -726,7 +725,7 @@ def test_revert_json_still_applies_immediately_without_the_pane(tmp_path, capsys
     _seed(tmp_path, 2)
     assert _in(tmp_path, ["revert", "a.py::foo", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["ok"] and payload["removed"]
+    assert payload["ok"] and payload["applied"] and payload["undone"]
     assert (tmp_path / "a.py").read_text() == "def foo():\n    return 1\n"  # reverted
 
 

@@ -1,4 +1,4 @@
-"""Three-way line merge for forward subtraction (safe revert, U8 follow-up 2026-08-09).
+"""Three-way line merge: how the planner (`ugh.core.planner`) un-applies a step.
 
 `merge3(base, ours, theirs)` applies the change `base -> theirs` onto `ours`, where all three
 are byte images of one symbol:

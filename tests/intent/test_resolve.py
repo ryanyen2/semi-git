@@ -62,7 +62,7 @@ def test_context_is_verb_aware_restore_shows_removed_not_live(tmp_path):
     """After reverting a symbol, `restore`'s context must list the *removed* op (so the LLM can
     name it to bring it back) while `revert`'s context must not -- the bug where restore only ever
     saw the live frontier and could only ever propose no-op candidates."""
-    from ugh.core import verbs
+    from ugh.core import planner
     from ugh.core.lens import get
 
     _fixture(tmp_path)
@@ -73,9 +73,10 @@ def test_context_is_verb_aware_restore_shows_removed_not_live(tmp_path):
     gb.commit_all("add bar")
     get(tmp_path)
 
-    preview = verbs.plan_revert(tmp_path, "a.py::bar")
-    assert preview.ok
-    verbs.apply(tmp_path, preview)
+    from ugh.cli.ideal_edit import resolve_ref
+
+    ops, _label = resolve_ref(str(tmp_path), "revert", "a.py::bar")
+    planner.apply(tmp_path, planner.plan(tmp_path, ops, target="a.py::bar"))
 
     revert_ctx = resolve_mod._context(tmp_path, "revert")
     restore_ctx = resolve_mod._context(tmp_path, "restore")

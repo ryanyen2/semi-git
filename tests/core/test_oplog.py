@@ -27,6 +27,12 @@ from tests.laws import corpus
 # ---------------------------------------------------------------------------
 
 
+
+def _revert(repo, op_id):
+    from ugh.core import planner
+
+    return planner.apply(repo, planner.plan(repo, {op_id}, target=op_id))
+
 def test_append_tail_is_reverse_chronological(tmp_path):
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     get(repo)
@@ -79,14 +85,13 @@ def test_drop_event_removes_the_target_and_never_clobbers_a_concurrent_append(tm
 def test_record_ideal_appends_an_ideal_edit_event_that_undo_inverts(tmp_path):
     """A revert flows through `record_ideal`, which now appends an `ideal_edit` event to the unified
     log; `oplog.undo` restores the prior ideal exactly -- the same restore `undo_ideal` did."""
-    from ugh.core import verbs
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     original = get(repo).op_ids
     baz = next(o for o in Store(repo).all_ops() if "b.py::baz" in o.footprint)
 
-    verbs.revert(repo, baz.id)
-    assert baz.id not in get(repo).op_ids
+    _revert(repo, baz.id)
+    assert get(repo).op_ids > original  # a take-out only adds ops
 
     tail = oplog.tail(repo)
     assert tail.get("kind", "ideal_edit") == "ideal_edit"  # a revert is one ideal_edit event
@@ -126,12 +131,12 @@ def test_undo_refuses_to_drop_work_committed_after_the_journal_entry(tmp_path):
     journal entry). Undo must detect that casualty and refuse rather than destroy it -- the manual
     commit's content stays on disk, the reverted op is NOT re-added, and the entry is left in place
     for a later `undo(force=True)`."""
-    from ugh.core import lens, verbs
+    from ugh.core import lens
 
     repo = tmp_path / "repo"
     gb = _seed_two_symbols(repo)
     bar = next(o for o in Store(repo).all_ops() if "a.py::bar" in o.footprint)
-    verbs.revert(repo, bar.id)  # journals the pre-revert ideal
+    _revert(repo, bar.id)  # journals the pre-revert ideal
     assert b"def bar" not in (repo / "a.py").read_bytes()
 
     # a raw manual commit between the revert and the undo -- work ugh only mines on next contact.
@@ -153,13 +158,13 @@ def test_undo_force_drops_intervening_work_deliberately(tmp_path):
     """The escape hatch for 0.2(c): `undo(force=True)` proceeds despite the F3 casualty -- the user
     has been told and chose to drop the intervening commit. This is what `ugh undo --force` wires
     to."""
-    from ugh.core import lens, verbs
+    from ugh.core import lens
 
     repo = tmp_path / "repo"
     gb = _seed_two_symbols(repo)
     original = lens.get(repo).op_ids
     bar = next(o for o in Store(repo).all_ops() if "a.py::bar" in o.footprint)
-    verbs.revert(repo, bar.id)
+    _revert(repo, bar.id)
     (repo / "a.py").write_text(
         (repo / "a.py").read_text(encoding="utf-8") + "\n\ndef baz():\n    return 3\n", encoding="utf-8"
     )
@@ -176,13 +181,12 @@ def test_undo_force_drops_intervening_work_deliberately(tmp_path):
 def test_undo_skips_an_unapplied_journal_entry(tmp_path):
     """F6/0.2a: a journal entry from an edit that never landed (`applied=False`) is bogus -- undo
     must discard it and reverse the real edit beneath it, not execute the crashed one."""
-    from ugh.core import verbs
 
     repo = tmp_path / "repo"
     _seed_two_symbols(repo)
     original = get(repo).op_ids
     bar = next(o for o in Store(repo).all_ops() if "a.py::bar" in o.footprint)
-    verbs.revert(repo, bar.id)  # a genuine, applied ideal_edit entry
+    _revert(repo, bar.id)  # a genuine, applied ideal_edit entry
 
     # a bogus unapplied entry pushed on top, as a crashed verb would leave behind.
     key = oplog._ref_key(Path(repo))
@@ -201,12 +205,12 @@ def test_record_ideal_marks_its_journal_entry_applied_only_after_the_edit_lands(
     only after the ideal-table + witness advance succeed. A clean revert leaves an `applied=True`
     tail; a crash between the journal push and the table write leaves `applied=False`, which
     `oplog.undo` discards."""
-    from ugh.core import lens, verbs
+    from ugh.core import lens
 
     repo = tmp_path / "repo"
     _seed_two_symbols(repo)
     bar = next(o for o in Store(repo).all_ops() if "a.py::bar" in o.footprint)
-    verbs.revert(repo, bar.id)
+    _revert(repo, bar.id)
     assert oplog.tail(repo).get("applied") is True  # a completed edit is marked applied
 
     # simulate a crash during the next record_ideal, after the journal push but before the table
@@ -261,7 +265,6 @@ def test_preview_names_the_edits_undo_would_bring_back(tmp_path):
     """`undo` is what a developer reaches for when something has gone wrong, which is the worst
     moment to make them run it blind and find out afterward. Everything shown is already known
     before the fact."""
-    from ugh.core import verbs
 
     from ugh.core import opindex
     from ugh.core.op import is_behavioral
@@ -275,25 +278,30 @@ def test_preview_names_the_edits_undo_would_bring_back(tmp_path):
     live = current_ideal(repo).op_ids
     op_id = next(o.id for o in sorted(opindex.index_ops(repo), key=lambda o: o.id)
                  if o.id in live and any(is_behavioral(s) for s in o.footprint))
-    verbs.revert(repo, op_id)
+    _revert(repo, op_id)
 
     pv = oplog.preview(repo)
 
     assert pv["kind"] == "ideal_edit"
     assert pv["ok"] is True
-    assert op_id in pv["restored"]
+    assert pv["dropped"]  # the take-out's own ops go
     assert any("a.py::" in s for s in pv["symbols"])  # named in terms the developer recognizes
 
 
 def test_preview_reports_a_refusal_before_the_user_commits_to_it(tmp_path):
     """The F3 guard already refuses an undo that would drop work committed after the edit. Learning
     that *after* asking for the undo is the same information arriving too late to be useful."""
-    from ugh.core import lens, verbs
+    from ugh.core import lens
 
     repo = tmp_path / "repo"
     gb = _seed_two_symbols(repo)
-    op_id = sorted(current_ideal(repo).op_ids)[0]
-    verbs.revert(repo, op_id)
+    from ugh.core import opindex
+    from ugh.core.op import is_behavioral
+
+    live = current_ideal(repo).op_ids
+    op_id = next(o.id for o in sorted(opindex.index_ops(repo), key=lambda o: o.id)
+                 if o.id in live and any(is_behavioral(s) for s in o.footprint))
+    _revert(repo, op_id)
     # Work lands after the edit was recorded -- the casualty the guard exists to protect.
     (repo / "b.py").write_text("def baz():\n    return 3\n", encoding="utf-8")
     gb.commit_all("add baz")
@@ -317,11 +325,10 @@ def test_preview_of_an_empty_log_says_so_without_raising(tmp_path):
 
 def test_preview_writes_nothing(tmp_path):
     """A preview that mutates is not a preview."""
-    from ugh.core import verbs
 
     repo = tmp_path / "repo"
     _seed_two_symbols(repo)
-    verbs.revert(repo, sorted(current_ideal(repo).op_ids)[0])
+    _revert(repo, sorted(current_ideal(repo).op_ids)[0])
     before_log = oplog.load(repo)
     before_ideal = current_ideal(repo).op_ids
 
