@@ -15,8 +15,8 @@ Your job is to use those two things and to leave the parts that belong to the hu
 ## The shape of what you are reading
 
 git stores your code as commits of line-diffs. ugh re-reads those same commits and breaks each one
-into steps: what definition it touched, the version it started from, the version it produced, what
-it uses. The files on disk are what the steps that are in produce. Taking steps out (`revert`) is a
+into steps: one step for each top-level definition (with the blank lines before it), file head or
+whole file whose text the commit changed. The files on disk are what the steps that are in produce. Taking steps out (`revert`) is a
 new commit that un-applies them; bringing them back (`restore`) takes that commit out again.
 
 A **name** is a label a person or an agent gave to some steps: `ugh save --as <label>`,
@@ -39,7 +39,8 @@ Every operand is an address, and every step ugh returns carries one:
 
 - `<label>` — the steps with that name; `<label>@<rev>` — those steps in one save
 - `<path>` — the steps on one file; `<path>::<def>` — the steps on one top-level definition
-- `<path>::<def>@<rev>` — one step
+- `<path>::<def>@<rev>` — the one step on that definition in that save (refused when the save did
+  not change it)
 - `<rev>` — one save's steps; `<rev>..<rev>`, `<rev>..` — the saves in that range
 
 An address reaches steps that are out as well as steps that are in. A token that is both a name and

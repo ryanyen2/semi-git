@@ -57,7 +57,7 @@ def _kernel_edit_verb(
     repo: str, cmd: str, ref_tokens: list[str], emit: bool, as_json: bool, yes: bool = False,
     *, whole: bool = False, out: str | None = None,
 ) -> int:
-    """revert/restore: resolve the address to op ids, plan, then preview or apply."""
+    """revert/restore: resolve the address to steps, plan, then preview or apply."""
     from ugh.address import AddressError, resolve
     from ugh.core.lens import get
 
@@ -69,10 +69,10 @@ def _kernel_edit_verb(
     with busy(f"working out what `{target}` covers…"):
         get(repo)  # mine-on-contact before planning/applying the edit (R9)
     try:
-        op_ids = resolve(repo, target)
+        steps = resolve(repo, target)
     except AddressError as e:
         return address_refusal(cmd, target, e, as_json)
-    return _answer(repo, cmd, op_ids, target, emit, as_json, yes, whole=whole, out=out)
+    return _answer(repo, cmd, steps, target, emit, as_json, yes, whole=whole, out=out)
 
 
 def address_refusal(cmd: str, target: str, e, as_json: bool) -> int:
@@ -88,18 +88,17 @@ def address_refusal(cmd: str, target: str, e, as_json: bool) -> int:
     return 2
 
 
-def _answer(repo: str, cmd: str, op_ids, label: str, emit: bool, as_json: bool, yes: bool,
+def _answer(repo: str, cmd: str, steps, label: str, emit: bool, as_json: bool, yes: bool,
             *, whole: bool = False, out: str | None = None) -> int:
     """Plan, then print the preview (`--emit`), ask, or apply."""
     import sys
 
-    from ugh.address import plan_json
     from ugh.core import planner
     from ugh.core.lens import DirtyWorkingTreeError
 
-    p = planner.plan(repo, op_ids, verb=cmd, target=label, whole=whole,
+    p = planner.plan(repo, steps, verb=cmd, target=label, whole=whole,
                      removal_set=cmd == "revert" and not (yes or as_json and not emit))
-    view = plan_json(repo, p)
+    view = planner.to_json(p)
     if emit:
         if out is not None and p.ok:
             from ugh.api import verb_result_out_view
@@ -136,7 +135,7 @@ def _answer(repo: str, cmd: str, op_ids, label: str, emit: bool, as_json: bool, 
     except DirtyWorkingTreeError as e:
         return _dirty_refusal(e, as_json)
     applied = bool(done.check != "not_run" and done.check["passed"] and done.files)
-    result = plan_json(repo, done, applied=applied)
+    result = planner.to_json(done, applied=applied)
     if as_json:
         _emit_json(result)
         return 0 if applied else 1
@@ -164,13 +163,13 @@ def _save_text(row: dict) -> str:
 
 def _print_held(view: dict) -> None:
     for row in view["held"]:
-        holders = ", ".join(dict.fromkeys(_save_text(h) for h in row["holders"]))
+        holders = ", ".join(dict.fromkeys(h["address"] for h in row["holders"]))
         print(f"    {row['address']} — {row['reason'].replace('_', ' ')}"
               + (f": {holders}" if holders else ""))
 
 
 def _print_plan_json(view: dict) -> None:
-    """A plan (`address.plan_json`), plain: what goes, what is held and why; the removal set; where
+    """A plan (`planner.to_json`), plain: what goes, what is held and why; the removal set; where
     the held part is and which saves must keep working; the files and the check."""
     print(f"  {view['verb']} {view['target']}")
     if view["message"]:

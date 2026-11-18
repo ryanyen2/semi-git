@@ -139,10 +139,11 @@ def save(repo: str, *, message: str | None = None, as_label: str | None = None) 
     record_manifest(repo, sha=sha, ops=[op for op in opindex.index_ops(repo) if op.id in new_op_ids],
                     end=time.time(), prev_save_ts=prev_ts)
     rec = Record(repo)
+    steps = rec.ctx.of_commit.get(sha, [])
     if as_label:
-        names.name(repo, rec.save_ops(sha), as_label)
+        names.name(repo, rec.ops(steps), as_label)
         rec.names = names.load(repo)
-    return {"ok": True, "saved": True, "commit": sha, "steps": rec.steps(rec.save_ops(sha)),
+    return {"ok": True, "saved": True, "commit": sha, "steps": rec.steps(steps),
             "open_fork_count": forks_view(repo)["open"]}
 
 
@@ -221,10 +222,10 @@ def _undo(repo: str, as_json: bool, *, emit: bool = False) -> int:
         return 0
 
     if outcome.status in ("commit", "refused"):
-        from ugh.address import plan_json
+        from ugh.core.planner import to_json
 
         if as_json:
-            view = plan_json(repo, outcome.plan, applied=outcome.status == "commit")
+            view = to_json(outcome.plan, applied=outcome.status == "commit")
             return _emit_json({**view, "ok": outcome.status == "commit", "message": outcome.message})
         if outcome.status == "refused":
             return _fail(outcome.message)

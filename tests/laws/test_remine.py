@@ -38,7 +38,7 @@ def test_take_outs_and_bring_backs_re_mine_to_the_same_ops(tmp_path):
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     get(repo, unbounded=True)
     sha = corpus.commit_shas(repo)[4]
-    ops = {op.id for op in planner._Ctx(repo).ops if sha in op.provenance}
-    planner.apply(repo, planner.plan(repo, ops, target="tangled"))
-    planner.apply(repo, planner.plan(repo, ops, verb="restore", target="tangled"))
+    steps = planner._Ctx(repo).of_commit[sha]
+    planner.apply(repo, planner.plan(repo, steps, target="tangled"))
+    planner.apply(repo, planner.plan(repo, steps, verb="restore", target="tangled"))
     assert _stored(repo) == _full(repo)

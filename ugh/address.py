@@ -1,16 +1,17 @@
 """Addresses: how a verb is told which steps it acts on, and how every step is printed.
 
-    <label>                 the ops named label
-    <label>@<rev>           those ops in one save
-    <path>                  the ops on one file
-    <path>::<def>           the ops on one top-level definition
-    <path>::<def>@<rev>     one op
-    <rev>                   one save's ops (anything `git rev-parse --verify <rev>^{commit}` takes)
-    <rev>..<rev>, <rev>..   the saves in that git range (`<rev>..` runs through HEAD)
+    <label>                 the steps named label
+    <label>@<rev>           those steps in one save
+    <path>                  the steps on one file's units
+    <path>::<def>           the steps on one top-level definition
+    <path>::<def>@<rev>     the one step on that definition in that save
+    <rev>                   one save's steps (anything `git rev-parse --verify <rev>^{commit}` takes)
+    <rev>..<rev>, <rev>..   the steps of the saves in that git range (`<rev>..` runs through HEAD)
 
-An address resolves over every op in the record, in the code or out. A token with two readings is
-refused naming both, and anything else is refused with the nearest `find` hits. A step prints as
-`path::def@<short sha>`, or `path@<short sha>` when it is on a whole file, a file's head or an import.
+An address resolves over every step in the record, in the code or out. A token with two readings is
+refused naming both, a reading with no step (a save that did not change the definition) is refused,
+and anything else is refused with the nearest `find` hits. A step prints as `path::def@<short sha>`,
+or `path@<short sha>` when it is on a whole file, a file's head or an import.
 """
 
 from __future__ import annotations
@@ -20,9 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ugh import names
-from ugh.core.op import _symbol_kind, is_bottom, step_address, unit_of
-
-_KIND = {"add": "create", "prune": "delete", "move": "move"}
+from ugh.core.op import _symbol_kind, step_address, unit_of
 
 
 class AddressError(Exception):
@@ -33,36 +32,9 @@ class AddressError(Exception):
         self.hits = list(hits)
 
 
-def _units(op) -> set[str]:
-    return {unit_of(s) for s in op.footprint if _symbol_kind(s) != "anchor"}
-
-
-def _shown_unit(op) -> str:
-    """The unit a step is printed under: for a move, the one it moved to."""
-    units = _units(op)
-    live = {unit_of(s) for s, (_b, a) in op.footprint.items()
-            if _symbol_kind(s) != "anchor" and not is_bottom(a)}
-    return min(live & units or units)
-
-
-def plan_json(repo, p, *, applied: bool = False) -> dict:
-    """`planner.to_json` with an `address` on every step it names."""
-    from ugh.core import opindex, planner
-
-    view = planner.to_json(p, applied=applied)
-    by_id = {op.id: op for op in opindex.index_ops(repo)}
-    for row in view["undone"] + view["held"]:
-        row["address"] = step_address(row["symbol"], row["save"])
-        for h in row.get("holders", ()):
-            op = by_id.get(h["op"])
-            shown = op is not None and _units(op)
-            h["address"] = step_address(_shown_unit(op), h["save"]) if shown else h["save"]
-    return view
-
-
 class Record:
-    """Every step mined from a commit in HEAD's history: its save, its unit, its name, and whether
-    it is out. A step is an op that changed some text (an op that only moved an anchor is none)."""
+    """Every step of the commits in HEAD's history (`planner.Step`): its save, its name, and whether
+    it is out."""
 
     def __init__(self, repo):
         from ugh.core import planner
@@ -71,24 +43,29 @@ class Record:
         self.ctx = planner._Ctx(self.repo)
         self.gb = self.ctx.gb
         self.names = names.load(self.repo)
-        self.units = {o: u for o in self.ctx.commit if (u := _units(self.ctx.by_id[o]))}
         self.meta = {sha: (subject, ts, bk) for sha, _p, subject, ts, bk in self.gb.history_meta()}
 
-    def address(self, op_id: str) -> str:
-        return step_address(_shown_unit(self.ctx.by_id[op_id]), self.ctx.commit[op_id])
+    def ops(self, steps) -> list[str]:
+        """The ops under `steps`; naming a step labels all of them."""
+        return sorted({o for st in steps for o in self.ctx.steps[st]})
 
-    def step(self, op_id: str) -> dict:
-        return {"address": self.address(op_id),
-                "kind": _KIND.get(self.ctx.by_id[op_id].kind, "change"),
-                "name": self.names.get(op_id), "out": op_id in self.ctx.out}
+    def carriers(self, st) -> list[str]:
+        """The ops whose label is the step's name: its op on the unit's own symbol (the definition,
+        import or whole file), or for a step with no such op (a gap change only), its gap op."""
+        ops = self.ctx.steps[st]
+        return [o for o in ops if st.unit in self.ctx.by_id[o].footprint] or ops
 
-    def steps(self, op_ids) -> list[dict]:
-        """The steps among `op_ids`, oldest save first."""
-        ids = [o for o in op_ids if o in self.units]
-        return [self.step(o) for o in sorted(ids, key=lambda o: (self.ctx.when(o), self.address(o)))]
+    def name(self, st) -> str | None:
+        return next((self.names[o] for o in self.carriers(st) if o in self.names), None)
 
-    def save_ops(self, sha: str) -> list[str]:
-        return [o for o in self.ctx.of_commit.get(sha, ()) if o in self.units]
+    def step(self, st) -> dict:
+        return {"address": step_address(st.unit, st.sha), "kind": self.ctx.kind(st),
+                "name": self.name(st), "out": st in self.ctx.out}
+
+    def steps(self, steps) -> list[dict]:
+        """The rows of `steps`, oldest save first."""
+        return [self.step(st) for st in sorted(steps, key=lambda st: (self.ctx.index[st.sha],
+                                                                      step_address(st.unit, st.sha)))]
 
     def saves(self) -> list[str]:
         """The saves, newest first: every commit in HEAD's history that is not ugh's own."""
@@ -106,45 +83,44 @@ class Record:
         return self.gb.rev_parse(f"{token}^{{commit}}")
 
 
-def _named(rec: Record, token: str) -> dict[str, frozenset[str]]:
+def _named(rec: Record, token: str) -> dict[str, frozenset]:
     """The label, file and definition readings of `token`."""
     out = {}
-    labelled = frozenset(o for o, label in rec.names.items() if label == token and o in rec.units)
     if token in rec.names.values():
-        out[f"the name {token!r}"] = labelled
-    on_file = frozenset(o for o, us in rec.units.items() if any(u.split("::", 1)[0] == token for u in us))
+        out[f"the name {token!r}"] = frozenset(st for st in rec.ctx.steps if rec.name(st) == token)
+    on_file = frozenset(st for st in rec.ctx.steps if st.unit.split("::", 1)[0] == token)
     if on_file:
         out[f"the file {token}"] = on_file
     if "::" in token:
         unit = unit_of(token)
-        on_def = frozenset(o for o, us in rec.units.items() if unit in us)
-        if on_def:
-            out[f"the definition {unit}"] = on_def
+        if unit in rec.ctx.unit_steps:
+            out[f"the definition {unit}"] = frozenset(rec.ctx.unit_steps[unit])
     return out
 
 
-def _readings(rec: Record, token: str) -> dict[str, frozenset[str]]:
+def _readings(rec: Record, token: str) -> dict[str, frozenset]:
     out = _named(rec, token)
     if ".." in token:
         start, _, end = token.partition("..")
         a, b = rec.rev(start), rec.rev(end or "HEAD")
         if a and b:
             shas = {sha for sha, _p, _s in rec.gb.history(a, b)}
-            out[f"the saves {start}..{end}"] = frozenset(o for o in rec.units if rec.ctx.commit[o] in shas)
+            out[f"the saves {start}..{end}"] = frozenset(st for st in rec.ctx.steps if st.sha in shas)
         return out
     sha = rec.rev(token)
     if sha:
-        out[f"the save {sha[:7]}"] = frozenset(rec.save_ops(sha))
+        out[f"the save {sha[:7]}"] = frozenset(rec.ctx.of_commit.get(sha, ()))
     base, at, rev = token.rpartition("@")
     sha = rec.rev(rev) if at and base else None
     if sha:
-        for what, ops in _named(rec, base).items():
-            out[f"{what} in {sha[:7]}"] = frozenset(o for o in ops if rec.ctx.commit[o] == sha)
+        for what, steps in _named(rec, base).items():
+            out[f"{what} in {sha[:7]}"] = frozenset(st for st in steps if st.sha == sha)
     return out
 
 
-def resolve(repo, token: str, record: Record | None = None) -> frozenset[str]:
-    """The op ids `token` addresses. Raises `AddressError` when it names nothing or two things."""
+def resolve(repo, token: str, record: Record | None = None) -> frozenset:
+    """The steps `token` addresses. Raises `AddressError` when it names nothing, two things, or no
+    step (a save that did not change the definition named)."""
     rec = record or Record(repo)
     token = token.strip()
     found = _readings(rec, token)
@@ -153,7 +129,10 @@ def resolve(repo, token: str, record: Record | None = None) -> frozenset[str]:
     if not found:
         hits = [h["address"] for h in find(repo, token, limit=5, record=rec)]
         raise AddressError(f"no such address: {token!r}", hits)
-    return next(iter(found.values()))
+    ((what, steps),) = found.items()
+    if not steps:
+        raise AddressError(f"no step at {token!r}: {what} has none")
+    return steps
 
 
 def find(repo, query: str, *, limit: int = 10, record: Record | None = None) -> list[dict]:
@@ -177,7 +156,7 @@ def find(repo, query: str, *, limit: int = 10, record: Record | None = None) -> 
 
     for label in sorted(set(rec.names.values())):
         consider(label, "name", label)
-    for unit in sorted({u for us in rec.units.values() for u in us if _symbol_kind(u) == "entity"}):
+    for unit in sorted(u for u in rec.ctx.unit_steps if _symbol_kind(u) == "entity"):
         consider(unit, "definition", unit)
     captured = (set(load_manifests(repo)) | set(load_prompts(repo))
                 | {t["key"] for t in load_turns(repo).values() if t["key_kind"] == "sha"})
@@ -185,7 +164,7 @@ def find(repo, query: str, *, limit: int = 10, record: Record | None = None) -> 
         consider(sha[:7], "subject", rec.meta[sha][0])
         if sha in captured:
             # ponytail: one manifest read per captured save; one pass over the manifests if slow.
-            ask = dominant_ask(asks_for_ops(repo, rec.save_ops(sha), [sha]))
+            ask = dominant_ask(asks_for_ops(repo, rec.ops(rec.ctx.of_commit.get(sha, ())), [sha]))
             if ask and ask["text"] != rec.meta[sha][0]:
                 consider(sha[:7], "ask", ask["text"])
     return [h for _s, _i, h in sorted(hits, key=lambda h: (h[0], h[1]))][:limit]

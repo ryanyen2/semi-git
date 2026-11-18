@@ -87,45 +87,39 @@
       "undone": [
         {
           "address": "config.yaml@7231aa1",
-          "op": "3d477b98827466bacf7dabd8e7781b534b35ad9892881c00bcb553e5ca96c7a6",
           "save": "7231aa1",
           "subject": "add mixed python and non-parseable paths",
-          "symbol": "config.yaml"
+          "unit": "config.yaml"
         },
         {
           "address": "notes.md@7231aa1",
-          "op": "20a4f402e281b25356ef2f6626594a1dc3379e9a32dc7ce2c50c3209c7e87cb6",
           "save": "7231aa1",
           "subject": "add mixed python and non-parseable paths",
-          "symbol": "notes.md"
+          "unit": "notes.md"
         },
         {
           "address": "pkg.py@7231aa1",
-          "op": "36981ae4257f6e934350d274e1496a15066ce623974c189563e35921a485a89a",
           "save": "7231aa1",
           "subject": "add mixed python and non-parseable paths",
-          "symbol": "pkg.py::__residue__::\u0000HEAD\u0000"
+          "unit": "pkg.py::__residue__::\u0000HEAD\u0000"
         },
         {
           "address": "pkg.py::compute@7231aa1",
-          "op": "4ce63baedb88d801aca95c73783c93ff28f4a8fc63cfb18846f987cf7dd17bd0",
           "save": "7231aa1",
           "subject": "add mixed python and non-parseable paths",
-          "symbol": "pkg.py::compute"
+          "unit": "pkg.py::compute"
         },
         {
           "address": "util.py@7231aa1",
-          "op": "1c0e33a256b2bae188f148b90b838fbec3560b07ca898db84de46bffa6455e37",
           "save": "7231aa1",
           "subject": "add mixed python and non-parseable paths",
-          "symbol": "util.py::__residue__::\u0000HEAD\u0000"
+          "unit": "util.py::__residue__::\u0000HEAD\u0000"
         },
         {
           "address": "util.py::helper@7231aa1",
-          "op": "a89d2cbef5d1118c1a50d005bad9acf9914f0fc44df0c51d597e648d93970447",
           "save": "7231aa1",
           "subject": "add mixed python and non-parseable paths",
-          "symbol": "util.py::helper"
+          "unit": "util.py::helper"
         }
       ],
       "verb": "revert"

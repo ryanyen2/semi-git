@@ -51,22 +51,22 @@ def reasons(view: dict) -> str:
     return ", ".join(f"{n} {r}" for r, n in sorted(held.items())) or "-"
 
 
-def take_out(repo: Path, op_ids, target: str) -> dict:
-    """Plan and apply a take-out of an op set through the planner (the CLI takes one reference)."""
+def take_out(repo: Path, steps, target: str) -> dict:
+    """Plan and apply a take-out of a set of steps through the planner (the CLI takes one reference)."""
     from ugh.core import planner
     from ugh.core.lens import get
 
     get(repo)
-    done = planner.apply(repo, planner.plan(repo, op_ids, target=target))
+    done = planner.apply(repo, planner.plan(repo, steps, target=target))
     return planner.to_json(done, applied=True)
 
 
-def bring_back(repo: Path, op_ids, target: str) -> dict:
+def bring_back(repo: Path, steps, target: str) -> dict:
     from ugh.core import planner
     from ugh.core.lens import get
 
     get(repo)
-    done = planner.apply(repo, planner.plan(repo, op_ids, verb="restore", target=target))
+    done = planner.apply(repo, planner.plan(repo, steps, verb="restore", target=target))
     return planner.to_json(done, applied=True)
 
 
@@ -107,14 +107,14 @@ def project(name: str, episodes: list[dict], scratch: Path) -> list[str]:
     shutil.copytree(template, repo, symlinks=True)
     original = tree(repo)
     events = [e for e in requests if e["session"] in EVENTS]
-    op_ids = frozenset().union(*(resolve(repo, e["sha"]) for e in events))
+    steps = frozenset().union(*(resolve(repo, e["sha"]) for e in events))
     from ugh.core import planner
 
-    p = planner.plan(repo, op_ids, target="events", removal_set=True)
+    p = planner.plan(repo, steps, target="events", removal_set=True)
     shas = sorted(s["sha"] for s in p.removal_set["saves"])
-    out = take_out(repo, op_ids, "events")
+    out = take_out(repo, steps, "events")
     passed = "pass" if checks(repo) else "FAIL"
-    bring_back(repo, op_ids, "events")
+    bring_back(repo, steps, "events")
     same = "yes" if tree(repo) == original else "NO"
     rows.append(f"| the three event requests | {', '.join(e['sha'] for e in events)} | {passed} "
                 f"| {len(out['undone'])} | {len(out['held'])} ({reasons(out)}) | {same} |")

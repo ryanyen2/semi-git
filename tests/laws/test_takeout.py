@@ -1,6 +1,7 @@
 """Laws of take-out and bring-back (`ugh.core.planner`) over the generated corpus.
 
-- For every save, taking it out and bringing it back gives the original bytes.
+- For every save, taking it out and bringing it back gives the original bytes, and leaves no step
+  out.
 - Taking out two saves that do not stand on each other gives the same tree in either order.
 """
 
@@ -22,23 +23,17 @@ def _tree(repo):
 
 
 def _saves(repo):
-    from ugh.core.lens import current_ideal
-    from ugh.core.opindex import index_ops
+    from ugh.core import planner
 
-    ideal = current_ideal(repo).op_ids
-    by_sha: dict[str, set[str]] = {}
-    for op in index_ops(repo):
-        if op.id in ideal and op.provenance:
-            by_sha.setdefault(min(op.provenance), set()).add(op.id)
-    return {sha: frozenset(ops) for sha, ops in sorted(by_sha.items())}
+    return {sha: frozenset(steps) for sha, steps in sorted(planner._Ctx(repo).of_commit.items())}
 
 
-def _apply(repo, ops, verb):
+def _apply(repo, steps, verb):
     from ugh.core import planner
     from ugh.core.lens import get
 
     get(repo)
-    return planner.apply(repo, planner.plan(repo, ops, verb=verb, target=verb))
+    return planner.apply(repo, planner.plan(repo, steps, verb=verb, target=verb))
 
 
 @pytest.fixture(scope="module")
@@ -56,15 +51,18 @@ def built(tmp_path_factory):
 
 @pytest.mark.parametrize("name", sorted(corpus.CORPUS))
 def test_every_save_out_then_back_gives_the_original_bytes(built, name):
+    from ugh.core import planner
+
     root, repos = built
-    for i, (sha, ops) in enumerate(_saves(repos[name]).items()):
+    for i, (sha, steps) in enumerate(_saves(repos[name]).items()):
         repo = root / f"{name}-{i}"
         shutil.copytree(repos[name], repo, symlinks=True)
         original = _tree(repo)
-        out = _apply(repo, ops, "revert")
+        out = _apply(repo, steps, "revert")
         if out.files:
-            _apply(repo, ops, "restore")
+            _apply(repo, steps, "restore")
         assert _tree(repo) == original, f"{name}: save {sha[:7]}"
+        assert planner.out_table(repo) == {}, f"{name}: save {sha[:7]} still out"
 
 
 @pytest.mark.parametrize("name", sorted(corpus.CORPUS))
@@ -73,7 +71,7 @@ def test_two_independent_saves_come_out_the_same_in_either_order(built, name):
 
     root, repos = built
     saves = _saves(repos[name])
-    plans = {sha: planner.plan(repos[name], ops) for sha, ops in saves.items()}
+    plans = {sha: planner.plan(repos[name], steps) for sha, steps in saves.items()}
     stands = {sha: {h for hd in p.held for h in hd["holders"]} for sha, p in plans.items()}
     pairs = [(a, b) for a in saves for b in saves if a < b
              and plans[a].files and plans[b].files

@@ -24,7 +24,8 @@ from tests.laws import corpus
 def _revert(repo, op_id):
     from ugh.core import planner
 
-    return planner.apply(repo, planner.plan(repo, {op_id}, target=op_id))
+    steps = [st for st, ops in planner._Ctx(repo).steps.items() if op_id in ops]
+    return planner.apply(repo, planner.plan(repo, steps, target=op_id))
 
 
 @contextlib.contextmanager

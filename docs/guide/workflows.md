@@ -71,16 +71,18 @@ $ ugh restore cache.py::get_cached --yes
   ✓ restore applied — 1 step(s) undone, 0 held, the parser passes. (`ugh undo` reverses this.)
 ```
 
-A step is one save's change to one unit: a top-level definition with the comments that follow it,
-the head of a file, or a whole file. Taking a step out is a new edit: the step's change un-applied
-onto the unit as it is now. That edit is a commit whose `Ugh-Out:` trailer names the steps it took
-out, so what is out lives in git history and a clone or a rebase knows it. Bringing a step back is
+A step is one save's change to one unit: a top-level definition with the blank lines before it and
+the comments that follow it, the head of a file, or a whole file. A save has a step on a unit only
+where the unit's text changed, so a save that appends a definition after another is one step, on
+the new one. Taking a step out is a new edit: the step's change un-applied onto the unit as it is
+now. That edit is a commit whose `Ugh-Out:` trailer names the ops of the steps it took out, so what
+is out lives in git history and a clone or a rebase knows it. Bringing a step back is
 taking out the edit that took it out, so edits you made in between combine with it. Where they
 rewrote the same lines, nothing is written for that step and both versions are shown.
 
 A step is held when other remaining work stands on it, and the preview says why: other code uses
-the definition it created (`uses`), a later save changed that definition (`changed_later`), or a
-later save rewrote the same lines (`same_lines`). The preview also names the removal set: the work
+the definition it created (`uses`), a later save changed that definition or added to the file it
+created (`changed_later`), or a later save rewrote the same lines (`same_lines`). The preview also names the removal set: the work
 plus everything that stands on it, never cutting another save in two. `ugh revert <target> --whole`
 takes that whole set out. The project's check (the tiers in `.sgt/oracle.json`) must pass on the
 tree before anything is written. Then it runs on the result, together with the parser (every file

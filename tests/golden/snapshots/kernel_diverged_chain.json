@@ -64,10 +64,9 @@
       "undone": [
         {
           "address": "slugify.py::slugify@2befb60",
-          "op": "0a91a7a089a9450bcad7ff729acd7eb505e7dd0fa300b643cb9c07e2136f5d47",
           "save": "2befb60",
           "subject": "release: strip in slugify",
-          "symbol": "slugify.py::slugify"
+          "unit": "slugify.py::slugify"
         }
       ],
       "verb": "revert"

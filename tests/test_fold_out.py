@@ -28,8 +28,8 @@ def _forward_subtracting_target(repo):
     from ugh.core import planner
 
     rec = Record(repo)
-    for op_id in sorted(rec.units):
-        address = rec.address(op_id)
+    for st in sorted(rec.ctx.steps):
+        address = rec.step(st)["address"]
         p = planner.plan(repo, resolve(repo, address, rec), target=address)
         if p.ok and p.files:
             return address

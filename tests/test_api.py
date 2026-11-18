@@ -13,7 +13,8 @@ from tests.laws import corpus
 def _take_out(repo, op_ids):
     from ugh.core import planner
 
-    return planner.apply(repo, planner.plan(repo, frozenset(op_ids), target="t"))
+    steps = [st for st, ops in planner._Ctx(repo).steps.items() if set(ops) & set(op_ids)]
+    return planner.apply(repo, planner.plan(repo, steps, target="t"))
 
 
 def _head_ops(repo):

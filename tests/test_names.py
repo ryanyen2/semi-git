@@ -57,7 +57,7 @@ def _save(repo, capsys, text, message, *extra):
 
 def _addresses(repo, token):
     rec = Record(repo)
-    return sorted(rec.address(o) for o in resolve(repo, token, rec) if o in rec.units)
+    return sorted(rec.step(st)["address"] for st in resolve(repo, token, rec))
 
 
 # -- names ----------------------------------------------------------------------------------------
@@ -85,7 +85,7 @@ def test_name_moves_steps_from_one_label_to_another(tmp_path, capsys):
     tax = f"cart.py::tax@{out['commit'][:7]}"
     rc, named = _json(repo, ["name", tax, "billing"], capsys)
     assert rc == 0 and [s["address"] for s in named["steps"]] == [tax]
-    assert tax in _addresses(repo, "billing") and tax not in _addresses(repo, "checkout")
+    assert _addresses(repo, "billing") == [tax] and "checkout" not in names.load(repo).values()
 
 
 def test_rename_onto_an_existing_label_merges_the_two(tmp_path, capsys):
@@ -95,17 +95,19 @@ def test_rename_onto_an_existing_label_merges_the_two(tmp_path, capsys):
     rc, out = _json(repo, ["rename", "billing", "checkout"], capsys)
     assert rc == 0 and out["merged"] is True
     assert set(names.load(repo).values()) == {"checkout"}
-    assert len(_addresses(repo, "checkout")) == 3
+    assert len(_addresses(repo, "checkout")) == 2
 
 
 def _shared_op(repo, symbol):
+    """The op on `symbol` in its first step, and that step's address."""
     rec = Record(repo)
-    return next(o for o, us in rec.units.items() if symbol in us)
+    st = rec.ctx.unit_steps[symbol][0]
+    return next(o for o in rec.ctx.steps[st] if symbol in rec.ctx.by_id[o].footprint), rec.step(st)["address"]
 
 
 def test_sync_takes_a_rename_made_on_one_side(tmp_path):
     a, b = _two_clones(tmp_path, _BASE)
-    foo = _shared_op(a, "main.py::foo")
+    foo, _ = _shared_op(a, "main.py::foo")
     names.name(a, [foo], "first")
     _push(a)
     sync.sync(b, remote="origin", branch="main")
@@ -117,7 +119,7 @@ def test_sync_takes_a_rename_made_on_one_side(tmp_path):
 
 def test_sync_keeps_ours_when_both_sides_rename_an_op_and_reports_it(tmp_path, capsys):
     a, b = _two_clones(tmp_path, _BASE)
-    foo = _shared_op(a, "main.py::foo")
+    foo, foo_at = _shared_op(a, "main.py::foo")
     names.name(a, [foo], "first")
     _push(a)
     sync.sync(b, remote="origin", branch="main")
@@ -126,8 +128,7 @@ def test_sync_keeps_ours_when_both_sides_rename_an_op_and_reports_it(tmp_path, c
     names.rename(b, "first", "ours")
     rc, out = _json(b, ["sync", "origin", "main"], capsys)
     assert names.load(b) == {foo: "ours"}
-    assert out["name_conflicts"] == [{"address": Record(b).address(foo), "ours": "ours",
-                                      "theirs": "theirs"}]
+    assert out["name_conflicts"] == [{"address": foo_at, "ours": "ours", "theirs": "theirs"}]
 
 
 # -- addresses ------------------------------------------------------------------------------------
@@ -146,12 +147,14 @@ def cart3(tmp_path, capsys):
 
 def test_every_grammar_form_resolves_to_its_steps(cart3):
     repo, s1, s2, s3 = cart3
-    assert _addresses(repo, "checkout") == sorted([f"cart.py::tax@{s1}", f"cart.py::total@{s1}"])
+    assert _addresses(repo, "checkout") == [f"cart.py::tax@{s1}"]
     assert _addresses(repo, f"checkout@{s1}") == _addresses(repo, "checkout")
-    assert _addresses(repo, f"checkout@{s2}") == []
-    # A save that adds a definition after `tax` changes the gap after it, which is `tax`'s too.
-    assert {f"cart.py::tax@{s1}", f"cart.py::tax@{s2}", f"cart.py::tax@{s3}"} <= set(_addresses(repo, "cart.py::tax"))
+    # The blank lines before a definition are its own, so adding `export` after `tax` is no step on it.
+    assert _addresses(repo, "cart.py::tax") == sorted([f"cart.py::tax@{s1}", f"cart.py::tax@{s2}"])
     assert _addresses(repo, f"cart.py::tax@{s2}") == [f"cart.py::tax@{s2}"]
+    for token in (f"checkout@{s2}", f"cart.py::tax@{s3}"):
+        with pytest.raises(AddressError, match="no step"):
+            resolve(repo, token)
     assert _addresses(repo, s2) == [f"cart.py::tax@{s2}"]
     assert f"cart.py::export@{s3}" in _addresses(repo, f"{s1}..")
     assert f"cart.py::tax@{s1}" not in _addresses(repo, f"{s1}..")
@@ -162,8 +165,8 @@ def test_every_grammar_form_resolves_to_its_steps(cart3):
 def test_an_address_reaches_steps_that_are_out(cart3):
     repo, _s1, _s2, s3 = cart3
     rec = Record(repo)
-    (op,) = resolve(repo, f"cart.py::export@{s3}", rec)
-    assert rec.step(op)["out"] is True
+    (st,) = resolve(repo, f"cart.py::export@{s3}", rec)
+    assert rec.step(st)["out"] is True
 
 
 def test_a_token_that_is_a_label_and_a_rev_is_refused_naming_both(cart3):
@@ -197,7 +200,7 @@ def test_log_lists_names_unnamed_and_out_per_save(cart3, capsys):
     capsys.readouterr()
     assert _in(repo, ["log"]) == 0
     lines = {line.split()[0]: line for line in capsys.readouterr().out.splitlines()}
-    assert "checkout ×2" in lines[s1] and "unnamed" not in lines[s1]
+    assert "checkout ×1" in lines[s1] and "unnamed" not in lines[s1]
     assert "1 unnamed" in lines[s2]
     assert "1 out" in lines[s3]
 

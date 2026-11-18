@@ -48,12 +48,8 @@ def _ops(repo, sha):
     return {o.id for o in index_ops(repo) if sha in o.provenance}
 
 
-def _def_ops(repo, sha):
-    """The save's ops on a definition or a whole file (not the ones only on a gap or an anchor)."""
-    from ugh.core.op import _symbol_kind
-
-    return {o.id for o in index_ops(repo) if sha in o.provenance
-            and any(_symbol_kind(s) in ("entity", "import", "whole_file") for s in o.footprint)}
+def _steps(repo, sha):
+    return set(planner._Ctx(repo).of_commit.get(sha, ()))
 
 
 def _tree(repo):
@@ -62,11 +58,11 @@ def _tree(repo):
 
 
 def _out(repo, sha, **kw):
-    return planner.apply(repo, planner.plan(repo, _ops(repo, sha), target=sha[:7], **kw))
+    return planner.apply(repo, planner.plan(repo, _steps(repo, sha), target=sha[:7], **kw))
 
 
 def _back(repo, sha):
-    return planner.apply(repo, planner.plan(repo, _ops(repo, sha), verb="restore", target=sha[:7]))
+    return planner.apply(repo, planner.plan(repo, _steps(repo, sha), verb="restore", target=sha[:7]))
 
 
 def _fold(repo):
@@ -76,7 +72,7 @@ def _fold(repo):
 
 
 def _held(p):
-    return {(h["step"].symbol, h["reason"]) for h in p.held}
+    return {(h["step"].unit, h["reason"]) for h in p.held}
 
 
 F5 = "def f():\n    a = 1\n    b = 2\n    c = 3\n    return a + b + c\n"
@@ -95,6 +91,17 @@ def test_newest_save_out_and_back_is_byte_exact(tmp_path):
     assert _tree(repo) == after
 
 
+def test_out_then_back_leaves_no_step_out(tmp_path):
+    repo, (_, x) = _repo(
+        tmp_path / "r",
+        {"a.py": "def a():\n    return 1\n"},
+        {"a.py": "def a():\n    return 1\n\n\ndef b():\n    return 2\n"},
+    )
+    _out(repo, x)
+    _back(repo, x)
+    assert planner.out_table(repo) == {}
+
+
 def test_a_middle_save_comes_out_by_its_own_lines_and_back(tmp_path):
     repo, (_, x, _y) = _repo(
         tmp_path / "r",
@@ -104,7 +111,7 @@ def test_a_middle_save_comes_out_by_its_own_lines_and_back(tmp_path):
     )
     original = _tree(repo)
     p = _out(repo, x)
-    assert [s.symbol for s in p.undone] == ["a.py::f"]
+    assert [s.unit for s in p.undone] == ["a.py::f"]
     assert _tree(repo)["a.py"] == F5.replace("c = 3", "c = 30").encode()
     _back(repo, x)
     assert _tree(repo) == original
@@ -117,9 +124,9 @@ def test_lines_a_later_save_rewrote_hold_the_step(tmp_path):
         {"a.py": F5.replace("a = 1", "a = 10")},
         {"a.py": F5.replace("a = 1", "a = 11")},
     )
-    p = planner.plan(repo, _ops(repo, x), target=x)
+    p = planner.plan(repo, _steps(repo, x), target=x)
     assert _held(p) == {("a.py::f", "same_lines")}
-    assert p.held[0]["holders"] == sorted(_ops(repo, y))
+    assert p.held[0]["holders"] == sorted(_steps(repo, y))
     assert p.files == {}
 
 
@@ -130,11 +137,11 @@ def test_a_definition_changed_later_is_held_and_whole_takes_the_change(tmp_path)
         {"a.py": "def f():\n    return 1\n\n\ndef g():\n    return 2\n"},
         {"a.py": "def f():\n    return 1\n\n\ndef g():\n    return 3\n"},
     )
-    p = planner.plan(repo, _ops(repo, x), target=x, removal_set=True)
+    p = planner.plan(repo, _steps(repo, x), target=x, removal_set=True)
     assert _held(p) == {("a.py::g", "changed_later")}
     assert {s["sha"]: s["steps"] for s in p.removal_set["saves"]}[y[:7]] == 1
-    whole = planner.apply(repo, planner.plan(repo, _ops(repo, x), target=x, whole=True))
-    assert {s.op for s in whole.undone} >= _ops(repo, y)
+    whole = planner.apply(repo, planner.plan(repo, _steps(repo, x), target=x, whole=True))
+    assert set(whole.undone) >= _steps(repo, y)
     assert _tree(repo)["a.py"] == b"def f():\n    return 1\n"
 
 
@@ -148,7 +155,7 @@ def test_what_other_code_uses_is_held(tmp_path):
                  "def run():\n    return helper()\n",
          "b.py": "from consts import LIMIT\n"},
     )
-    p = planner.plan(repo, _ops(repo, x), target=x)
+    p = planner.plan(repo, _steps(repo, x), target=x)
     assert _held(p) == {("a.py::helper", "uses"), ("consts.py::LIMIT", "uses")}
     assert p.files == {}
 
@@ -194,9 +201,9 @@ def test_edits_on_the_same_lines_while_out_hold_with_both_versions(tmp_path):
     repo, (_, x) = _repo(tmp_path / "r", {"a.py": F5}, {"a.py": F5.replace("a = 1", "a = 10")})
     _out(repo, x)
     edit = _edit(repo, {"a.py": F5.replace("a = 1", "a = 7")})
-    p = planner.plan(repo, _ops(repo, x), verb="restore", target=x)
+    p = planner.plan(repo, _steps(repo, x), verb="restore", target=x)
     assert _held(p) == {("a.py::f", "same_lines")}
-    assert p.held[0]["holders"] == sorted(_ops(repo, edit))
+    assert p.held[0]["holders"] == sorted(_steps(repo, edit))
     assert b"a = 7" in p.held[0]["now"] and b"a = 10" in p.held[0]["would"]
     assert p.files == {}
 
@@ -215,8 +222,8 @@ def test_the_check_holds_the_step_a_failure_sits_in(tmp_path):
         {"a.py": "def f():\n    return 1\n\n\ndef extra():\n    return 2\n"},
     )
     _check(repo)
-    p = planner.plan(repo, _ops(repo, x), target=x)
-    assert p.held == [] and {s.symbol for s in p.undone} == {"a.py::f", "a.py::extra"}
+    p = planner.plan(repo, _steps(repo, x), target=x)
+    assert p.held == [] and {s.unit for s in p.undone} == {"a.py::f", "a.py::extra"}
     done = planner.apply(repo, p)
     assert done.check["passed"] and done.check["judge"] == "check" and done.check["rounds"] == 2
     assert _held(done) == {("a.py::f", "check")}
@@ -234,7 +241,7 @@ def test_a_failure_outside_the_undone_steps_applies_nothing(tmp_path):
     )
     _check(repo)
     before = _tree(repo)
-    done = planner.apply(repo, planner.plan(repo, _ops(repo, x), target=x))
+    done = planner.apply(repo, planner.plan(repo, _steps(repo, x), target=x))
     assert done.check["passed"] is False and "app.py" in done.check["output"]
     assert _tree(repo) == before and planner.out_table(repo) == {}
 
@@ -247,7 +254,7 @@ def test_a_check_that_already_fails_refuses_before_writing(tmp_path):
     )
     _check(repo)
     before = _tree(repo)
-    done = planner.apply(repo, planner.plan(repo, _ops(repo, x), target=x))
+    done = planner.apply(repo, planner.plan(repo, _steps(repo, x), target=x))
     assert not done.ok and done.check["passed"] is False and done.check["rounds"] == 0
     assert _tree(repo) == before
 
@@ -262,7 +269,7 @@ def test_without_a_check_an_unparseable_result_is_held(tmp_path):
         {"a.py": body.replace("(\n", "foo(\n") + other},
         {"a.py": later},
     )
-    p = planner.plan(repo, _ops(repo, x), target=x)
+    p = planner.plan(repo, _steps(repo, x), target=x)
     assert p.held == [] and len(p.undone) == 2
     done = planner.apply(repo, p)
     assert _held(done) == {("a.py::f", "check")}
@@ -283,7 +290,7 @@ def test_the_removal_set_never_cuts_another_save_in_two(tmp_path):
         {"a.py": h.replace("1", "3") + "\n\n" + k.replace("1", "3") + "\n\n" + g.replace("1", "2")
                  + "\n\ndef f():\n    return 2\n"},
     )
-    p = planner.plan(repo, _ops(repo, x), target=x, removal_set=True)
+    p = planner.plan(repo, _steps(repo, x), target=x, removal_set=True)
     counts = {s["sha"]: s["steps"] for s in p.removal_set["saves"]}
     assert counts == {x[:7]: 2, y[:7]: 1, z[:7]: 2}
 
@@ -293,13 +300,13 @@ def test_undo_of_a_take_out_and_of_a_bring_back(tmp_path):
     before = _tree(repo)
     _out(repo, x)
     out_tree = _tree(repo)
-    assert set(planner.out_table(repo)) == _ops(repo, x)
+    assert set(planner.out_table(repo)) == _steps(repo, x)
     oplog.undo(repo)
-    assert _tree(repo) == before and not set(planner.out_table(repo)) & _ops(repo, x)
+    assert _tree(repo) == before and not set(planner.out_table(repo)) & _steps(repo, x)
     _out(repo, x)
     _back(repo, x)
     oplog.undo(repo)
-    assert _tree(repo) == out_tree and set(planner.out_table(repo)) >= _ops(repo, x)
+    assert _tree(repo) == out_tree and set(planner.out_table(repo)) >= _steps(repo, x)
 
 
 def test_undo_of_a_save_takes_it_out_whole(tmp_path):
@@ -338,7 +345,7 @@ def test_retyping_a_change_that_is_out_is_a_new_edit(tmp_path):  # D2
 def test_a_whole_file_deletion_comes_out_and_back(tmp_path):  # D3
     repo, (_, x) = _repo(tmp_path / "r", {"a.py": "def f():\n    return 1\n", "notes.txt": "hello\n"},
                          {"notes.txt": None})
-    assert [s.symbol for s in _out(repo, x).undone] == ["notes.txt"]
+    assert [s.unit for s in _out(repo, x).undone] == ["notes.txt"]
     assert (repo / "notes.txt").read_text() == "hello\n"
     assert planner.out_table(repo)
     _back(repo, x)
@@ -353,9 +360,9 @@ def test_a_take_out_is_never_a_holder(tmp_path):  # D4
         {"a.py": imp + body.replace("a = 1", "a = getcwd()")},
         {"a.py": imp + body.replace("a = 1", "a = getcwd()").replace("return 1", "return 2")})
     _out(repo, w)
-    p = planner.plan(repo, _ops(repo, x), target=x, removal_set=True)
+    p = planner.plan(repo, _steps(repo, x), target=x, removal_set=True)
     assert _held(p) == {("a.py::__import__::os", "uses")}
-    assert p.held[0]["holders"] == sorted(_ops(repo, y))
+    assert p.held[0]["holders"] == sorted(_steps(repo, y))
     assert sorted(s["sha"] for s in p.removal_set["saves"]) == sorted([x[:7], y[:7]])
 
 
@@ -365,8 +372,8 @@ def test_same_lines_names_the_later_save_that_rewrote_them(tmp_path):  # D5
         tmp_path / "r", {"a.py": f, "b.py": "def k():\n    return 1\n"},
         {"a.py": f.replace("a = 1", "a = 10")}, {"a.py": f.replace("a = 1", "a = 11")},
         {"a.py": f.replace("a = 1", "a = 11").replace("d = 4", "d = 40"), "b.py": "def k():\n    return 2\n"})
-    p = planner.plan(repo, _ops(repo, x), target=x, removal_set=True)
-    assert [h["holders"] for h in p.held] == [sorted(_ops(repo, y))]
+    p = planner.plan(repo, _steps(repo, x), target=x, removal_set=True)
+    assert [h["holders"] for h in p.held] == [sorted(_steps(repo, y))]
     assert sorted(s["sha"] for s in p.removal_set["saves"]) == sorted([x[:7], y[:7]])
 
 
@@ -377,7 +384,7 @@ def test_a_clone_knows_what_is_out(tmp_path):  # D6
     clone = tmp_path / "clone"
     subprocess.run(["git", "clone", "-q", str(repo), str(clone)], check=True)
     lens.init(clone)
-    assert set(planner.out_table(clone)) == set(planner.out_table(repo)) == _def_ops(clone, x)
+    assert set(planner.out_table(clone)) == set(planner.out_table(repo)) == _steps(clone, x)
     _back(clone, x)
     assert b"def g" in _tree(clone)["a.py"]
 
@@ -385,7 +392,7 @@ def test_a_clone_knows_what_is_out(tmp_path):  # D6
 def test_an_interrupt_after_the_commit_leaves_a_consistent_record(tmp_path, monkeypatch):  # D8
     repo, (_, x) = _repo(tmp_path / "r", {"a.py": "def f():\n    return 1\n"},
                          {"a.py": "def f():\n    return 1\n\n\ndef g():\n    return 2\n"})
-    p = planner.plan(repo, _ops(repo, x), target=x)
+    p = planner.plan(repo, _steps(repo, x), target=x)
 
     def interrupt(*_a, **_k):
         raise KeyboardInterrupt
@@ -396,7 +403,7 @@ def test_an_interrupt_after_the_commit_leaves_a_consistent_record(tmp_path, monk
             planner.apply(repo, p)
     assert GitBinding(repo).is_clean()
     get(repo)
-    assert set(planner.out_table(repo)) == _def_ops(repo, x)
+    assert set(planner.out_table(repo)) == _steps(repo, x)
     assert _tree(repo)["a.py"] == b"def f():\n    return 1\n" == _fold(repo)["a.py"]
 
 
@@ -415,9 +422,9 @@ def test_restoring_a_change_whose_definition_is_out_names_what_is_out(tmp_path):
                               {"a.py": "def f():\n    return 1\n\n\ndef g():\n    return 3\n"})
     _out(repo, x2)
     _out(repo, x1)
-    p = planner.plan(repo, _ops(repo, x2), verb="restore", target=x2)
+    p = planner.plan(repo, _steps(repo, x2), verb="restore", target=x2)
     assert _held(p) == {("a.py::g", "changed_later")}
-    assert p.held[0]["holders"] == sorted(_def_ops(repo, x1))
+    assert p.held[0]["holders"] == sorted(_steps(repo, x1))
 
 
 def test_a_definition_keeps_its_birth_on_its_chain_after_a_take_out(tmp_path):  # e12
@@ -455,5 +462,5 @@ def test_a_take_out_survives_a_rebase(tmp_path):
     git("rebase", "-q", "--onto", git("rev-parse", "HEAD").stdout.strip(), root, branch)
     get(repo)
     assert current_ideal(repo).op_ids == ideal
-    assert set(planner.out_table(repo)) == _def_ops(repo, x)
+    assert [st.unit for st in planner.out_table(repo)] == ["a.py::g"]
     assert b"def g" not in _tree(repo)["a.py"]

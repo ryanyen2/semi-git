@@ -29,30 +29,30 @@ def log_view(repo, *, limit: int | None = None) -> dict:
 
     rec = Record(repo)
     shas = rec.saves()[:limit] if limit else rec.saves()
-    return {"saves": [{**rec.save_row(sha), "steps": rec.steps(rec.save_ops(sha))} for sha in shas]}
+    return {"saves": [{**rec.save_row(sha), "steps": rec.steps(rec.ctx.of_commit.get(sha, ()))}
+                      for sha in shas]}
 
 
 def show_view(repo, token: str) -> dict:
     """An address's steps, the saves they came from with the ask behind each, and the planner's
     answer: what taking them out would take, or bringing them back when every step is out."""
-    from ugh.address import AddressError, Record, plan_json, resolve
+    from ugh.address import AddressError, Record, resolve
     from ugh.core import planner
     from ugh.intent.stint import asks_for_ops, dominant_ask
 
     rec = Record(repo)
     try:
-        op_ids = resolve(repo, token, rec)
+        steps = resolve(repo, token, rec)
     except AddressError as e:
         return {"ok": False, "address": token, "message": str(e), "hits": e.hits}
-    steps = rec.steps(op_ids)
-    ids = [o for o in op_ids if o in rec.units]
+    rows = rec.steps(steps)
     saves = []
-    for sha in sorted({rec.ctx.commit[o] for o in ids}, key=rec.ctx.index.__getitem__):
-        ask = dominant_ask(asks_for_ops(repo, [o for o in ids if rec.ctx.commit[o] == sha], [sha]))
+    for sha in sorted({st.sha for st in steps}, key=rec.ctx.index.__getitem__):
+        ask = dominant_ask(asks_for_ops(repo, rec.ops(st for st in steps if st.sha == sha), [sha]))
         saves.append({**rec.save_row(sha), "ask": ask})
-    verb = "restore" if steps and all(s["out"] for s in steps) else "revert"
-    p = planner.plan(repo, op_ids, verb=verb, target=token, removal_set=verb == "revert")
-    return {"ok": True, "address": token, "steps": steps, "saves": saves, "plan": plan_json(repo, p)}
+    verb = "restore" if all(row["out"] for row in rows) else "revert"
+    p = planner.plan(repo, steps, verb=verb, target=token, removal_set=verb == "revert")
+    return {"ok": True, "address": token, "steps": rows, "saves": saves, "plan": planner.to_json(p)}
 
 
 def find_view(repo, query: str, *, limit: int = 10) -> dict:
@@ -76,13 +76,12 @@ def plan_view(repo) -> dict | None:
     since = set(rec.saves())
     if plan["baseline"]:
         since &= {sha for sha, _p, _s in rec.gb.history(plan["baseline"])}
-    ops = [o for o in rec.units if rec.ctx.commit[o] in since]
+    steps = [st for st in rec.ctx.steps if st.sha in since]
     declared = []
     for label in plan["names"]:
-        shas = sorted({rec.ctx.commit[o] for o in ops if rec.names.get(o) == label},
-                      key=rec.ctx.index.__getitem__)
+        shas = sorted({st.sha for st in steps if rec.name(st) == label}, key=rec.ctx.index.__getitem__)
         declared.append({"name": label, "saves": [rec.save_row(sha) for sha in shas]})
-    other = rec.steps(o for o in ops if rec.names.get(o) not in plan["names"])
+    other = rec.steps(st for st in steps if rec.name(st) not in plan["names"])
     return {"baseline": plan["baseline"], "names": declared, "other": other}
 
 
@@ -293,14 +292,16 @@ def resolve_apply_preview_view(repo, symbol: str) -> dict:
 
 
 def _name_conflicts(repo, conflicts) -> list[dict]:
-    """`{address, ours, theirs}` for each op both sides of a sync relabelled differently."""
+    """`{address, ours, theirs}` for each step whose name is an op both sides of a sync relabelled
+    differently (the op's id when it names no step here)."""
     if not conflicts:
         return []
     from ugh.address import Record
 
     rec = Record(repo)
-    return [{"address": rec.address(op) if op in rec.units else op[:12], "ours": ours, "theirs": theirs}
-            for op, ours, theirs in conflicts]
+    return [{"address": address, "ours": ours, "theirs": theirs} for op, ours, theirs in conflicts
+            for address in [rec.step(st)["address"] for st in rec.ctx.steps if op in rec.carriers(st)]
+            or [op[:12]]]
 
 
 def sync_view(repo, report) -> dict:

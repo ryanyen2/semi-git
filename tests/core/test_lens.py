@@ -36,7 +36,7 @@ def _revert(repo, ref):
 
     if "::" in ref:
         ref = current_ideal(repo).frontier(opindex.index_ops(repo))[ref]
-    return planner.apply(repo, planner.plan(repo, {ref}, target=ref))
+    return planner.apply(repo, planner.plan(repo, [st for st, ops in planner._Ctx(repo).steps.items() if ref in ops], target=ref))
 
 def test_put_get_fixed_point(tmp_path):
     """put-get: materializing an ideal and re-mining the witness commit it just wrote yields

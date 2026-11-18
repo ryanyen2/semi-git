@@ -26,7 +26,8 @@ from tests.conftest import _clone, _init_bare, _push
 def _revert(repo, op_id):
     from ugh.core import planner
 
-    return planner.apply(repo, planner.plan(repo, {op_id}, target=op_id))
+    steps = [st for st, ops in planner._Ctx(repo).steps.items() if op_id in ops]
+    return planner.apply(repo, planner.plan(repo, steps, target=op_id))
 
 def _edit_and_commit(repo: Path, path: str, content: str, message: str) -> str:
     """Write content, commit it for real (works whether or not HEAD exists yet -- dirty-tree

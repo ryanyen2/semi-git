@@ -56,22 +56,22 @@ def tool_check(repo_path: str, args: dict) -> dict:
 
 def _verb(repo_path: str, verb: str, ref: str, emit: bool, whole: bool = False) -> dict:
     """Resolve the address `ref`, plan, and apply unless `emit`."""
-    from ugh.address import AddressError, plan_json, resolve
+    from ugh.address import AddressError, resolve
     from ugh.core import planner
     from ugh.core.lens import DirtyWorkingTreeError
 
     try:
-        op_ids = resolve(repo_path, ref)
+        steps = resolve(repo_path, ref)
     except AddressError as e:
         return {"ok": False, "verb": verb, "target": ref, "message": str(e), "hits": e.hits}
-    p = planner.plan(repo_path, op_ids, verb=verb, target=ref, whole=whole, removal_set=emit)
+    p = planner.plan(repo_path, steps, verb=verb, target=ref, whole=whole, removal_set=emit)
     if emit or not p.ok or not p.files:
-        return plan_json(repo_path, p)
+        return planner.to_json(p)
     try:
         done = planner.apply(repo_path, p)
     except DirtyWorkingTreeError as e:
         return {"ok": False, "verb": verb, "target": ref, "message": str(e)}
-    return plan_json(repo_path, done, applied=done.check != "not_run" and done.check["passed"])
+    return planner.to_json(done, applied=done.check != "not_run" and done.check["passed"])
 
 
 def _carry_prompt(repo_path: str, args: dict, *, key: str | None = None,
@@ -165,14 +165,12 @@ def tool_name(repo_path: str, args: dict) -> dict:
     get(repo_path)
     rec = Record(repo_path)
     try:
-        ids = [o for o in resolve(repo_path, ref, rec) if o in rec.units]
+        steps = resolve(repo_path, ref, rec)
     except AddressError as e:
         return {"ok": False, "message": str(e), "hits": e.hits}
-    if not ids:
-        return {"ok": False, "message": f"{ref!r} has no steps to name"}
-    names.name(repo_path, ids, label)
+    names.name(repo_path, rec.ops(steps), label)
     rec.names = names.load(repo_path)
-    return {"ok": True, "name": label, "steps": rec.steps(ids)}
+    return {"ok": True, "name": label, "steps": rec.steps(steps)}
 
 
 def tool_show(repo_path: str, args: dict) -> dict:

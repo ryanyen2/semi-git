@@ -21,7 +21,8 @@ from ugh.store.gitbind import init_store
 def _revert(repo, op_id):
     from ugh.core import planner
 
-    return planner.apply(repo, planner.plan(repo, {op_id}, target=op_id))
+    steps = [st for st, ops in planner._Ctx(repo).steps.items() if op_id in ops]
+    return planner.apply(repo, planner.plan(repo, steps, target=op_id))
 
 def _foo_chain(repo_path, n: int):
     """A repo whose a.py::foo is a linear chain of `n` versions, one per commit."""

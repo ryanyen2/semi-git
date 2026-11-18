@@ -30,8 +30,8 @@ ideal. To be valid, it has to follow two rules:
   same function is called a fork, and a valid ideal never contains one.
 
 A branch's ideal is every op mined from its history. Nothing is ever subtracted from it: taking work
-out (`ugh revert`) is a new commit whose ops un-apply that work, and its `Ugh-Out:` trailer records
-which steps it took out, so what is out is read from git history like everything else.
+out (`ugh revert`) is a new commit whose ops un-apply that work, and its `Ugh-Out:` trailer names
+the ops of the steps it took out, so what is out is read from git history like everything else.
 
 ## The fold
 
@@ -45,7 +45,10 @@ produces match what git actually has.
 
 ## Steps, names and addresses
 
-`ugh` shows each op as a step: one save's change to one definition. Every step prints with its
+`ugh` shows the ops as steps. A step is one save's change to one unit: a top-level definition with
+the blank lines before it, a file's head, or a whole file. A save has a step on a unit only where
+the unit's text changed, and the step's ops are that save's ops whose change shows there; a change
+to the blank lines between two definitions belongs to the one after them. Every step prints with its
 address, `path::def@<short sha>`, or `path@<short sha>` for a step on a whole file, a file's head or
 an import.
 

@@ -40,8 +40,8 @@ def name(repo: str | Path, op_ids, label: str) -> None:
         save(repo, table)
 
 
-def rename(repo: str | Path, old: str, new: str) -> int:
-    """Move every op labelled `old` to `new` (an existing `new` absorbs them). The count moved."""
+def rename(repo: str | Path, old: str, new: str) -> None:
+    """Move every op labelled `old` to `new` (an existing `new` absorbs them)."""
     from ugh.core import oplog
     from ugh.core.store import locked_section
 
@@ -51,7 +51,6 @@ def rename(repo: str | Path, old: str, new: str) -> int:
         moved = [o for o, label in table.items() if label == old]
         table.update(dict.fromkeys(moved, new))
         save(repo, table)
-    return len(moved)
 
 
 def merge(base: dict[str, str], ours: dict[str, str], theirs: dict[str, str]):

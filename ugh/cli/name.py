@@ -30,31 +30,33 @@ def _cmd_name(args) -> int:
     get(".")
     rec = Record(".")
     try:
-        op_ids = resolve(".", args.address, rec)
+        steps = resolve(".", args.address, rec)
     except AddressError as e:
         return address_refusal("name", args.address, e, args.as_json)
-    ids = [o for o in op_ids if o in rec.units]
-    if not ids:
-        return _fail_json(f"{args.address!r} has no steps to name", args.as_json)
-    names.name(".", ids, label)
+    names.name(".", rec.ops(steps), label)
     rec.names = names.load(".")
-    steps = rec.steps(ids)
+    rows = rec.steps(steps)
     if args.as_json:
-        return _emit_json({"ok": True, "name": label, "steps": steps})
-    print(f'✓ named {len(steps)} step(s) "{label}"')
-    for st in steps:
-        print(f"    {st['address']}")
+        return _emit_json({"ok": True, "name": label, "steps": rows})
+    print(f'✓ named {len(rows)} step(s) "{label}"')
+    for row in rows:
+        print(f"    {row['address']}")
     return 0
 
 
 def _cmd_rename(args) -> int:
     from ugh import names
+    from ugh.address import Record
+    from ugh.core.lens import get
 
     new = " ".join(args.new)
-    if args.old not in names.load(".").values():
+    get(".")
+    rec = Record(".")
+    if args.old not in rec.names.values():
         return _fail_json(f"no name {args.old!r} — `ugh log` shows the names in use", args.as_json)
-    merged = new in names.load(".").values()
-    moved = names.rename(".", args.old, new)
+    merged = new in rec.names.values()
+    moved = sum(rec.name(st) == args.old for st in rec.ctx.steps)
+    names.rename(".", args.old, new)
     if args.as_json:
         return _emit_json({"ok": True, "old": args.old, "new": new, "steps": moved, "merged": merged})
     print(f'✓ renamed "{args.old}" → "{new}" ({moved} step(s))'

@@ -3,7 +3,7 @@
 One per-ref log every mutating verb appends to: `{"kind": "commit", "sha", "verb", "target"}` for a
 commit ugh made (a save, a take-out, a bring-back, a resolve), and `names` snapshots taken before a
 `name` or `rename`. `undo` pops the newest event and reverses it: a commit is reversed by taking out
-the ops mined from it (`ugh.core.planner`), which is itself a commit and is not logged, so repeated
+all of its steps (`ugh.core.planner`), which is itself a commit and is not logged, so repeated
 undos walk back; a names event restores its snapshot.
 """
 
@@ -101,7 +101,7 @@ def _restore(repo: str | Path, snap: dict) -> None:
 @dataclass(frozen=True)
 class UndoOutcome:
     """What one `undo` did: `empty` (nothing to undo), `commit` (`plan` is the applied take-out of
-    that commit's ops), `refused` (the take-out applied nothing; `plan` says why), or `names` (a
+    that commit's steps), `refused` (the take-out applied nothing; `plan` says why), or `names` (a
     names snapshot was restored)."""
 
     status: str
@@ -111,10 +111,10 @@ class UndoOutcome:
 
 
 def _commit_plan(repo: Path, event: dict):
-    from ugh.core import opindex, planner
+    from ugh.core import planner
 
-    ops = {op.id for op in opindex.index_ops(repo) if event["sha"] in op.provenance}
-    return planner.plan(repo, ops, target=f"{event['verb']} {event['target']}".strip())
+    steps = planner._Ctx(repo).of_commit.get(event["sha"], [])
+    return planner.plan(repo, steps, target=f"{event['verb']} {event['target']}".strip())
 
 
 def _what(event: dict) -> str:
@@ -138,7 +138,7 @@ def preview(repo: str | Path) -> dict:
     return {"kind": "commit", "ok": p.ok and bool(p.files),
             "message": f"takes out {_what(event)}" + (f" -- {p.message}" if p.message else ""),
             "undone": len(p.undone), "held": len(p.held),
-            "steps": sorted({step_address(st.symbol, p.saves[st.op][0]) for st in p.undone})[:12]}
+            "steps": sorted({step_address(st.unit, st.sha) for st in p.undone})[:12]}
 
 
 def undo(repo: str | Path) -> UndoOutcome:

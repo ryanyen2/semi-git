@@ -6,7 +6,9 @@ description: Use when choosing between ugh's look-alike verbs (revert by name, s
 # ugh command selection
 
 `ugh` is a layer over git: history is mined into steps, each one save's change to one top-level
-definition, and the code is what the steps that are in produce. Several verbs look similar but
+definition (with the blank lines before it), a file's head or a whole file, and the code is what
+the steps that are in produce. A save that appends a definition after another is one step, on the
+new one. Several verbs look similar but
 answer different questions. This skill is the decision guide — read the relevant section before
 running an ambiguous verb, don't guess from the name alone.
 
@@ -20,7 +22,7 @@ Every verb that acts on steps takes one address, and every step ugh prints carri
 | `<label>@<rev>` | those steps in one save |
 | `<path>` | the steps on one file |
 | `<path>::<def>` | the steps on one top-level definition |
-| `<path>::<def>@<rev>` | one step |
+| `<path>::<def>@<rev>` | the one step on that definition in that save; refused when the save did not change it |
 | `<rev>` | one save's steps (anything `git rev-parse` takes) |
 | `<rev>..<rev>`, `<rev>..` | the saves in that range (`<rev>..` runs through HEAD) |
 
@@ -48,14 +50,14 @@ into an address.
 | Take the work and everything standing on it out | `ugh revert <address> --whole` | the removal set the preview names; never cuts another save in two |
 | Bring back what a revert took out | `ugh restore <address>` | takes out the edit that took it out; edits made since combine, same-line conflicts are held with both versions and nothing is written for them |
 
-Every revert and restore is a commit whose `Ugh-Out:` trailer names the steps it took out, so what
-is out travels with git history (a clone or a rebase knows). The project's check
+Every revert and restore is a commit whose `Ugh-Out:` trailer names the ops of the steps it took
+out, so what is out travels with git history (a clone or a rebase knows). The project's check
 (`.sgt/oracle.json`, or the parser when none is configured) must pass before anything is written;
 a failure inside a definition being changed holds that step, and a failure anywhere else applies
 nothing. `ugh show <address>` gives the same answer without changing anything.
 
 `ugh undo` reverses the last thing you did, from the operation log: a save, a revert or a restore
-is undone by taking out the ops mined from its commit (so work committed since stays), a `name` or
+is undone by taking out all of its commit's steps (so work committed since stays), a `name` or
 `rename` by restoring the names before it.
 
 ## Moving work: sync vs push

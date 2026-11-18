@@ -103,7 +103,7 @@ def test_the_dry_run_answers_in_three_parts_and_writes_nothing(tmp_path, capsys)
     assert rc == 0 and view["ok"] and view["applied"] is False
     assert {"undone", "held", "removal_set", "files", "check"} <= set(view)
     assert view["check"] == "not_run"
-    assert "cart.py::tax" in {u["symbol"] for u in view["undone"]}
+    assert [u["address"] for u in view["undone"]] == [f"cart.py::tax@{sha[:7]}"]
     assert "def tax" in view["files"]["cart.py"]["before"]
     assert "def tax" not in view["files"]["cart.py"]["after"]
     assert view["removal_set"]["saves"][0]["sha"] == sha[:7]
@@ -128,7 +128,7 @@ def test_a_held_step_is_named_with_its_reason_and_holders(tmp_path, capsys):
     later = corpus._commit(repo, "use the helper", 3)
     get(repo)
     rc, view = _json(repo, ["revert", sha[:7], "--emit", "--json"], capsys)
-    held = {h["symbol"]: h for h in view["held"]}
+    held = {h["unit"]: h for h in view["held"]}
     assert held["m.py::helper"]["reason"] == "uses"
     assert held["m.py::helper"]["holders"][0]["save"] == later[:7]
     capsys.readouterr()
@@ -184,8 +184,50 @@ def test_reverting_a_files_only_definition_removes_the_file_and_undo_brings_it_b
     assert not (repo / "solo.py").exists()
     assert _in(repo, ["undo"]) == 0
     assert (repo / "solo.py").read_bytes() == b"def only():\n    return 2\n"
-    from ugh.core.opindex import index_ops
-
-    assert not set(load_out(repo)) & {o.id for o in index_ops(repo) if sha in o.provenance}
+    assert not load_out(repo)
 
 
+
+
+def _appended(root):
+    """`def a` committed, then one save that appends `def b` after it."""
+    repo = root / "appended"
+    corpus._init(repo)
+    corpus._write(repo, "m.py", "def a():\n    return 1\n")
+    corpus._commit(repo, "a", 1)
+    corpus._write(repo, "m.py", "def a():\n    return 1\n\n\ndef b():\n    return 2\n")
+    sha = corpus._commit(repo, "append b", 2)
+    get(repo)
+    return repo, sha[:7]
+
+
+def test_appending_a_definition_is_one_step_on_it(tmp_path, capsys):
+    repo, sha = _appended(tmp_path)
+    _rc, view = _json(repo, ["log", "--json"], capsys)
+    assert view["saves"][0]["steps"] == [{"address": f"m.py::b@{sha}", "kind": "create",
+                                          "name": None, "out": False}]
+
+
+def test_a_definition_a_save_did_not_change_is_refused_at_that_save(tmp_path, capsys):
+    repo, sha = _appended(tmp_path)
+    before = (repo / "m.py").read_bytes()
+    rc, view = _json(repo, ["revert", f"m.py::a@{sha}", "--yes", "--json"], capsys)
+    assert rc == 2 and view["ok"] is False
+    assert (repo / "m.py").read_bytes() == before
+
+
+def test_reverting_a_definition_leaves_the_one_appended_after_it(tmp_path):
+    repo, _sha = _appended(tmp_path)
+    assert _in(repo, ["revert", "m.py::a", "--yes"]) == 0
+    assert (repo / "m.py").read_bytes() == b"\n\ndef b():\n    return 2\n"  # the blank lines are b's
+
+
+def test_out_and_back_leaves_nothing_out_and_nothing_to_restore(tmp_path, capsys):
+    repo, sha = _appended(tmp_path)
+    assert _in(repo, ["revert", sha, "--yes"]) == 0
+    assert _in(repo, ["restore", sha, "--yes"]) == 0
+    _rc, view = _json(repo, ["log", "--json"], capsys)
+    assert not any(st["out"] for save in view["saves"] for st in save["steps"])
+    capsys.readouterr()
+    assert _in(repo, ["restore", sha, "--yes"]) == 0
+    assert "nothing to restore" in capsys.readouterr().out
