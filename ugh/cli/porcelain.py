@@ -10,8 +10,8 @@ Two things live here, both small and both *data*:
    on next contact -- the net that catches raw `git` too). This replaces U18's advisory-only
    posture; the routing table is one data table, not conditionals scattered through the passthrough.
 
-2. **The daily-loop verbs (D3): `save`, `undo`.** `save` is the put-path sugar (`get` + a commit
-   that is mined like any other); `undo` reverses the last mutating operation by popping the
+2. **The daily-loop verbs (D3): `save`, `undo`.** `save` is a git commit of the working tree,
+   mined like any other; `undo` reverses the last mutating operation by popping the
    operation log (`oplog.undo`). Everything git does that ugh does not wrap stays one keystroke away behind
    `ugh git …`; a verb is only wrapped where the ugh-native version is *semantically different*,
    never merely renamed (design doc §1 non-goal).
@@ -21,14 +21,13 @@ from __future__ import annotations
 
 import argparse
 
-from ._common import _emit_json, _fail, _fail_json, fork_lines
+from ._common import _emit_json, _fail, _fail_json
 
 # D2 routing table (design doc §1): git subcommand -> the ugh verb that owns that job. A subcommand
 # here is refused by `ugh git`; anything absent passes through untouched (read/inspect verbs, and
 # plumbing/config like `remote add`/`config`/`tag`/`bisect`/`fsck`). `pull`/`merge` route to `ugh
-# sync` (integration is op-set union + fork-surfacing, not a text merge); `reset` to `ugh undo`;
-# `revert` to `ugh revert`; `stash` dissolves into `ugh save` (a dirty tree is just ops not yet
-# landed). `rebase` has no ugh analogue -- history is a mined DAG -- so it routes to `ugh sync`.
+# sync` (a merge unit by unit); `reset` to `ugh undo`; `revert` to `ugh revert`; `stash` dissolves
+# into `ugh save`. `rebase` has no ugh analogue -- history is a mined DAG -- so it routes to `ugh sync`.
 REFUSALS: dict[str, str] = {
     "restore": "ugh restore <ref>",
     "pull": "ugh sync [remote] [branch]",
@@ -84,48 +83,38 @@ def _cmd_undo(args) -> int:
 
 
 def save(repo: str, *, message: str | None = None, as_label: str | None = None) -> dict:
-    """Record the working tree's edits as a save, name its steps when `as_label` is given, and
-    return what the save did: `{ok, saved, commit, steps, open_fork_count}` or `{ok: False, error}`.
-
-    "Nothing to save" is decided by the ideal, not git's dirty flag: with no uncommitted ops the
-    mined ideal equals the recorded one."""
+    """Commit the working tree as git would (`git add -A`), mine the commit, and name its steps
+    when `as_label` is given: `{ok, saved, commit, steps}` or `{ok: False, error}`. Refused during
+    an in-progress git merge, cherry-pick or revert, and while a two-version choice is pending."""
     import time
 
     from ugh import names
     from ugh.address import Record
-    from ugh.api import forks_view
-    from ugh.core import opindex, oplog
-    from ugh.core.lens import DirtyWorkingTreeError, current_ideal, get, merge_in_progress, put, sync_status
+    from ugh.core import lens, opindex, oplog, sync
     from ugh.intent.manifest import load_manifests, record_manifest
     from ugh.store.gitbind import GitBinding, GitError
 
     from ._common import busy
 
-    # An in-progress git merge/cherry-pick/revert leaves conflict markers in the tree: refuse before
-    # mining so they never become ops and the paused operation is never finalized blind.
     gb = GitBinding(repo)
-    verb = merge_in_progress(gb)
+    verb = lens.merge_in_progress(gb)
     if verb is not None:
         return {"ok": False, "error": f"in-progress git {verb} -- finish or abort the git {verb} first "
                                       f"(git {verb} --continue / git {verb} --abort); ugh save won't "
                                       "commit conflict markers"}
-    with busy("examining the working tree…"):
-        ideal = get(repo)  # mine the working tree (R9)
-    prev_ids = current_ideal(repo).op_ids
-    if ideal.op_ids == prev_ids:
-        # Only claim "nothing to save" once the tree was actually examined: while history is still
-        # being mined, the dirty pass is skipped and a real edit could go unmined.
-        if not sync_status(repo)["complete"]:
-            return {"ok": False, "error": "can't tell yet whether there's anything to save -- this "
-                    "repo's history is still being mined, and until that finishes ugh does not examine "
-                    "the working tree. Re-run `ugh save` (each run mines another chunk) until it "
-                    "reports a result"}
-        return {"ok": True, "saved": False, "message": "nothing to save -- no uncommitted ops"}
+    pending = sync.choices(repo)
+    if pending:
+        named = "; ".join(f"{c.address} (ugh resolve {c.address})" for c in pending)
+        return {"ok": False, "choices": [c.address for c in pending],
+                "error": f"a sync left {len(pending)} definition(s) with two versions -- resolve each "
+                         f"before saving: {named}"}
+    if gb.is_clean():
+        return {"ok": True, "saved": False, "message": "nothing to save -- the working tree matches HEAD"}
     prev_head = gb.head()
     with busy("recording the save…"):
         try:
-            sha = put(repo, ideal, message=message or "ugh save")
-        except (DirtyWorkingTreeError, GitError, ValueError) as e:
+            sha = lens.commit(repo, message or "ugh save")
+        except GitError as e:
             return {"ok": False, "error": str(e)}
         oplog.append(repo, {"kind": "commit", "sha": sha, "verb": "save", "target": message or ""})
     if message:  # the user's own words about this save, keyed by its commit
@@ -134,22 +123,18 @@ def save(repo: str, *, message: str | None = None, as_label: str | None = None) 
         record_turn(repo, key=sha, key_kind="sha", actor="human", channel="cli", text=message)
     # Close the capture window: the turns and activity since the previous save, with this save's
     # ops, become one manifest, which `show` reads to give the ask behind the save.
-    new_op_ids = ideal.op_ids - prev_ids
     prev_ts = gb.commit_times().get(prev_head) if prev_head and not load_manifests(repo) else None
-    record_manifest(repo, sha=sha, ops=[op for op in opindex.index_ops(repo) if op.id in new_op_ids],
+    record_manifest(repo, sha=sha, ops=[op for op in opindex.index_ops(repo) if sha in op.provenance],
                     end=time.time(), prev_save_ts=prev_ts)
     rec = Record(repo)
     steps = rec.ctx.of_commit.get(sha, [])
     if as_label:
         names.name(repo, rec.ops(steps), as_label)
         rec.names = names.load(repo)
-    return {"ok": True, "saved": True, "commit": sha, "steps": rec.steps(steps),
-            "open_fork_count": forks_view(repo)["open"]}
+    return {"ok": True, "saved": True, "commit": sha, "steps": rec.steps(steps)}
 
 
 def _render_save(out: dict, message: str | None, as_label: str | None) -> None:
-    from ugh.api import forks_view
-
     if not out["saved"]:
         print(f"✓ {out['message']}")
         if as_label:
@@ -161,9 +146,6 @@ def _render_save(out: dict, message: str | None, as_label: str | None) -> None:
         print(f"    {st['kind']:<7} {st['address']}" + (f"  [{st['name']}]" if st["name"] else ""))
     # Reversing the save takes its edits back off the working copy, not only out of the record.
     print("  ⤺ undo this save, and take its edits back off the working copy:  ugh undo")
-    if out["open_fork_count"]:
-        for line in fork_lines(forks_view(".")["forks"]):
-            print(line)
 
 
 def _undo_preview_lines(pv: dict) -> list[str]:

@@ -127,40 +127,6 @@ def _seed_plan_session(repo, gb, *, session_id, last_activity_ts, claude_session
     plan_mod._save_sessions(repo, table)
 
 
-def test_open_forks_surface_only_resolvable_divergent_forks(tmp_path):
-    """A committed forks.json can carry sentinel-symbol and same-after pseudo-forks (neutralized by
-    `fork_free`, no user remedy) alongside a genuinely divergent one. Every fork read surface --
-    `forks_view`, `status_view` -- must filter to the resolvable, divergent fork only."""
-    from ugh import state
-    from ugh.api import forks_view, status_view
-    from ugh.core.op import make_op
-    from ugh.core.store import Store
-
-    repo = tmp_path / "repo"
-    gb, _ = init_store(repo)
-    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("add foo")
-    get(repo)
-
-    store = Store(repo)
-
-    def _fork(symbol, after_a, after_b):
-        a = store.add(make_op({symbol: ("v0", after_a)}, {symbol: after_a.encode()}, kind="touched"))
-        b = store.add(make_op({symbol: ("v0", after_b)}, {symbol: after_b.encode()}, kind="rebirth"))
-        return {"symbol": symbol, "tips": [a.id, b.id], "remedy": f"ugh merge-op {a.id} {b.id}"}
-
-    state.save_json(repo, "forks", [
-        _fork("a.py::__anchor__::m", "z1", "z2"),  # sentinel symbol -- unactionable
-        _fork("b.py::bar", "same", "same"),        # same-after pseudo-fork -- nothing to resolve
-        _fork("c.py::baz", "left", "right"),       # genuinely divergent -- the only real one
-    ])
-
-    fv = forks_view(repo)
-    assert fv["open"] == 1
-    assert [f["symbol"] for f in fv["forks"]] == ["c.py::baz"]
-    assert [f["symbol"] for f in status_view(repo)["forks"]["records"]] == ["c.py::baz"]
-
-
 # -- bookkeeping folding: ugh's own commits are not the developer's work ---------------------------
 
 def test_log_view_leaves_out_ugh_s_own_take_out_commits(tmp_path):
@@ -177,46 +143,10 @@ def test_log_view_leaves_out_ugh_s_own_take_out_commits(tmp_path):
 def test_a_user_save_is_never_marked_as_bookkeeping(tmp_path):
     """The mark must follow ugh's own mechanics only -- a save carrying the user's message is the
     work itself, and folding it would hide exactly what the developer wants to see."""
-    from ugh.core.lens import put
+    from ugh.cli.porcelain import save
 
     repo = _mined(tmp_path, "linear_history")
-    put(repo, get(repo), message="add the thing I meant to add")
+    (repo / "new.py").write_text("def thing():\n    return 1\n", encoding="utf-8")
+    assert save(str(repo), message="add the thing I meant to add")["saved"]
 
     assert log_view(repo)["saves"][0]["subject"] == "add the thing I meant to add"
-
-
-def test_forks_across_miner_versions_are_marked_as_store_generations_not_divergent_edits(tmp_path):
-    """F82: a MINER_VERSION bump re-mines history but nothing evicts the previous generation, so the
-    same commit can sit in the store twice with different ids. The two generations disagree about a
-    symbol's after-state and collide on its `before_version`, which reads as a fork -- 619 of the 642
-    on ugh's own repo. Nobody made those edits, and no hand-merge closes them (the remedy is
-    a re-mine), so a fork whose tips carry different miner_versions must be
-    flagged as such rather than presented as a divergence the user is expected to resolve."""
-    from ugh import state
-    from ugh.api import forks_view
-    from ugh.core.op import MINER_VERSION, make_op
-    from ugh.core.store import Store
-
-    repo = tmp_path / "repo"
-    gb, _ = init_store(repo)
-    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("add foo")
-    get(repo)
-
-    store = Store(repo)
-    old = str(int(MINER_VERSION) - 1)
-
-    def _fork(symbol, mv_a, mv_b):
-        a = store.add(make_op({symbol: ("v0", "left")}, {symbol: b"left"}, miner_version=mv_a))
-        b = store.add(make_op({symbol: ("v0", "right")}, {symbol: b"right"}, miner_version=mv_b))
-        return {"symbol": symbol, "tips": [a.id, b.id], "remedy": f"ugh merge-op {a.id} {b.id}"}
-
-    state.save_json(repo, "forks", [
-        _fork("c.py::baz", MINER_VERSION, MINER_VERSION),  # a real divergence
-        _fork("d.py::qux", old, MINER_VERSION),            # two mining generations, not an edit
-    ])
-
-    by_symbol = {f["symbol"]: f for f in forks_view(repo)["forks"]}
-    assert set(by_symbol) == {"c.py::baz", "d.py::qux"}, "neither fork may be silently dropped"
-    assert by_symbol["c.py::baz"]["cross_version"] is False
-    assert by_symbol["d.py::qux"]["cross_version"] is True

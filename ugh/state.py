@@ -74,9 +74,6 @@ class _Artifact:
 _ARTIFACTS: dict[str, _Artifact] = {
     # committed, team-shared -- read from arbitrary-vintage historical blobs by `sync`.
     "oracle_config": _Artifact(("oracle.json",), committed=True),
-    # committed record of the open same-symbol forks a sync surfaced (C4) -- a fork is durable,
-    # shared state that travels with the repo so a teammate's next sync (and `ugh status`) sees it.
-    "forks": _Artifact(("forks.json",), committed=True),
     # committed names a person or agent gave (`ugh.names`): {op id: label}, merged three-way per op.
     "names": _Artifact(("names.json",), committed=True),
     # committed three-tier file-boundary overrides (`ugh tiers set`, U27/D4): explicit

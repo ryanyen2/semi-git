@@ -11,6 +11,12 @@ Every version is `op.version(symbol, previous, content)`, where `previous` is th
 the commit's parent, read from history (`_Versions`). So the ops are a pure function of history since
 the horizon: mining everything again gives the same ids as the incremental mines that built the
 store, and a rebase that keeps each symbol's content sequence keeps its ids.
+
+A merge settles every symbol on which its parents differ: unless it took one side's change whole
+over sides that left the symbol as the merge base had it, the symbol gets a new version at the
+merge and each parent's version is joined into it by an op of the merge. A symbol's chain may
+therefore branch where two lines of history changed it, and always joins again at the merge that
+brought them together, so a ref's history has one tip per symbol and never a fork.
 """
 
 from __future__ import annotations
@@ -28,9 +34,7 @@ from ugh.core.identity import link_residual, match_pair, snapshot
 from ugh.core.op import Images, Op, is_bottom, make_op, unit_of, version
 from ugh.entities.extract import Entity, _language, _language_for, extract_file
 from ugh.entities.graph import build_entity_graph
-from ugh.store.gitbind import GitBinding, parse_trailer_ids
-
-RESOLVES_TRAILER = "Ugh-Resolves"
+from ugh.store.gitbind import GitBinding
 
 
 @dataclass
@@ -224,6 +228,38 @@ class _Versions:
         return result
 
 
+def _settled(gb: GitBinding, versions: _Versions, sha: str, parents: list[str],
+             excluded: set[str]) -> dict[str, tuple[str, list[str], bytes | None]]:
+    """The symbols merge `sha` settles: every symbol on which its parents differ. Each maps to its
+    version at the merge, the parent versions joined into it, and its content. A symbol whose
+    content equals a parent's keeps that parent's version; otherwise it gets a new version from
+    the first parent that changed it. A parent version that is the merge base's needs no join."""
+    base = gb.merge_base(parents[0], parents[1])
+    first = set(gb.changed_paths(base, parents[0]))
+    paths: set[str] = set()
+    for other in parents[1:]:
+        theirs = set(gb.changed_paths(base, other))
+        paths |= ((first & theirs) | ((theirs - first) & set(gb.changed_paths(other, sha)))
+                  | ((first - theirs) & set(gb.changed_paths(parents[0], sha))))
+    paths = {p for p in paths if not p.startswith(".sgt/") and p not in excluded}
+    paths -= {p for c in [*parents, sha] for p in gb.symlink_paths(c, sorted(paths))}
+    out: dict[str, tuple[str, list[str], bytes | None]] = {}
+    for path in sorted(paths):
+        at = {p: _symbol_images(gb, p, path) for p in parents}
+        here = _symbol_images(gb, sha, path)
+        for sym in sorted(set().union(*at.values())):
+            vs = [versions.at(p, sym) for p in parents]
+            if len(set(vs)) == 1:
+                continue
+            vb = versions.at(base, sym)
+            joined = list(dict.fromkeys(v for v in vs if v is not None and v != vb))
+            image = here.get(sym)
+            kept = next((v for p, v in zip(parents, vs) if v is not None and at[p].get(sym) == image), None)
+            target = kept if kept is not None else version(sym, joined[0], image)
+            out[sym] = (target, [v for v in joined if v != target], image)
+    return out
+
+
 def _mine_one(
     gb: GitBinding, versions: _Versions, sha: str, parent: str | None, is_pending: bool = False,
     excluded_paths: set[str] | None = None,
@@ -261,6 +297,7 @@ def _mine_one(
 
     diffs = gb.diff_name_and_text(parent, sha)
     other_parents = [p for p in gb.parents(sha) if p != parent] if not is_pending and parent else []
+    settled = _settled(gb, versions, sha, [parent, *other_parents], excluded_paths) if other_parents else {}
     if other_parents:
         # A merge mints only the paths it resolved differently from every parent.
         differs_from_all_sides = {fc.path for fc in diffs}
@@ -365,10 +402,15 @@ def _mine_one(
             emit(s.ent.id, None)
 
     if other_parents:
-        # A symbol whose content equals another parent's keeps that parent's version.
-        touches = [t for t in touches if not any(
+        # A merge settles what its parents differ on (`_settled`); any other symbol whose content
+        # equals another parent's keeps that parent's version.
+        touches = [t for t in touches if t.symbol not in settled and not any(
             _symbol_images(gb, p, t.symbol.split("::", 1)[0]).get(t.symbol) == t.image
             for p in other_parents)]
+        touches += [_Touch(sym, v, target, image, f"{sha}:{unit_of(sym)}" + (f":{i}" if i else ""),
+                           derived=tiers.is_derived(sym.split("::", 1)[0]))
+                    for sym, (target, joined, image) in settled.items()
+                    for i, v in enumerate(joined)]
 
     bucket_of = {unit_of(old): f"{sha}:{unit_of(new)}" for old, new in moves}
     for t in touches:
@@ -419,9 +461,8 @@ def mine(
     for sha, parent, _subject in history:
         if sha == treat_as_root:
             parent = None
-        resolves = frozenset(parse_trailer_ids(gb.commit_message(sha), RESOLVES_TRAILER))
         ops.extend(_build_ops(_mine_one(gb, versions, sha, parent, excluded_paths=excluded_paths),
-                              (sha,), resolves))
+                              (sha,)))
         last_sha = sha
         if deadline is not None and time.monotonic() >= deadline:
             hit_deadline = sha != history[-1][0]
@@ -438,8 +479,7 @@ def _born(before: str | None) -> bool:
     return before is None or is_bottom(before)
 
 
-def _build_ops(touches: list[_Touch], provenance: tuple[str, ...],
-               resolves: frozenset[str] = frozenset()) -> list[Op]:
+def _build_ops(touches: list[_Touch], provenance: tuple[str, ...]) -> list[Op]:
     """One op per unit a commit touched (a rename or move is one op)."""
     by_bucket: dict[str, list[_Touch]] = {}
     for t in touches:
@@ -459,6 +499,5 @@ def _build_ops(touches: list[_Touch], provenance: tuple[str, ...],
         else:
             kind = "extend" if any(_born(t.before) for t in group) else "rework"
         ops.append(make_op(footprint, images, requires=frozenset(requires), kind=kind,
-                           provenance=provenance, derived=any(t.derived for t in group),
-                           resolves=resolves))
+                           provenance=provenance, derived=any(t.derived for t in group)))
     return ops

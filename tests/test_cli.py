@@ -57,32 +57,6 @@ def test_init_with_horizon_mines_only_from_that_commit_forward(tmp_path, capsys)
     assert foo == ["change", "create"]
 
 
-def _seed_resolvable_fork(tmp_path, symbol="a.py::foo"):
-    """Record a genuinely-divergent open fork (real symbol, differing after versions) so the state
-    banner must render on any fork-surfacing verb."""
-    from ugh import state
-    from ugh.core.op import make_op
-    from ugh.core.store import Store
-
-    store = Store(tmp_path)
-    a = store.add(make_op({symbol: ("v0", "v1")}, {symbol: b"a"}, kind="touched"))
-    b = store.add(make_op({symbol: ("v0", "v2")}, {symbol: b"b"}, kind="rebirth"))
-    state.save_json(tmp_path, "forks", [
-        {"symbol": symbol, "tips": [a.id, b.id], "remedy": f"ugh merge-op {a.id} {b.id}"},
-    ])
-
-
-def test_status_names_an_open_fork_and_its_remedy(tmp_path, capsys):
-    """A genuine open fork is listed by `ugh status` with its `ugh resolve` remedy -- and the verb
-    does not change its exit code (non-blocking)."""
-    _seed(tmp_path, 2)
-    _seed_resolvable_fork(tmp_path)
-    capsys.readouterr()
-
-    assert _in(tmp_path, ["status"]) == 0
-    assert "ugh resolve a.py::foo" in capsys.readouterr().out
-
-
 def test_revert_emit_previews_without_writing(tmp_path, capsys):
     _seed(tmp_path, 2)
     assert _in(tmp_path, ["revert", "--emit", _head(tmp_path)]) == 0
@@ -221,3 +195,26 @@ def test_revert_json_still_applies_immediately_without_the_pane(tmp_path, capsys
 
 # -- P0 repair: verb spellings a developer actually types -----------------------------------------
 
+
+
+def test_init_keeps_its_per_user_hook_file_out_of_saves(tmp_path, monkeypatch):
+    """`init` writes the hooks into `.claude/settings.local.json`, which is one person's file; a
+    save is `git add -A`, so init excludes it locally rather than relying on a global ignore."""
+    import subprocess
+
+    empty = tmp_path / "empty-config"
+    empty.write_text("", encoding="utf-8")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(empty))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    repo = tmp_path / "r"
+    repo.mkdir()
+    gb, _ = init_store(repo)
+    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("foo")
+    assert _in(repo, ["init"]) == 0
+    assert (repo / ".claude" / "settings.local.json").is_file()
+    (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
+    assert _in(repo, ["save", "-m", "two"]) == 0
+    tracked = subprocess.run(["git", "-C", str(repo), "ls-files"], capture_output=True, text=True,
+                             check=True).stdout.split()
+    assert ".claude/settings.local.json" not in tracked

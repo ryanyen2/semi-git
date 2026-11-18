@@ -4,7 +4,7 @@ after a git history rewrite. Every verb mines the working tree on contact before
 
 from __future__ import annotations
 
-from ._common import _add_view_flags, _emit_json, fork_lines
+from ._common import _add_view_flags, _emit_json, choice_lines
 
 
 def register(subs, parent) -> None:
@@ -107,9 +107,8 @@ def _fsck(repo: str, as_json: bool = False) -> int:
 
 
 def _fsck_tree(repo: str, as_json: bool = False) -> int:
-    """`ugh check --tree` (R2): classify every path where `code(current_ideal)` diverges from the
-    HEAD tree. Real `drift` is the only failing finding; unmanaged/backstop-kept/unseeded
-    are planned divergence and reported for context."""
+    """`ugh check --tree`: every path where `code(current_ideal)` differs from the HEAD tree. Only
+    `drift` fails; unmanaged and unseeded paths are reported for context."""
     from ugh.core.lens import fsck_tree, get
 
     get(repo)  # mine-on-contact so the comparison reflects current reality (R9)
@@ -120,10 +119,9 @@ def _fsck_tree(repo: str, as_json: bool = False) -> int:
     icon = "✗" if drift else "✓"
     print(f"{icon} check --tree — {len(drift)} drifted path(s)")
     for path in drift:
-        print(f"    drift: {path} — `ugh check --repair` to absorb HEAD's bytes, or `ugh save` to "
-              f"enforce the ideal (opposite data-loss profiles)")
-    for cls, label in (("backstop_kept", "backstop-kept"), ("unmanaged", "unmanaged"),
-                       ("unseeded", "unseeded ref")):
+        print(f"    drift: {path} — the record does not reproduce HEAD; `ugh check --repair` "
+              "re-derives it")
+    for cls, label in (("unmanaged", "unmanaged"), ("unseeded", "unseeded ref")):
         for path in result[cls]:
             print(f"    {label}: {path}")
     return 0 if not drift else 1
@@ -155,8 +153,8 @@ def _resync(repo: str, as_json: bool = False) -> int:
 
 
 def _status(repo: str, as_json: bool = False, full: bool = False) -> int:
-    """`ugh status`: file/symbol counts, coverage, oracle status, then what needs you: forks, drift,
-    unreproducible and untracked files, and the plan. Path lists show four (`--full` for all)."""
+    """`ugh status`: file/symbol counts, coverage, oracle status, then what needs you: two-version
+    choices, unsaved edits, and the plan. Path lists show four (`--full` for all)."""
     from ugh.api import plural, status_view
     from ugh.core.lens import get
 
@@ -172,19 +170,11 @@ def _status(repo: str, as_json: bool = False, full: bool = False) -> int:
 
     print(f"{plural(view['files'], 'file')} · {plural(view['symbols'], 'symbol')} · "
           f"{view['coverage_fraction'] * 100:.0f}% coverage · oracle {view['oracle']['status']}")
-    lines = fork_lines(view["forks"]["records"])
+    lines = choice_lines(view["choices"])
     if view["drift"]["any"]:
         n = len(view["drift"]["paths"])
         lines += [f"⚠ {plural(n, 'file')} {'differs' if n == 1 else 'differ'} from the recorded "
                   "state — `ugh save`", paths(view["drift"]["paths"])]
-    if view["backstop_kept"]:
-        lines += [f"⚠ {plural(len(view['backstop_kept']), 'unreproducible file')} kept on disk — "
-                  "`ugh check --tree`", paths(view["backstop_kept"])]
-    if view["never_recorded"]:
-        lines += [f"· {plural(len(view['never_recorded']), 'file')} ugh does not track, left alone",
-                  paths(view["never_recorded"])]
-    if view["unmanaged"]:
-        lines.append(f"· {plural(len(view['unmanaged']), 'unmanaged path')} (symlinks, untouched)")
     if view["plan"] is not None:
         from .plan import plan_lines
 

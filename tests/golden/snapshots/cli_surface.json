@@ -40,7 +40,7 @@
       "help"
     ],
     "exit": 0,
-    "out": "ugh \u2014 steps you can name, take out and bring back\n\n  the daily spine (an <address> names steps \u2014 see below):\n  ugh save [-m \"<msg>\"] [--as \"<label>\"]   record your edits; --as names this save's steps\n  ugh name <address> <label>  give a label to the steps at an address\n  ugh rename <label> <new>    relabel every step with a label (an existing label absorbs them)\n  ugh log                     the saves, newest first, with the names on their steps\n  ugh status                  what needs attention: forks, drift, untracked files, the plan\n  ugh show <address>          its steps, the ask behind each save, what taking it out takes\n  ugh find <words>            addresses whose names, subjects, definitions or asks match\n  ugh undo                    invert the last mutating operation\n  ugh revert <address>        take steps out of the code, holding what others stand on\n  ugh restore <address>       bring steps that are out back\n  ugh resolve <symbol>        choose between two versions of one definition\n  ugh plan [<label>...] [--done]   declare names before their edits exist; report on them\n\n  collaboration + setup:\n  ugh sync [remote] [branch]  fetch + merge a teammate's work; union ops, merge names\n  ugh push [remote] [branch]  non-forcing git push; a rejection routes you to `ugh sync`\n  ugh check [--tree] [--repair]   verify the op store; --repair re-derives after a history rewrite\n  ugh init [path] [--horizon <ref>]   bind git + the kernel op store; mine existing history\n  ugh mcp [path]              run the MCP stdio server for coding-agent clients\n  ugh git <args...>           pass through to real git (refuses tree-mutating verbs)\n\n  an <address> is a <label>, <label>@<rev>, <path>, <path>::<def>, <path>::<def>@<rev>,\n  a <rev>, or <rev>..<rev>; read verbs take --json for the machine-readable ugh.api shape.\n\n"
+    "out": "ugh \u2014 steps you can name, take out and bring back\n\n  the daily spine (an <address> names steps \u2014 see below):\n  ugh save [-m \"<msg>\"] [--as \"<label>\"]   commit your edits as a save; --as names its steps\n  ugh name <address> <label>  give a label to the steps at an address\n  ugh rename <label> <new>    relabel every step with a label (an existing label absorbs them)\n  ugh log                     the saves, newest first, with the names on their steps\n  ugh status                  what needs attention: two-version choices, unsaved edits, the plan\n  ugh show <address>          its steps, the ask behind each save, what taking it out takes\n  ugh find <words>            addresses whose names, subjects, definitions or asks match\n  ugh undo                    invert the last mutating operation\n  ugh revert <address>        take steps out of the code, holding what others stand on\n  ugh restore <address>       bring steps that are out back\n  ugh resolve <address> [--theirs|--ours|--apply]   the two versions a sync left; settle them\n  ugh plan [<label>...] [--done]   declare names before their edits exist; report on them\n\n  collaboration + setup:\n  ugh sync [remote] [branch]  fetch + merge a teammate's work unit by unit; merge names\n  ugh push [remote] [branch]  non-forcing git push; a rejection routes you to `ugh sync`\n  ugh check [--tree] [--repair]   verify the op store; --repair re-derives after a history rewrite\n  ugh init [path] [--horizon <ref>]   bind git + the kernel op store; mine existing history\n  ugh mcp [path]              run the MCP stdio server for coding-agent clients\n  ugh git <args...>           pass through to real git (refuses tree-mutating verbs)\n\n  an <address> is a <label>, <label>@<rev>, <path>, <path>::<def>, <path>::<def>@<rev>,\n  a <rev>, or <rev>..<rev>; read verbs take --json for the machine-readable ugh.api shape.\n\n"
   },
   "init": {
     "argv": [
@@ -219,7 +219,7 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"saved\": true,\n  \"commit\": \"<witness-sha>\",\n  \"steps\": [\n    {\n      \"address\": \"new_file.py::new_thing@<witness-sha>\",\n      \"kind\": \"create\",\n      \"name\": \"new\",\n      \"out\": false\n    },\n    {\n      \"address\": \"new_file.py@<witness-sha>\",\n      \"kind\": \"create\",\n      \"name\": \"new\",\n      \"out\": false\n    }\n  ],\n  \"open_fork_count\": 0\n}\n"
+      "out": "{\n  \"ok\": true,\n  \"saved\": true,\n  \"commit\": \"<witness-sha>\",\n  \"steps\": [\n    {\n      \"address\": \"new_file.py::new_thing@<witness-sha>\",\n      \"kind\": \"create\",\n      \"name\": \"new\",\n      \"out\": false\n    },\n    {\n      \"address\": \"new_file.py@<witness-sha>\",\n      \"kind\": \"create\",\n      \"name\": \"new\",\n      \"out\": false\n    }\n  ]\n}\n"
     },
     "text": {
       "argv": [
@@ -240,14 +240,14 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"saved\": false,\n  \"message\": \"nothing to save -- no uncommitted ops\"\n}\n"
+      "out": "{\n  \"ok\": true,\n  \"saved\": false,\n  \"message\": \"nothing to save -- the working tree matches HEAD\"\n}\n"
     },
     "text": {
       "argv": [
         "save"
       ],
       "exit": 0,
-      "out": "\u2713 nothing to save -- no uncommitted ops\n"
+      "out": "\u2713 nothing to save -- the working tree matches HEAD\n"
     }
   },
   "show": {
@@ -276,7 +276,7 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"files\": 6,\n  \"symbols\": 15,\n  \"coverage_fraction\": 0.3333333333333333,\n  \"oracle\": {\n    \"configured\": false,\n    \"status\": \"unconfigured\"\n  },\n  \"drift\": {\n    \"any\": false,\n    \"paths\": []\n  },\n  \"unmanaged\": [],\n  \"backstop_kept\": [],\n  \"never_recorded\": [],\n  \"forks\": {\n    \"open\": 0,\n    \"records\": []\n  },\n  \"sync_status\": {\n    \"complete\": true\n  },\n  \"plan\": null\n}\n"
+      "out": "{\n  \"files\": 6,\n  \"symbols\": 15,\n  \"coverage_fraction\": 0.3333333333333333,\n  \"oracle\": {\n    \"configured\": false,\n    \"status\": \"unconfigured\"\n  },\n  \"drift\": {\n    \"any\": false,\n    \"paths\": []\n  },\n  \"choices\": [],\n  \"sync_status\": {\n    \"complete\": true\n  },\n  \"plan\": null\n}\n"
     },
     "text": {
       "argv": [
@@ -293,14 +293,14 @@
         "--json"
       ],
       "exit": 1,
-      "out": "{\n  \"ok\": false,\n  \"error\": \"working tree has uncommitted changes -- commit them first (e.g. `git commit -am ...`), then re-run\\n      a.py\"\n}\n"
+      "out": "{\n  \"ok\": false,\n  \"error\": \"working tree has uncommitted changes -- `ugh save` them first, then re-run\\n      a.py\"\n}\n"
     },
     "text": {
       "argv": [
         "sync"
       ],
       "exit": 1,
-      "out": "\u2717 working tree has uncommitted changes -- commit them first (e.g. `git commit -am ...`), then re-run\n      a.py\n"
+      "out": "\u2717 working tree has uncommitted changes -- `ugh save` them first, then re-run\n      a.py\n"
     }
   },
   "undo": {

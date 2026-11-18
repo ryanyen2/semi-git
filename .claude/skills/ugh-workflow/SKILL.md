@@ -62,12 +62,16 @@ is undone by taking out all of its commit's steps (so work committed since stays
 
 ## Moving work: sync vs push
 
-- **`ugh sync [remote] [branch]`** — fetches a teammate's work and folds it in by op-set union. A
-  same-symbol fork is surfaced, not merged textually; `ugh resolve <symbol>` is the guided fix.
-  Names merge per step: one side's rename is taken, and a step both sides renamed differently keeps
-  ours and is printed with both names.
-- **`ugh push [remote] [branch]`** — a plain non-forcing `git push`. On rejection it points you
-  at `ugh sync`, never forces.
+- **`ugh sync [remote] [branch]`** — fetches a teammate's branch and merges it one definition at a
+  time into a merge commit: a definition one side changed takes that side, one both changed on
+  different lines combines both, and one both changed on the same lines keeps ours in the file as a
+  two-version choice (`Ugh-Choice:` trailer). `ugh save` refuses while a choice is pending; `ugh
+  resolve <address>` prints both versions, and `--theirs`, `--ours` or `--apply` (a hand edit)
+  settles it with an `Ugh-Resolves:` commit. A plain `git merge` is accepted as settled. Names merge
+  per step: one side's rename is taken, and a step both sides renamed differently keeps ours and is
+  printed with both names.
+- **`ugh push [remote] [branch]`** — publishes names and prompts on `refs/ugh/state`, then a plain
+  non-forcing `git push`. On rejection it points you at `ugh sync`, never forces.
 
 ## The plan
 
@@ -80,8 +84,8 @@ carry it (or missing) and the steps since the baseline that carry no declared na
 
 - `ugh show <address>` and `ugh find "<words>"` are read-only: one explains an address you hold, the
   other lists addresses matching a description.
-- `ugh status` reports working-tree drift (files on disk differing from the recorded state), forks,
-  untracked files and the plan.
+- `ugh status` reports two-version choices a sync left, unsaved edits (files on disk differing from
+  the recorded state) and the plan.
 - `ugh check` verifies the op store; `ugh check --repair` re-derives the current ref's record from
   git history.
 

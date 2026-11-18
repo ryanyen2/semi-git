@@ -136,8 +136,8 @@ def tool_find(repo_path: str, args: dict) -> dict:
 
 
 def tool_save(repo_path: str, args: dict) -> dict:
-    """`ugh save`: record the agent's edits as a real save, naming its steps when `as` is given.
-    Additive, and `ugh undo` reverses it."""
+    """`ugh save`: commit the agent's edits as a save, naming its steps when `as` is given.
+    Refused while a sync's two-version choice is pending. `ugh undo` reverses it."""
     from ugh.cli.porcelain import save
 
     # Carry the driving prompt: with a chat key, before the save so it lands in the capture window
@@ -246,9 +246,10 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         tool_check,
     ),
     "ugh_save": (
-        "Record your edits as a save. Pass `message`, your own words about what this work was, and "
-        "`as` to name the save's steps. Returns the steps with their addresses. Additive and "
-        "reversible (`ugh undo`).",
+        "Commit your edits as a save. Pass `message`, your own words about what this work was, and "
+        "`as` to name the save's steps. Returns the steps with their addresses. Reversible (`ugh "
+        "undo`). Refused while a sync left a definition with two versions: the error names each "
+        "and the `ugh resolve` command a person runs to settle it.",
         _schema({"message": {"type": "string", "description": "what this work was, in your words"},
                  "as": {"type": "string", "description": "a name for this save's steps (optional)"},
                  "prompt": _DRIVING_PROMPT_PROP,

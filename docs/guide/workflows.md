@@ -19,8 +19,8 @@ This is git's daily loop, with `ugh` reading along.
 ```bash
 ugh init                    # once per repo: read your existing history into the op store
 # edit files with your editor or agent, the same as always
-ugh save -m "add input validation"   # read your edits into ops and commit a record of them
-ugh status                  # files, symbols, coverage, open forks, drift, untracked files, the plan
+ugh save -m "add input validation"   # commit your edits as git would, and read them into steps
+ugh status                  # files, symbols, coverage, two-version choices, unsaved edits, the plan
 ugh undo                    # step back: undo your last save, revert, or restore
 ```
 
@@ -119,15 +119,15 @@ $ ugh find caching
 `ugh find` matches names, save subjects, definition names and captured asks by plain word
 matching, and prints addresses. No language model is involved anywhere in `ugh`.
 
-## 3. Working with other people: sync and forks
+## 3. Working with other people: sync and two-version choices
 
-If two people edit the same function at the same time, that is a real conflict, and `ugh` does not
-make it go away. What it changes is the size of the conflict. `ugh` narrows it down to the one
-symbol both people touched, which it calls a fork, and merges everything else right away with no
-conflict markers to resolve.
+A save is a plain git commit, and every clone reads the same steps out of the same history, so
+only the names you gave travel beside your branches (on `refs/ugh/state`). `ugh sync` fetches a
+teammate's branch and merges it one definition at a time: a definition only one side changed takes
+that side, one both sides changed on different lines combines both, and one both sides changed on
+the same lines keeps yours in the file, with no conflict markers, as a two-version choice.
 
-This example comes from the project's own test suite
-(`tests/core/test_sync.py::test_sync_records_a_fork_and_lands_the_forked_symbol_at_the_common_ancestor`).
+This example comes from the project's own test suite (`tests/core/test_sync.py`).
 
 Alice and Bob both cloned `main.py`, where `foo()` returns `1`.
 
@@ -135,50 +135,38 @@ Alice fixes a bug in `foo()` so it returns `999`:
 
 ```bash
 ugh save -m "fix: foo off-by-one"
-git push
+ugh push
 ```
 
-That goes through cleanly, because she pushed first.
-
-Bob, not knowing about Alice's fix, changes the same function to return `42`:
+Bob, not knowing about Alice's fix, changes the same line of the same function to return `42`:
 
 ```bash
 ugh save -m "fix: foo edge case"
-git push        # rejected, because main has moved
-ugh sync origin main
+ugh push        # rejected, because main has moved: run `ugh sync origin main`
+ugh sync origin main    # merged; main.py::foo is a two-version choice
 ```
 
-`sync` fetches Alice's commit and merges the two op sets. It sees that both edits started from the
-same version of `foo`, which makes this a fork. It commits a state where `foo()` sits at the
-content it had before the fork, so it never silently picks one side over the other. It writes the
-fork down as shared state in `.sgt/forks.json` and tells Bob what to do next:
+The merge commit names the choice in an `Ugh-Choice: main.py::foo` trailer, and Alice's version is
+its second parent, so any clone that has the merge knows about the choice and can read both
+versions. Until it is settled, `ugh status` lists it and `ugh save` refuses, naming it.
 
 ```bash
-ugh status
-# ⚠ 1 open fork — divergent edits to one symbol:
-#     main.py::foo  →  ugh resolve main.py::foo
+ugh resolve main.py::foo            # prints ours (the file now) beside theirs
+ugh resolve main.py::foo --theirs   # write Alice's version
 ```
 
-Bob resolves it:
+`--ours` keeps Bob's version, and `--apply` keeps whatever the file now holds, after Bob edits it by
+hand. Each commits with an `Ugh-Resolves: main.py::foo` trailer, and the choice is closed on every
+clone that gets that commit. The project's check does not gate it.
 
-```bash
-ugh resolve main.py::foo          # prints both versions of foo
-# edit main.py so foo holds the version you want, then:
-ugh resolve main.py::foo --apply
-```
+The merge works by definition rather than by line across the file, so two people adding different
+functions at the same place merge cleanly where git would conflict, in the order yours then theirs.
+If you merge with plain `git merge` instead, you get git's result, and `ugh` accepts that merge as
+settled.
 
-`resolve --apply` runs your build and test checks against the reconciled version first and refuses
-to commit it unless those checks pass, or you record a human override with a reason (`--override`). A fork cannot be
-closed by a version nobody verified. The commit carries an `Ugh-Resolves:` trailer naming both
-tips; once it lands, `main.py::foo` is one continuous chain again on the side you resolved onto,
-and the fork record closes.
-
-When nothing forks, which is the common case because most syncs touch separate files, `ugh sync`
-just merges, reports `merged=True`, and you see none of the above.
-
-Names travel with the ops and merge per step against the last state both sides shared: a step one
-side renamed takes the new name, and a step both sides renamed differently keeps yours, with both
-names printed under its address so you can settle it with `ugh name`.
+Names merge per step against the last state both sides shared: a step one side renamed takes the
+new name, and a step both sides renamed differently keeps yours, with both names printed under its
+address so you can settle it with `ugh name`.
 
 ## 4. Using this with Claude Code or any MCP client
 
@@ -195,23 +183,21 @@ that carry it, or `missing`, and lists the steps since the baseline that carry n
 
 So an agent driving `ugh` over MCP can declare a plan, save and name its own work, and revert and
 restore by address, which covers sections 1 and 2 above. The commands for working with other people, `sync` and `resolve`, have no MCP tool. If a
-sync produces a fork, a person has to run those commands in the terminal.
+sync leaves a two-version choice, `ugh_save` refuses and names it, and a person settles it with
+`ugh resolve` in the terminal.
 
 ## 5. What is fixed, and what still has limits
 
 A review on 2026-07-12 found ways that ordinary git history could break the rules `ugh`
 depends on. These are fixed now.
 
-- A file or symbol that was deleted and then re-added no longer disappears from your working tree.
-  The case that used to cause a silent delete now keeps the file and reports it in `ugh status`
-  and `ugh check --tree`. A symbol's version is a hash of its content and the version it came
-  from, so a re-added symbol continues its earlier chain and content that comes back (a comment
-  changed and changed back, a change retyped after it was taken out) is a new version, never a
-  fork.
-- Symlinks are now left alone. `ugh` never writes or deletes through a symlink, whether the
-  symlink is the file itself or one of its parent directories.
-- `ugh sync` now does a proper three-way merge against the common ancestor, and a teammate's
-  revert is a commit like any other, so it stays reverted instead of coming back.
+- A file or symbol that was deleted and then re-added no longer disappears. A symbol's version is
+  a hash of its content and the version it came from, so a re-added symbol continues its earlier
+  chain and content that comes back (a comment changed and changed back, a change retyped after it
+  was taken out) is a new version.
+- Symlinks are left alone; ugh never mines them.
+- `ugh sync` is a three-way merge against the common ancestor, and a teammate's revert is a commit
+  like any other, so it stays reverted instead of coming back.
 
 These limits remain, either by design or because they are not built yet:
 

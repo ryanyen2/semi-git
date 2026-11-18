@@ -34,7 +34,7 @@ def is_bottom(version: str | None) -> bool:
     return version is not None and version.startswith(BOTTOM)
 
 
-MINER_VERSION = "10"  # Part of every op's content address: bump on any change to what mining
+MINER_VERSION = "12"  # Part of every op's content address: bump on any change to what mining
 # produces, so ops minted under different rules never collide.
 
 # symbol id -> (before_version, after_version); before_version is None for a fresh add.
@@ -95,11 +95,14 @@ def unit_of(sym: str) -> str:
     return f"{path}::{rest.split('.', 1)[0]}"
 
 
+def unit_address(unit: str) -> str:
+    """How a unit is printed: `path::def`, or `path` for a whole file, a file's head or an import."""
+    return unit if _symbol_kind(unit) == "entity" else unit.split("::", 1)[0]
+
+
 def step_address(unit: str, sha: str) -> str:
-    """How a step on `unit` in save `sha` is printed: `path::def@<short sha>`, or `path@<short sha>`
-    for a whole file, a file's head or an import."""
-    path = unit if _symbol_kind(unit) == "entity" else unit.split("::", 1)[0]
-    return f"{path}@{sha[:7]}"
+    """How a step on `unit` in save `sha` is printed: its unit's address, `@<short sha>`."""
+    return f"{unit_address(unit)}@{sha[:7]}"
 
 
 # The symbol kinds `fold._fold_file` splices bytes for on their own: a whole-file image, a
@@ -148,9 +151,6 @@ class Op:
     derived: bool = False  # S4/U27: touches a generated/vendored file (e.g. a lockfile) --
     # advisory only, like intent/provenance/attribution, so review surfaces can collapse it;
     # excluded from the id since re-tagging a path derived/not-derived is not a content change.
-    resolves: frozenset[str] = frozenset()  # the fork tips this op reconciles, from its commit's
-    # `Ugh-Resolves:` trailer; `order.fork_free` drops the tip it does not descend from. Excluded
-    # from the id, like provenance.
 
 
 def compute_id(
@@ -188,11 +188,10 @@ def make_op(
     intent: str | None = None,
     miner_version: str = MINER_VERSION,
     derived: bool = False,
-    resolves: frozenset[str] = frozenset(),
 ) -> Op:
     """Construct an Op with its id computed from its content -- the only supported way to make
-    one (never hand-assign ``.id``). ``attribution`` (like ``provenance``/``intent``/``derived``/
-    ``resolves``) rides along but does not enter the id."""
+    one (never hand-assign ``.id``). ``attribution`` (like ``provenance``/``intent``/``derived``)
+    rides along but does not enter the id."""
     op_id = compute_id(footprint, images, requires, kind, miner_version)
     return Op(
         id=op_id,
@@ -205,7 +204,6 @@ def make_op(
         intent=intent,
         miner_version=miner_version,
         derived=derived,
-        resolves=resolves,
     )
 
 

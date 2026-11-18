@@ -5,20 +5,7 @@ from __future__ import annotations
 from hypothesis import given, settings, strategies as st
 
 from ugh.core.op import make_op
-from ugh.core.order import (
-    chain_edges,
-    downset,
-    downset_in,
-    forks,
-    frontier,
-    is_fork_free,
-    is_valid_ideal,
-    reference_edges,
-    resolvable_forks,
-    upset,
-    upset_in,
-    upset_in_many,
-)
+from ugh.core.order import frontier, is_valid_ideal
 
 
 def _chain(sym: str, n: int):
@@ -32,23 +19,6 @@ def _chain(sym: str, n: int):
         )
         before = after
     return ops
-
-
-def test_chain_edges_link_consecutive_versions_only():
-    ops = _chain("a.py::foo", 3)
-    edges = chain_edges(ops)
-    assert edges == frozenset({(ops[0].id, ops[1].id), (ops[1].id, ops[2].id)})
-
-
-def test_reference_edges_point_to_the_exact_version_producer():
-    producer = make_op({"a.py::base": (None, "v0")}, {"a.py::base": b"x"})
-    other_producer = make_op({"a.py::base2": (None, "v0")}, {"a.py::base2": b"z"})
-    consumer = make_op(
-        {"a.py::user": (None, "v0")}, {"a.py::user": b"y"},
-        requires=frozenset({("a.py::base", "v0")}),
-    )
-    ops = [producer, other_producer, consumer]
-    assert reference_edges(ops) == frozenset({(producer.id, consumer.id)})
 
 
 def test_downward_closure_violation_is_unconstructible():
@@ -70,88 +40,6 @@ def test_downward_closure_respects_reference_edges_too():
     assert not is_valid_ideal(ops, {user.id})  # user without the base it requires
     assert is_valid_ideal(ops, {base.id, user.id})
     assert is_valid_ideal(ops, {base.id})  # base alone, with nothing depending on it
-
-
-def test_chain_fork_detected_when_two_ops_share_before_version():
-    root = make_op({"a.py::x": (None, "v0")}, {"a.py::x": b"root"})
-    tip_a = make_op({"a.py::x": ("v0", "v1")}, {"a.py::x": b"a"}, provenance=("branch-a",))
-    tip_b = make_op({"a.py::x": ("v0", "v2")}, {"a.py::x": b"b"}, provenance=("branch-b",))
-    ops = [root, tip_a, tip_b]
-    assert is_fork_free(ops, {root.id, tip_a.id})
-    assert is_fork_free(ops, {root.id, tip_b.id})
-    assert not is_fork_free(ops, {root.id, tip_a.id, tip_b.id})
-    assert not is_valid_ideal(ops, {root.id, tip_a.id, tip_b.id})
-
-
-def test_resolvable_forks_keeps_only_divergent_real_symbol_forks():
-    root = make_op({"a.py::x": (None, "v0")}, {"a.py::x": b"root"})
-    # (a) a genuinely divergent fork on a real symbol: same before, different after.
-    div_a = make_op({"a.py::x": ("v0", "v1")}, {"a.py::x": b"a"}, provenance=("branch-a",))
-    div_b = make_op({"a.py::x": ("v0", "v2")}, {"a.py::x": b"b"}, provenance=("branch-b",))
-    # (b) a same-after pseudo-fork: two ops drive the symbol to byte-identical content (revert/rebirth).
-    # `kind` differs (excluded from equality-of-outcome but not from the content id) so the two are
-    # distinct ops that still both claim the same `(symbol, before)` step with an identical after.
-    same_root = make_op({"a.py::y": (None, "w0")}, {"a.py::y": b"y"})
-    same_a = make_op({"a.py::y": ("w0", "w1")}, {"a.py::y": b"same"}, kind="touched")
-    same_b = make_op({"a.py::y": ("w0", "w1")}, {"a.py::y": b"same"}, kind="rebirth")
-    # (c) a fork on a synthetic anchor sentinel the user can't act on.
-    anc_root = make_op({"a.py::__anchor__::m": (None, "z0")}, {"a.py::__anchor__::m": b"m"})
-    anc_a = make_op({"a.py::__anchor__::m": ("z0", "z1")}, {"a.py::__anchor__::m": b"p"}, provenance=("a-a",))
-    anc_b = make_op({"a.py::__anchor__::m": ("z0", "z2")}, {"a.py::__anchor__::m": b"q"}, provenance=("a-b",))
-
-    ops = [root, div_a, div_b, same_root, same_a, same_b, anc_root, anc_a, anc_b]
-    by_id = {op.id: op for op in ops}
-    ideal = {op.id for op in ops}
-
-    raw = forks(ops, ideal)
-    # `forks` (and thus the ideal-validity path) still sees every collision -- all three.
-    assert {sym for sym, _a, _b in raw} == {"a.py::x", "a.py::y", "a.py::__anchor__::m"}
-
-    resolvable = resolvable_forks(raw, by_id)
-    # Only the divergent, real-symbol fork survives surfacing. The two tips are asserted as a SET:
-    # `forks` walks `sorted(ideal_ids)`, so which tip lands in the `a` slot is decided by how two
-    # content-address hashes happen to sort, and nothing about a fork makes one of its tips "first".
-    # Pinning that order made this test fail on any change to what goes into an op's id, which is a
-    # false alarm about hashing dressed up as one about fork detection.
-    assert len(resolvable) == 1
-    sym, a, b = resolvable[0]
-    assert sym == "a.py::x"
-    assert {a, b} == {div_a.id, div_b.id}
-
-
-def test_resolvable_forks_does_not_alter_fork_free_invariant_path():
-    """The sentinel/same-after filter is surfacing-only: `forks`/`is_fork_free` must be byte-for-byte
-    unchanged by its existence (sentinels are load-bearing for ideal validity)."""
-    root = make_op({"a.py::__anchor__::m": (None, "v0")}, {"a.py::__anchor__::m": b"r"})
-    tip_a = make_op({"a.py::__anchor__::m": ("v0", "v1")}, {"a.py::__anchor__::m": b"a"}, kind="touched")
-    tip_b = make_op({"a.py::__anchor__::m": ("v0", "v1")}, {"a.py::__anchor__::m": b"a"}, kind="rebirth")
-    ops = [root, tip_a, tip_b]
-    ideal = {root.id, tip_a.id, tip_b.id}
-
-    # Both a sentinel symbol and a same-after collision -- filtered out of surfacing entirely...
-    assert resolvable_forks(forks(ops, ideal), {op.id: op for op in ops}) == []
-    # ...yet the raw collision and the invariant still fire on it.
-    # Compared as a set of tips: `forks` walks `sorted(ideal_ids)` and emits (earlier-id,
-    # later-id), so which tip lands in which slot follows the content hashes rather than the order
-    # they were written here -- a fork pair has no inherent first side.
-    raw = forks(ops, ideal)
-    assert len(raw) == 1
-    sym, a, b = raw[0]
-    assert sym == "a.py::__anchor__::m"
-    assert {a, b} == {tip_a.id, tip_b.id}
-    assert not is_fork_free(ops, ideal)
-
-
-def test_upset_of_mid_chain_op_is_itself_and_its_descendants():
-    ops = _chain("a.py::foo", 4)
-    assert upset(ops[1].id, ops) == frozenset({ops[1].id, ops[2].id, ops[3].id})
-    assert upset(ops[0].id, ops) == frozenset(op.id for op in ops)
-    assert upset(ops[3].id, ops) == frozenset({ops[3].id})  # the tip builds on nothing further
-
-
-def test_downset_of_mid_chain_op_is_itself_and_its_prerequisites():
-    ops = _chain("a.py::foo", 4)
-    assert downset(ops[2].id, ops) == frozenset({ops[0].id, ops[1].id, ops[2].id})
 
 
 def test_frontier_is_the_chain_tip_for_a_full_ideal():
@@ -218,77 +106,6 @@ def test_is_valid_ideal_rejects_an_originless_revert_cycle():
     assert is_valid_ideal(ops, {add.id, mod.id, rev.id})
 
 
-def test_upset_in_reverting_a_head_removes_the_whole_chain_despite_the_collision():
-    sym = "a.py::foo"
-    add, mod, rev = _revert_chain(sym)
-    ops = [add, mod, rev]
-    ideal = {add.id, mod.id, rev.id}
-    # reverting the head removes the entire chain -- not just the add, leaving a headless cycle
-    assert upset_in(add.id, ideal, ops) == ideal
-    # reverting the middle removes middle + revert (revert built on v1, which only modify made)
-    assert upset_in(mod.id, ideal, ops) == {mod.id, rev.id}
-    assert is_valid_ideal(ops, ideal - upset_in(mod.id, ideal, ops))
-    # reverting the tip removes only the tip
-    assert upset_in(rev.id, ideal, ops) == {rev.id}
-    assert is_valid_ideal(ops, ideal - {rev.id})
-
-
-def test_upset_in_many_equals_per_op_union_and_stays_valid_on_an_or_supported_set():
-    """Pins the set-revert switch `revert(X) = ideal \\ upset_in_many(X)` (was `ideal \\ ∪
-    upset_in(x)`) against the OR-support case reviewers flagged as a possible semantic change.
-
-    A required version's producers form an OR-group (grounding needs *any one* of them), so a naive
-    per-op union could under-remove an op kept alive only by a co-removed alternative -- leaving an
-    ungrounded op that `_validated` would refuse. `consumer` here is OR-supported by the `(sym, v0)`
-    producer group `{add, rev}`. In a *fork-free* ideal that group is chain-ordered, so grounding any
-    producer implies grounding the chain-minimal one and the two forms coincide -- but the set form
-    is the robust one: it's `ideal \\ _grounded(ideal - X)`, a superset of the union in general
-    (removing more only ungrounds more) whose complement is a valid ideal by construction. So the
-    switch can only ever turn a would-be refusal into a valid maximal edit, never silently
-    over-remove. This pins both halves: equality with the union on every subset, and validity of the
-    complement."""
-    sym = "a.py::foo"
-    add, mod, rev = _revert_chain(sym)
-    consumer = make_op(
-        {"b.py::c": (None, "v0")}, {"b.py::c": b"c"},
-        requires=frozenset({(sym, "v0")}), provenance=("c3",),
-    )
-    ops = [add, mod, rev, consumer]
-    ideal = {op.id for op in ops}
-    assert is_valid_ideal(ops, ideal)
-
-    for removed in ({mod.id}, {rev.id}, {mod.id, rev.id}, {add.id}, {add.id, rev.id}):
-        union = frozenset().union(*(upset_in(x, ideal, ops) for x in removed))
-        many = upset_in_many(removed, ideal, ops)
-        assert many == union, removed  # no divergence on the OR-shaped case within a valid ideal
-        assert is_valid_ideal(ops, ideal - many)  # and the complement is always a valid ideal
-
-
-def test_downset_in_walks_chain_order_through_a_revert_collision():
-    sym = "a.py::foo"
-    add, mod, rev = _revert_chain(sym)
-    ops = [add, mod, rev]
-    ideal = {add.id, mod.id, rev.id}
-    assert downset_in(rev.id, ideal, ops) == ideal            # revert <- modify <- add
-    assert downset_in(mod.id, ideal, ops) == {add.id, mod.id}
-    assert downset_in(add.id, ideal, ops) == {add.id}
-
-
-@given(st.integers(min_value=2, max_value=6))
-@settings(max_examples=40)
-def test_revert_of_mid_chain_op_removes_its_upset_exactly(n):
-    """Property (R20's verb-output-validity law, checked here at the constructor level per
-    U4's Verification): subtracting a mid-chain op's up-set from a full valid ideal always
-    yields another valid ideal -- the prefix up to (not including) that op."""
-    ops = _chain("a.py::foo", n)
-    full = {op.id for op in ops}
-    for cut in range(n):
-        target = ops[cut].id
-        remaining = full - upset(target, ops)
-        assert is_valid_ideal(ops, remaining)
-        assert remaining == {op.id for op in ops[:cut]}
-
-
 def test_reduce_to_ideal_is_memoized_correct_and_bounded():
     """U8: `reduce_to_ideal` is memoized by its present id set (its result is a pure function
     of that over content-addressed ops). The memo returns the identical result, agrees with a
@@ -300,11 +117,11 @@ def test_reduce_to_ideal_is_memoized_correct_and_bounded():
     tip_a = make_op({"a.py::x": ("v0", "v1")}, {"a.py::x": b"a"}, provenance=("branch-a",))
     tip_b = make_op({"a.py::x": ("v0", "v2")}, {"a.py::x": b"b"}, provenance=("branch-b",))
     ops = [root, tip_a, tip_b]
-    ids = {root.id, tip_a.id, tip_b.id}  # a fork: both tips + their up-sets drop out
+    ids = {root.id, tip_a.id, tip_b.id}
 
     order._REDUCE_CACHE.clear()
     r1 = order.reduce_to_ideal(ids, ops)
-    assert r1 == frozenset({root.id})              # fork tips dropped, root kept
+    assert r1 == frozenset(ids)
     assert frozenset(ids) in order._REDUCE_CACHE
     r2 = order.reduce_to_ideal(ids, ops)
     assert r2 is r1                                 # the cached object, not a recomputation
@@ -364,3 +181,21 @@ def test_ordered_chains_is_unchanged_for_a_proper_downward_closed_ideal():
     from ugh.core.order import _ordered_chains
 
     assert _ordered_chains([op.id for op in ops], ops)[sym] == [op.id for op in ops]
+
+
+def test_a_chain_branched_by_two_lines_and_joined_at_their_merge_has_one_tip():
+    """Two lines change one symbol from v0; the merge gives it vM from its first parent's version
+    and joins the other line's version into vM (rule 4). Whichever line the walk takes, the tip
+    produces vM."""
+    sym = "a.py::foo"
+    root = make_op({sym: (None, "v0")}, {sym: b"0"})
+    ours = make_op({sym: ("v0", "vA")}, {sym: b"a"})
+    theirs = make_op({sym: ("v0", "vB")}, {sym: b"b"})
+    merge = make_op({sym: ("vA", "vM")}, {sym: b"m"})
+    join = make_op({sym: ("vB", "vM")}, {sym: b"m"})
+    ops = [root, ours, theirs, merge, join]
+    ids = {op.id for op in ops}
+
+    assert is_valid_ideal(ops, ids)
+    tip = frontier(ids, ops)[sym]
+    assert {op.id: op for op in ops}[tip].footprint[sym][1] == "vM"

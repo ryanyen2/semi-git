@@ -1,100 +1,79 @@
-"""`ugh resolve <symbol>` (plan U13/R11): close a same-symbol fork.
+"""`ugh resolve <address>`: the two versions of each pending two-version choice at an address.
 
-A `sync` that can't fold two divergent edits of one symbol records the fork in committed
-`.sgt/forks.json` with a `ugh resolve <symbol>` remedy. Edit the file to merge both versions, then:
-
-    ugh resolve <symbol> --apply  # commit the edited version (gated on the oracle)
-
-A bare `ugh resolve <symbol>` prints both versions of the symbol.
+A sync that found one definition changed differently on both sides kept ours in the file and left
+a choice (`ugh.core.sync`). Without a flag this prints ours (the file now) beside theirs (the
+merge's second parent). `--theirs` writes theirs, `--ours` keeps ours, `--apply` keeps whatever the
+file now holds (an edit by hand); each then commits with one `Ugh-Resolves:` trailer per unit. The
+project's check does not gate it.
 """
 
 from __future__ import annotations
 
-from ._common import _emit_json
+from ._common import _emit_json, _fail_json
 
 
 def register(subs, parent) -> None:
     p = subs.add_parser("resolve", parents=[parent])
-    p.add_argument("symbol")
-    p.add_argument("--apply", action="store_true",
-                   help="commit the edited tree's version of the symbol, closing the fork")
-    p.add_argument("--override", help="land with a manual oracle verdict (pass|fail) when no "
-                                      "test runner is configured; the error names this")
-    p.add_argument("--reason")
-    p.add_argument("--by")
+    p.add_argument("address")
+    keep = p.add_mutually_exclusive_group()
+    keep.add_argument("--theirs", dest="keep", action="store_const", const="theirs",
+                      help="write theirs and record the choice")
+    keep.add_argument("--ours", dest="keep", action="store_const", const="ours",
+                      help="keep ours and record the choice")
+    keep.add_argument("--apply", dest="keep", action="store_const", const="apply",
+                      help="keep what the file now holds and record the choice")
     p.set_defaults(func=_cmd_resolve)
 
 
 def _cmd_resolve(args) -> int:
-    return _resolve(".", args.symbol, args.apply, args.as_json,
-                    override=args.override, reason=args.reason, by=args.by)
+    return _resolve(".", args.address, args.keep, args.as_json)
 
 
-def _resolve(repo: str, symbol: str, apply: bool, as_json: bool,
-             *, override: str | None = None, reason: str | None = None, by: str | None = None) -> int:
-    import sys
+def _text(data: bytes | None) -> str | None:
+    return None if data is None else data.decode("utf-8", "replace")
 
-    from ugh.api import forks_view
 
-    fork = next((f for f in forks_view(repo)["forks"] if f["symbol"] == symbol), None)
-    if fork is None:
-        msg = f"no open fork for {symbol!r} — `ugh status` lists the open forks"
-        return _emit_json({"ok": False, "error": msg}) if as_json else _err(msg)
+def _resolve(repo: str, address: str, keep: str | None, as_json: bool) -> int:
+    from ugh.address import AddressError, resolve
+    from ugh.core import sync
+    from ugh.core.lens import DirtyWorkingTreeError, get
+    from ugh.store.gitbind import GitError
 
-    if not apply:
+    from .ideal_edit import address_refusal
+
+    get(repo)
+    pending = sync.choices(repo)
+    try:
+        units = {st.unit for st in resolve(repo, address)}
+    except AddressError as e:
+        return address_refusal("resolve", address, e, as_json)
+    picked = [c for c in pending if c.unit in units]
+    if not picked:
+        listed = f" -- pending: {', '.join(c.address for c in pending)}" if pending else ""
+        return _fail_json(f"no two-version choice at {address!r}{listed}", as_json)
+
+    if keep is None:
+        rows = [{"address": c.address, "merge": c.merge, "ours": _text(o), "theirs": _text(t)}
+                for c in picked for o, t in [sync.versions(repo, c)]]
         if as_json:
-            return _emit_json({"ok": True, "symbol": symbol, "file": fork["file"]})
-        _print_tips(repo, symbol, fork["file"])
-        print(f"\n  edit {fork['file']} to merge both versions, then: ugh resolve {symbol} --apply")
+            return _emit_json({"ok": True, "choices": rows})
+        for row in rows:
+            print(row["address"])
+            for side, label in (("ours", "ours (the file now)"),
+                                ("theirs", f"theirs (from {row['merge'][:7]}'s second parent)")):
+                print(f"  {label}:")
+                text = row[side]
+                print("\n".join(f"    {line}" for line in text.rstrip("\n").splitlines())
+                      if text is not None else "    (absent)")
+        print(f"\n  ugh resolve {address} --theirs | --ours | --apply (after editing the file)")
         return 0
 
-    if not as_json and sys.stdin.isatty() and sys.stdout.isatty():
-        from ugh.api import resolve_apply_preview_view
-
-        from ._common import confirm
-
-        pview = resolve_apply_preview_view(repo, symbol)
-        oracle = ("runs the oracle before landing" if pview["oracle_configured"]
-                  else "no oracle configured — lands unverified")
-        if not confirm([f"  {pview['so_what']}", f"    {oracle}"], f"resolve {symbol}?"):
-            print("  aborted — nothing resolved.")
-            return 1
-
-    return _apply_resolution(repo, symbol, fork, as_json, override=override, reason=reason, by=by)
-
-
-def _print_tips(repo: str, symbol: str, file: str) -> None:
-    """Each tip's text of `symbol`, or of the whole file when the symbol is not found in it."""
-    from ugh.api import _side_entity_spans, fork_detail_view
-
-    for name, tip in zip("AB", fork_detail_view(repo, symbol).get("tips", [])):
-        text = tip["files"].get(file, "")
-        span = next((s for s in _side_entity_spans(file, text.encode("utf-8"))
-                     if s["symbol"] == symbol), None)
-        if span is not None:
-            text = "\n".join(text.splitlines()[span["start_line"] - 1:span["end_line"]])
-        print(f"version {name} ({tip['op_id'][:8]}):")
-        print(text.rstrip("\n"))
-
-
-def _apply_resolution(repo: str, symbol: str, fork: dict, as_json: bool, *,
-                      override: str | None = None, reason: str | None = None,
-                      by: str | None = None) -> int:
-    from ugh.core import rewrite
-
-    tip_a, tip_b = fork["tips"]
-    override_tuple = (override, reason or "", by) if override else None
     try:
-        sha = rewrite.resolve_fork(repo, tip_a, tip_b, message=f"resolve fork: {symbol}",
-                                   override=override_tuple)
-    except rewrite.ResolveError as e:
-        return _emit_json({"ok": False, "error": str(e)}) if as_json else _err(str(e))
+        sha = sync.resolve(repo, picked, keep, address)
+    except (DirtyWorkingTreeError, GitError) as e:
+        return _fail_json(str(e), as_json)
+    resolved = [c.address for c in picked]
     if as_json:
-        return _emit_json({"ok": True, "symbol": symbol, "commit": sha})
-    print(f"✓ resolved {symbol} and landed the reconciliation ({sha[:12]}) — the fork is closed")
+        return _emit_json({"ok": True, "commit": sha, "kept": keep, "resolved": resolved})
+    print(f"✓ resolved {', '.join(resolved)} ({keep}) — {sha[:12]}")
     return 0
-
-
-def _err(msg: str) -> int:
-    print(f"✗ {msg}")
-    return 1

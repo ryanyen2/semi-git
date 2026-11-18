@@ -1,7 +1,7 @@
 """A footprint-only sidecar index over the op store (plan: optimize the ugh agent surface for
 context + retrieval speed, Part A). `Store.all_ops()` hex-decodes every op's `images` blob --
 85%+ of the store's on-disk bytes -- yet no read-only projection view (`ugh.api`, `ugh.core.lens`'s
-pure ideal-derivations) ever looks at `op.images`; only `fold.py`/`rewrite.py`/`migrate.py`/
+pure ideal-derivations) ever looks at `op.images`; only `fold.py`/`migrate.py`/
 `repair/context.py` and `compute_id` do. This module maintains `.sgt/local/op_index.json`, a
 snapshot of every stored op's payload minus `images`, so those callers can read footprint/
 requires/provenance/intent/kind without paying the decode.

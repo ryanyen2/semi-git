@@ -34,21 +34,15 @@ def confirm(lines: list[str], question: str) -> bool:
     return reply in ("y", "yes")
 
 
-def fork_lines(forks: list[dict]) -> list[str]:
-    """Open forks, one line each with the command that closes it. A fork whose tips were mined
-    under two miner versions is the same commit stored twice, which `ugh resolve` cannot close."""
+def choice_lines(choices: list[dict]) -> list[str]:
+    """Pending two-version choices, one line each with the command that shows both versions."""
     from ugh.api import plural
 
-    real = [f for f in forks if not f.get("cross_version")]
-    stale = [f for f in forks if f.get("cross_version")]
-    lines = []
-    if real:
-        lines.append(f"⚠ {plural(len(real), 'open fork')} — divergent edits to one symbol:")
-        lines += [f"    {f.get('symbol', '?')}  →  ugh resolve {f.get('symbol', '?')}" for f in real]
-    if stale:
-        lines.append(f"⚠ {plural(len(stale), 'fork')} are two mining generations of the same "
-                     "commit — `ugh check` shows the miner versions present")
-    return lines
+    if not choices:
+        return []
+    return ([f"⚠ {plural(len(choices), 'two-version choice')} — ours is in the file; `ugh save` waits "
+             "until each is resolved:"]
+            + [f"    {c['address']}  →  ugh resolve {c['address']}" for c in choices])
 
 
 def _add_view_flags(p, *, paged: bool = False) -> None:

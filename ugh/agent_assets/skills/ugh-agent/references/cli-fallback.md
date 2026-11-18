@@ -39,11 +39,8 @@ real edit to the same file instead of trying to record it alone.
 
 ## Two differences worth knowing
 
-**Confirmation is not yours to skip.** The mutating collaboration verbs (`sync`, `resolve`) show a
-consequence preview and wait for a human on an interactive terminal. When they detect they are *not*
-on a terminal — which is your situation — they apply immediately. That is deliberate, for scripts
-and CI, and it means running one of them from a shell silently removes the review step a human would
-have got. Do not run them; hand them over.
+**The collaboration verbs are not yours.** `sync` and `resolve` change what other people see, and
+neither asks before it acts. Do not run them; hand them over with the exact command.
 
 **Exit codes are meaningful.** A verb that does not exist exits non-zero and prints the closest real
 verbs. An address that names nothing or two things exits 2, with the reason and the nearest `ugh

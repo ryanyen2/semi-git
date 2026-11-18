@@ -77,14 +77,12 @@ address, and a phrase is refused with the nearest `find` hits.
 
 | Path | What it holds |
 | --- | --- |
-| `.sgt/ops/` | The op store. It travels on `refs/ugh/state`, alongside your branches. |
-| `.sgt/names.json` | The names you and your agents gave to steps, travelling the same way. |
+| `.sgt/ops/` | The op store, mined from history; every clone mines its own. |
+| `.sgt/names.json` | The names you and your agents gave to steps. They travel on `refs/ugh/state`, alongside your branches. |
 | `.sgt/local/` | Working state for this checkout only, and not committed. Holds the current state, the undo journal, the plan, the captured asks, and caches. |
 | `.git/` | Ordinary git, where `ugh` commits the files it builds from that state. |
 
-The directory is `.sgt/` because the tool used to be called sgt. Every op store ever committed sits
-at that path, and readers have to keep parsing the ones already in your history, so the name stayed
-when the tool's did not. The `Sgt-Op:` trailers on commits `ugh` writes are the same story.
+The directory is `.sgt/` because the tool used to be called sgt.
 
 ## For coding agents
 

@@ -186,18 +186,13 @@
     "oracle_verdict": null
   },
   "status_view": {
-    "backstop_kept": [],
+    "choices": [],
     "coverage_fraction": 0.5,
     "drift": {
       "any": false,
       "paths": []
     },
     "files": 4,
-    "forks": {
-      "open": 0,
-      "records": []
-    },
-    "never_recorded": [],
     "oracle": {
       "configured": false,
       "status": "unconfigured"
@@ -206,7 +201,6 @@
     "symbols": 10,
     "sync_status": {
       "complete": true
-    },
-    "unmanaged": []
+    }
   }
 }

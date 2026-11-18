@@ -28,8 +28,12 @@ def _cmd_init(args) -> int:
         kernel_init(args.path, horizon=args.horizon)
     except (ValueError, GitError) as ex:
         return _emit_json({"error": str(ex)}) if args.as_json else _fail(str(ex))
+    from ugh.store.gitbind import GitBinding
+
     hooked = _install_prompt_hook(args.path)
     activity_hooked = _install_activity_hook(args.path)
+    if hooked or activity_hooked:
+        GitBinding(args.path).exclude_locally(".claude/settings.local.json")
     # Opt-in, because plenty of people run `ugh` from the CLI alone and have no use for
     # an agent config appearing in their repo. `--agent` is what a coding-agent or VS Code user
     # runs instead.
@@ -37,7 +41,6 @@ def _cmd_init(args) -> int:
     # Never let a repo commit as the placeholder without the user hearing about it: every commit
     # ugh makes here would be authored "ugh <ugh@ugh.local>" in git log, blame, and on
     # the remote, and the only moment that is cheap to fix is right now.
-    from ugh.store.gitbind import GitBinding
     placeholder = GitBinding(args.path).placeholder_identity()
     if args.as_json:
         return _emit_json({"ok": True, "path": args.path, "horizon": args.horizon,
@@ -69,8 +72,8 @@ def _cmd_init(args) -> int:
 
 def _install_prompt_hook(path: str) -> bool:
     """Zero-burden capture setup (intent-ledger M1): merge a `UserPromptSubmit` hook into the
-    repo's `.claude/settings.local.json` (per-user, gitignored by Claude Code convention -- never
-    the shared settings) so every prompt typed to Claude Code is recorded verbatim as a local
+    repo's `.claude/settings.local.json` (per-user, so `init` excludes it locally -- never the
+    shared settings) so every prompt typed to Claude Code is recorded verbatim as a local
     turn via `ugh intent record`. The command is written with the running `ugh`'s absolute path:
     hooks execute in whatever shell environment Claude Code has, and a bare `ugh` silently does
     nothing when the venv isn't on that shell's PATH (testbed 2026-07-31). Idempotent; preserves

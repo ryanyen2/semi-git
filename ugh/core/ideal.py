@@ -1,8 +1,7 @@
-"""A codebase state is an order ideal (ADR S3.4; plan R3): a downward-closed set of ops in
-which every symbol's chain restricted to the set has a unique maximal element. `Ideal` is the
-validated, immutable wrapper around such a set -- the only way to construct one is
-`Ideal.from_ops`, which refuses (raises) anything `ugh.core.order.is_valid_ideal` rejects, so an
-ill-formed state is unconstructible through this API rather than merely discouraged.
+"""A codebase state is an order ideal (ADR S3.4; plan R3): a grounded set of ops, every op's
+prerequisites produced within it. `Ideal` is the validated, immutable wrapper around such a set --
+the only way to construct one is `Ideal.from_ops`, which refuses (raises) anything
+`ugh.core.order.is_valid_ideal` rejects.
 
 The explicit `op_ids` set is this kernel's canonical in-memory representation -- it makes
 membership, union, and symmetric difference (`diff`, U4's semantic-diff-for-free) trivial and
@@ -35,7 +34,7 @@ class Ideal:
             shown = sorted(ids)
             head = ", ".join(shown[:4]) + (f", +{len(shown) - 4} more" if len(shown) > 4 else "")
             raise ValueError(
-                "not a valid ideal (downward-closure or fork-freedom violated): "
+                "not a valid ideal (an op's prerequisites are missing): "
                 f"{len(shown)} op(s) [{head}]"
             )
         return Ideal(op_ids=ids)

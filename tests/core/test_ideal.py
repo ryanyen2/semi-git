@@ -30,15 +30,6 @@ def test_from_ops_rejects_a_downward_closure_violation():
         Ideal.from_ops({ops[2].id}, ops)
 
 
-def test_from_ops_rejects_a_fork():
-    root = make_op({"a.py::x": (None, "v0")}, {"a.py::x": b"root"})
-    tip_a = make_op({"a.py::x": ("v0", "v1")}, {"a.py::x": b"a"})
-    tip_b = make_op({"a.py::x": ("v0", "v2")}, {"a.py::x": b"b"})
-    ops = [root, tip_a, tip_b]
-    with pytest.raises(ValueError):
-        Ideal.from_ops({root.id, tip_a.id, tip_b.id}, ops)
-
-
 def test_covered_paths_excludes_a_removed_symbol():
     add_op = make_op({"a.py::foo": (None, "v0")}, {"a.py::foo": b"x"})
     remove_op = make_op({"a.py::foo": ("v0", BOTTOM)}, {"a.py::foo": None})

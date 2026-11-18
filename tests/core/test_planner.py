@@ -330,7 +330,6 @@ def test_re_adding_a_definition_after_taking_it_out_continues_its_chain(tmp_path
     _out(repo, x)
     s = _edit(repo, {"a.py": "def f():\n    return 1\n\n\ndef g():\n    return 5\n"})
     assert _ops(repo, s) <= current_ideal(repo).op_ids
-    assert order.forks(index_ops(repo), current_ideal(repo).op_ids) == []
     assert _fold(repo) == _tree(repo)
 
 
@@ -438,7 +437,6 @@ def test_a_definition_keeps_its_birth_on_its_chain_after_a_take_out(tmp_path):  
     (birth,) = [o for o in chain if o in _ops(repo, base)]
     (last,) = [o for o in chain if o in _ops(repo, s)]
     assert chain[0] == birth and chain[-1] == last and len(chain) == 4
-    assert birth in order.downset(last, ops)
 
 
 def test_a_comment_that_cycles_folds_back(tmp_path):  # e13

@@ -35,9 +35,8 @@ def _init_bare(root: Path) -> Path:
 def _clone(remote: Path, dest: Path) -> Path:
     subprocess.run(["git", "clone", "-q", str(remote), str(dest)], check=True, capture_output=True)
     GitBinding(dest).init()  # repo-scope identity, matches every two-clone fixture
-    # Phase 1.2: `git clone` copies refs/heads + refs/tags but never refs/ugh/*, so pull the shared
-    # state ref (if the remote has one) and materialize it into the fresh clone's local mirror --
-    # the fresh-clone bootstrap. Best-effort: a pre-1.2 remote has no such ref and this no-ops.
+    # `git clone` never copies refs/ugh/*, so pull the shared state ref (if the remote has one) and
+    # write its names and prompts into the fresh clone's `.sgt/`.
     gb = GitBinding(dest)
     if gb.fetch_ref("origin", f"+{_state_ref.STATE_REF}:{_state_ref.STATE_REF}"):
         for rel_path, raw in _state_ref.read_tree(gb).items():
@@ -46,15 +45,8 @@ def _clone(remote: Path, dest: Path) -> Path:
 
 
 def _push(repo: Path, branch: str = "main") -> None:
-    # Phase 1.2: publish this clone's local mirror onto `refs/ugh/state` and push it BEFORE the
-    # branch, reconciling a non-fast-forward against a teammate's concurrent publish as a CRDT merge
-    # -- exactly what the CLI's `ugh push` does via `publish_and_push`. This rebuilds the ref from
-    # local first (so table mutations made through raw `GitBinding.commit_all` -- pins seeded
-    # directly in tests, never through a verb that publishes -- travel), and a branch commit's
-    # `Sgt-Op:` trailers name ops that live only on the ref, so the ref must be durable first. A plain
-    # best-effort push here silently drops a *merged* state tree on non-ff (each clone's state-ref
-    # history is independent), which breaks cross-clone convergence (LAW-U); reconciling is the
-    # faithful production behavior.
+    # Names and prompts go to `refs/ugh/state` first, merging a teammate's concurrent publish,
+    # exactly as `ugh push` does; then the branch.
     _state_ref.publish_and_push(GitBinding(repo), repo, "origin")
     subprocess.run(
         ["git", "-C", str(repo), "push", "-q", "origin", branch], check=True, capture_output=True

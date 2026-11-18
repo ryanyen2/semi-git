@@ -13,10 +13,6 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 
-# The kernel's witness trailer (plan U6): one line per op a materializing commit's tree
-# embodies. Multi-valued like `Co-Authored-By` -- a commit can witness many ops at once.
-OP_TRAILER_KEY = "Sgt-Op"
-
 # Marks a commit ugh made for its OWN mechanics -- the materialization behind a revert, a restore,
 # or an undo -- rather than work the developer did. History is append-only, so undoing is a forward
 # commit; without this mark those commits are indistinguishable from real work and `ugh now` reports
@@ -60,10 +56,6 @@ class FileChange:
     new_ranges: tuple[tuple[int, int], ...]
 
 
-def format_op_trailers(op_ids) -> str:
-    return "\n".join(f"{OP_TRAILER_KEY}: {oid}" for oid in op_ids)
-
-
 def format_bookkeeping_trailer() -> str:
     return f"{BOOKKEEPING_KEY}: 1"
 
@@ -87,22 +79,12 @@ def is_bookkeeping_message(commit_message: str) -> bool:
     return subject.startswith(_LEGACY_BOOKKEEPING_PREFIXES)
 
 
-def parse_trailer_ids(commit_message: str, key: str) -> list[str]:
-    """Every whitespace-separated value on a commit's `key:` trailer lines, in message order."""
-    return [
-        value
-        for line in commit_message.splitlines()
-        if (stripped := line.strip()).startswith(f"{key}:")
-        for value in stripped.split(":", 1)[1].split()
-    ]
-
-
-def parse_op_ids(commit_message: str) -> list[str]:
-    """Every op id a commit's `Sgt-Op:` trailers witness, in message order."""
+def trailer_values(commit_message: str, key: str) -> list[str]:
+    """The value of each `key:` trailer line of a commit message, one per line, in order."""
     return [
         stripped.split(":", 1)[1].strip()
         for line in commit_message.splitlines()
-        if (stripped := line.strip()).startswith(f"{OP_TRAILER_KEY}:")
+        if (stripped := line.strip()).startswith(f"{key}:")
     ]
 
 
@@ -788,29 +770,6 @@ class GitBinding:
             return {"mainline": set(cached["mainline"]), "merges": set(cached["merges"])}
         return compute()
 
-    def op_ids_by_commit(self, target: str = "HEAD") -> dict[str, set[str]]:
-        """``sha -> {op id, ...}`` from each commit's ``Sgt-Op:`` trailers, over ``target``'s
-        first-parent history. One ``git log`` call rather than a ``commit_message`` per commit --
-        the committed, tree-witnessed record of which ops each commit's tree embodies."""
-        def compute() -> dict[str, set[str]]:
-            # %B is the raw body (trailers live there); \x1e separates commits, \x1f splits
-            # sha/body.
-            proc = self._git("log", "--format=%H%x1f%B%x1e", target, check=False)
-            if proc.returncode != 0:
-                return {}
-            out: dict[str, set[str]] = {}
-            for record in proc.stdout.split("\x1e"):
-                record = record.strip("\n")
-                if not record or "\x1f" not in record:
-                    continue
-                sha, body = record.split("\x1f", 1)
-                out[sha.strip()] = set(parse_op_ids(body))
-            return out
-        if target == "HEAD" or _is_full_sha(target):
-            # Outer-dict copy only: callers read the per-commit id sets, never mutate them.
-            return dict(self._memo_head(("op_ids_by_commit", target), compute))
-        return compute()
-
     def first_parent_path_log(self, ref: str, path: str) -> list[tuple[str, list[str]]]:
         """``(sha, parents)`` newest-first for every commit on ``ref``'s first-parent line whose
         ``path`` differs from its first parent's."""
@@ -840,6 +799,11 @@ class GitBinding:
             except UnicodeDecodeError:
                 continue
         return out
+
+    def changed_paths(self, a: str | None, b: str) -> list[str]:
+        """The paths whose blob differs between trees `a` (None: empty) and `b`, no renames."""
+        proc = self._git("diff", "--name-only", "--no-renames", "-z", a or EMPTY_TREE, b)
+        return [p for p in proc.stdout.split("\0") if p]
 
     def diff_name_and_text(
         self, parent: str | None, sha: str, find_renames: bool = True
@@ -955,14 +919,8 @@ class GitBinding:
         self._git("add", "-A")
 
     def commit_all(self, message: str, trailers: str | None = None) -> str:
-        """Stage everything and commit, embedding any pre-formatted trailer block (e.g. `Sgt-Op:`
-        lines, U6's witness commits).
-
-        `--allow-empty`: since Phase 1.2 moved ugh's `.sgt/` state onto `refs/ugh/state` (off the
-        branch tree, gitignored), a witness commit's payload is its `Sgt-Op:` trailers -- not a tree
-        delta. When the fold reproduces already-committed source (e.g. an ideal edit that leaves the
-        materialized bytes unchanged), there is nothing to stage, but the commit must still advance
-        HEAD to carry the current ideal's trailers. An empty tree delta is therefore legitimate."""
+        """`git add -A` and commit with any pre-formatted trailer block. Allowed to be empty, since
+        a resolution that keeps the file as it is still records its trailer."""
         self.stage_all()
         parts = [message]
         if trailers:
@@ -1173,19 +1131,22 @@ class GitBinding:
             return False
         raise GitError(f"git update-ref {ref} failed ({proc.returncode}): {proc.stderr.strip()}")
 
+    def _git_path(self, name: str) -> Path:
+        path = Path(self._git("rev-parse", "--git-path", name).stdout.strip())
+        return path if path.is_absolute() else self.repo / path
+
+    def exclude_locally(self, rel: str) -> None:
+        """Add `rel` to this clone's `info/exclude`, so git and `ugh save` never pick it up."""
+        path = self._git_path("info/exclude")
+        lines = path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
+        if rel not in lines:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("\n".join([*lines, rel]) + "\n", encoding="utf-8")
+
     def complete_merge(self, message: str, merge_parent: str, trailers: str | None = None) -> str:
-        """Commit a real 2-parent merge joining HEAD with `merge_parent`, whose tree is *exactly*
-        the current working tree -- ugh's explicitly-reconciled union (op files, pins/tree/declared,
-        folded source) -- with no textual 3-way merge run on any path. Writing `.git/MERGE_HEAD`
-        ourselves is what makes git's ordinary commit path add `merge_parent` as the second parent
-        (the way a real `git merge` would) while leaving the tree entirely under ugh's control; git
-        clears MERGE_HEAD on a successful commit. Replaces the pre-U19 `git merge -X ours`, whose
-        textual resolution ugh overwrote anyway. Embeds `Sgt-Op:` trailers for the ops this
-        materialization witnesses (mirrors `commit_all`'s trailer convention)."""
-        merge_head = Path(self._git("rev-parse", "--git-path", "MERGE_HEAD").stdout.strip())
-        if not merge_head.is_absolute():
-            merge_head = self.repo / merge_head
-        merge_head.write_text(f"{merge_parent}\n", encoding="utf-8")
+        """Commit the working tree as a merge of HEAD and `merge_parent`: writing MERGE_HEAD makes
+        git's own commit add the second parent while the tree stays exactly what ugh wrote."""
+        self._git_path("MERGE_HEAD").write_text(f"{merge_parent}\n", encoding="utf-8")
         self.stage_all()
         full = message if trailers is None else f"{message}\n\n{trailers}"
         self._git("commit", "-q", "-m", full)

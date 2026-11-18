@@ -1,47 +1,23 @@
-"""The order `<=` over ops, from two edge sources (ADR S3.3; plan R3, R4, R10).
+"""The order over ops: an op stands on the op that produced each version it starts from (its
+footprint's `before`) and each version it `requires`.
 
-    1. chain edges     -- same symbol: op A's after_version matches op B's before_version.
-                           Ops touching one symbol are totally ordered along its chain (unless
-                           forked -- see below).
-    2. reference edges -- op B's `requires` names an exact (symbol, version) pair; whichever op
-                           produced that version precedes B. Mined def/use, resolved to the
-                           *specific* version B saw when mined (ugh.core.mine records this),
-                           not merely "some op that ever touched this symbol".
-
-Both collapse into one predecessor/successor adjacency; `upset`/`downset` are BFS over it.
-Validity (R3) is two independent checks: downward-closure over that adjacency, and fork-freedom
-(no two in-ideal ops share a `(symbol, before_version)` -- the ADR's "the only possible conflict
-is chain divergence"). Fork-freedom is *not* implied by downward-closure: a fork's two tips have
-no edge between each other (both descend from the same predecessor), so an ideal could be
-downward-closed and still contain both.
+A ref's ideal is the ops mined from its history, grounded: every op's prerequisites are produced
+by ops in the set. Two ops can start from one version where two lines of history changed a symbol,
+and the merge that joined those lines joins both into one version again (`ugh.core.mine`, rule 4),
+so every symbol in a ref's ideal has one tip. There is no other conflict.
 """
 
 from __future__ import annotations
 
 from collections import OrderedDict
 
-from ugh.core.op import Op, _symbol_kind
+from ugh.core.op import Op
 
-Edge = tuple[str, str]  # (A, B) meaning A <= B: A must be in the ideal whenever B is
-
-# Bounded LRU memo for `reduce_to_ideal` (U8). Its result is a pure function of the *present-op* id
-# set: grounding and fork-freedom only ever read ops *in* `ideal_ids` (a path from a
-# forked tip to an ideal op through a missing op leaves that op ungrounded, so it is gone before
-# fork-freeing runs), and every op is content-addressed, so a set of *materialized* ids fixes the
-# answer. `reduce_to_ideal` intersects `ideal_ids` with the present ops before keying, so an id that
-# no longer has an op in `ops` (a `git switch` can swap the committed store out from under a surviving
-# gitignored ideal table) does not collide with a hit computed while it was still present.
-# Bounded (not `functools.lru_cache`, whose args must be hashable and which never evicts by size)
-# so a long-running MCP session over an append-only store doesn't accumulate an entry per save.
+# Memos keyed by the present-op id set: grounding reads only the ops in the set, and ops are
+# content-addressed, so the ids fix the answer.
 _REDUCE_CACHE: "OrderedDict[frozenset, frozenset[str]]" = OrderedDict()
 _REDUCE_CACHE_MAX = 64
 
-# `is_valid_ideal`'s memo, same soundness argument as `_REDUCE_CACHE`: once every id in the set is
-# verified present, grounding and fork-freedom are pure functions of the (content-addressed) id
-# set. The O(ops) presence check re-runs on every call -- only the grounding + fork
-# scan is skipped -- so a swapped-out store can never resurrect a stale True. Every
-# `Ideal.from_ops` re-validates its op set, and one command constructs the same handful of ideals
-# through several views; this makes each distinct id set pay the full check once.
 _VALID_CACHE: "OrderedDict[frozenset, bool]" = OrderedDict()
 _VALID_CACHE_MAX = 64
 
@@ -55,234 +31,16 @@ _CHAINS_CACHE: "OrderedDict[frozenset, dict[str, list[str]]]" = OrderedDict()
 _CHAINS_CACHE_MAX = 4
 
 
-def chain_edges(ops: list[Op]) -> frozenset[Edge]:
-    """(A, B): some symbol's after_version in A equals its before_version in B."""
-    producer_after: dict[tuple[str, str], str] = {}
-    consumer_before: dict[tuple[str, str], list[str]] = {}
-    for op in ops:
-        for sym, (before, after) in op.footprint.items():
-            producer_after[(sym, after)] = op.id
-            if before is not None:
-                consumer_before.setdefault((sym, before), []).append(op.id)
-
-    edges: set[Edge] = set()
-    for (sym, version), producer_id in producer_after.items():
-        for consumer_id in consumer_before.get((sym, version), ()):
-            if consumer_id != producer_id:
-                edges.add((producer_id, consumer_id))
-    return frozenset(edges)
-
-
-def reference_edges(ops: list[Op]) -> frozenset[Edge]:
-    """(A, B): B requires an exact (symbol, version) pair that A produced."""
-    producer_after: dict[tuple[str, str], str] = {}
-    for op in ops:
-        for sym, (_before, after) in op.footprint.items():
-            producer_after[(sym, after)] = op.id
-
-    edges: set[Edge] = set()
-    for op in ops:
-        for req_sym, req_ver in op.requires:
-            producer_id = producer_after.get((req_sym, req_ver))
-            if producer_id is not None and producer_id != op.id:
-                edges.add((producer_id, op.id))
-    return frozenset(edges)
-
-
-# Bounded memo for `chain_edges | reference_edges`, keyed by the op-id set -- the same
-# "content-addressed ids fix the answer" invariant `_REDUCE_CACHE` documents (both edge sets
-# read only footprint/requires, which the id hashes). One `compose`/`intent` read used to
-# recompute the full-store union dozens of times (once per scope bundle / checkpoint tier).
-_EDGES_CACHE: "OrderedDict[frozenset, frozenset[Edge]]" = OrderedDict()
-_EDGES_CACHE_MAX = 16
-
-
-def _chain_ref_edges(ops: list[Op]) -> frozenset[Edge]:
-    key = frozenset(op.id for op in ops)
-    cached = _EDGES_CACHE.get(key)
-    if cached is not None:
-        _EDGES_CACHE.move_to_end(key)
-        return cached
-    edges = chain_edges(ops) | reference_edges(ops)
-    _EDGES_CACHE[key] = edges
-    if len(_EDGES_CACHE) > _EDGES_CACHE_MAX:
-        _EDGES_CACHE.popitem(last=False)
-    return edges
-
-
-def _adjacency(ops: list[Op]) -> tuple[dict[str, frozenset[str]], dict[str, frozenset[str]]]:
-    """(predecessors, successors) over the union of both edge sources."""
-    ids = {op.id for op in ops}
-    predecessors: dict[str, set[str]] = {op.id: set() for op in ops}
-    successors: dict[str, set[str]] = {op.id: set() for op in ops}
-    for a, b in _chain_ref_edges(ops):
-        if a in ids and b in ids and a != b:
-            predecessors[b].add(a)
-            successors[a].add(b)
-    return (
-        {k: frozenset(v) for k, v in predecessors.items()},
-        {k: frozenset(v) for k, v in successors.items()},
-    )
-
-
-def _reachable(start: str, adjacency: dict[str, frozenset[str]]) -> frozenset[str]:
-    seen = {start}
-    stack = [start]
-    while stack:
-        cur = stack.pop()
-        for nxt in adjacency.get(cur, ()):
-            if nxt not in seen:
-                seen.add(nxt)
-                stack.append(nxt)
-    return frozenset(seen)
-
-
-def upset(op_id: str, ops: list[Op]) -> frozenset[str]:
-    """`op_id` and everything that builds on it, over the whole op universe -- `↑X`. Every version
-    has one producer, so the edges are exact."""
-    _, successors = _adjacency(ops)
-    return _reachable(op_id, successors)
-
-
-def downset(op_id: str, ops: list[Op]) -> frozenset[str]:
-    """`op_id` and everything it builds on, over the whole op universe -- `↓X`."""
-    predecessors, _ = _adjacency(ops)
-    return _reachable(op_id, predecessors)
-
-
-def is_fork_free(ops: list[Op], ideal_ids) -> bool:
-    """Every symbol's in-ideal ops form one chain (see `forks`)."""
-    return not forks(ops, ideal_ids)
-
-
-def forks(ops: list[Op], ideal_ids) -> list[tuple[str, str, str]]:
-    """Every `(symbol, op_a, op_b)` where two in-ideal ops claim the same `(symbol, before)`:
-    versions never recur, so a chain is a simple path and that is the only conflict.
-    Deterministic: claimants are sorted and reported pairwise."""
-    by_id = {op.id: op for op in ops}
-    claims: dict[tuple[str, str | None], list[str]] = {}
-    for op_id in sorted(ideal_ids):
-        for sym, (before, _after) in by_id[op_id].footprint.items():
-            claims.setdefault((sym, before), []).append(op_id)
-    found: list[tuple[str, str, str]] = []
-    for (sym, _before), claimants in sorted(claims.items(), key=lambda kv: (kv[0][0], str(kv[0][1]))):
-        found.extend((sym, a, b) for a, b in zip(claimants, claimants[1:]))
-    return found
-
-
-def resolvable_forks(
-    triples: list[tuple[str, str, str]], by_id: dict[str, Op]
-) -> list[tuple[str, str, str]]:
-    """The `forks` triples a *user* can actually act on, for surfacing (not for ideal reduction).
-    `fork_free`/`is_fork_free` must see every collision (sentinels are load-bearing for ideal
-    validity), so this filter lives here, off that path -- it never touches `forks`/`fork_free`.
-    A triple survives iff:
-
-      * the symbol is real, not one of ugh's synthetic `__anchor__`/`__residue__` pseudo-symbols
-        (`_symbol_kind`); and
-      * the two tips genuinely diverge -- their `after_version` for the forked symbol differs.
-
-    The after-divergence gate mirrors `rewrite.merge_op` (which refuses two tips that share an
-    after with "nothing to merge"): a same-after collision (a revert landing on identical bytes, or
-    an add/delete/re-add rebirth) is already neutralized by `fork_free` and has nothing to resolve,
-    so surfacing it only advertises work that doesn't exist. `by_id` maps op-id -> Op for the tips."""
-    out: list[tuple[str, str, str]] = []
-    for sym, a, b in triples:
-        if _symbol_kind(sym) in ("anchor", "residue"):
-            continue
-        op_a, op_b = by_id.get(a), by_id.get(b)
-        if op_a is None or op_b is None:
-            continue
-        fa, fb = op_a.footprint.get(sym), op_b.footprint.get(sym)
-        if fa is None or fb is None or fa[1] == fb[1]:
-            continue
-        out.append((sym, a, b))
-    return out
-
-
-def _settle(ops: list[Op], ids) -> tuple[set[str], list[tuple[str, str, str]]]:
-    """The claimants to drop, and the forks still open. A fork whose two claimants an in-ideal op
-    `resolves` is settled: the claimant that op does not descend from is dropped. Every other fork
-    drops both claimants."""
-    by_id = {op.id: op for op in ops}
-    producer = {(sym, after): op_id for op_id in ids for sym, (_b, after) in by_id[op_id].footprint.items()}
-    resolvers = [by_id[o] for o in sorted(ids) if by_id[o].resolves]
-    drop: set[str] = set()
-    open_forks = []
-    for sym, a, b in forks(ops, ids):
-        side = None
-        for r in resolvers:
-            if {a, b} <= r.resolves and sym in r.footprint:
-                v = r.footprint[sym][0]
-                while v is not None and (sym, v) in producer and producer[(sym, v)] not in (a, b):
-                    v = by_id[producer[(sym, v)]].footprint[sym][0]
-                side = producer.get((sym, v)) if v is not None else None
-        if side in (a, b):
-            drop.add(b if side == a else a)
-        else:
-            drop |= {a, b}
-            open_forks.append((sym, a, b))
-    return drop, open_forks
-
-
-def parked_forks(ideal_ids, ops: list[Op]) -> list[tuple[str, str, str]]:
-    """The open `(symbol, op_a, op_b)` forks `reduce_to_ideal` drops, among the grounded ops of
-    `ideal_ids`, filtered to the ones a user can act on (`resolvable_forks`)."""
-    by_id = {op.id: op for op in ops}
-    return resolvable_forks(_settle(ops, _grounded(ideal_ids, ops))[1], by_id)
-
-
-def fork_free(ideal_ids, ops: list[Op]) -> frozenset[str]:
-    """The largest fork-free subset of `ideal_ids`: drop both claimants of every open fork (and the
-    claimant a resolving op does not descend from), then re-ground the rest, so everything built
-    on a dropped claimant goes too. A downward-closed set minus what loses its footing stays
-    downward-closed, and removing ops never creates a new claim."""
-    ids = frozenset(ideal_ids)
-    drop, _open = _settle(ops, ids)
-    return _grounded(set(ids) - drop, ops) if drop else ids
-
-
 def reduce_to_ideal(ideal_ids, ops: list[Op]) -> frozenset[str]:
-    """One maximal *valid ideal* contained in a raw provenance-derived op set: ground it (keep only
-    ops all of whose chain/reference prerequisites are also present -- downward-closure),
-    then drop forked tips and their up-sets (fork-freedom). One pass suffices, in that order:
-    `fork_free` removes only upward-closed up-sets, and removing an upward-closed set from a
-    downward-closed one leaves it downward-closed, so grounding survives fork-freeing.
-
-    *Maximal*, not maximum, and not monotone in the input: admitting one more op can rebirth-fork a
-    symbol, and `fork_free` then drops that fork's whole up-set, so a subset can reduce larger than
-    the whole. Measured on bentoml/llm-optimizer: a subset reduces to 728 ops where the full 751-op
-    store reduces to 723, and a greedy hill-climb lifts Den4ikAI/ruaccent from 211 to 229. Callers
-    must not read the result as an upper bound on what a store can compose.
-
-    A raw provenance scan of real history is not directly a valid ideal for two reasons a
-    single-clone `ugh` still hits (not just sync): a symbol added, deleted, then re-added rebirths
-    with `before=None` both times, so both births claim `(symbol, None)` -- a fork; and an op whose
-    chain predecessor's provenance fell outside this ref (a squashed/rebased-away branch) is
-    ungrounded. `fork_free` alone leaves the ungrounded op in; `_grounded` alone leaves the fork in;
-    only the composition is constructible. This is the reduction every provenance-derived ideal
-    goes through -- `lens._sync` on the mine-on-contact write path, and the pure-read
-    `_committed_ids_by_provenance`/`ideal_for_ref` -- so all three agree on what a ref's history
-    means (divergence, historical or concurrent, is state, never a crash; U20/C4).
-
-    Memoized (U8): the ~28s-per-call cost on a large store is the dominant `ugh status` bottleneck,
-    and `status_view` invokes this reduction two-to-three times per call on the same op set. The
-    memo is keyed by the *present-op* id set (see `_REDUCE_CACHE`).
-
-    Ids in `ideal_ids` with no op in `ops` are dropped up front, before the memo key is built.
-    `_grounded` already excludes them (its by-id map only holds present ops), so this changes no
-    result -- but it makes the memo key sound: the cache's "id set fixes the answer" invariant
-    holds only when every keyed id is materialized. A `git switch` can swap the committed `.sgt/ops`
-    store while a gitignored ideal table survives, referencing ops the new ref doesn't have; without
-    this filter the same `ideal_ids` maps to a result computed against the *old* universe, which then
-    fails `Ideal.from_ops` against the new one."""
+    """The grounded part of a raw provenance-derived op set: the ops all of whose prerequisites
+    are produced within it. Memoized on the present ids."""
     present = {op.id for op in ops}
     key = frozenset(ideal_ids) & present
     cached = _REDUCE_CACHE.get(key)
     if cached is not None:
         _REDUCE_CACHE.move_to_end(key)
         return cached
-    result = fork_free(_grounded(key, ops), ops)
+    result = _grounded(key, ops)
     _REDUCE_CACHE[key] = result
     if len(_REDUCE_CACHE) > _REDUCE_CACHE_MAX:
         _REDUCE_CACHE.popitem(last=False)
@@ -354,14 +112,7 @@ def _grounded(ideal_ids, ops: list[Op]) -> frozenset[str]:
 
 
 def is_valid_ideal(ops: list[Op], ideal_ids) -> bool:
-    """R3: downward-closed under chain+reference edges, and fork-free. Every op id in
-    `ideal_ids` must also exist in `ops` -- referencing an unknown op is never valid.
-
-    Downward-closure is checked by *grounding* (`_grounded`): every op must bottom out at a chain
-    head through real production, so the check reasons about which `(symbol, version)` pairs the
-    ideal produces rather than picking one canonical producer op -- immune to the after-value
-    collision (add->modify->revert) that a graph-edge form mis-resolves, and rejecting an
-    originless cycle that a purely-existential check would wrongly accept."""
+    """Every op in `ideal_ids` exists in `ops` and is grounded (`_grounded`)."""
     ids = frozenset(ideal_ids)
     if not ids <= {op.id for op in ops}:
         return False
@@ -369,7 +120,7 @@ def is_valid_ideal(ops: list[Op], ideal_ids) -> bool:
     if cached is not None:
         _VALID_CACHE.move_to_end(ids)
         return cached
-    result = _grounded(ids, ops) == ids and is_fork_free(ops, ids)
+    result = _grounded(ids, ops) == ids
     _VALID_CACHE[ids] = result
     if len(_VALID_CACHE) > _VALID_CACHE_MAX:
         _VALID_CACHE.popitem(last=False)
@@ -379,7 +130,8 @@ def is_valid_ideal(ops: list[Op], ideal_ids) -> bool:
 def _ordered_chains(ideal_ids, ops: list[Op]) -> dict[str, list[str]]:
     """Per symbol, the in-ideal op ids in chain order (head -> tip): the walk from the op whose
     before is None (or, in a store slice that starts mid-chain, the earliest version no op in the
-    slice produces) along after -> before. A fork-free ideal's chains are simple paths."""
+    slice produces) along after -> before. Where two lines of history changed the symbol, the walk
+    takes one of them; the merge joined both into one version, so either reaches the same tip."""
     by_id = {op.id: op for op in ops}
     starts: dict[str, dict[str | None, str]] = {}
     for op_id in sorted(set(ideal_ids)):
@@ -428,11 +180,7 @@ def frontier(ideal_ids, ops: list[Op]) -> dict[str, str]:
     that themselves (this module doesn't import mine.py's BOTTOM-producing call sites, only the
     sentinel value lives in `ugh.core.op`).
 
-    Computed, not stored -- an explicit `ideal_ids` set is still this kernel's canonical
-    in-memory representation (validity, upset/downset, and diff all operate on it directly);
-    this is the compact *view* the ADR's frontier-vector KTD calls for, and the one U5's fold
-    and U6/U9's on-disk ref->ideal persistence should use rather than serializing full op-id
-    sets. The tip is the last of each symbol's ordered chain (`_ordered_chains`).
+    The tip is the last of each symbol's ordered chain (`_ordered_chains`).
 
     Memoized on the id set alone (same content-addressing argument as `_REDUCE_CACHE`): chains
     read only in-ideal ops' *footprints*, identical across every ops-list variant that carries
@@ -448,67 +196,3 @@ def frontier(ideal_ids, ops: list[Op]) -> dict[str, str]:
     if len(_FRONTIER_CACHE) > _FRONTIER_CACHE_MAX:
         _FRONTIER_CACHE.popitem(last=False)
     return dict(result)
-
-
-def upset_in(target: str, ideal_ids, ops: list[Op]) -> frozenset[str]:
-    """`target` and everything in the (fork-free) ideal `ideal_ids` that transitively builds on it
-    -- `revert(target) = ideal \\ upset_in(target, ideal)`. The collision-safe, ideal-relative
-    counterpart to `upset`: the up-set is exactly what stops being grounded once `target` is
-    removed, i.e. `ideal \\ _grounded(ideal - {target})`. Grounding (not existential production)
-    is what makes reverting a chain head remove the whole chain rather than leave an originless
-    modify->revert cycle behind. The complement `_grounded(...)` is a valid ideal by
-    construction (well-founded, and fork-free as a subset of a fork-free ideal), so
-    `ideal \\ upset_in(...)` never needs a further validity check."""
-    return upset_in_many({target}, ideal_ids, ops)
-
-
-def upset_in_many(removed, ideal_ids, ops: list[Op]) -> frozenset[str]:
-    """The set generalization of `upset_in` (which is the single-target case): everything in
-    `ideal_ids` that stops being grounded once *all* of `removed` is taken out -- `ideal \\
-    _grounded(ideal - removed)`. Used by U8's three-way sync resolve: `removed` is the base ops one
-    side reverted, and this is exactly what must leave the union so a revert travels instead of
-    being resurrected. Collision-safe (grounding, not graph adjacency), and the complement is a
-    valid downward-closed ideal by construction, so the subtraction needs no further check."""
-    ids = set(ideal_ids)
-    return frozenset(ids - _grounded(ids - set(removed), ops))
-
-
-def downset_in(target: str, ideal_ids, ops: list[Op]) -> frozenset[str]:
-    """`target` and everything it builds on, within the (fork-free) source ideal `ideal_ids` --
-    `restore(target) = current_ideal | downset_in(target, source_ideal)`. Chain prerequisites come
-    from `_ordered_chains` (positional order, immune to the after-value collision that `downset`'s
-    adjacency mis-resolves); `requires` prerequisites are closed transitively. Reference prerequisites include *every* in-ideal producer of a required
-    version -- a safe over-approximation when a dependency itself was reverted to earlier bytes
-    (two producers of one version); the final `Ideal.from_ops` still rejects any union that forks."""
-    return downset_in_many({target}, ideal_ids, ops)
-
-
-def downset_in_many(targets, ideal_ids, ops: list[Op]) -> frozenset[str]:
-    """The set generalization of `downset_in`: everything any of `targets` builds on, within
-    `ideal_ids`. Reachability closures distribute over union, so this equals
-    `∪ downset_in(t)` exactly -- but pays the by-id / chain / producer index construction once
-    for the whole set instead of once per target (which made a feature-sized restore preview
-    O(|X|·|ops|))."""
-    by_id = {op.id: op for op in ops}
-    chains = _ordered_chains(ideal_ids, ops)
-    pos = {sym: {oid: i for i, oid in enumerate(seq)} for sym, seq in chains.items()}
-    producers: dict[tuple[str, str], set[str]] = {}
-    for oid in set(ideal_ids):
-        for sym, (_before, after) in by_id[oid].footprint.items():
-            producers.setdefault((sym, after), set()).add(oid)
-
-    result: set[str] = set()
-    stack = list(targets)
-    while stack:
-        oid = stack.pop()
-        if oid in result or oid not in by_id:
-            continue
-        result.add(oid)
-        op = by_id[oid]
-        for sym in op.footprint:  # chain prerequisites: everything before oid in this symbol's chain
-            i = pos.get(sym, {}).get(oid)
-            if i is not None:
-                stack.extend(chains[sym][:i])
-        for req_sym, req_ver in op.requires:  # reference prerequisites
-            stack.extend(producers.get((req_sym, req_ver), ()))
-    return frozenset(result)

@@ -17,17 +17,18 @@ rename or a move to another file is one op that removes the old name and creates
 Every op gets an id based on its content, so the same edit from the same starting point always
 gets the same id: mining the history again gives the ids the store already holds, and a rebase that
 keeps each symbol's sequence of contents keeps its ids. The ids depend on where mining started, so
-the same commits mined from two different `ugh init --horizon` points give different ids. The full set of ops lives in `.sgt/ops/` and is committed to git
-along with your code.
+the same commits mined from two different `ugh init --horizon` points give different ids. The full set of ops lives in `.sgt/ops/`; it never
+travels, because every clone mines the same ops from the same history.
 
 ## The ideal
 
 The current state of your codebase is a subset of all the ops, and `ugh` calls a valid subset an
-ideal. To be valid, it has to follow two rules:
+ideal. To be valid, every op it includes must have every op it was built on included too.
 
-- If an op is included, every op it was built on has to be included too.
-- For any one symbol, at most one version can be included at a time. Two competing versions of the
-  same function is called a fork, and a valid ideal never contains one.
+Where two lines of history changed the same function, its chain branches, and the merge that
+brought the two lines together joins them again: it gives the function a version of its own and
+joins each side's version into it. So a branch's ideal always has one current version of each
+symbol, whether the merge was made by `ugh sync` or by plain git.
 
 A branch's ideal is every op mined from its history. Nothing is ever subtracted from it: taking work
 out (`ugh revert`) is a new commit whose ops un-apply that work, and its `Ugh-Out:` trailer names
@@ -56,7 +57,7 @@ A name is a label a person or an agent gave to some steps, with `ugh save --as <
 <address> <name>` or `ugh rename <name> <new>`. A step has one name or none. `ugh` never names
 anything itself, and a name never grows by itself: a later edit to a named definition carries no
 name unless it was saved with `--as` or named again. The names live in `.sgt/names.json` and
-travel with your ops; `ugh sync` merges them per step, and when both sides renamed the same step
+travel on `refs/ugh/state`; `ugh sync` merges them per step, and when both sides renamed the same step
 differently it keeps yours and prints both.
 
 What stands on a name is not stored. It is the planner's answer to "what would it take to take this

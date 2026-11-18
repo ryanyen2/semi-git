@@ -49,20 +49,17 @@ _OPS_DIR = "ops"
 _LOCAL_DIR = "local"
 _LOCK_FILE = "lock"
 
-# `.sgt/.gitignore` body (Phase 1.2). Patterns are relative to `.sgt/`. Keeps the op store and the
-# committed tables untracked -- they travel on `refs/ugh/state` now. Mirrors
-# `state_ref._TRAVELING_TABLES` + `_CONTENT_ADDRESSED_PREFIXES`; `.sgt/local/` ignores itself via its
-# own `.gitignore`. The file lists `.gitignore` itself so it stays untracked too (see
+# `.sgt/.gitignore` body. Patterns are relative to `.sgt/`. Keeps the op store (mined again on
+# every clone) and the tables that travel on `refs/ugh/state` untracked; `.sgt/local/` ignores
+# itself via its own `.gitignore`. The file lists `.gitignore` itself so it stays untracked too (see
 # `Store._ensure_gitignore` for why that matters for `git checkout`).
 _SGT_GITIGNORE = b"""\
-# Managed by ugh (Phase 1.2): the op store + committed tables travel on refs/ugh/state,
-# off the branch tree. Keeping them untracked fixes F1 (saves no longer dirty the tree)
-# and F10 (no metadata merge conflicts). Do not add tiers.json / oracle.json /
+# Managed by ugh: the op store is mined from history on every clone, and names and prompts
+# travel on refs/ugh/state, off the branch tree. Do not add tiers.json / oracle.json /
 # .sgtignore here -- those stay tracked in the branch tree.
 .gitignore
 ops/
 intent/
-forks.json
 names.json
 """
 
@@ -101,7 +98,6 @@ def _payload(op: Op) -> dict:
         "intent": op.intent,
         "miner_version": op.miner_version,
         "derived": op.derived,
-        "resolves": sorted(op.resolves),
     }
 
 
@@ -154,7 +150,6 @@ def _op_from_payload(payload: dict, images: Images) -> Op:
         intent=payload.get("intent"),
         miner_version=payload["miner_version"],
         derived=payload.get("derived", False),
-        resolves=frozenset(payload.get("resolves", [])),
     )
     return op
 
@@ -170,8 +165,8 @@ def _deserialize(data: bytes) -> Op:
 @contextlib.contextmanager
 def locked_section(repo: str | Path):
     """Hold the store's per-mutation flock across a multi-artifact read-modify-write, so a pair
-    that must stay mutually consistent (ideal table + witness; journal push + table overwrite;
-    forks + the ops they name) is computed and written under one lock, each file landing via
+    that must stay mutually consistent (ideal table + witness; journal push + table overwrite)
+    is computed and written under one lock, each file landing via
     atomic rename (R5/R6). Same lock and per-mutation granularity as `Store.add()` -- deliberately
     NOT verb-wide (U23). MUST NOT nest inside another `locked_section` or a `Store.add()` call:
     `flock` on a second fd of the same lock file blocks this very process (a self-deadlock), so a
@@ -217,15 +212,13 @@ class Store:
             _write_atomic(gitignore, b"*\n")
 
     def _ensure_gitignore(self) -> None:
-        """`.sgt/.gitignore` keeps the op store and the committed tables *untracked* -- Phase 1.2's
-        structural F1 fix. Those artifacts now travel on `refs/ugh/state`, off the branch tree
-        (killing F1's dirty-tree-after-save and F10's merge conflicts), so `commit_all`'s blanket
-        `git add -A` must no longer see them. The file lists `.gitignore` itself, so it too stays
+        """`.sgt/.gitignore` keeps the op store and the traveling tables *untracked*, so
+        `commit_all`'s `git add -A` never sees them. The file lists `.gitignore` itself, so it too stays
         UNTRACKED: were it committed on one branch but not another, `git checkout` between them would
         abort with "untracked working tree file would be overwritten" (the switch bug). Every clone
         regenerates it locally via `Store.init` before any `.sgt/` content exists, so tracking it
-        buys nothing. The listed set mirrors `state_ref._TRAVELING_TABLES` +
-        `_CONTENT_ADDRESSED_PREFIXES`; team-editable / correctness-critical config stays TRACKED and
+        buys nothing. The listed set is the op store plus `state_ref._TRAVELING_TABLES`;
+        team-editable / correctness-critical config stays TRACKED and
         is deliberately absent here: `oracle.json`, `tiers.json`, `.sgtignore` (the last read as-of
         each mined commit for LAW-0). Rewritten whenever it differs, so a new traveling table is
         ignored in an existing `.sgt` too."""
@@ -255,8 +248,8 @@ class Store:
 
     def add(self, op: Op) -> Op:
         """Append ``op``. Rejects anything whose id doesn't match its own content. If an op
-        with the same id already exists, its provenance, structured attribution and `resolves` are
-        unioned (all appendable, R8/D7) rather than the file being duplicated or overwritten -- every
+        with the same id already exists, its provenance and structured attribution are
+        unioned (both appendable, R8/D7) rather than the file being duplicated or overwritten -- every
         other field is identical by construction (same content address). The file is rewritten
         only when either side actually changed."""
         self._validate(op)
@@ -266,15 +259,10 @@ class Store:
                 existing = _deserialize(path.read_bytes())
                 merged_provenance = tuple(sorted(set(existing.provenance) | set(op.provenance)))
                 merged_attribution = merge_attribution(existing.attribution, op.attribution)
-                merged_resolves = existing.resolves | op.resolves
                 if (merged_provenance == existing.provenance
-                        and merged_attribution == existing.attribution
-                        and merged_resolves == existing.resolves):
+                        and merged_attribution == existing.attribution):
                     return existing
-                merged = replace(
-                    existing, provenance=merged_provenance, attribution=merged_attribution,
-                    resolves=merged_resolves,
-                )
+                merged = replace(existing, provenance=merged_provenance, attribution=merged_attribution)
                 _write_atomic(path, _serialize(merged))
                 return merged
             _write_atomic(path, _serialize(op))

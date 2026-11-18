@@ -24,7 +24,7 @@ from ugh.core import lens, opindex, tiers
 from ugh.core.mine import _is_unparseable_whole_file
 from ugh.core.op import Op, _symbol_kind, step_address, unit_of
 from ugh.core.patch import merge3
-from ugh.store.gitbind import GitBinding, parse_trailer_ids
+from ugh.store.gitbind import GitBinding, trailer_values
 
 OUT_TRAILER = "Ugh-Out"
 _HEAD = "\x00HEAD\x00"
@@ -115,6 +115,14 @@ def _split(path: str, raw: bytes | None, whole: bool) -> _File | None:
                  units=[(e.id, raw[st:end]) for e, st, end in zip(tops, starts, ends)])
 
 
+def split(path: str, raw: bytes | None, cfg) -> _File | None:
+    """`raw` read as `path` under tier config `cfg`, split into units; None when absent."""
+    if raw is None:
+        return None
+    whole = tiers.resolve_tier(path, cfg) == "opaque" or _is_unparseable_whole_file(path, raw)
+    return _split(path, raw, whole)
+
+
 class _Ctx:
     """The record the planner reads: every step of the commits in HEAD's history with its ops, the
     units of files at commits, and which steps are out."""
@@ -173,14 +181,9 @@ class _Ctx:
         key = (sha, path)
         if key not in self._files:
             raw = self.gb.blob_bytes(sha, path) if sha is not None else None
-            if raw is None:
-                self._files[key] = None
-            else:
-                if sha not in self._tiers:
-                    self._tiers[sha] = tiers.load_tiers_at(self.gb, sha)
-                tier = tiers.resolve_tier(path, self._tiers[sha])
-                whole = tier == "opaque" or _is_unparseable_whole_file(path, raw)
-                self._files[key] = _split(path, raw, whole)
+            if raw is not None and sha not in self._tiers:
+                self._tiers[sha] = tiers.load_tiers_at(self.gb, sha)
+            self._files[key] = split(path, raw, self._tiers.get(sha))
         return self._files[key]
 
     def text(self, sha: str | None, unit: str) -> bytes | None:
@@ -228,7 +231,7 @@ def _out(ctx: _Ctx) -> tuple[dict[Step, set[Step]], set[str]]:
     takeouts: set[str] = set()
     for record in proc.stdout.split("\x1e")[:-1] if proc.returncode == 0 else ():
         sha, _, body = record.strip("\n").partition("\x1f")
-        named = set(parse_trailer_ids(body, OUT_TRAILER))
+        named = set(trailer_values(body, OUT_TRAILER))
         takeouts.add(sha)
         for t in ctx.of_commit.get(sha, ()):
             if t not in out:

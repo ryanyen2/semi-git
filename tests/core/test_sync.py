@@ -1,478 +1,331 @@
-"""Tests for ugh.core.sync -- the U15 `ugh sync` pipeline (plan R19/AE4).
+"""A save is a git commit, ops do not travel, and sync merges unit by unit
+(docs/design/2026-11-18-b4-save-sync-brief.md).
 
-Op-store union is nearly free (git's own file merge dedups by content-addressed path); the real
-surface under test is what isn't free: same-symbol chain forks must be *surfaced* with a concrete
-remedy rather than silently resolved, a same-id op independently mined on both clones must end up
-with both sides' provenance (git's `-X ours` alone would drop one), and a second `sync` must be a
-no-op.
-
-Two-clone fixtures are built directly with `GitBinding`/`lens` (no `tests/laws/corpus.py` case
-fits a bare-remote-plus-two-working-clones shape) but follow the same hermetic discipline: real
-`git` subprocess calls, no network, no wall-clock/LLM dependency.
+Two clones of one bare remote in `tmp_path`, real `git`, no network. Each test drives the CLI the
+way a person would (`main` inside the clone) and reads git directly to check what it did.
 """
 
 from __future__ import annotations
 
+import json
+import os
+import subprocess
 from pathlib import Path
 
-from ugh.core import lens, sync
-from ugh.core.fold import code
-from ugh.core.store import Store
-from ugh.store.gitbind import GitBinding
+import pytest
+
+from ugh import names
+from ugh.address import Record
+from ugh.cli import main
+from ugh.cli.porcelain import save
+from ugh.core import lens
+from ugh.store.gitbind import GitBinding, PushRejected
 from tests.conftest import _clone, _init_bare, _push
-
-
-
-def _revert(repo, op_id):
-    from ugh.core import planner
-
-    steps = [st for st, ops in planner._Ctx(repo).steps.items() if op_id in ops]
-    return planner.apply(repo, planner.plan(repo, steps, target=op_id))
-
-def _edit_and_commit(repo: Path, path: str, content: str, message: str) -> str:
-    """Write content, commit it for real (works whether or not HEAD exists yet -- dirty-tree
-    mining can't see anything on an unborn branch, so a real commit comes first), mine it, then
-    re-commit with `Sgt-Op:` trailers via `lens.put`. `sync.py` reads a remote ref's ideal purely
-    from its tip commit's trailers, without ever checking that ref out -- so any commit that can
-    become a ref's tip in these tests must carry them, exactly like `lens.put` does on every real
-    commit outside tests."""
-    (repo / path).write_text(content, encoding="utf-8")
-    content_sha = GitBinding(repo).commit_all(message)
-    ideal = lens.get(repo)
-    lens.put(repo, ideal, message=f"ugh: mine {message}")
-    return content_sha  # the commit that actually witnesses the diff -- ops' provenance points here
-
-
-def _two_clones(tmp_path: Path, main_py: str) -> tuple[Path, Path]:
-    """A bare remote plus two clones, both past one shared init commit that writes `main_py`."""
-    remote = _init_bare(tmp_path)
-    a = _clone(remote, tmp_path / "a")
-    lens.init(a)
-    _edit_and_commit(a, "main.py", main_py, "init")
-    _push(a)
-    b = _clone(remote, tmp_path / "b")
-    lens.get(b)  # baseline mine, mirrors a fresh teammate clone
-    return a, b
-
+from tests.laws import corpus
 
 _BASE = "def foo():\n    return 1\n\n\ndef bar():\n    return 2\n"
 
 
-def test_sync_merges_disjoint_edits_with_zero_interaction(tmp_path):
-    """AE4: two clones edit disjoint symbols; sync merges with zero interaction and no fork."""
-    a, b = _two_clones(tmp_path, _BASE)
-
-    _edit_and_commit(a, "main.py", "def foo():\n    return 100\n\n\ndef bar():\n    return 2\n", "bump foo")
-    _push(a)
-    _edit_and_commit(b, "main.py", "def foo():\n    return 1\n\n\ndef bar():\n    return 200\n", "bump bar")
-
-    report = sync.sync(b, remote="origin", branch="main")
-
-    assert report.merged
-    assert not report.forks
-    text = (b / "main.py").read_text(encoding="utf-8")
-    assert "return 100" in text  # A's edit
-    assert "return 200" in text  # B's edit, folded together with zero interaction
+def _in(repo, argv) -> int:
+    cwd = os.getcwd()
+    os.chdir(repo)
+    try:
+        return main(argv)
+    finally:
+        os.chdir(cwd)
 
 
-def test_sync_is_idempotent_and_double_mine_is_deterministic(tmp_path):
-    a, b = _two_clones(tmp_path, _BASE)
-    _edit_and_commit(a, "main.py", "def foo():\n    return 100\n\n\ndef bar():\n    return 2\n", "bump foo")
-    _push(a)
-
-    first = sync.sync(b, remote="origin", branch="main")
-    assert first.merged
-
-    ideal_after_sync = lens.get(b)  # re-mining B's own just-written merge commit is a no-op
-    assert ideal_after_sync.op_ids == lens.current_ideal(b).op_ids
-
-    second = sync.sync(b, remote="origin", branch="main")
-    assert not second.merged
-    assert second.message == "already up to date"
+def _json(repo, capsys, *argv):
+    capsys.readouterr()
+    rc = _in(repo, [*argv, "--json"])
+    return rc, json.loads(capsys.readouterr().out)
 
 
-def test_sync_records_a_fork_and_lands_the_forked_symbol_at_the_common_ancestor(tmp_path):
-    """Divergence-as-state (U20/C4, updated from the pre-U20 abort-on-fork behavior): a same-symbol
-    fork no longer aborts the sync. Here the *only* divergence is the forked symbol, so there is no
-    fork-free advance -- but the fork is still recorded as durable, committed `.sgt/forks.json`
-    state, and the forked symbol materializes at the pre-fork common ancestor (never either tip).
-    `merged` is False (an open fork needs attention) even though the reconciling merge commit
-    lands."""
-    a, b = _two_clones(tmp_path, _BASE)
-
-    _edit_and_commit(a, "main.py", "def foo():\n    return 999\n\n\ndef bar():\n    return 2\n", "A: rework foo")
-    _push(a)
-    _edit_and_commit(b, "main.py", "def foo():\n    return 42\n\n\ndef bar():\n    return 2\n", "B: rework foo")
-
-    gb = GitBinding(b)
-    before_head = gb.head()
-
-    report = sync.sync(b, remote="origin", branch="main")
-
-    assert not report.merged  # an open fork -- attention needed
-    assert "ugh resolve" in report.message
-    assert len(report.forks) == 1
-    symbol, _tip_a, _tip_b = report.forks[0]
-    assert symbol == "main.py::foo"
-
-    assert (b / ".sgt" / "forks.json").is_file()  # the fork is durable, shared state (LAW-R)
-    text = (b / "main.py").read_text(encoding="utf-8")
-    assert "return 1" in text  # the forked symbol sits at the common ancestor...
-    assert "return 42" not in text and "return 999" not in text  # ...never either tip
-    assert gb.is_clean()  # the reconciling merge landed cleanly, not left half-applied
-    assert gb.head() == report.merge_sha and gb.head() != before_head  # branch advanced past the fork
+def _save(repo: Path, text: str, message: str, as_label: str | None = None) -> str:
+    (repo / "main.py").write_text(text, encoding="utf-8")
+    out = save(str(repo), message=message, as_label=as_label)
+    assert out["ok"] and out["saved"], out
+    return out["commit"]
 
 
-def test_forks_view_and_fork_detail_view_over_a_real_fork(tmp_path):
-    """`forks_view` adds a cheap `file` field per record; `fork_detail_view` folds each tip on its
-    own downward closure (`order.downset`) so a resolution UI sees both sides' real content -- the
-    forked symbol itself sits at the pre-fork common ancestor in `code(current_ideal)`, never
-    either tip, so this is the only way to see what each side actually wrote."""
-    from ugh.api import fork_detail_view, forks_view
-
-    a, b = _two_clones(tmp_path, _BASE)
-    _edit_and_commit(a, "main.py", "def foo():\n    return 999\n\n\ndef bar():\n    return 2\n", "A: rework foo")
-    _push(a)
-    _edit_and_commit(b, "main.py", "def foo():\n    return 42\n\n\ndef bar():\n    return 2\n", "B: rework foo")
-    report = sync.sync(b, remote="origin", branch="main")
-    assert len(report.forks) == 1
-    _symbol, tip_a, tip_b = report.forks[0]
-
-    fv = forks_view(b)
-    assert fv["open"] == 1
-    assert fv["forks"][0]["symbol"] == "main.py::foo"
-    assert fv["forks"][0]["file"] == "main.py"
-    assert fv["forks"][0]["tips"] == [tip_a, tip_b]  # untouched, still there alongside `file`
-
-    detail = fork_detail_view(b, "main.py::foo")
-    assert [t["op_id"] for t in detail["tips"]] == [tip_a, tip_b]
-    # Both sides' real content is visible, asserted without assuming WHICH slot each landed in:
-    # `order.forks` walks `sorted(ideal_ids)`, so the tip order follows how two content-address
-    # hashes sort, not who wrote which. (That is worth knowing for the resolve UI -- "left" is not
-    # reliably "yours" -- but it is a property of fork *surfacing*, not of this view.)
-    contents = {t["op_id"]: t["files"]["main.py"] for t in detail["tips"]}
-    assert {tip_a, tip_b} == set(contents)
-    assert sorted(("return 999" in c, "return 42" in c) for c in contents.values()) == [
-        (False, True), (True, False),
-    ]
-    assert detail["remedy"] == fv["forks"][0]["remedy"]
-
-    assert fork_detail_view(b, "main.py::no_such_symbol") == {
-        "error": "no open fork for 'main.py::no_such_symbol'", "symbol": "main.py::no_such_symbol",
-    }
-
-
-def test_resolve_cli_lands_a_fork_with_a_manual_override_when_no_oracle_is_configured(tmp_path):
-    """The guided `ugh resolve <sym> --apply` must be completable on the common path where no test
-    runner is configured: the oracle refusal names `--override pass`, and the verb records it."""
-    from ugh.api import forks_view
-    from ugh.cli.resolve import _resolve
-
-    a, b = _two_clones(tmp_path, _BASE)
-    _edit_and_commit(a, "main.py", "def foo():\n    return 999\n\n\ndef bar():\n    return 2\n", "A: rework foo")
-    _push(a)
-    _edit_and_commit(b, "main.py", "def foo():\n    return 42\n\n\ndef bar():\n    return 2\n", "B: rework foo")
-    report = sync.sync(b, remote="origin", branch="main")
-    assert len(report.forks) == 1
-    symbol = report.forks[0][0]  # main.py::foo
-    assert forks_view(b)["open"] == 1
-
-    (b / "main.py").write_text(
-        "def foo():\n    return 999 + 42\n\n\ndef bar():\n    return 2\n", encoding="utf-8"
-    )
-
-    rc = _resolve(str(b), symbol, apply=True, as_json=False,
-                  override="pass", reason="both diffs reconciled by hand", by="reviewer")
-    assert rc == 0
-    assert forks_view(b)["open"] == 0  # the fork is closed
-
-
-def test_sync_dedups_an_op_independently_mined_on_both_clones(tmp_path):
-    """The identification law at sync time: the same symbol added identically on both clones
-    mines to one op id on each side; the union must not double it, and must keep both sides'
-    provenance (git's own `-X ours` merge would otherwise drop one side's witness commit)."""
-    a, b = _two_clones(tmp_path, _BASE)
-    baz = _BASE + "\n\ndef baz():\n    return 42\n"
-
-    a_sha = _edit_and_commit(a, "main.py", baz, "A: add baz")
-    _push(a)
-    b_sha = _edit_and_commit(b, "main.py", baz, "B: add baz (same content, independently)")
-
-    before_ids = {op.id for op in Store(b).all_ops()}
-    report = sync.sync(b, remote="origin", branch="main")
-
-    assert report.merged
-    assert not report.forks
-    after_ids = {op.id for op in Store(b).all_ops()}
-    assert after_ids == before_ids  # zero new op ids -- both sides had already identified it
-    assert report.ops_added == 0
-
-    baz_op = next(op for op in Store(b).all_ops() if "main.py::baz" in op.footprint)
-    assert {a_sha, b_sha} <= set(baz_op.provenance)
-
-
-# -- U8: three-way resolve -- reverts travel, sync stops resurrecting removed work ---------------
-
-_WITH_BAZ = _BASE + "\n\ndef baz():\n    return 42\n"
-
-
-def test_sync_revert_travels_and_removes_the_bytes(tmp_path):
-    """The review's resurrection reproduction, inverted (U8/R10-R11): A adds baz, B syncs it, then A
-    *reverts* baz and pushes. On B's next sync the revert travels -- baz leaves B's ideal *and* its
-    bytes leave the working tree -- instead of the blind union resurrecting it from B's own side."""
-    a, b = _two_clones(tmp_path, _BASE)
-    _edit_and_commit(a, "main.py", _WITH_BAZ, "A: add baz")
-    _push(a)
-    sync.sync(b, remote="origin", branch="main")
-    assert "def baz" in (b / "main.py").read_text(encoding="utf-8")  # B has it after the first sync
-
-    baz_op = next(o for o in Store(a).all_ops() if "main.py::baz" in o.footprint)
-    taken = _revert(a, baz_op.id)  # A reverts baz on its own clone
-    _push(a)
-
-    sync.sync(b, remote="origin", branch="main")
-    assert "def baz" not in (b / "main.py").read_text(encoding="utf-8")  # the revert traveled
-    from ugh.core import oplog
-
-    sha = oplog.tail(a)["sha"]
-    assert taken.undone and sha in GitBinding(b).commit_shas()
-    mined = {op.id for op in Store(a).all_ops() if sha in op.provenance}
-    assert mined and mined <= lens.current_ideal(b).op_ids  # ...as the commit it is
-
-
-def test_sync_of_a_revert_against_a_concurrent_extension_surfaces_a_fork(tmp_path):
-    """Scenario 3: A takes out a base op while B extended that op's symbol. The take-out and the
-    extension are two edits of the same version of `baz`, so the sync surfaces a fork rather than
-    silently keeping either side."""
-    a, b = _two_clones(tmp_path, _BASE)
-    _edit_and_commit(a, "main.py", _WITH_BAZ, "A: add baz")  # base op for baz
-    _push(a)
-    sync.sync(b, remote="origin", branch="main")
-
-    # B extends baz (a new op chaining onto A's baz), A reverts baz's original add.
-    _edit_and_commit(b, "main.py", _BASE + "\n\ndef baz():\n    return 43\n", "B: bump baz")
-    baz_add = next(o for o in Store(a).all_ops() if "main.py::baz" in o.footprint)
-    _revert(a, baz_add.id)
-    _push(a)
-
-    result = sync.sync(b, remote="origin", branch="main")
-    assert [f[0] for f in result.forks] == ["main.py::baz"]
-
-
-def test_revert_travels_to_a_fresh_clone_and_does_not_resurrect(tmp_path):
-    """A revert survives a fresh clone's cold bootstrap: the take-out is a commit in the branch's
-    history, so the clone mines it like any other and baz stays out."""
+def _two_clones(tmp_path: Path, main_py: str) -> tuple[Path, Path]:
+    """A bare remote and two clones of it, both at one shared commit that writes `main.py`."""
     remote = _init_bare(tmp_path)
     a = _clone(remote, tmp_path / "a")
     lens.init(a)
-    _edit_and_commit(a, "main.py", _WITH_BAZ, "A: init with baz")
+    (a / "main.py").write_text(main_py, encoding="utf-8")
+    GitBinding(a).commit_all("init")
+    lens.get(a)
     _push(a)
-
-    baz_op = next(o for o in Store(a).all_ops() if "main.py::baz" in o.footprint)
-    _revert(a, baz_op.id)  # A reverts baz on its own clone
-    _push(a)
-    assert "def baz" not in (a / "main.py").read_text(encoding="utf-8")
-
-    c = _clone(remote, tmp_path / "c")  # a brand-new teammate, no local state to inherit the revert
-    ideal = lens.get(c)  # cold bootstrap: mine branch history + read the shared state ref
-    # The take-out is a commit in the history C mines, so baz stays out of C's fold too.
-    assert "def baz" not in (c / "main.py").read_text(encoding="utf-8")
-    assert b"def baz" not in code(ideal, Store(c).all_ops()).get("main.py", b"")
+    b = _clone(remote, tmp_path / "b")
+    lens.get(b)
+    return a, b
 
 
-# -- plan_sync: the side-effect-free dry run behind the `ugh sync` feedforward pane ------------
-
-def _committed_state(repo: Path) -> dict[str, bytes]:
-    """A byte snapshot of everything a sync would materialize: `main.py` plus every committed `.sgt`
-    file, excluding the append-only op store (`.sgt/ops/`) and the derived local caches
-    (`.sgt/local/`) that `plan_sync` rolls back on its own. A dry run must leave this byte-identical."""
-    state_map: dict[str, bytes] = {}
-    main = repo / "main.py"
-    if main.is_file():
-        state_map["main.py"] = main.read_bytes()
-    for p in sorted((repo / ".sgt").rglob("*")):
-        if not p.is_file():
-            continue
-        rel = p.relative_to(repo).as_posix()
-        if rel.startswith(".sgt/ops/") or rel.startswith(".sgt/local/") or p.name.startswith(".tmp-"):
-            continue
-        state_map[rel] = p.read_bytes()
-    return state_map
+def _git(repo, *args) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
 
 
-def test_plan_sync_predicts_the_fold_and_leaves_no_trace(tmp_path):
-    """The dry run (`fetch -> ingest -> resolve`, no `materialize`) reports the op count a sync would
-    fold in, and -- like a blocked land (R7) -- rolls back so the working tree, the committed `.sgt`
-    state, and the local branch tip stay byte-identical. A following real sync folds in exactly the
-    predicted op count."""
-    a, b = _two_clones(tmp_path, _BASE)
-    _edit_and_commit(a, "main.py", "def foo():\n    return 100\n\n\ndef bar():\n    return 2\n", "bump foo")
-    _push(a)
-
-    gb = GitBinding(b)
-    before_head = gb.head()
-    lens.get(b)  # settle mine-on-contact caches first, so the snapshot below is the steady state
-    before_state = _committed_state(b)
-
-    plan = sync.plan_sync(b, remote="origin", branch="main")
-
-    assert plan.ops_added > 0 and not plan.forks
-    assert gb.head() == before_head  # the local branch did not move
-    assert _committed_state(b) == before_state  # no trace (R7)
-
-    report = sync.sync(b, remote="origin", branch="main")
-    assert report.merged and report.ops_added == plan.ops_added  # the dry run predicted the real fold
+def _choices(repo, capsys) -> list[str]:
+    _rc, view = _json(repo, capsys, "status")
+    return [c["address"] for c in view["choices"]]
 
 
-def test_plan_sync_short_circuits_when_already_up_to_date(tmp_path):
-    """Nothing new on the remote -> the fetch short-circuits and the plan reports `up_to_date`
-    without running ingest/resolve, so the pane can say 'nothing to fold in' before the merge path."""
-    a, b = _two_clones(tmp_path, _BASE)
-    _edit_and_commit(a, "main.py", "def foo():\n    return 100\n\n\ndef bar():\n    return 2\n", "bump foo")
-    _push(a)
-    sync.sync(b, remote="origin", branch="main")  # b is now current with the remote
+# -- a save is a git commit ---------------------------------------------------------------------
 
-    plan = sync.plan_sync(b, remote="origin", branch="main")
-    assert plan.up_to_date and plan.ops_added == 0 and not plan.forks
-
-
-def test_plan_sync_surfaces_a_would_be_fork_without_recording_it(tmp_path):
-    """A same-symbol divergence *surfaces* in the plan (`forks` non-empty) so the pane can warn, but
-    the dry run must not write the committed `.sgt/forks.json` a real sync would -- the fork is
-    predicted, not yet recorded."""
-    a, b = _two_clones(tmp_path, _BASE)
-    _edit_and_commit(a, "main.py", "def foo():\n    return 999\n\n\ndef bar():\n    return 2\n", "A: rework foo")
-    _push(a)
-    _edit_and_commit(b, "main.py", "def foo():\n    return 42\n\n\ndef bar():\n    return 2\n", "B: rework foo")
-
-    plan = sync.plan_sync(b, remote="origin", branch="main")
-    assert len(plan.forks) == 1 and plan.forks[0][0] == "main.py::foo"
-    assert not (b / ".sgt" / "forks.json").is_file()  # nothing recorded -- a dry run leaves no fork state
-
-
-# -- `ugh sync` CLI gate: the pane is the confirm step on a tty, immediate-apply otherwise --------
-
-def _diverge_for_sync(tmp_path) -> Path:
-    """A/B two clones with disjoint edits pushed on A, so a `sync` on B has real fork-free work to
-    fold in (the CLI gate has something to confirm)."""
-    a, b = _two_clones(tmp_path, _BASE)
-    _edit_and_commit(a, "main.py", "def foo():\n    return 100\n\n\ndef bar():\n    return 2\n", "bump foo")
-    _push(a)
-    return b
-
-
-def test_sync_cli_non_tty_merges_immediately(tmp_path):
-    """The machine/CI contract: `ugh sync` on a non-tty (pytest's captured streams) skips the
-    confirm and folds the teammate's work in."""
-    from ugh.cli.sync import _sync
-
-    b = _diverge_for_sync(tmp_path)
-    before = GitBinding(b).head()
-    assert _sync(str(b), "origin", "main", as_json=False) == 0
-    assert GitBinding(b).head() != before  # merged
-
-
-def test_sync_cli_tty_abort_merges_nothing(tmp_path, monkeypatch, capsys):
-    """On a tty, sync prints what it would fold in and asks: a no leaves the local branch frozen
-    (rc 1)."""
-    import sys
-
-    from ugh.cli.sync import _sync
-
-    b = _diverge_for_sync(tmp_path)
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: True, raising=False)
-    monkeypatch.setattr(sys.stdout, "isatty", lambda: True, raising=False)
-    monkeypatch.setattr("builtins.input", lambda *a: "n")
-
-    before = GitBinding(b).head()
-    assert _sync(str(b), "origin", "main", as_json=False) == 1
-    out = capsys.readouterr().out
-    assert "Folds in" in out and "aborted" in out
-    assert GitBinding(b).head() == before  # frozen
-
-
-def test_sync_cli_tty_confirm_merges(tmp_path, monkeypatch):
-    """A confirm on a tty runs the real sync and advances the local branch."""
-    import sys
-
-    from ugh.cli.sync import _sync
-
-    b = _diverge_for_sync(tmp_path)
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: True, raising=False)
-    monkeypatch.setattr(sys.stdout, "isatty", lambda: True, raising=False)
-    monkeypatch.setattr("builtins.input", lambda *a: "y")
-
-    before = GitBinding(b).head()
-    assert _sync(str(b), "origin", "main", as_json=False) == 0
-    assert GitBinding(b).head() != before  # merged
-
-
-def test_sync_cli_json_never_confirms(tmp_path, monkeypatch):
-    """`--json` keeps its immediate-apply contract even on a tty: it never asks."""
-    import sys
-
-    from ugh.cli.sync import _sync
-
-    b = _diverge_for_sync(tmp_path)
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: True, raising=False)
-    monkeypatch.setattr(sys.stdout, "isatty", lambda: True, raising=False)
-
-    def boom(*a, **k):
-        raise AssertionError("--json must not prompt")
-
-    monkeypatch.setattr("builtins.input", boom)
-    assert _sync(str(b), "origin", "main", as_json=True) == 0
-
-
-def _bare_head(remote: Path, branch: str = "main") -> str | None:
-    import subprocess
-    proc = subprocess.run(
-        ["git", "-C", str(remote), "rev-parse", branch], capture_output=True, text=True, check=False
-    )
-    return proc.stdout.strip() if proc.returncode == 0 else None
-
-
-def test_push_aborts_the_branch_when_state_ref_cannot_publish(tmp_path, monkeypatch):
-    """Push-ordering invariant (§D, Step 6): a branch commit's `Sgt-Op:` trailers name ops that live
-    only on `refs/ugh/state`, so if that ref cannot be published to the remote, `ugh push` must NOT
-    push the branch -- else the branch references ops that aren't durable. Simulate an unrecoverable
-    state push and assert the remote branch does not move."""
-    from ugh.cli.sync import _push
-    from ugh.core.sync import state_ref
-
-    remote = tmp_path / "remote.git"
+def test_save_commits_exactly_the_working_tree_with_no_op_trailers(tmp_path, capsys):
     a, _b = _two_clones(tmp_path, _BASE)
-    _edit_and_commit(a, "main.py", "def foo():\n    return 42\n\n\ndef bar():\n    return 2\n", "bump foo")
-    remote_before = _bare_head(remote)
+    (a / "main.py").write_text(_BASE.replace("return 1", "return 100"), encoding="utf-8")
+    (a / "notes.txt").write_text("hello\n", encoding="utf-8")
 
-    def _boom(*args, **kwargs):
-        raise state_ref.StateRefError("simulated unrecoverable state push")
+    rc, out = _json(a, capsys, "save", "-m", "bump foo")
 
-    monkeypatch.setattr(state_ref, "publish_and_push", _boom)
+    gb = GitBinding(a)
+    assert rc == 0 and out["saved"]
+    assert gb.blob_bytes("HEAD", "main.py") == (a / "main.py").read_bytes()
+    assert gb.blob_bytes("HEAD", "notes.txt") == b"hello\n"
+    assert gb.is_clean()
+    assert "Sgt-Op" not in gb.commit_message("HEAD")
 
-    assert _push(str(a), "origin", "main", as_json=False) != 0
-    assert _bare_head(remote) == remote_before  # the branch push never ran
+
+def test_a_clone_made_after_a_save_has_the_same_steps_and_log_and_no_ops_travel(tmp_path, capsys):
+    a, _b = _two_clones(tmp_path, _BASE)
+    _save(a, _BASE.replace("return 1", "return 100"), "bump foo", as_label="speed")
+    assert _in(a, ["push"]) == 0
+
+    c = _clone(tmp_path / "remote.git", tmp_path / "c")
+    assert _in(c, ["init", "--json"]) == 0
+
+    assert _json(c, capsys, "log")[1] == _json(a, capsys, "log")[1]
+    state = _git(tmp_path / "remote.git", "ls-tree", "-r", "--name-only", "refs/ugh/state").stdout
+    assert state.strip() and ".sgt/ops/" not in state
 
 
-def test_pre_1_2_remote_without_state_ref_falls_back_to_mining(tmp_path):
-    """Backward-compat bootstrap (§D): a remote predating Phase 1.2 has no `refs/ugh/state`. A fresh
-    clone can't fetch it, but the branch history still carries every `Sgt-Op:` trailer, so `lens.get`
-    reconstructs the ideal by mining from branch history -- never an error, just cold mining."""
-    import subprocess
+# -- sync merges unit by unit -------------------------------------------------------------------
 
+def test_sync_merges_different_definitions_changed_on_each_side(tmp_path, capsys):
+    a, b = _two_clones(tmp_path, _BASE)
+    _save(a, _BASE.replace("return 1", "return 100"), "bump foo")
+    _push(a)
+    _save(b, _BASE.replace("return 2", "return 200"), "bump bar")
+
+    rc, _out = _json(b, capsys, "sync")
+
+    assert rc == 0
+    assert (b / "main.py").read_text() == _BASE.replace("return 1", "return 100").replace("return 2", "return 200")
+    assert len(GitBinding(b).parents("HEAD")) == 2
+    assert _choices(b, capsys) == []
+
+
+_LONG = "def foo():\n    a = 1\n    b = 2\n    c = 3\n    return a + b + c\n\n\ndef bar():\n    return 2\n"
+
+
+def test_sync_merges_one_function_changed_on_different_lines(tmp_path, capsys):
+    a, b = _two_clones(tmp_path, _LONG)
+    _save(a, _LONG.replace("a = 1", "a = 10"), "a is ten")
+    _push(a)
+    _save(b, _LONG.replace("c = 3", "c = 30"), "c is thirty")
+
+    rc, _out = _json(b, capsys, "sync")
+
+    assert rc == 0
+    assert (b / "main.py").read_text() == _LONG.replace("a = 1", "a = 10").replace("c = 3", "c = 30")
+    assert _choices(b, capsys) == []
+
+
+_THEIRS = _BASE.replace("return 1", "return 999")
+_OURS = _BASE.replace("return 1", "return 42")
+
+
+@pytest.fixture
+def choice(tmp_path, capsys):
+    """Clone a changed foo's one line to 999 and pushed; clone b changed it to 42 and synced."""
+    a, b = _two_clones(tmp_path, _BASE)
+    _save(a, _THEIRS, "foo is 999")
+    _push(a)
+    _save(b, _OURS, "foo is 42")
+    rc, out = _json(b, capsys, "sync")
+    assert rc == 0, out
+    return a, b
+
+
+def test_the_same_lines_changed_differently_keep_ours_as_a_two_version_choice(choice, capsys):
+    _a, b = choice
+    assert (b / "main.py").read_text() == _OURS
+    assert _choices(b, capsys) == ["main.py::foo"]
+    assert "Ugh-Choice: main.py::foo" in GitBinding(b).commit_message("HEAD")
+
+
+def test_save_refuses_while_a_choice_is_pending_and_names_it(choice, capsys):
+    _a, b = choice
+    (b / "main.py").write_text(_OURS.replace("return 2", "return 7"), encoding="utf-8")
+    head = GitBinding(b).head()
+
+    rc, out = _json(b, capsys, "save", "-m", "more")
+
+    assert rc != 0 and not out["ok"]
+    assert "main.py::foo" in out["error"] and "ugh resolve main.py::foo" in out["error"]
+    assert GitBinding(b).head() == head
+
+
+def test_resolve_prints_both_versions_and_changes_nothing(choice, capsys):
+    _a, b = choice
+    head = GitBinding(b).head()
+    capsys.readouterr()
+
+    assert _in(b, ["resolve", "main.py::foo"]) == 0
+
+    printed = capsys.readouterr().out
+    assert "return 42" in printed and "return 999" in printed
+    assert GitBinding(b).head() == head and GitBinding(b).is_clean()
+
+
+def test_resolve_theirs_writes_theirs_and_commits_the_resolution(choice, capsys):
+    _a, b = choice
+
+    rc, _out = _json(b, capsys, "resolve", "main.py::foo", "--theirs")
+
+    assert rc == 0
+    assert (b / "main.py").read_text() == _THEIRS
+    assert "Ugh-Resolves: main.py::foo" in GitBinding(b).commit_message("HEAD")
+    assert _choices(b, capsys) == []
+    (b / "main.py").write_text(_THEIRS.replace("return 2", "return 7"), encoding="utf-8")
+    assert _json(b, capsys, "save", "-m", "more")[1]["saved"]
+
+
+@pytest.mark.parametrize("pick", ["--theirs", "--ours"])
+def test_the_record_reproduces_the_file_after_a_resolution(choice, capsys, pick):
+    from ugh.core import lens
+    from ugh.core.fold import code
+
+    _a, b = choice
+    assert _json(b, capsys, "resolve", "main.py::foo", pick)[0] == 0
+    ideal = lens.current_ideal(b)
+    assert code(ideal, lens.ops_with_frontier_images(b, ideal))["main.py"] == (b / "main.py").read_bytes()
+
+
+def test_resolve_apply_keeps_what_the_file_now_holds(choice, capsys):
+    _a, b = choice
+    (b / "main.py").write_text(_BASE.replace("return 1", "return 42 + 999"), encoding="utf-8")
+
+    rc, _out = _json(b, capsys, "resolve", "main.py::foo", "--apply")
+
+    assert rc == 0
+    assert GitBinding(b).blob_bytes("HEAD", "main.py") == _BASE.replace("return 1", "return 42 + 999").encode()
+    assert _choices(b, capsys) == []
+
+
+def test_the_other_clone_sees_the_choice_and_its_resolution_after_its_own_sync(choice, capsys):
+    a, b = choice
+    _push(b)
+    assert _json(a, capsys, "sync")[0] == 0
+    assert GitBinding(a).head() == GitBinding(b).head()  # a fast-forward
+    assert _choices(a, capsys) == ["main.py::foo"]
+
+    assert _json(b, capsys, "resolve", "main.py::foo", "--theirs")[0] == 0
+    _push(b)
+    assert _json(a, capsys, "sync")[0] == 0
+    assert _choices(a, capsys) == []
+    assert (a / "main.py").read_text() == _THEIRS
+
+
+def test_a_definition_deleted_on_one_side_and_changed_on_the_other_is_a_choice(tmp_path, capsys):
+    a, b = _two_clones(tmp_path, _BASE)
+    _save(a, "def foo():\n    return 1\n", "drop bar")
+    _push(a)
+    _save(b, _BASE.replace("return 2", "return 200"), "bump bar")
+
+    assert _json(b, capsys, "sync")[0] == 0
+
+    assert (b / "main.py").read_text() == _BASE.replace("return 2", "return 200")
+    assert _choices(b, capsys) == ["main.py::bar"]
+
+
+def test_sync_is_a_no_op_when_theirs_is_already_in_ours(tmp_path, capsys):
+    a, b = _two_clones(tmp_path, _BASE)
+    _save(b, _OURS, "foo is 42")
+    head = GitBinding(b).head()
+
+    rc, out = _json(b, capsys, "sync")
+
+    assert rc == 0 and out["message"] == "already up to date"
+    assert GitBinding(b).head() == head
+
+
+@pytest.mark.parametrize("taken", ["ours", "theirs", "both"])
+def test_a_plain_git_merge_is_settled(tmp_path, capsys, taken):
+    a, b = _two_clones(tmp_path, _BASE)
+    theirs_sha = _save(a, _THEIRS, "foo is 999")
+    _push(a)
+    ours_sha = _save(b, _OURS, "foo is 42")
+    _git(b, "fetch", "-q", "origin")
+    assert _git(b, "merge", "origin/main").returncode != 0  # git conflicts on foo
+    text = {"ours": _OURS, "theirs": _THEIRS, "both": _BASE.replace("return 1", "return 42 + 999")}[taken]
+    (b / "main.py").write_text(text, encoding="utf-8")
+    _git(b, "add", "main.py")
+    assert _git(b, "commit", "-q", "--no-edit").returncode == 0
+
+    assert _choices(b, capsys) == []
+    assert _json(b, capsys, "check", "--tree")[1]["drift"] == []
+    rec = Record(b)
+    assert {st.sha for st in rec.ctx.unit_steps["main.py::foo"]} >= {ours_sha, theirs_sha}
+
+
+# -- names and the state ref --------------------------------------------------------------------
+
+def test_names_reach_the_other_clone_through_push_and_sync(tmp_path, capsys):
+    a, b = _two_clones(tmp_path, _BASE)
+    _save(a, _THEIRS, "foo is 999", as_label="speed")
+    assert _in(a, ["push"]) == 0
+    assert _json(b, capsys, "sync")[0] == 0
+    assert set(names.load(b).values()) == {"speed"}
+
+    assert _json(b, capsys, "name", "main.py::bar", "billing")[0] == 0
+    assert _in(b, ["push"]) == 0
+    assert _json(a, capsys, "sync")[0] == 0
+    assert names.load(a) == names.load(b) and set(names.load(a).values()) == {"speed", "billing"}
+
+
+def test_ideal_for_ref_is_the_ideal_mined_from_that_refs_history(tmp_path):
+    repo = corpus.CORPUS["diverged_chain"].build(tmp_path / "repo")
+    corpus.checkout(repo, "release")
+    release = lens.get(repo).op_ids
+    corpus.checkout(repo, "main")
+    lens.get(repo)
+    # an old `Sgt-Op:` trailer naming the other branch's op is ignored
+    GitBinding(repo).commit_all("note", trailers="".join(f"Sgt-Op: {o}\n" for o in sorted(release)))
+    main = lens.get(repo).op_ids
+
+    assert lens.ideal_for_ref(repo, "release").op_ids == release
+    assert lens.ideal_for_ref(repo, "main").op_ids == main
+
+
+# -- push ---------------------------------------------------------------------------------------
+
+def test_push_never_forces_and_routes_a_rejection_to_sync(tmp_path, capsys):
+    a, b = _two_clones(tmp_path, _BASE)
+    _save(a, _THEIRS, "foo is 999")
+    _push(a)
+    _save(b, _BASE.replace("return 2", "return 8"), "bar is 8")
+    gb = GitBinding(b)
+
+    with pytest.raises(PushRejected):
+        gb.push("origin", "main")
+    rc, out = _json(b, capsys, "push")
+    assert rc == 1 and out["rejected"] and out["remedy"] == "ugh sync origin main"
+    assert gb.head() != gb.rev_parse("origin/main")
+
+
+def test_push_leaves_the_branch_alone_when_the_state_ref_cannot_publish(tmp_path, monkeypatch):
     from ugh.core.sync import state_ref
 
-    remote = _init_bare(tmp_path)
-    a = _clone(remote, tmp_path / "a")
-    lens.init(a)
-    _edit_and_commit(a, "main.py", _BASE, "init")
-    _edit_and_commit(a, "main.py", "def foo():\n    return 100\n\n\ndef bar():\n    return 2\n", "bump foo")
-    # Push ONLY the branch -- simulate a pre-1.2 remote that never learned about refs/ugh/state.
-    subprocess.run(["git", "-C", str(a), "push", "-q", "origin", "main"], check=True, capture_output=True)
-    a_ideal = lens.get(a)
+    a, _b = _two_clones(tmp_path, _BASE)
+    _save(a, _THEIRS, "foo is 999")
+    before = _git(tmp_path / "remote.git", "rev-parse", "main").stdout
 
-    b = _clone(remote, tmp_path / "b")  # the remote has no state ref, so `_clone` fetches nothing
-    assert state_ref.read_sha(GitBinding(b)) is None  # the bootstrap precondition holds
-    b_ideal = lens.get(b)  # must mine from branch history rather than error
+    def boom(*_args, **_kwargs):
+        raise state_ref.StateRefError("simulated")
 
-    assert b_ideal.op_ids == a_ideal.op_ids  # cold mining re-derives the same content-addressed ideal
+    monkeypatch.setattr(state_ref, "publish_and_push", boom)
+    assert _in(a, ["push"]) != 0
+    assert _git(tmp_path / "remote.git", "rev-parse", "main").stdout == before

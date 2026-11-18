@@ -2,8 +2,7 @@
 
 `get()` mines committed history *and* the current uncommitted working tree (dirty edits land as
 pending ops with empty provenance, folded into the returned ideal but never persisted to
-`.sgt/local/ideal.json`); `put()` refuses to overwrite an unabsorbed dirty change rather than
-clobbering it (U7.5, closing the two gaps FINDINGS.md flagged under its 2026-07-07 U6 entry).
+`.sgt/local/ideal.json`).
 """
 
 from __future__ import annotations
@@ -13,16 +12,14 @@ import pytest
 from ugh.core.fold import code
 import ugh.core.lens as lens_mod
 from ugh.core.lens import (
-    DirtyWorkingTreeError,
     _load_ideal_table,
     _ref_key,
     get,
     init,
     ops_with_frontier_images,
-    put,
     sync_status,
 )
-from ugh.core.order import chain_edges, is_valid_ideal
+from ugh.core.order import is_valid_ideal
 from ugh.core.store import Store
 from ugh.store.gitbind import GitBinding, init_store
 from tests.laws import corpus
@@ -38,19 +35,9 @@ def _revert(repo, ref):
         ref = current_ideal(repo).frontier(opindex.index_ops(repo))[ref]
     return planner.apply(repo, planner.plan(repo, [st for st, ops in planner._Ctx(repo).steps.items() if ref in ops], target=ref))
 
-def test_put_get_fixed_point(tmp_path):
-    """put-get: materializing an ideal and re-mining the witness commit it just wrote yields
-    zero new ops."""
-    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
-    ideal = get(repo)
-    put(repo, ideal)
-    reidealed = get(repo)
-    assert reidealed.op_ids == ideal.op_ids
-
-
 def test_ops_with_frontier_images_skips_a_corrupt_frontier_op(tmp_path, monkeypatch):
     """R1 read-side skip: a truncated/garbled frontier op file must degrade to a drop, not error
-    the read views (`status_view`, `fsck_tree`, `_reproducible_content`) built on this. The op is
+    the read views (`status_view`, `fsck_tree`) built on this. The op is
     excluded entirely rather than kept footprint-only -- its `images={}` would fold to silent
     zero-length content for the symbols it produces, a worse failure than its absence.
 
@@ -58,8 +45,7 @@ def test_ops_with_frontier_images_skips_a_corrupt_frontier_op(tmp_path, monkeypa
     frontier producer; otherwise `index_ops`' self-heal would drop it before `_safe_get` ever ran
     (that path is itself fine, but it wouldn't exercise the read-side skip this pins)."""
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
-    ideal = get(repo)
-    put(repo, ideal)
+    get(repo)
     ideal = lens_mod.current_ideal(repo)
 
     store = Store(repo)
@@ -211,8 +197,8 @@ def test_horizon_init_chains_onto_its_genesis_op(tmp_path):
 
     all_ops = store.all_ops()
     assert is_valid_ideal(all_ops, ideal.op_ids)
-    edges = chain_edges(all_ops)
-    assert any(a == genesis_ops[0].id for a, _b in edges)  # something chains onto the genesis op
+    genesis_after = genesis_ops[0].footprint["a.py::foo"][1]
+    assert any(op.footprint.get("a.py::foo", (None,))[0] == genesis_after for op in all_ops)
 
 
 def test_get_on_empty_repo_returns_empty_ideal(tmp_path):
@@ -538,47 +524,6 @@ def test_unchanged_dirty_tree_skips_the_repeat_dirty_pass(tmp_path, monkeypatch)
     assert calls["n"] >= 1  # a genuine change re-runs the pass (R9 preserved)
 
 
-def test_put_refuses_to_clobber_an_unabsorbed_dirty_edit(tmp_path):
-    """R9 (U7.5): `put()` of an ideal that targets *different* bytes than an uncommitted edit on
-    disk raises rather than silently reverting the edit; it refuses before touching the tree."""
-    repo = tmp_path / "repo"
-    gb, _ = init_store(repo)
-    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("add foo")
-    baseline = get(repo)  # materializes foo == 1
-
-    (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")  # dirty, uncommitted
-
-    with pytest.raises(DirtyWorkingTreeError):
-        put(repo, baseline)  # would overwrite the uncommitted foo == 2 with foo == 1
-
-    assert (repo / "a.py").read_bytes() == b"def foo():\n    return 2\n"  # tree left untouched
-
-
-def test_a_dirty_ignored_tier_file_does_not_block_a_materializing_edit(tmp_path):
-    """A tracked path ugh deliberately never mines -- a dot-path, a gitignored path, a lockfile:
-    the `ignored` tier -- is outside ugh's remit, not a path the ideal dropped. `code()` never
-    produces it, so the old guard read "tracked but absent from `materialized`" as "the ideal
-    deletes this" and refused every `put()` while it was dirty. One uncommitted `.gitignore` line
-    then blocked `save`, `undo`, `revert --yes` and `restore` alike, and the remedy the error named
-    (`ugh save`) answered `nothing to save` because an ignored path mints no op -- a loop with no
-    way out that does not go through git."""
-    repo = tmp_path / "repo"
-    gb, _ = init_store(repo)
-    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    (repo / ".gitignore").write_text("__pycache__/\n", encoding="utf-8")
-    gb.commit_all("add foo and a gitignore")
-    baseline = get(repo)
-
-    (repo / ".gitignore").write_text("__pycache__/\n.DS_Store\n", encoding="utf-8")  # dirty, unminable
-
-    put(repo, baseline, message="an edit while the gitignore is dirty")
-
-    # The fold neither refused nor touched it: an ignored path is ugh's to leave alone entirely.
-    assert (repo / ".gitignore").read_text(encoding="utf-8") == "__pycache__/\n.DS_Store\n"
-    assert (repo / "a.py").is_file()
-
-
 def test_clean_merge_does_not_fork_a_twice_edited_branch_symbol(tmp_path):
     """1.3 (F7 root cause): mining a merge commit against its FIRST PARENT ONLY re-attributes the
     second parent's whole cumulative delta as one op whose before_version is the merge-base version.
@@ -612,23 +557,6 @@ def test_clean_merge_does_not_fork_a_twice_edited_branch_symbol(tmp_path):
     ideal = get(repo)
     materialized = code(ideal, Store(repo).all_ops())
     assert materialized["a.py"] == b"def foo():\n    return 3\n"  # NOT rolled back to the base v1
-
-
-def test_put_does_not_false_refuse_an_in_sync_unrelated_file(tmp_path):
-    """The 0.1 guard is delta-scoped: on an in-sync repo an unrelated file's on-disk bytes already
-    equal what the ideal materializes, so a one-symbol revert never trips the drift guard for it.
-    Guards against over-refusal breaking every normal materializing verb."""
-    repo = tmp_path / "repo"
-    gb, _ = init_store(repo)
-    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    (repo / "b.py").write_text("def bar():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("add foo and bar")
-    ideal = get(repo)
-    put(repo, ideal)  # in sync: disk == code(current_ideal) everywhere
-
-    _revert(repo, "a.py::foo")  # a one-file edit; must not refuse over the in-sync b.py
-
-    assert (repo / "b.py").read_bytes() == b"def bar():\n    return 1\n"  # unrelated file untouched
 
 
 def test_init_on_large_corpus_repo_within_budgets(tmp_path):
@@ -695,135 +623,21 @@ def test_get_survives_add_delete_readd_fork_in_linear_history(tmp_path):
     assert current_ideal(repo).op_ids == ideal.op_ids
 
 
-def test_local_rebuild_records_a_genuine_fork_in_the_shared_store(tmp_path):
-    """1.4 (F7/F8 residual): merge-aware mining (1.3) stops a *clean* merge from forking, but a merge
-    that genuinely *conflicts* on one symbol still lands both divergent tips in committed history -- a
-    real fork. `fork_free` parks the symbol at the common ancestor by dropping both tips, and used to
-    do so *silently* (`order.py`), so `ugh forks`/`resolve` saw nothing to reconcile. The local
-    rebuild must now record what it parked in the one shared fork store, exactly as sync/land do --
-    park AND report, never silently exclude."""
-    from ugh import state
-
-    repo = tmp_path / "repo"
-    gb, _ = init_store(repo)
-    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("base: foo v1")
-    get(repo)  # mine the base
-    main = gb.symbolic_ref().rsplit("/", 1)[-1]
-
-    # feature and main each edit foo from the SAME base version -> a real conflict on merge
-    gb._git("checkout", "-q", "-b", "feature")
-    (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
-    gb.commit_all("feature: foo v2")
-
-    gb._git("checkout", "-q", main)
-    (repo / "a.py").write_text("def foo():\n    return 3\n", encoding="utf-8")
-    gb.commit_all("main: foo v3")
-
-    # a conflicting merge; resolve to main's side and complete the two-parent merge commit by hand.
-    gb._git("merge", "--no-edit", "feature", check=False)  # exits non-zero: conflict
-    (repo / "a.py").write_text("def foo():\n    return 3\n", encoding="utf-8")
-    gb._git("add", "a.py")
-    gb._git("commit", "--no-edit")
-
-    ideal = get(repo)  # cold rebuild encounters the genuine fork
-    all_ops = Store(repo).all_ops()
-    assert is_valid_ideal(all_ops, ideal.op_ids)  # parked -> still a valid ideal, never a crash
-    # the symbol parked at its common ancestor: both divergent tips dropped, so foo reads v1.
-    assert code(ideal, all_ops)["a.py"] == b"def foo():\n    return 1\n"
-
-    # ...and the parked fork is surfaced in the one shared store, not silently excluded.
-    records = state.load_json(repo, "forks", default=[])
-    assert any(r["symbol"] == "a.py::foo" for r in records)
-
-
-# -- U1: safe materialization (symlink guard + deletion backstop) -----------------------------
-
-
-def test_put_does_not_write_or_delete_through_symlink(tmp_path):
-    """Review reproduction (data loss): a symlink pointing outside the repo must never be written
-    through nor removed by materialization. Mining leaves the link unmanaged (R3), and
-    `_write_working_tree`'s lstat guard refuses any write/delete at a symlink leaf or ancestor, so
-    an unrelated `put` leaves both the link and its external target intact."""
-    repo = tmp_path / "repo"
-    gb, _ = init_store(repo)
-    outside = tmp_path / "outside.txt"
-    outside.write_text("SECRET\n", encoding="utf-8")
-
-    (repo / "a.py").write_text("x = 1\n", encoding="utf-8")
-    gb.commit_all("add a")
-    (repo / "link.txt").symlink_to(outside)
-    gb.commit_all("add link")
-
-    (repo / "a.py").write_text("x = 2\n", encoding="utf-8")  # unrelated edit
-    ideal = get(repo)
-    put(repo, ideal)
-
-    assert outside.read_text() == "SECRET\n"          # external target never written through
-    assert (repo / "link.txt").is_symlink()           # link itself never deleted
-
-
-def test_write_working_tree_refuses_symlinked_ancestor(tmp_path):
-    """Defense in depth: even if a materialized path's ancestor directory is a symlink on disk,
-    the write is refused rather than following the link out of the repo."""
-    from ugh.core.lens import _write_working_tree
-
-    repo = tmp_path / "repo"
-    init_store(repo)
-    outside = tmp_path / "outside"
-    outside.mkdir()
-    (repo / "pkg").symlink_to(outside, target_is_directory=True)
-
-    _write_working_tree(repo, {"pkg/mod.py": b"data\n"}, [])
-
-    assert not (outside / "mod.py").exists()          # never wrote through the symlinked dir
-
-
-def test_put_reproduces_a_rebirth_file_via_its_chain(tmp_path):
-    """AE1 across the Phase-A -> Phase-D transition: pre-U9 an add->delete->re-add history dropped
-    both `notes.txt` births as a fork and the U1 *backstop* kept the live file on disk; post-U9 the
-    re-add chains FROM the deletion into one valid chain, so the path is now reproducible from the
-    ideal and `put` reproduces it directly -- rebirth no longer needs the backstop at all. (The
-    backstop mechanism itself is now only reachable via a genuine multi-clone content fork -- a
-    dedicated fixture for it is a U1/U2 follow-up; see FINDINGS.) `put` leaves the live bytes intact."""
-    repo = tmp_path / "repo"
-    gb, _ = init_store(repo)
-
-    (repo / "keep.py").write_text("def keep():\n    return 1\n", encoding="utf-8")
-    (repo / "notes.txt").write_text("alpha\n", encoding="utf-8")
-    gb.commit_all("add keep and notes")
-    (repo / "notes.txt").unlink()
-    gb.commit_all("delete notes")
-    (repo / "notes.txt").write_text("beta\n", encoding="utf-8")
-    gb.commit_all("re-add notes")
-
-    ideal = get(repo)
-    assert code(ideal, Store(repo).all_ops())["notes.txt"] == b"beta\n"  # U9: reproduced via the chain
-    put(repo, ideal)
-
-    assert (repo / "notes.txt").exists()                          # live file survives
-    assert (repo / "notes.txt").read_text() == "beta\n"           # with its live content
-
-
 # -- U2: fsck --tree classification (code(current_ideal) vs HEAD tree) -------------------------
 
 
-def test_fsck_tree_clean_after_put_has_no_drift(tmp_path):
-    """R2: after `put` writes `code(ideal)` and commits, the HEAD tree *is* `code(current_ideal)`,
-    so `fsck --tree` finds zero real drift (the self-hosting invariant in miniature)."""
+def test_fsck_tree_clean_after_get_has_no_drift(tmp_path):
+    """R2: the mined record reproduces HEAD, so `fsck --tree` finds zero drift."""
     from ugh.core.lens import fsck_tree
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
-    ideal = get(repo)
-    put(repo, ideal)
+    get(repo)
     result = fsck_tree(repo)
     assert result["drift"] == []
 
 
-def test_fsck_tree_rebirth_file_reproduced_not_drift_or_backstop(tmp_path):
-    """R2 across the Phase-A -> Phase-D transition: pre-U9 an add->delete->re-add file was dropped
-    from `code(I)` and `--tree` classified it backstop-kept; post-U9 (U9) the re-add chains into one
-    valid chain, so the file is reproduced by `code(current_ideal)` and matches the HEAD tree -- no
-    drift and no backstop entry. `--tree` must not misreport the now-reproducible file as drift (AE1)."""
+def test_fsck_tree_rebirth_file_reproduced_not_drift(tmp_path):
+    """R2: an add->delete->re-add file chains through its deletion, so `code(current_ideal)`
+    reproduces it and `--tree` does not report it as drift."""
     from ugh.core.lens import fsck_tree
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
@@ -837,8 +651,7 @@ def test_fsck_tree_rebirth_file_reproduced_not_drift_or_backstop(tmp_path):
 
     get(repo)
     result = fsck_tree(repo)
-    assert "notes.txt" not in result["drift"]           # reproduced cleanly, never misreported
-    assert "notes.txt" not in result["backstop_kept"]   # U9: no longer needs the backstop
+    assert "notes.txt" not in result["drift"]
 
 
 def test_fsck_tree_reports_real_drift_for_a_foreign_edit(tmp_path):
@@ -846,8 +659,7 @@ def test_fsck_tree_reports_real_drift_for_a_foreign_edit(tmp_path):
     is real drift -- surfaced with a remedy direction, not hidden."""
     from ugh.core.lens import fsck_tree
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
-    ideal = get(repo)
-    put(repo, ideal)
+    get(repo)
     # a foreign commit that changes a tracked file's bytes without going through ugh; pin the
     # recorded ideal/witness so `fsck_tree` compares the *old* ideal against the drifted HEAD.
     gb = GitBinding(repo)
@@ -889,27 +701,21 @@ def test_fsck_tree_classifies_a_tracked_path_with_a_non_ascii_name(tmp_path):
     (`"a/\\346\\234\\272.bin"`). That quoted literal names nothing on disk, so the `is_file()` guard in
     `_status_paths`' `to_delete` filter dropped it, and the path fell out of `backstop_kept`,
     `unmanaged`, and `drift` alike -- reported as nothing at all. On yanshengjia/ml-road that silently
-    excused three tracked PDFs (5.6MB, 12MB, 35MB) that ugh never composes, and because the evaluation's
-    denominator counts them as in scope, they scored as *successes*: 10 points of inflation on a 30-file
-    repo. Same `is_file()`-swallows-a-misparsed-path shape as the V4 harness defect, in the one function
-    whose job is to report what ugh cannot reproduce. `-z` is the fix; symlink entries stay in the list
-    because `unmanaged` is built from them."""
+    excused three tracked PDFs (5.6MB, 12MB, 35MB) that ugh never composes. `-z` is the fix."""
     from ugh.core.lens import fsck_tree
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
-    ideal = get(repo)
-    put(repo, ideal)
+    get(repo)
     assert not fsck_tree(repo)["drift"], "fixture should start clean"
 
-    # A binary blob under a non-ASCII name, committed outside ugh: nothing in the store can
-    # regenerate its bytes, so it is exactly a `backstop_kept` path.
+    # A binary blob under a non-ASCII name, committed and not mined yet: drift.
     name = "資料/機械学習.bin"
     (repo / "資料").mkdir()
     (repo / name).write_bytes(bytes(range(256)) * 4)
     GitBinding(repo).commit_all("add a blob with a non-ascii name")
 
     result = fsck_tree(repo)
-    assert name in result["backstop_kept"], (
+    assert name in result["drift"], (
         f"tracked non-ASCII path vanished from every fsck class; got "
         f"{ {k: v for k, v in result.items() if v} }"
     )
@@ -940,15 +746,15 @@ def test_an_edit_landing_mid_sync_is_not_cached_as_already_mined(tmp_path, monke
     gb.commit_all("add bar")
 
     # Land the edit *during* that sync -- after the `has_dirty_source()` sample that decides
-    # `include_dirty`, before the cache entry is fingerprinted. `_record_parked_forks` sits between
+    # `include_dirty`, before the cache entry is fingerprinted. `_reduced_ideal_ids` runs between
     # the two, which is what makes this the real interleaving rather than an approximation of it.
-    real_parked = lens_mod._record_parked_forks
+    real_reduce = lens_mod._reduced_ideal_ids
 
     def land_edit_mid_sync(*args, **kwargs):
         (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
-        return real_parked(*args, **kwargs)
+        return real_reduce(*args, **kwargs)
 
-    monkeypatch.setattr(lens_mod, "_record_parked_forks", land_edit_mid_sync)
+    monkeypatch.setattr(lens_mod, "_reduced_ideal_ids", land_edit_mid_sync)
     raced = get(repo)  # never saw the edit: it arrived after the dirty-source sample
     monkeypatch.undo()
 

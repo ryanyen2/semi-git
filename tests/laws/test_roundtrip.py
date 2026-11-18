@@ -12,16 +12,14 @@ entry points must exist with this behavior (owning unit in parens):
         witness commit `since` (or full history if None); Op.id content-addressed, deterministic.
     ugh.core.op.Op                                                  (U3) frozen; .id, .footprint
         (dict[str, tuple[str, str]], symbol -> (before_version, after_version)).
-    ugh.core.order.is_valid_ideal(ops, op_ids) -> bool              (U4) downward-closure +
-        unique-maximal-per-chain over `ops` for the subset `op_ids`.
+    ugh.core.order.is_valid_ideal(ops, op_ids) -> bool              (U4) every op's
+        prerequisites produced within `op_ids` (grounded).
     ugh.core.ideal.Ideal.from_ops(op_ids, ops) -> Ideal             (U4) raises ValueError if
         `op_ids` is not a valid ideal; exposes `.op_ids` and `.covered_paths()`.
     ugh.core.fold.code(ideal) -> dict[str, bytes]                   (U5) total, deterministic;
         path -> materialized bytes.
     ugh.core.lens.get(repo_path) -> Ideal                           (U6) mine + advance the ideal
         tracked for `repo_path`'s current ref.
-    ugh.core.lens.put(repo_path, ideal) -> str                      (U6) materialize + witness
-        commit; returns the new commit sha.
 """
 
 from __future__ import annotations
@@ -49,19 +47,6 @@ _LENS_SKIP = "ugh.core.{lens,fold,mine} not implemented yet (U2, U5, U6)"
 
 _HAS_ORDER = _has("ugh.core.mine", "ugh.core.order", "ugh.core.ideal")
 _ORDER_SKIP = "ugh.core.{mine,order,ideal} not implemented yet (U2, U4)"
-
-
-@pytest.mark.skipif(not _HAS_LENS, reason=_LENS_SKIP)
-def test_put_get_fixed_point(tmp_path):
-    """put-get: materializing an ideal and re-mining the witness commit it just wrote yields
-    zero new ops -- the commit is fully explained by ops already in the ideal."""
-    from ugh.core.lens import get, put
-
-    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
-    ideal = get(repo)
-    put(repo, ideal)
-    reidealed = get(repo)
-    assert reidealed.op_ids == ideal.op_ids
 
 
 @pytest.mark.skipif(not _HAS_LENS, reason=_LENS_SKIP)
@@ -129,7 +114,7 @@ def test_anchor_disjoint_additions_compose():
     """Anchor-disjoint additions commute (ADR S3.5), re-stated under the positional-residue
     segment model (kernel byte-fidelity audit, 2026-07-08): two branches that each insert a
     *different* entity at a *different* anchor share no bytes to disagree about, so their mined
-    ops union into one valid, fork-free ideal that materializes both insertions correctly
+    ops union into one valid ideal that materializes both insertions correctly
     interleaved -- with the original gaps (before the first entity, between the two base
     entities, after the last) intact exactly where they were."""
     import tempfile
@@ -153,41 +138,13 @@ def test_anchor_disjoint_additions_compose():
         all_ops = list(by_id.values())                  # collide to the same id automatically
         union_ids = frozenset(by_id)
 
-        assert is_valid_ideal(all_ops, union_ids), "anchor-disjoint additions forked instead of composing"
+        assert is_valid_ideal(all_ops, union_ids)
         ideal = Ideal.from_ops(union_ids, all_ops)
         materialized = code(ideal, all_ops)["a.py"]
         assert materialized == (
             b"def bar():\n    return 1\n\n\ndef foo():\n    return 3\n\n\n"
             b"def qux():\n    return 2\n\n\ndef baz():\n    return 4\n"
         )
-
-
-@pytest.mark.skipif(not _HAS_ORDER, reason=_ORDER_SKIP)
-def test_same_residue_segment_edited_on_both_branches_is_a_genuine_fork():
-    """The only conflict (R5): two branches editing the *same* residue segment (an import line)
-    differently is a genuine chain fork, exactly like an entity chain fork -- residue footprints
-    are ordinary (before_version, after_version) chains with no special-casing, so the same
-    fork-detection machinery applies uniformly."""
-    import tempfile
-    from pathlib import Path
-
-    from ugh.core.mine import mine
-    from ugh.core.order import is_fork_free
-
-    with tempfile.TemporaryDirectory() as tmp:
-        repo = corpus.CORPUS["residue_fork"].build(Path(tmp) / "repo")
-
-        corpus.checkout(repo, "feature_a")
-        ops_a, _last_sha = mine(repo)
-        corpus.checkout(repo, "feature_b")
-        ops_b, _last_sha = mine(repo)
-        corpus.checkout(repo, "main")
-
-        by_id = {op.id: op for op in [*ops_a, *ops_b]}
-        all_ops = list(by_id.values())
-        union_ids = frozenset(by_id)
-
-        assert not is_fork_free(all_ops, union_ids), "same-segment divergent edits didn't fork"
 
 
 @pytest.mark.skipif(not _HAS_LENS, reason=_LENS_SKIP)

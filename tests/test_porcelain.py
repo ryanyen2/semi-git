@@ -87,7 +87,7 @@ def test_repeated_undo_walks_back_through_two_independent_edits(tmp_path):
     original = _tree(repo)
     ops = Store(repo).all_ops()
     baz = next(o for o in ops if "b.py::baz" in o.footprint)
-    qux = [o for o in ops if "c.py::qux" in o.footprint][-1]
+    qux = next(o for o in ops if o.footprint.get("c.py::qux", (None,))[0] is not None)
 
     _revert(repo, baz.id)
     after_first = _tree(repo)
@@ -121,7 +121,7 @@ def test_save_json_reports_nothing_to_save_on_a_clean_tree(tmp_path, capsys):
     with _in(repo):
         rc = cli.main(["save", "--json"])
     payload = json.loads(capsys.readouterr().out)
-    assert payload == {"ok": True, "saved": False, "message": "nothing to save -- no uncommitted ops"}
+    assert payload == {"ok": True, "saved": False, "message": "nothing to save -- the working tree matches HEAD"}
 
 
 def test_save_commits_a_witness_for_a_dirty_tree(tmp_path, capsys):
@@ -136,48 +136,6 @@ def test_save_commits_a_witness_for_a_dirty_tree(tmp_path, capsys):
     after_ids = get(repo).op_ids
     assert after_ids != before_ids
     assert current_ideal(repo).op_ids == after_ids
-
-
-def _seed_resolvable_fork(repo, symbol="a.py::foo"):
-    """Add two genuinely-divergent tips to the store and record them as an open fork -- a fork the
-    read side surfaces (real symbol, differing after versions), so a banner must render."""
-    from ugh import state
-    from ugh.core.op import make_op
-    from ugh.core.store import Store
-
-    store = Store(repo)
-    a = store.add(make_op({symbol: ("v0", "v1")}, {symbol: b"a"}, kind="touched"))
-    b = store.add(make_op({symbol: ("v0", "v2")}, {symbol: b"b"}, kind="rebirth"))
-    state.save_json(repo, "forks", [
-        {"symbol": symbol, "tips": [a.id, b.id], "remedy": f"ugh merge-op {a.id} {b.id}"},
-    ])
-
-
-def test_save_names_an_open_fork_but_does_not_block(tmp_path, capsys):
-    """An open resolvable fork is impossible to ignore -- `ugh save` names the symbol and the
-    `ugh resolve` remedy -- yet never blocks: the save still succeeds (rc 0)."""
-    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
-    _seed_resolvable_fork(repo)
-    (repo / "d.py").write_text("def quux():\n    return 42\n", encoding="utf-8")
-    with _in(repo):
-        rc = cli.main(["save", "-m", "add quux"])
-    out = capsys.readouterr().out
-    assert rc == 0  # non-blocking: divergence-as-state never refuses a save
-    assert "1 open fork" in out  # inflected, not the "fork(s)" placeholder
-    assert "ugh resolve a.py::foo" in out
-
-
-def test_save_json_reports_open_fork_count(tmp_path, capsys):
-    """The `--json` save contract carries `open_fork_count` for parity with `sync_view`, so a machine
-    consumer (VSCode toast) can key its warning on the same filtered count the terminal banner uses."""
-    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
-    _seed_resolvable_fork(repo)
-    (repo / "d.py").write_text("def quux():\n    return 42\n", encoding="utf-8")
-    with _in(repo):
-        rc = cli.main(["save", "--json", "-m", "add quux"])
-    payload = json.loads(capsys.readouterr().out)
-    assert rc == 0
-    assert payload["ok"] is True and payload["open_fork_count"] == 1
 
 
 def test_save_as_leaves_the_tree_clean_for_the_next_verb(tmp_path):

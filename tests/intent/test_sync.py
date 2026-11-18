@@ -1,35 +1,21 @@
-"""The prompt sidecar unions by key as a real part of the sync commit. Fixture mirrors
-`tests/core/test_sync.py`'s two-clone idiom (a bare remote + two working clones)."""
+"""The prompt sidecar unions by key across a sync, on two clones of one bare remote."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 from ugh import state
-from ugh.core import lens, sync
+from ugh.core import sync
 from ugh.intent import prompts
 from ugh.store.gitbind import GitBinding
 
-from tests.conftest import _clone, _init_bare, _push
+from tests.conftest import _push
+from tests.core.test_sync import _two_clones
 
 
 def _edit_and_commit(repo: Path, path: str, content: str, message: str) -> str:
     (repo / path).write_text(content, encoding="utf-8")
-    content_sha = GitBinding(repo).commit_all(message)
-    ideal = lens.get(repo)
-    lens.put(repo, ideal, message=f"ugh: mine {message}")
-    return content_sha
-
-
-def _two_clones(tmp_path: Path, main_py: str) -> tuple[Path, Path]:
-    remote = _init_bare(tmp_path)
-    a = _clone(remote, tmp_path / "a")
-    lens.init(a)
-    _edit_and_commit(a, "main.py", main_py, "init")
-    _push(a)
-    b = _clone(remote, tmp_path / "b")
-    lens.get(b)
-    return a, b
+    return GitBinding(repo).commit_all(message)
 
 
 def _record(repo: Path, key: str, text: str) -> None:
@@ -50,7 +36,7 @@ def test_prompt_sidecars_union_across_a_sync_with_distinct_keys(tmp_path):
     _edit_and_commit(b, "main.py", "def foo():\n    return 1\n\n\ndef bar():\n    return 200\n", "bump bar")
 
     report = sync.sync(b, remote="origin", branch="main")
-    assert report.merged
+    assert report.message == "merged"
 
     assert prompts.prompt_for(b, "plan-a") == "fix foo"
     assert prompts.prompt_for(b, "plan-b") == "fix bar"
@@ -67,7 +53,7 @@ def test_prompt_sidecar_same_key_both_sides_merges_deterministically_no_crash(tm
     _edit_and_commit(b, "main.py", "def foo():\n    return 1\n\n\ndef bar():\n    return 200\n", "bump bar")
 
     report = sync.sync(b, remote="origin", branch="main")
-    assert report.merged
+    assert report.message == "merged"
 
     result = prompts.prompt_for(b, "shared-key")
     assert result in ("a's version", "b's version")  # deterministic pick, no crash, no duplicate

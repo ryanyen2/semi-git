@@ -31,8 +31,8 @@ From then on, edit files however you normally do, and record the edits when you'
 ugh save -m "add input validation"
 ```
 
-`ugh save` prints each step it recorded with its address, for example `cart.py::tax@3f2a1c0`: one
-save's change to one definition. Add `--as checkout` to give those steps a name. `ugh` never names
+`ugh save` commits the working tree as git would and prints each step it recorded with its
+address, for example `cart.py::tax@3f2a1c0`: one save's change to one definition. Add `--as checkout` to give those steps a name. `ugh` never names
 anything itself, so a name is always one you or your agent gave.
 
 ## Set up your coding agent and editor
@@ -64,8 +64,7 @@ Your agent can record its own work, and it should. `ugh save` takes the agent's 
 message and a name for the steps with `--as`. `ugh undo` reverses a save.
 
 Two commands change state other people can see, and they stay with you rather than your agent.
-They are `ugh sync` and `ugh resolve`. Each one asks you to confirm, and no single command undoes
-them.
+They are `ugh sync` and `ugh resolve`, and no single command undoes them.
 
 ## Install the VS Code extension
 
@@ -133,16 +132,16 @@ the nearest `ugh find` hits.
 | `ugh name <address> <name>` | Give a name to the steps at an address. This is also how you merge, split or move them. |
 | `ugh rename <name> <new>` | Rename every step with a name; an existing name absorbs them. |
 | `ugh log` | The saves, newest first: each with the names on its steps, how many are unnamed, and how many are out. |
-| `ugh status` | What needs attention right now: open forks, drift, files ugh does not track, and the plan. |
+| `ugh status` | What needs attention right now: two-version choices a sync left, edits not saved yet, and the plan. |
 | `ugh show <address>` | Its steps, the ask behind each save, and what taking them out would take. |
 | `ugh find <words>` | Addresses whose names, save subjects, definitions or captured asks contain the words. |
 | `ugh undo` | Reverse your last `ugh` command as a new change, rather than by rewriting history. It shows what it will do first. |
 | `ugh revert <address>` | Take steps out as a new edit; what other work stands on is held, with the reason. `--whole` takes what stands on them too. |
 | `ugh restore <address>` | Bring back steps a revert took out, combined with edits made since. |
-| `ugh resolve <symbol>` | Walk through reconciling a symbol that was edited two different ways at once. |
+| `ugh resolve <address>` | Show both versions of a definition a sync left as a choice; `--theirs`, `--ours` or `--apply` (your hand edit) settles it. |
 | `ugh plan [<name>...] [--done]` | Declare names before you build; `ugh plan` reports which have saves and which are missing. |
 | `ugh check` | Verify the op store. `--repair` re-derives the record after a git history rewrite. |
-| `ugh sync` | Fetch a teammate's work and merge it, flagging any real conflict. Names merge per step. |
+| `ugh sync` | Fetch a teammate's work and merge it definition by definition. Names merge per step. |
 | `ugh push` | Push. If the push is rejected, it points you at `ugh sync`. |
 | `ugh mcp` | Run an MCP server so a coding agent can call `ugh` directly. |
 
@@ -150,15 +149,16 @@ Run `ugh help` for the full list.
 
 ## How it works
 
-`ugh` reads each commit and breaks it into per-symbol edits. Your codebase at any moment is the set
-of edits that are currently in, and `ugh` can rebuild your files from that set exactly. Run it and
-you get back, byte for byte, what is checked out.
+`ugh` reads each commit and breaks it into per-symbol edits. A save is a plain git commit, and
+every clone reads the same edits out of the same history, so nothing but the names you gave
+travels beside your branches. Your codebase at any moment is the set of edits in its history, and
+`ugh` can rebuild your files from that set exactly. Run it and you get back, byte for byte, what is
+checked out.
 
 Taking a step out is itself a new edit, and a step that other remaining work stands on is held, so
-whatever is left still rebuilds into working files. Two versions of the same function can never both be in at once. When that happens,
-because two people edited it in parallel, `ugh` calls it a fork and asks you to reconcile it rather
-than picking a side. `ugh check` checks that the current state is still valid, and `ugh check
---tree` that the files it builds match what git has.
+whatever is left still rebuilds into working files. Where two people changed the same function and
+the history merged them, the merge decides what the function is. `ugh check` checks that the
+current state is still valid, and `ugh check --tree` that the files it builds match what git has.
 
 [docs/design/2026-11-16-removal-sets.md](docs/design/2026-11-16-removal-sets.md) has the model.
 
@@ -167,12 +167,13 @@ rebuilding your files from that set the fold.
 
 ## Working with other people
 
-Conflicts don't go away, but they get smaller. If two people edit the same function at the same
-time, that's a real conflict, and `ugh` isolates it to that one function. Everything else merges
-right away with no conflict markers to resolve.
-
-You reconcile the conflict with `ugh resolve <symbol>`. It won't let the conflict close until your
-build and test checks pass, so a conflict is never closed by code nobody verified.
+`ugh sync` merges a teammate's branch one definition at a time. A definition only one side changed
+takes that side; one both sides changed on different lines combines both; one both sides changed
+on the same lines keeps yours in the file, with no conflict markers, and becomes a two-version
+choice. `ugh save` waits until you settle each choice with `ugh resolve <address>`, which shows both
+versions side by side. Because the merge works by definition rather than by line across the file,
+two people adding different functions at the same place merge cleanly where git would conflict,
+yours first. If you merge with plain git instead, you get git's result and `ugh` accepts it.
 
 [docs/guide/workflows.md](docs/guide/workflows.md) walks through this end to end, along with the
 points where a person still has to step in.

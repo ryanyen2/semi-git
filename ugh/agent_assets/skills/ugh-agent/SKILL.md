@@ -55,8 +55,9 @@ Before your first edit, run this. It works in any harness that has a shell:
 ugh status --json
 ```
 
-It reports the counts, whether there is unsaved work, and what needs a human decision: open forks,
-working-tree drift, a git history rewrite, and the plan if one is declared.
+It reports the counts, whether there is unsaved work, and what needs a human decision: two-version
+choices a sync left (`ugh save` refuses until each is resolved), a git history rewrite, and the
+plan if one is declared.
 
 Check for a `.sgt/` directory before you rely on any of it. If there is no `.sgt/`, use plain git
 and stop reading here.
@@ -107,9 +108,10 @@ is additive and `ugh undo` reverses it.
 
 Theirs, and deliberately not exposed to you as tools:
 
-- **`ugh sync`, `ugh resolve`** change *shared* state and are gated behind an interactive
-  confirmation in the terminal. Running them through a shell skips that gate, and they are not
-  reversed by `ugh undo`.
+- **`ugh sync`, `ugh resolve`** change *shared* state: sync merges a teammate's branch, and
+  resolve decides which of two versions of a definition a merge keeps. Neither is reversed by `ugh
+  undo`. When `ugh_save` refuses because a sync left a two-version choice, the error names each
+  one with its `ugh resolve` command; hand those over.
 - **`ugh rename`** relabels every step with a name, across everyone's work. That is a judgement a
   human makes; name your own steps with `as` and `ugh_name` instead.
 

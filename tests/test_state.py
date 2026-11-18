@@ -51,8 +51,8 @@ def test_missing_artifact_returns_default(tmp_path):
 
 
 def test_writer_emits_versioned_envelope(tmp_path):
-    state.save_json(tmp_path, "forks", [["op_a", "op_b"]])
-    raw = json.loads(state.path(tmp_path, "forks").read_text(encoding="utf-8"))
+    state.save_json(tmp_path, "names", [["op_a", "op_b"]])
+    raw = json.loads(state.path(tmp_path, "names").read_text(encoding="utf-8"))
     assert raw == {"schema": 1, "data": [["op_a", "op_b"]]}
 
 
@@ -77,14 +77,14 @@ def test_reader_accepts_v1_enveloped_shape(tmp_path):
 
 
 def test_bare_list_body_is_not_mistaken_for_an_envelope(tmp_path):
-    """A committed artifact whose body is a bare list (e.g. `forks.json`), not a dict -- `_unwrap`
+    """A committed artifact whose body is a bare list (any table), not a dict -- `_unwrap`
     must not choke trying to call `.get` on it."""
-    state.save_json(tmp_path, "forks", [["op_a", "op_b"], ["op_c", "op_d"]])
-    assert state.load_json(tmp_path, "forks") == [["op_a", "op_b"], ["op_c", "op_d"]]
+    state.save_json(tmp_path, "names", [["op_a", "op_b"], ["op_c", "op_d"]])
+    assert state.load_json(tmp_path, "names") == [["op_a", "op_b"], ["op_c", "op_d"]]
 
-    p = state.path(tmp_path, "forks")
+    p = state.path(tmp_path, "names")
     p.write_text(json.dumps([["op_x", "op_y"]]) + "\n", encoding="utf-8")  # hand-written v0
-    assert state.load_json(tmp_path, "forks") == [["op_x", "op_y"]]
+    assert state.load_json(tmp_path, "names") == [["op_x", "op_y"]]
 
 
 # -- historical-blob dispatch: the `sync` read path ----------------------------------------------
@@ -170,10 +170,10 @@ def test_torn_committed_artifact_fails_loudly(tmp_path):
     `fsck` loudly, never silently reseeds into a wrong team-visible state."""
     import json as _json
     import pytest
-    state.path(tmp_path, "forks").parent.mkdir(parents=True, exist_ok=True)
-    state.path(tmp_path, "forks").write_text("{ truncated", encoding="utf-8")
+    state.path(tmp_path, "names").parent.mkdir(parents=True, exist_ok=True)
+    state.path(tmp_path, "names").write_text("{ truncated", encoding="utf-8")
     with pytest.raises(_json.JSONDecodeError):
-        state.load_json(tmp_path, "forks", default=[])
+        state.load_json(tmp_path, "names", default=[])
 
 
 def test_concurrent_locked_section_writers_lose_no_update(tmp_path):
