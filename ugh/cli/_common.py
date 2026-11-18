@@ -22,6 +22,17 @@ def _fail_json(message: str, as_json: bool) -> int:
     return _emit_json({"ok": False, "error": message}) if as_json else _fail(message)
 
 
+def observed_text(seen: dict | None) -> str:
+    """A save's observation (`observe.of_commit`) in words: the check's verdict and its output
+    against the parent's."""
+    if seen is None:
+        return "not observed"
+    d = seen["delta"]
+    return (f"check {'passes' if seen['verdict'] == 'pass' else 'fails'}; "
+            + ("no observation of the parent" if d is None else
+               f"output: {d['added']} line(s) added, {d['removed']} removed against the parent"))
+
+
 def confirm(lines: list[str], question: str) -> bool:
     """Print a preview and ask `[y/N]`. Only call on an interactive tty: the caller gates
     `isatty`/`--json` first, so the machine contract applies immediately."""

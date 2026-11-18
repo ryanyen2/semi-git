@@ -58,24 +58,6 @@ def _run_tier(repo: Path, command: str) -> dict:
         return {"status": "fail", "exit_code": -1, "output_tail": str(e)}
 
 
-def check(repo: str | Path) -> tuple[bool, str] | None:
-    """Run the configured tiers on the working tree as it is, stopping at the first failure:
-    `(passed, output)`, or None when no check is configured. Records nothing."""
-    cfg = load_oracle_config(repo)
-    if cfg is None or not cfg.tiers:
-        return None
-    output = []
-    for t in cfg.tiers:
-        try:
-            proc = subprocess.run(t.command, shell=True, cwd=repo, capture_output=True, text=True)
-        except OSError as e:
-            return False, str(e)
-        output.append(proc.stdout + proc.stderr)
-        if proc.returncode != 0:
-            return False, "".join(output)
-    return True, "".join(output)
-
-
 def verdict_for(repo: str | Path, ideal: Ideal) -> dict | None:
     """Pure read: the stored verdict record (`{"tiers": ..., "override": ...}`) for exactly this
     ideal, or `None` if nothing has been recorded yet (pending)."""

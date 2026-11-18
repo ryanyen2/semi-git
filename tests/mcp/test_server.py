@@ -197,7 +197,8 @@ def test_save_records_the_agents_edits(tmp_path):
 
     assert payload["ok"] is True and payload["saved"] is True
     assert payload["steps"] == [{"address": f"a.py::foo@{payload['commit'][:7]}", "kind": "change",
-                                 "name": None, "out": False}]
+                                 "name": None, "out": False, "ran": None}]
+    assert payload["observed"] is None  # no check configured
 
 
 def test_save_as_names_the_saves_steps(tmp_path):

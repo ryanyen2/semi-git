@@ -49,6 +49,7 @@
       },
       "held": [],
       "message": "",
+      "observed": null,
       "ok": true,
       "removal_set": {
         "saves": [
@@ -64,6 +65,7 @@
       "undone": [
         {
           "address": "slugify.py::slugify@2befb60",
+          "ran": null,
           "save": "2befb60",
           "subject": "release: strip in slugify",
           "unit": "slugify.py::slugify"
@@ -75,6 +77,7 @@
       {
         "ask": null,
         "date": "2023-11-14T23:13:20+00:00",
+        "observed": null,
         "sha": "2befb60a54671a84cc3c34250c02bd8cf6d951a8",
         "subject": "release: strip in slugify"
       }

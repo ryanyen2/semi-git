@@ -39,7 +39,9 @@ ugh save -m "add email validation"
 `ugh save` is the commit step of your daily loop. It reads what changed on disk, records the new
 ops, and commits. It prints each step it recorded with its address, such as
 `app.py::validate_email@3f2a1c0`. Add `--as <name>` to give the save's steps a name, such as `ugh
-save -m "add email validation" --as signup`.
+save -m "add email validation" --as signup`. If the project has a check in `.sgt/oracle.json`, the
+save runs it on the new commit and prints its verdict, how many lines of its output changed since the
+last save, and how many of the save's steps the check ran. A save then takes as long as the check.
 
 Here are the commands you'll use to see where you are.
 

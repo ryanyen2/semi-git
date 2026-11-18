@@ -142,12 +142,36 @@ def _answer(repo: str, cmd: str, steps, label: str, emit: bool, as_json: bool, y
     if applied:
         print(f"  ✓ {cmd} applied — {len(done.undone)} step(s) undone, {len(done.held)} held, "
               f"{_judged(done.check)}. (`ugh undo` reverses this.)")
+        _print_observed(result)
         if done.held != p.held:
             _print_held(result)
         return 0
     print(f"  ✗ nothing applied — {_judged(done.check)}; the tree is as it was.")
     _print_held(result)
     return 1
+
+
+def _print_observed(view: dict) -> None:
+    """After an apply: the output's change, whether it is the reverse of what the saves taken out
+    changed in it (the only "gone, as the check sees it"), and the
+    undone steps the check never ran."""
+    seen = view["observed"]
+    if seen is None:
+        return
+    gone, place = ("gone", "gone from") if view["verb"] == "revert" else ("back", "back in")
+    d = seen["delta"]
+    if d is not None:
+        own = seen["saves_delta"]
+        claim = {True: f" — {gone}, as the check sees it",
+                 False: " — not the reverse of what those saves changed in it", None: ""}[seen["reverses"]]
+        if own is not None and not own["added"] + own["removed"]:
+            claim = " — those saves never changed it, so the check cannot confirm anything"
+        print(f"    output: {d['added']} line(s) added, {d['removed']} removed{claim}")
+    never = [row["address"] for row in view["undone"] if row["ran"] is False]
+    if never:
+        print(f"    {place} the code; the check cannot confirm its behaviour: {', '.join(never)}")
+    if "not_recorded" in seen:
+        print(f"    observation not recorded: {seen['not_recorded']}")
 
 
 def _judged(check) -> str:
@@ -170,7 +194,8 @@ def _print_held(view: dict) -> None:
 
 def _print_plan_json(view: dict) -> None:
     """A plan (`planner.to_json`), plain: what goes, what is held and why; the removal set; where
-    the held part is and which saves must keep working; the files and the check."""
+    the held part is and which saves must keep working; the files and the check; the steps HEAD's
+    observation shows the check never ran, or that HEAD was not observed."""
     print(f"  {view['verb']} {view['target']}")
     if view["message"]:
         print(f"  {view['message']}")
@@ -193,3 +218,8 @@ def _print_plan_json(view: dict) -> None:
     files = sorted(view["files"])
     print(f"  files: {', '.join(files)}" if files else "  no file changes")
     print("  check: not run yet" if view["check"] == "not_run" else f"  check: {_judged(view['check'])}")
+    never = [row["address"] for row in [*view["undone"], *view["held"]] if row["ran"] is False]
+    if never:
+        print(f"  the check never ran: {', '.join(never)}")
+    if view["observed"] is not None and view["observed"]["head"] is None:
+        print("  HEAD: not observed")

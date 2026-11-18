@@ -8,7 +8,8 @@ change un-applied onto the unit as it is now, by a three-way merge. `plan` compu
 the record alone; `apply` writes it, judges it and commits it with an `Ugh-Out:` trailer naming
 every op of the steps it takes out, and the commit is mined like any other. Which steps are out is
 derived from those trailers (`out_table`), so a clone knows. Bringing a step back is taking out the
-take-out's step on the same unit.
+take-out's step on the same unit. The check's run on the candidate is recorded as the take-out
+commit's observation (`ugh.core.observe`).
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ from collections import Counter
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from ugh.core import lens, opindex, tiers
+from ugh.core import lens, observe, opindex, tiers
 from ugh.core.mine import _is_unparseable_whole_file
 from ugh.core.op import Op, _symbol_kind, step_address, unit_of
 from ugh.core.patch import merge3
@@ -51,6 +52,8 @@ class Plan:
     files: dict[str, tuple[bytes | None, bytes | None]] = field(default_factory=dict)
     saves: dict[str, str] = field(default_factory=dict)
     check: object = "not_run"
+    ran: dict[Step, bool | None] = field(default_factory=dict)
+    observed: dict | None = None
 
 
 def _head_sym(path: str) -> str:
@@ -121,6 +124,16 @@ def split(path: str, raw: bytes | None, cfg) -> _File | None:
         return None
     whole = tiers.resolve_tier(path, cfg) == "opaque" or _is_unparseable_whole_file(path, raw)
     return _split(path, raw, whole)
+
+
+def _spans(path: str, f: _File) -> dict[str, range]:
+    """The 1-based lines each unit of `f` occupies, the head under its own symbol."""
+    spans, start = {}, 1
+    for sym, text in [(_head_sym(path), f.head), *f.units]:
+        end = start + text.count(b"\n") + (bool(text) and not text.endswith(b"\n"))
+        spans[sym] = range(start, end)
+        start = end
+    return spans
 
 
 class _Ctx:
@@ -470,11 +483,35 @@ def _removal_set(ctx: _Ctx, x: list[Step]) -> list[Step]:
         members |= grow
 
 
+def ran(ctx: _Ctx, obs: dict | None, st: Step, at: str | None) -> bool | None:
+    """Whether observation `obs` of commit `at` ran a line of `st`'s unit in that commit's tree
+    (`observe.ran`)."""
+    path = st.unit.split("::", 1)[0]
+    f = ctx.file(at, path)
+    return observe.ran(obs, path, None if f is None else _spans(path, f).get(st.unit))
+
+
+def _observe(ctx: _Ctx, p: Plan, obs: dict | None, at: str | None, **after) -> Plan:
+    """Mark each undone and held step with whether `obs`, the observation of commit `at`, ran it;
+    `after` joins `observed` once the plan was applied. `observed` is None when the project
+    configures no check."""
+    p.ran = {st: ran(ctx, obs, st, at) for st in [*p.undone, *(hd["step"] for hd in p.held)]}
+    p.observed = {"head": observe.summary(obs), **after} if observe.configured(ctx.repo) else None
+    return p
+
+
 def plan(repo, steps, *, verb: str = "revert", target: str = "", whole: bool = False,
          removal_set: bool = False) -> Plan:
     """The plan for taking `steps` out (`revert`) or bringing them back (`restore`), from the
-    record alone; nothing is written. `whole` takes out the removal set; `removal_set` reports it."""
+    record alone; nothing is written. `whole` takes out the removal set; `removal_set` reports it.
+    Each undone and held step says whether HEAD's recorded observation ran it."""
     ctx = _Ctx(repo)
+    head = ctx.gb.head()
+    p = _answer(ctx, steps, verb, target, whole, removal_set)
+    return _observe(ctx, p, observe.load(repo, head), head)
+
+
+def _answer(ctx: _Ctx, steps, verb: str, target: str, whole: bool, removal_set: bool) -> Plan:
     steps = sorted(st for st in steps if st in ctx.steps)
     if verb == "restore":
         takers = sorted({t for st in steps for t in ctx.out.get(st, ())})
@@ -523,7 +560,8 @@ def _error_lines(path: str, data: bytes | None) -> list[int]:
 
 def _judge(repo: Path, p: Plan, checked: bool) -> dict:
     """The parser (no file that parsed may stop parsing), then the project's check, on the tree
-    `p` wrote. `locations` are the failing (path, line) pairs on paths the plan changed."""
+    `p` wrote, with what the check observed. `locations` are the failing (path, line) pairs on
+    paths the plan changed."""
     fails = [(path, line) for path, (b, a) in sorted(p.files.items())
              if b is not None and not _error_lines(path, b) for line in _error_lines(path, a)]
     if fails:
@@ -531,9 +569,8 @@ def _judge(repo: Path, p: Plan, checked: bool) -> dict:
                 "output": "".join(f"{path}:{line}: does not parse\n" for path, line in fails)}
     if not checked:
         return {"judge": "parser", "passed": True, "locations": [], "output": ""}
-    from ugh.core import oracle
-
-    passed, output = oracle.check(repo)
+    obs = observe.check(repo)
+    passed, output = obs["exit"] == 0, obs["output"]
     root = os.path.realpath(repo)
     locs = []
     for pattern in _LOCATIONS:
@@ -542,7 +579,7 @@ def _judge(repo: Path, p: Plan, checked: bool) -> dict:
             if rel in p.files:
                 locs.append((rel, int(line)))
     return {"judge": "check", "passed": passed, "locations": [] if passed else locs,
-            "output": output[-4000:]}
+            "output": output[-4000:], "observation": obs}
 
 
 def _attribute(p: Plan, verdict: dict) -> set[Step]:
@@ -556,16 +593,8 @@ def _attribute(p: Plan, verdict: dict) -> set[Step]:
         f = _split(path, text, False) if text is not None else None
         if f is None:
             continue
-        start = f.head.count(b"\n") + 1
-        if line < start:
-            hits |= set(going.get(_head_sym(path), ()))
-            continue
-        for sym, t in f.units:
-            end = start + t.count(b"\n")
-            if line < end or (line == end and not t.endswith(b"\n")):
-                hits |= set(going.get(sym, ()))
-                break
-            start = end
+        unit = next((sym for sym, span in _spans(path, f).items() if line in span), None)
+        hits |= set(going.get(unit, ()))
     return hits
 
 
@@ -582,21 +611,26 @@ def apply(repo, p: Plan, message: str | None = None, *, log: bool = True) -> Pla
     """Write the plan's candidate, judge it, hold the steps the failures sit in and try again, then
     commit once with an `Ugh-Out:` trailer. The commit is mined like any other. The check must pass
     on the current tree first; a failure that sits in no undone step applies nothing. On any error
-    before the commit returns, every touched file is put back."""
+    before the commit returns, every touched file is put back. What the check observed on the
+    current tree and on the commit is recorded as their observations, and `observed` gives the
+    output delta between them and whether it reverses the deltas of the saves taken out."""
     if not p.files:
         return p
-    from ugh.core import oplog, oracle
+    from ugh.core import oplog
     from ugh.core.sync import state_ref
 
     repo = Path(repo)
     dirty = _dirty(repo)
     if dirty:
         raise lens.DirtyWorkingTreeError(f"{p.verb} would overwrite uncommitted changes: {dirty}")
-    baseline = oracle.check(repo)
-    if baseline is not None and not baseline[0]:
-        return replace(p, ok=False, message="the check fails on the current tree; nothing applied",
-                       check={"judge": "check", "passed": False, "rounds": 0, "output": baseline[1][-4000:]})
     ctx = _Ctx(repo)
+    head = ctx.gb.head()
+    baseline = observe.check(repo)
+    if baseline is not None and baseline["exit"]:
+        refused = replace(p, ok=False, message="the check fails on the current tree; nothing applied",
+                          check={"judge": "check", "passed": False, "rounds": 0,
+                                 "output": baseline["output"][-4000:]})
+        return _observe(ctx, refused, baseline, head, delta=None, saves_delta=None, reverses=None)
     saved: dict[str, bytes | None] = {}
 
     def write(files) -> None:
@@ -629,6 +663,7 @@ def apply(repo, p: Plan, message: str | None = None, *, log: bool = True) -> Pla
         current = replace(current, check=check, removal_set=p.removal_set,
                           saves={**p.saves, **{h.sha: ctx.subject[h.sha] for hd in current.held
                                                for h in hd["holders"]}})
+        _observe(ctx, current, baseline, head, delta=None, saves_delta=None, reverses=None)
         if not verdict["passed"] or not current.files:
             write({})
             if not verdict["passed"]:
@@ -647,6 +682,19 @@ def apply(repo, p: Plan, message: str | None = None, *, log: bool = True) -> Pla
     state_ref.publish_from_local(ctx.gb, repo)
     if log:
         oplog.append(repo, {"kind": "commit", "sha": sha, "verb": p.verb, "target": p.target})
+    after = verdict.get("observation")
+    if after is not None:
+        d = observe.delta(baseline, after)
+        saves = [(ctx.parent[s], s) for s in sorted({st.sha for st in current.undone})]
+        own = observe.saves_delta(repo, saves, {head: baseline})
+        current.observed.update(delta=observe.counts(d),
+                                saves_delta=None if own is None else observe.counts(own),
+                                reverses=observe.reverses(d, own))
+        try:
+            observe.record(repo, head, baseline)
+            observe.record(repo, sha, after)
+        except OSError as e:
+            current.observed["not_recorded"] = str(e)
     return current
 
 
@@ -661,7 +709,8 @@ def _put_bytes(full: Path, data: bytes | None) -> None:
 
 def to_json(p: Plan, *, applied: bool = False) -> dict:
     """The machine-readable plan: what goes, what is held and why (every step and holder with its
-    address), the removal set, the files before and after, and the check."""
+    address), whether the check ran each step, the removal set, the files before and after, the
+    check, and what it observed."""
     def step(st: Step) -> dict:
         return {"address": step_address(st.unit, st.sha), "save": st.sha[:7],
                 "subject": p.saves.get(st.sha, "")}
@@ -672,16 +721,17 @@ def to_json(p: Plan, *, applied: bool = False) -> dict:
     held = []
     for hd in p.held:
         st = hd["step"]
-        row = {**step(st), "unit": st.unit, "reason": hd["reason"],
+        row = {**step(st), "unit": st.unit, "ran": p.ran.get(st), "reason": hd["reason"],
                "holders": [step(h) for h in hd["holders"]]}
         if hd["now"] is not None or hd["would"] is not None:
             row["now"], row["would"] = text(hd["now"]), text(hd["would"])
         held.append(row)
     return {
         "ok": p.ok, "applied": applied, "verb": p.verb, "target": p.target, "message": p.message,
-        "undone": [{**step(st), "unit": st.unit} for st in p.undone],
+        "undone": [{**step(st), "unit": st.unit, "ran": p.ran.get(st)} for st in p.undone],
         "held": held,
         "removal_set": p.removal_set,
         "files": {path: {"before": text(b), "after": text(a)} for path, (b, a) in sorted(p.files.items())},
         "check": p.check,
+        "observed": p.observed,
     }

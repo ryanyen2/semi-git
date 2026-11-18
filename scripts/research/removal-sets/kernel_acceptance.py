@@ -4,6 +4,9 @@ For each project: unpack its history, `ugh init`, configure `python3 check.py` a
 for each of the 12 requests in a fresh copy take the save out (`ugh revert <sha> --yes`), run the
 check, bring it back (`ugh restore <sha> --yes`) and compare the tree with the original byte for
 byte. Also the three event requests together, and the newest request against the tree before it.
+Before anything is taken out, the check is run on HEAD and on each request commit and its parent and
+recorded as their observations, so each take-out says how many of its steps the check never ran and
+whether its output delta (lines added and removed) reverses the request's own.
 
     uv run python scripts/research/removal-sets/kernel_acceptance.py
 """
@@ -51,6 +54,28 @@ def reasons(view: dict) -> str:
     return ", ".join(f"{n} {r}" for r, n in sorted(held.items())) or "-"
 
 
+def observed(view: dict) -> str:
+    """How many of the take-out's steps the check never ran, and whether its output delta reverses
+    the request's own (`-` when it cannot say), with that delta."""
+    never = sum(row["ran"] is False for row in (*view.get("undone", ()), *view.get("held", ())))
+    seen = view.get("observed") or {}
+    if seen.get("reverses") is None:
+        return f"{never} | -"
+    d = seen["delta"]
+    return f"{never} | {'yes' if seen['reverses'] else 'NO'} (+{d['added']} -{d['removed']})"
+
+
+def observe_history(template: Path, shas: set[str], scratch: Path) -> None:
+    """Run the check on each commit's own tree, checked out in a copy, and record it in `template`."""
+    from ugh.core import observe
+
+    looker = scratch / "observe"
+    shutil.copytree(template, looker, symlinks=True)
+    for sha in sorted(shas):
+        run(looker, "git", "checkout", "-q", "--detach", sha)
+        observe.record(template, sha, observe.check(looker))
+
+
 def take_out(repo: Path, steps, target: str) -> dict:
     """Plan and apply a take-out of a set of steps through the planner (the CLI takes one reference)."""
     from ugh.core import planner
@@ -87,9 +112,13 @@ def project(name: str, episodes: list[dict], scratch: Path) -> list[str]:
         {"tiers": [{"name": "check", "command": "python3 check.py"}]}))
 
     rows = [f"### {name}", "",
-            "| request | save | check after out | steps went | held | back = original |",
-            "|---|---|---|---|---|---|"]
+            "| request | save | check after out | steps went | held | never ran | reverses its save "
+            "| back = original |",
+            "|---|---|---|---|---|---|---|---|"]
     requests = [e for e in episodes if e["session"]]
+    full = {run(template, "git", "rev-parse", rev).stdout.strip()
+            for rev in ["HEAD", *(r for e in requests for r in (e["sha"], f"{e['sha']}^"))]}
+    observe_history(template, full, scratch / f"{name}-observe")
     for i, ep in enumerate(requests):
         repo = scratch / f"{name}-{i}"
         shutil.copytree(template, repo, symlinks=True)
@@ -99,7 +128,7 @@ def project(name: str, episodes: list[dict], scratch: Path) -> list[str]:
         back = ugh(repo, "restore", ep["sha"]) if out.get("undone") else {}
         same = "yes" if tree(repo) == original else "NO"
         rows.append(f"| {ep['session']} | {ep['sha']} | {passed} | {len(out.get('undone', ()))} "
-                    f"| {len(out.get('held', ()))} ({reasons(out)}) | {same} |"
+                    f"| {len(out.get('held', ()))} ({reasons(out)}) | {observed(out)} | {same} |"
                     + (f" {out.get('message')}" if not out.get("ok", True) else "")
                     + (f" restore: {back.get('message')}" if back and not back.get("ok", True) else ""))
 
@@ -117,9 +146,9 @@ def project(name: str, episodes: list[dict], scratch: Path) -> list[str]:
     bring_back(repo, steps, "events")
     same = "yes" if tree(repo) == original else "NO"
     rows.append(f"| the three event requests | {', '.join(e['sha'] for e in events)} | {passed} "
-                f"| {len(out['undone'])} | {len(out['held'])} ({reasons(out)}) | {same} |")
+                f"| {len(out['undone'])} | {len(out['held'])} ({reasons(out)}) | {observed(out)} | {same} |")
     rows.append(f"|  removal set | {', '.join(shas)} | | {p.removal_set['steps']} | "
-                f"{'exactly the three' if shas == sorted(e['sha'] for e in events) else 'DIFFERS'} | |")
+                f"{'exactly the three' if shas == sorted(e['sha'] for e in events) else 'DIFFERS'} | | | |")
 
     newest = requests[-1]
     repo = scratch / f"{name}-newest"
@@ -133,7 +162,8 @@ def project(name: str, episodes: list[dict], scratch: Path) -> list[str]:
     same_as_before = all(now.get(p) == b for p, b in wanted.items()) and set(now) == set(wanted)
     rows.append(f"| newest ({newest['session']}) out = tree before it | {newest['sha']} | "
                 f"{'pass' if checks(repo) else 'FAIL'} | {len(out.get('undone', ()))} | "
-                f"{len(out.get('held', ()))} ({reasons(out)}) | {'yes' if same_as_before else 'NO'} |")
+                f"{len(out.get('held', ()))} ({reasons(out)}) | {observed(out)} | "
+                f"{'yes' if same_as_before else 'NO'} |")
     return rows
 
 

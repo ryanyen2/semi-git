@@ -89,7 +89,12 @@ Before proposing anything destructive, run `ugh_show` on the target, or `ugh_rev
 `emit=true`. They report which steps a revert would take out and which are held because other work
 stands on them (with the reason and the saves that hold each), and how big the removal set is —
 what `whole=true` would take. Neither writes anything. State those numbers to the human instead of
-the bare command.
+the bare command. Each undone and held step also carries `ran`: whether the project's check ran any of
+its lines on HEAD (`null` when HEAD was not observed or the check ran no Python). Say plainly that the
+check cannot confirm what removing a `ran: false` step does. After an applied revert, call the
+behaviour gone only when `observed.reverses` is true: the check's output changed by exactly the
+reverse of what those saves changed in it (`observed.saves_delta`). `reverses` is `null` when those
+saves were not observed or never changed the output, so the check confirms nothing.
 
 ## What is yours and what is theirs
 
@@ -104,7 +109,9 @@ paraphrase), and `claude_session_id` takes your session UUID (read `$CLAUDE_CODE
 Bash; never `$CLAUDE_CODE_BRIDGE_SESSION_ID`, which can carry a parent's id). Together they let
 `ugh show` answer with what the user actually asked for. The same two fields ride
 `ugh_revert`/`ugh_restore` when the user asked for the removal or return in so many words. A save
-is additive and `ugh undo` reverses it.
+is additive and `ugh undo` reverses it. When the project configures a check, the save runs it on your
+commit and returns `observed` (its verdict and how many output lines changed against the parent's)
+and `ran` on each step; a save takes as long as the check.
 
 Theirs, and deliberately not exposed to you as tools:
 

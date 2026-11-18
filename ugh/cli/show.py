@@ -1,11 +1,11 @@
 """`ugh show <address>`: the steps at an address with their names and whether they are out, the
-saves they came from with the ask behind each, and what taking them out (or bringing them back)
-would take. `ugh find <words>`: the addresses whose names, save subjects, definition names or
+saves they came from with the ask behind each and what the check observed on each, and what taking
+them out (or bringing them back) would take. `ugh find <words>`: the addresses whose names, save subjects, definition names or
 captured asks contain the words. Both are read-only and offline."""
 
 from __future__ import annotations
 
-from ._common import _emit_json, _fail
+from ._common import _emit_json, _fail, observed_text
 
 
 def register(subs, parent) -> None:
@@ -48,6 +48,8 @@ def _cmd_show(args) -> int:
                       + ("  (out)" if st["out"] else ""))
         if save["ask"]:
             print(f'      asked “{save["ask"]["gist"]}” — {save["ask"]["source"]}')
+        if view["plan"]["observed"] is not None:
+            print(f"      {observed_text(save['observed'])}")
     _print_plan_json(view["plan"])
     return 0
 

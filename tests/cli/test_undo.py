@@ -39,6 +39,7 @@ def _seed(repo):
     own commit), an oracle that trivially compiles both files, and a seeded ideal table so later
     edits journal."""
     gb, _ = init_store(repo)
+    (repo / ".gitignore").write_text("__pycache__/\n", encoding="utf-8")
     (repo / "a.py").write_text("def foo():\n    return 1\n\n\ndef bar():\n    return 2\n", encoding="utf-8")
     (repo / "m.py").write_text("def helper():\n    return 1\n", encoding="utf-8")
     gb.commit_all("seed")

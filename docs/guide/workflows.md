@@ -89,6 +89,20 @@ tree before anything is written. Then it runs on the result, together with the p
 that parsed must still parse): a failure at a line inside a definition the take-out changed holds
 that step, and a failure anywhere else applies nothing and shows the output.
 
+The check also says what it can and cannot confirm about behaviour. Each `ugh save` runs it on the
+new commit and records an observation: the exit code, the output, and, when the check runs Python
+3.12 or later, the lines of your files it executed (the lines that only define a function or class,
+which run at import, do not count). The preview marks each step with whether HEAD's observation ran
+any of its lines and prints `the check never ran: <addresses>` for those it did not, or `HEAD: not
+observed` when HEAD has none. An applied take-out records the check's run on the result as the
+take-out commit's observation and prints how many output lines changed. When every save it took out
+has its own observation and its parent's, it also says whether that change is the exact reverse of
+those saves' own changes; only then, and only when those saves changed the output at all, does it
+say "gone, as the check sees it". A step the check never
+ran is "gone from the code; the check cannot confirm its behaviour". Output lines are compared as a
+multiset, so a change only in their order is not seen, and output that differs from run to run (a
+timing, a date) never reverses.
+
 The target here was an address. Every verb that acts on steps takes one:
 
 ```bash

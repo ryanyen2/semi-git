@@ -247,9 +247,12 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
     ),
     "ugh_save": (
         "Commit your edits as a save. Pass `message`, your own words about what this work was, and "
-        "`as` to name the save's steps. Returns the steps with their addresses. Reversible (`ugh "
-        "undo`). Refused while a sync left a definition with two versions: the error names each "
-        "and the `ugh resolve` command a person runs to settle it.",
+        "`as` to name the save's steps. Returns the steps with their addresses. When the project "
+        "configures a check, the save runs it on the commit and returns `observed` ({verdict, "
+        "lines_recorded, delta: {added, removed} output lines against the parent's}) and each "
+        "step's `ran` (did the check run any of its lines; null when it cannot say). Reversible "
+        "(`ugh undo`). Refused while a sync left a definition with two versions: the error names "
+        "each and the `ugh resolve` command a person runs to settle it.",
         _schema({"message": {"type": "string", "description": "what this work was, in your words"},
                  "as": {"type": "string", "description": "a name for this save's steps (optional)"},
                  "prompt": _DRIVING_PROMPT_PROP,
@@ -266,9 +269,11 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
     ),
     "ugh_show": (
         "The steps at an address with their names and whether they are out, the saves they came "
-        "from with the user's ask behind each (`saves[].ask`, quote it rather than paraphrase), "
-        "and the planner's answer (`plan`): what taking them out would take, which steps are held "
-        "and why, and the removal set. Read-only. Use it before proposing a revert. " + _ADDRESS,
+        "from with the user's ask behind each (`saves[].ask`, quote it rather than paraphrase) and "
+        "what the check observed on each (`saves[].observed`, null when not observed), and the "
+        "planner's answer (`plan`): what taking them out would take, which steps are held and why, "
+        "whether the check ran each (`ran`), and the removal set. Read-only. Use it before "
+        "proposing a revert. " + _ADDRESS,
         _schema({"address": {"type": "string"}}, ["address"]),
         tool_show,
     ),
@@ -283,7 +288,12 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
     "ugh_revert": (
         "Take the steps at an address out of the code as a new edit. Steps that other remaining "
         "work stands on are held, each with its reason and the saves that hold it; the project's "
-        "check runs on the result before anything is committed. Pass emit=true for a dry-run "
+        "check runs on the result before anything is committed. Each step carries `ran`: whether "
+        "HEAD's observation ran any of its lines (null when it cannot say). `observed` is null when "
+        "the project configures no check. Applied, it "
+        "gives the output `delta`, the saves' own `saves_delta`, and `reverses`: true only when the "
+        "output changed by exactly the reverse of `saves_delta`, null when those saves were not "
+        "observed or never changed the output. Pass emit=true for a dry-run "
         "preview (writes nothing), whole=true to take out the removal set: the steps plus "
         "everything that stands on them. " + _ADDRESS,
         _schema({"ref": {"type": "string", "description": "an address"},

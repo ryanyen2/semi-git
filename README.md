@@ -35,6 +35,14 @@ ugh save -m "add input validation"
 address, for example `cart.py::tax@3f2a1c0`: one save's change to one definition. Add `--as checkout` to give those steps a name. `ugh` never names
 anything itself, so a name is always one you or your agent gave.
 
+When the project configures a check (the tiers in `.sgt/oracle.json`), `ugh save` also runs it on
+the commit it just made and records what the check observed there: its exit code, its output, and,
+when the check runs Python 3.12 or later, which lines of your files it executed. A save then takes as
+long as the check, and in return the observation comes from your real environment. The save prints
+one line with the check's verdict, how many lines of its output changed against the parent's
+observation, and how many of the save's steps the check ran. Observations stay on your machine
+(`.sgt/local/observations/`); a clone has them only for the saves it made.
+
 ## Set up your coding agent and editor
 
 If you use Claude Code or the VS Code extension, run this in the repo:
@@ -92,6 +100,7 @@ $ ugh revert cache.py::get_cached --yes
   goes: 1 step(s) (787d66b "agent pass: rate limit, caching")
   files: cache.py
   check: not run yet
+  HEAD: not observed
   ✓ revert applied — 1 step(s) undone, 0 held, the parser passes. (`ugh undo` reverses this.)
 ```
 
@@ -100,6 +109,13 @@ and every symbol in `rate_limit.py` and `retry.py` is byte for byte what it was 
 is a new commit, and the project's check (or, with none configured, the parser) ran on the result
 before it was made. The commit's `Ugh-Out:` trailer names the ops of the steps it took out, so a
 clone or a rebase still knows they are out. `ugh restore cache.py::get_cached` puts it back.
+
+This scratch repo has no check, so HEAD was not observed and the answer says nothing about
+behaviour. With a check, the preview lists the steps the check never ran on HEAD, and the applied
+take-out says how many lines of the check's output changed. When that change is not empty and is
+exactly the reverse of what the saves taken out changed in the output, the answer says "gone, as the
+check sees it"; nothing else is called gone. A step the check never ran is listed as gone from the code, with
+behaviour the check cannot confirm.
 
 A step that other remaining work stands on is held, with the reason (other code uses it, a later
 save changed it, a later save rewrote the same lines) and the saves that hold it. `--whole` takes

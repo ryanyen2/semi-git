@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import argparse
 
-from ._common import _emit_json, _fail, _fail_json
+from ._common import _emit_json, _fail, _fail_json, observed_text
 
 # D2 routing table (design doc §1): git subcommand -> the ugh verb that owns that job. A subcommand
 # here is refused by `ugh git`; anything absent passes through untouched (read/inspect verbs, and
@@ -83,14 +83,18 @@ def _cmd_undo(args) -> int:
 
 
 def save(repo: str, *, message: str | None = None, as_label: str | None = None) -> dict:
-    """Commit the working tree as git would (`git add -A`), mine the commit, and name its steps
-    when `as_label` is given: `{ok, saved, commit, steps}` or `{ok: False, error}`. Refused during
-    an in-progress git merge, cherry-pick or revert, and while a two-version choice is pending."""
+    """Commit the working tree as git would (`git add -A`), mine the commit, name its steps when
+    `as_label` is given, and run the project's check to record what it observed on the commit:
+    `{ok, saved, commit, steps, observed}` or `{ok: False, error}`. Each step says whether the check
+    ran it. `observed` is None without a check, `{not_recorded}` when recording failed, else
+    `observe.of_commit`. Refused during an in-progress git merge, cherry-pick or revert, and while a
+    two-version choice is pending."""
     import time
 
     from ugh import names
     from ugh.address import Record
-    from ugh.core import lens, opindex, oplog, sync
+    from ugh.core import lens, observe, opindex, oplog, planner, sync
+    from ugh.core.op import step_address
     from ugh.intent.manifest import load_manifests, record_manifest
     from ugh.store.gitbind import GitBinding, GitError
 
@@ -131,7 +135,32 @@ def save(repo: str, *, message: str | None = None, as_label: str | None = None) 
     if as_label:
         names.name(repo, rec.ops(steps), as_label)
         rec.names = names.load(repo)
-    return {"ok": True, "saved": True, "commit": sha, "steps": rec.steps(steps)}
+    try:
+        with busy("running the check…"):
+            obs = observe.check(repo)
+        if obs is not None:
+            observe.record(repo, sha, obs)
+        observed = obs and observe.of_commit(repo, sha, rec.ctx.parent[sha])
+    except OSError as e:
+        obs, observed = None, {"not_recorded": str(e)}
+    rows = [{**rec.step(st), "ran": planner.ran(rec.ctx, obs, st, sha)}
+            for st in sorted(steps, key=lambda st: step_address(st.unit, st.sha))]
+    return {"ok": True, "saved": True, "commit": sha, "steps": rows, "observed": observed}
+
+
+def _observed_line(out: dict) -> str:
+    """What the check observed on a save: its verdict, its output against the parent's and how many
+    of the save's steps it ran."""
+    seen = out["observed"]
+    if "not_recorded" in seen:
+        return f"observation not recorded: {seen['not_recorded']}"
+    parts = [observed_text(seen)]
+    known = [st["ran"] for st in out["steps"] if st["ran"] is not None]
+    if not seen["lines_recorded"]:
+        parts.append("lines not recorded")
+    elif known:
+        parts.append(f"the check ran {sum(known)} of {len(known)} step(s)")
+    return "; ".join(parts)
 
 
 def _render_save(out: dict, message: str | None, as_label: str | None) -> None:
@@ -144,6 +173,8 @@ def _render_save(out: dict, message: str | None, as_label: str | None) -> None:
     print(f"✓ save {out['commit'][:7]}{title}")
     for st in out["steps"]:
         print(f"    {st['kind']:<7} {st['address']}" + (f"  [{st['name']}]" if st["name"] else ""))
+    if out["observed"] is not None:
+        print(f"  {_observed_line(out)}")
     # Reversing the save takes its edits back off the working copy, not only out of the record.
     print("  ⤺ undo this save, and take its edits back off the working copy:  ugh undo")
 

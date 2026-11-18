@@ -5,7 +5,8 @@ produced here. Reads are offline and pure over an already-mined store; mining on
 (`ugh.core.lens.get`) is the caller's job. Every step carries its address (`ugh.address`).
 
 * `log_view`     -- the saves, newest first, each with its steps.
-* `show_view`    -- an address's steps, the ask behind each save it touches, and the planner's answer.
+* `show_view`    -- an address's steps, the ask behind each save it touches and what the check
+  observed on it, and the planner's answer.
 * `find_view`    -- names, subjects, definitions and asks matching some words, as addresses.
 * `plan_view`    -- each declared name with the saves since the baseline carrying it, and the steps
   carrying no declared name.
@@ -35,10 +36,11 @@ def log_view(repo, *, limit: int | None = None) -> dict:
 
 
 def show_view(repo, token: str) -> dict:
-    """An address's steps, the saves they came from with the ask behind each, and the planner's
-    answer: what taking them out would take, or bringing them back when every step is out."""
+    """An address's steps, the saves they came from with the ask behind each and what the check
+    observed on each (`observe.of_commit`, None when not observed), and the planner's answer: what
+    taking them out would take, or bringing them back when every step is out."""
     from ugh.address import AddressError, Record, resolve
-    from ugh.core import planner
+    from ugh.core import observe, planner
     from ugh.intent.stint import asks_for_ops, dominant_ask
 
     rec = Record(repo)
@@ -50,7 +52,8 @@ def show_view(repo, token: str) -> dict:
     saves = []
     for sha in sorted({st.sha for st in steps}, key=rec.ctx.index.__getitem__):
         ask = dominant_ask(asks_for_ops(repo, rec.ops(st for st in steps if st.sha == sha), [sha]))
-        saves.append({**rec.save_row(sha), "ask": ask})
+        saves.append({**rec.save_row(sha), "ask": ask,
+                      "observed": observe.of_commit(repo, sha, rec.ctx.parent[sha])})
     verb = "restore" if all(row["out"] for row in rows) else "revert"
     p = planner.plan(repo, steps, verb=verb, target=token, removal_set=verb == "revert")
     return {"ok": True, "address": token, "steps": rows, "saves": saves, "plan": planner.to_json(p)}

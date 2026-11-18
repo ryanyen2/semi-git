@@ -56,6 +56,13 @@ out, so what is out travels with git history (a clone or a rebase knows). The pr
 a failure inside a definition being changed holds that step, and a failure anywhere else applies
 nothing. `ugh show <address>` gives the same answer without changing anything.
 
+With a check configured, every `ugh save` also records what the check observed on its commit: the
+exit code, the output, and the lines of your Python files it ran. The preview prints `the check never
+ran: <addresses>` for steps HEAD's observation never ran (`ran: false`), and an applied revert or
+restore prints how many output lines changed and whether that is the reverse of what the saves it
+took out changed. Only that reverse, when the output changed at all, is reported as "gone, as the
+check sees it".
+
 `ugh undo` reverses the last thing you did, from the operation log: a save, a revert or a restore
 is undone by taking out all of its commit's steps (so work committed since stays), a `name` or
 `rename` by restoring the names before it.

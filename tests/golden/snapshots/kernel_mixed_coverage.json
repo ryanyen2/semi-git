@@ -72,6 +72,7 @@
       },
       "held": [],
       "message": "",
+      "observed": null,
       "ok": true,
       "removal_set": {
         "saves": [
@@ -87,36 +88,42 @@
       "undone": [
         {
           "address": "config.yaml@7231aa1",
+          "ran": null,
           "save": "7231aa1",
           "subject": "add mixed python and non-parseable paths",
           "unit": "config.yaml"
         },
         {
           "address": "notes.md@7231aa1",
+          "ran": null,
           "save": "7231aa1",
           "subject": "add mixed python and non-parseable paths",
           "unit": "notes.md"
         },
         {
           "address": "pkg.py@7231aa1",
+          "ran": null,
           "save": "7231aa1",
           "subject": "add mixed python and non-parseable paths",
           "unit": "pkg.py::__residue__::\u0000HEAD\u0000"
         },
         {
           "address": "pkg.py::compute@7231aa1",
+          "ran": null,
           "save": "7231aa1",
           "subject": "add mixed python and non-parseable paths",
           "unit": "pkg.py::compute"
         },
         {
           "address": "util.py@7231aa1",
+          "ran": null,
           "save": "7231aa1",
           "subject": "add mixed python and non-parseable paths",
           "unit": "util.py::__residue__::\u0000HEAD\u0000"
         },
         {
           "address": "util.py::helper@7231aa1",
+          "ran": null,
           "save": "7231aa1",
           "subject": "add mixed python and non-parseable paths",
           "unit": "util.py::helper"
@@ -128,6 +135,7 @@
       {
         "ask": null,
         "date": "2023-11-14T22:13:20+00:00",
+        "observed": null,
         "sha": "7231aa16afff4bc420acda30722f73fd9dc1453b",
         "subject": "add mixed python and non-parseable paths"
       }
