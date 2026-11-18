@@ -88,7 +88,7 @@ def test_the_checker_catches_a_flag_the_verb_does_not_accept(tmp_path):
     doc = tmp_path / "doc.md"
     doc.write_text(
         "Show all of it with `ugh show f-abc --full`, or `ugh status --full`.\n"
-        "Read it with `ugh show f-abc --json` and `ugh log --refresh`.\n",
+        "Read it with `ugh show f-abc --json` and `ugh log --limit 3`.\n",
         encoding="utf-8",
     )
 
@@ -98,4 +98,4 @@ def test_the_checker_catches_a_flag_the_verb_does_not_accept(tmp_path):
     assert any("show" in q for q in flagged), "`--full` on `ugh show` must be reported"
     assert not any("status" in q for q in flagged), "`--full` on `ugh status` is valid"
     assert not any("--json" in q for q in flagged), "`--json` is valid on both"
-    assert not any("--refresh" in q for q in flagged), "`--refresh` is a real `log` flag"
+    assert not any("--limit" in q for q in flagged), "`--limit` is a real `log` flag"

@@ -1,10 +1,10 @@
 """The operation log and `ugh undo`.
 
 One per-ref log every mutating verb appends to: `{"kind": "commit", "sha", "verb", "target"}` for a
-commit ugh made (a save, a take-out, a bring-back, a resolve), and `feature_reorg` snapshots of the
-feature metadata. `undo` pops the newest event and reverses it: a commit is reversed by taking out
+commit ugh made (a save, a take-out, a bring-back, a resolve), and `names` snapshots taken before a
+`name` or `rename`. `undo` pops the newest event and reverses it: a commit is reversed by taking out
 the ops mined from it (`ugh.core.planner`), which is itself a commit and is not logged, so repeated
-undos walk back; a reorg restores its snapshot.
+undos walk back; a names event restores its snapshot.
 """
 
 from __future__ import annotations
@@ -101,8 +101,8 @@ def _restore(repo: str | Path, snap: dict) -> None:
 @dataclass(frozen=True)
 class UndoOutcome:
     """What one `undo` did: `empty` (nothing to undo), `commit` (`plan` is the applied take-out of
-    that commit's ops), `refused` (the take-out applied nothing; `plan` says why), or `reorg` (a
-    metadata snapshot was restored)."""
+    that commit's ops), `refused` (the take-out applied nothing; `plan` says why), or `names` (a
+    names snapshot was restored)."""
 
     status: str
     message: str
@@ -123,21 +123,22 @@ def _what(event: dict) -> str:
 
 def preview(repo: str | Path) -> dict:
     """What the next `undo` would do, computed without doing it: `{kind, ok, message, undone,
-    held, symbols}`."""
+    held, steps}`, `steps` being the addresses that would go."""
+    from ugh.core.op import step_address
+
     repo = Path(repo)
     event = tail(repo)
     if event is None:
         return {"kind": None, "ok": True, "message": "nothing to undo", "undone": 0, "held": 0,
-                "symbols": []}
-    if event["kind"] == "feature_reorg":
-        return {"kind": "feature_reorg", "ok": True, "undone": 0, "held": 0, "symbols": [],
-                "message": f"restores the feature grouping from before the {event.get('verb', 'reorg')} "
-                           f"(no code changes)"}
+                "steps": []}
+    if event["kind"] == "names":
+        return {"kind": "names", "ok": True, "undone": 0, "held": 0, "steps": [],
+                "message": f"restores the names from before the {event['verb']} (no code changes)"}
     p = _commit_plan(repo, event)
     return {"kind": "commit", "ok": p.ok and bool(p.files),
             "message": f"takes out {_what(event)}" + (f" -- {p.message}" if p.message else ""),
             "undone": len(p.undone), "held": len(p.held),
-            "symbols": sorted({st.symbol for st in p.undone})[:12]}
+            "steps": sorted({step_address(st.symbol, p.saves[st.op][0]) for st in p.undone})[:12]}
 
 
 def undo(repo: str | Path) -> UndoOutcome:
@@ -150,10 +151,10 @@ def undo(repo: str | Path) -> UndoOutcome:
     event = tail(repo, ref_key=key)
     if event is None:
         return UndoOutcome("empty", "nothing to undo")
-    if event["kind"] == "feature_reorg":
-        _restore(repo, event.get("snapshot", {}))
+    if event["kind"] == "names":
+        _restore(repo, event["snapshot"])
         _drop_event(repo, key, event)
-        return UndoOutcome("reorg", f"reverted feature {event.get('verb', 'reorg')}", kind="feature_reorg")
+        return UndoOutcome("names", f"reverted the {event['verb']}", kind="names")
     p = _commit_plan(repo, event)
     done = planner.apply(repo, p, message=f"ugh undo {event['verb']} {event['target']}".strip(), log=False)
     if done.check != "not_run" and done.check["passed"] and done.files:

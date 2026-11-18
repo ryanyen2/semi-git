@@ -179,30 +179,22 @@ def test_save_json_reports_open_fork_count(tmp_path, capsys):
     assert payload["ok"] is True and payload["open_fork_count"] == 1
 
 
-def test_save_leaves_the_tree_clean_for_the_next_verb(tmp_path):
-    """F1 (workflow-hardening 2026-07-31-001): the save-time ownership cascade (`assign_at_save`)
-    must be folded *into* the witness commit, not written after it. When a save introduces a brand-
-    new symbol the cascade writes the committed `.sgt` tables (pins/authored/tree); running it after
-    `put` already committed leaves them modified/untracked, so the very next `switch`/`sync`/`land`
-    aborts on a dirty tree. Reproduce by saving a new symbol (forcing a lane mint) and asserting the
-    tree is clean afterward -- exactly the precondition those verbs require."""
-    from ugh.lens import tree
-
+def test_save_as_leaves_the_tree_clean_for_the_next_verb(tmp_path):
+    """F1: `save --as` writes `.sgt/names.json`, which travels on `refs/ugh/state` and must stay
+    untracked -- also in a `.sgt` whose ignore file predates the names table -- or the very next
+    `sync` aborts on a dirty tree."""
     gb, _ = init_store(tmp_path)
+    (tmp_path / ".sgt" / ".gitignore").write_text(".gitignore\nops/\n", encoding="utf-8")
     (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
     gb.commit_all("base foo")
-    ideal = get(tmp_path)
-    # The cascade only fires once a feature tree exists (the first build owns the initial
-    # clustering); build it so this save actually exercises the lane-mint write path.
-    tree.save(tmp_path, tree.build(tmp_path, Store(tmp_path).all_ops(), ideal))
+    get(tmp_path)
 
     (tmp_path / "b.py").write_text("def bar():\n    return 2\n", encoding="utf-8")
     with _in(tmp_path):
-        assert cli.main(["save", "-m", "add bar"]) == 0
+        assert cli.main(["save", "-m", "add bar", "--as", "bar"]) == 0
 
+    assert (tmp_path / ".sgt" / "names.json").is_file()
     status = gb._git("status", "--porcelain").stdout
-    dirty = [ln for ln in status.splitlines() if ".sgt/" in ln and "/local/" not in ln]
-    assert dirty == [], f"save left committed .sgt metadata dirty: {dirty!r}"
     assert gb.is_clean(), f"save left the tree dirty; next verb would refuse:\n{status}"
 
 
@@ -270,135 +262,6 @@ def test_save_closes_a_capture_manifest(tmp_path):
     assert [t["text"] for t in rec2["turns"]] == ["bump quux"]
 
 
-def test_save_reflects_a_grounded_stint_into_the_users_words(tmp_path):
-    """The P2 payoff: a hook-captured prompt, the activity events its session produced, and the
-    save's ops meet at the save beat -- and the recorded why is the user's own sentence, with no
-    batch aligner and no plan session anywhere."""
-    from ugh.intent import activity, turns
-    from ugh.intent.rationale import load_rationale
-
-    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
-    get(repo)
-    turns.record_turn(repo, key="cs-9", key_kind="chat", actor="human", channel="hook",
-                      text="add a quux helper\nand keep it tiny")
-    activity.record_activity(repo, tool="Write", file="d.py", session_id="cs-9")
-    (repo / "d.py").write_text("def quux():\n    return 42\n", encoding="utf-8")
-    with _in(repo):
-        assert cli.main(["save"]) == 0
-
-    reasons = [r["reason"] for r in load_rationale(repo).values()]
-    assert "add a quux helper" in reasons  # the ask's first line, not the commit subject
-
-
-def test_save_echo_reports_no_words_captured_without_a_message(tmp_path, capsys):
-    """Save-echo legibility (intent-ledger P1): a bare save (no `-m`, no plan step) says so
-    explicitly rather than staying silent or -- the failure the design forbids -- printing the
-    temporally-nearest unrelated turn as if it were this save's words. The trust loop depends on the
-    echo never bluffing."""
-    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
-    get(repo)
-    (repo / "d.py").write_text("def quux():\n    return 42\n", encoding="utf-8")
-    with _in(repo):
-        assert cli.main(["save"]) == 0
-    out = capsys.readouterr().out
-    assert "no words captured" in out
-
-
-def test_save_echo_does_not_duplicate_the_message_line(tmp_path, capsys):
-    """When `-m` is given the header already echoes it in quotes; the dedicated words line is only
-    for the no-`-m` cases, so a `-m` save must NOT also print a `· ...` line or the 'no words
-    captured' empty state."""
-    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
-    get(repo)
-    (repo / "d.py").write_text("def quux():\n    return 42\n", encoding="utf-8")
-    with _in(repo):
-        assert cli.main(["save", "-m", "add quux helper"]) == 0
-    out = capsys.readouterr().out
-    assert '"add quux helper"' in out          # header echoes the message
-    assert "no words captured" not in out       # ...and doesn't also claim none
-    assert "· add quux helper" not in out       # ...nor duplicate it on a second line
-
-
-def test_save_json_carries_the_captured_words(tmp_path, capsys):
-    """The captured words are structured in `--json` so the editor / VSCode surface reads them from
-    the same save output the terminal renders -- the integrate-don't-annex contract."""
-    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
-    get(repo)
-    (repo / "d.py").write_text("def quux():\n    return 42\n", encoding="utf-8")
-    with _in(repo):
-        assert cli.main(["save", "-m", "add quux helper", "--json"]) == 0
-    payload = json.loads(capsys.readouterr().out)
-    assert payload["words"] == "add quux helper"
-
-
-def test_echo_words_prefers_message_then_plan_then_none():
-    """`_echo_words` priority, in isolation: the `-m` message wins; with no message it falls to the
-    stated intent of an auto-confirmed plan step; with neither it returns None (the caller renders
-    the explicit empty state). It never reaches for chat turns -- those are the P2 rung."""
-    from ugh.cli.porcelain import _echo_words
-
-    assert _echo_words("unused", "typed words", None) == "typed words"
-    assert _echo_words("unused", None, None) is None
-    assert _echo_words("unused", None, {"auto_confirmed": []}) is None
-
-
-def test_aligned_why_surfaces_a_live_ledgered_reason_and_dedupes_the_words(tmp_path):
-    """The save's aligned *why* (M4): the ledger's landed reasons for the saved ops, minus any reason
-    identical to the words already echoed (so the line adds signal, never repeats the words line)."""
-    from ugh.cli.porcelain import _aligned_why
-    from ugh.intent import rationale
-
-    rationale.record_rationale(tmp_path, subject=[{"op": "o1", "sha": None, "fp": "f"}],
-                               reason="wanted retry backoff on the fetcher", actor="human", evidence=[])
-    rationale.record_rationale(tmp_path, subject=[{"op": "o2", "sha": None, "fp": "f"}],
-                               reason="add quux helper", actor="human", evidence=[])  # == words -> dropped
-
-    why = _aligned_why(str(tmp_path), frozenset({"o1", "o2"}), words="add quux helper")
-    assert why == "wanted retry backoff on the fetcher"
-
-
-def test_aligned_why_ignores_other_ops_and_open_intents(tmp_path):
-    """Only reasons for ops in *this* save count; open (never-landed) intents have no landed op and
-    are skipped -- so a save whose ops the ledger says nothing about yields None (the common case)."""
-    from ugh.cli.porcelain import _aligned_why
-    from ugh.intent import rationale
-
-    rationale.record_rationale(tmp_path, subject=[{"op": "other", "sha": None, "fp": "f"}],
-                               reason="unrelated change", actor="human", evidence=[])
-    rationale.record_rationale(tmp_path, subject=[], reason="stated but never landed",
-                               actor="human", evidence=[], open=True)
-    assert _aligned_why(str(tmp_path), frozenset({"o1"}), words=None) is None
-
-
-def test_render_save_prints_and_json_carries_the_why_aligned_line(tmp_path, capsys):
-    """The why line is distinct from the words line on both output paths."""
-    from ugh.cli.porcelain import _render_save
-
-    assert _render_save(False, True, "abc1234def", 1, None, False, why="wanted retry backoff") == 0
-    assert "why (aligned): wanted retry backoff" in capsys.readouterr().out
-
-    assert _render_save(True, True, "abc1234def", 1, None, False, why="wanted retry backoff") == 0
-    assert json.loads(capsys.readouterr().out)["why"] == "wanted retry backoff"
-
-
-def test_save_message_feeds_the_segment_labeler_via_the_local_turn(tmp_path):
-    """Goal-1 label feed (M1), kept local: the `-m` message is harvested as a turn keyed by the
-    witness sha, and the segment labeler's `label_prompt_for` resolves it from there -- so the
-    feature is named in the user's own words with no committed-sidecar write (a save must not dirty
-    `.sgt/`) and no new labeling code."""
-    from ugh.intent import turns
-    from ugh.intent.theme_segment import label_prompt_for
-
-    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
-    get(repo)
-    (repo / "d.py").write_text("def quux():\n    return 42\n", encoding="utf-8")
-    with _in(repo):
-        assert cli.main(["save", "-m", "extract the quux helper"]) == 0
-
-    turn = next(t for t in turns.load_turns(repo).values() if t["text"] == "extract the quux helper")
-    assert label_prompt_for(repo, turn["key"]) == "extract the quux helper"
-
-
 def test_save_refuses_during_an_in_progress_merge(tmp_path, capsys):
     """F26 safety (0.9): `ugh save` with MERGE_HEAD present must refuse rather than commit the
     conflict-marker bytes and finalize the merge blind."""
@@ -424,44 +287,6 @@ def test_save_refuses_during_an_in_progress_merge(tmp_path, capsys):
     assert "merge" in out.lower()
     assert gb.head() == head_before  # nothing committed
     assert gb.rev_parse("MERGE_HEAD") is not None  # merge still in progress
-
-
-def test_save_with_no_active_plan_omits_the_plan_key(tmp_path, capsys):
-    """The plan-matching fold (U12) is invisible when no plan session is active: a plain dirty save
-    carries no `plan` key, so `save`'s common-case JSON shape is byte-unchanged."""
-    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
-    get(repo)
-    (repo / "d.py").write_text("def quux():\n    return 42\n", encoding="utf-8")
-    with _in(repo):
-        rc = cli.main(["save", "-m", "add quux", "--json"])
-    assert rc == 0
-    payload = json.loads(capsys.readouterr().out)
-    assert payload["ok"] is True and payload["saved"] is True
-    assert "plan" not in payload  # no active plan -> no fold reporting
-
-
-def test_save_assigns_a_new_symbol_a_durable_lane(tmp_path):
-    """U6 integration: `ugh save` runs the ownership cascade -- a new function added after a `map`
-    lands a durable assign pin (so a later recluster keeps it in place), and the save still
-    succeeds. The lane algebra + visibility are pinned in tests/lens/test_ledger.py; this is the
-    thin `cli.main` wiring."""
-    from ugh.lens import map as lensmap
-    from ugh.lens.pins import load_pins
-
-    gb, _ = init_store(tmp_path)
-    (tmp_path / "core.py").write_text(
-        "def alpha():\n    return 1\n\n\ndef beta():\n    return alpha()\n", encoding="utf-8")
-    gb.commit_all("core")
-    get(tmp_path)
-    lensmap.build_map(tmp_path)  # a persisted tree the cascade can build on
-
-    (tmp_path / "core.py").write_text(
-        "def alpha():\n    return 1\n\n\ndef beta():\n    return alpha()\n\n\n"
-        "def delta():\n    return alpha() + beta()\n", encoding="utf-8")
-    with _in(tmp_path):
-        rc = cli.main(["save", "-m", "add delta"])
-    assert rc == 0
-    assert "core.py::delta" in load_pins(tmp_path).assign  # the cascade pinned it
 
 
 def test_undo_inverts_a_save_and_then_reports_nothing_to_undo(tmp_path, capsys):
@@ -529,28 +354,3 @@ def test_save_does_not_claim_nothing_to_save_while_the_mine_is_incomplete(tmp_pa
     assert rc != 0 or "added_by_user" in out
 
 
-def test_a_modify_only_save_names_the_feature_it_landed_in(tmp_path, capsys):
-    """Step 5 of the study's ugh practice sheet is "edit anything, a function or just the README",
-    then `ugh save` -- and it promises the save "tells you which feature the change landed in".
-    That held only when the save introduced a *new* symbol. Attribution reads the persisted
-    `op_leaf`, a save deliberately does not rebuild the tree, so an op recorded seconds ago has no
-    entry there yet and the entire feature line was dropped. A *modified* symbol already belongs to
-    a leaf, so its feature is known immediately, with no reclustering and no new cost on the common
-    save."""
-    from ugh.lens import map as lensmap
-
-    repo = tmp_path / "repo"
-    gb, _ = init_store(repo)
-    (repo / "core.py").write_text(
-        "def alpha():\n    return 1\n\n\ndef beta():\n    return alpha() + 1\n", encoding="utf-8")
-    gb.commit_all("core: alpha, beta")
-    get(repo)
-    lensmap.build_map(repo)
-
-    (repo / "core.py").write_text(
-        "def alpha():\n    return 99\n\n\ndef beta():\n    return alpha() + 1\n", encoding="utf-8")
-    with _in(repo):
-        rc = cli.main(["save", "-m", "change what alpha returns"])
-    out = capsys.readouterr().out
-    assert rc == 0
-    assert "core.py::alpha" in out, f"the save never says where the change landed:\n{out}"

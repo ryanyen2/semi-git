@@ -3,9 +3,8 @@ deterministic prompt→op join, computed from capture manifests -- never stored,
 
 A **stint** is one turn's grounded slice of a save: the turn, the activity events its session
 produced while that turn was the session's latest word, and the ops of the closing save whose
-footprint files those events touched. Op membership is a pure function of captured evidence --
-the same discipline as segmentation's safety invariant (`ugh.intent.segment`): no LLM, no
-similarity score, no EM. What the evidence cannot ground falls to the residual, so a hand-typed
+footprint files those events touched. Op membership is a pure function of captured evidence: no
+LLM, no similarity score. What the evidence cannot ground falls to the residual, so a hand-typed
 edit is never attributed to the nearest prompt just because it was nearby in time.
 
 The rules, each carrying one of the design's cases:
@@ -17,25 +16,12 @@ The rules, each carrying one of the design's cases:
 - A turn that owns no events is not a stint (case 5, the question that produced no code); a stint
   whose files ground no ops claims nothing (case 9, the abandoned prompt -- claiming requires
   fresh events in the window being derived, so an old ask never reopens onto later work).
-- An op claimed by several stints keeps every claim (case 8, the correction chain: "add auth" then
-  "no, sessions not JWTs" are BOTH the why of the code that survived -- `for_op` renders them in
-  order, and supersedence stays a human judgement via `ugh intent edit`).
+- An op claimed by several stints keeps every claim (case 8, the correction chain).
 
-`asks_for_ops` is the read side, and it answers for an op SET rather than for a save: what a
-reader points at is a chapter, a feature, a symbol's history, or a ◆ row of work spread across
-features, and all of those have to be answered by one function or two surfaces will quote different
-words back for the same code. `ask_record` is the shape they all render -- an excerpt
-(`ugh.intent.gist`) plus whose words they were and how much of the selection they account for --
-and `dominant_ask` picks the one a single line quotes.
-
-`reflect_save` is the save-beat emitter: it turns each grounded stint into a standard
-`ugh.intent.rationale` record (actor `human`, unconfirmed, evidence = the turn ids), plus
-save-wide records for the words that are explicit claims about the whole save -- a sha-keyed turn
-(`-m`, or an MCP-carried prompt with no chat key) and an `agent`-channel carry in the window (an
-MCP client without hooks produces no events to ground through). Everything downstream -- `ugh why`,
-`intent review`, `intent edit`, supersedence -- works unchanged on these records. Idempotent all
-the way down (manifests are write-once, rationale is content-addressed), so re-reflecting a sha
-is a no-op.
+`asks_for_ops` is the read side, for an op set: `ugh show` asks it for the steps of each save an
+address touches. `ask_record` is the shape it returns -- an excerpt (`ugh.intent.gist`) plus whose
+words they were and how much of the selection they account for -- and `dominant_ask` picks the one
+a single line quotes.
 """
 
 from __future__ import annotations
@@ -115,31 +101,6 @@ def derive_stints(manifests: dict[str, dict], sha: str, root: str | Path) -> dic
     return {"stints": stints, "residual_op_ids": residual}
 
 
-def stint_words(repo: str | Path, shas: frozenset[str] | set[str] | None = None,
-                ) -> dict[str, list[dict]]:
-    """The segmentation weave's evidence feed (P3, §4d): per commit, every grounded stint as
-    `{turn_id, session, ts, text, op_ids}` -- what `segments_for` weighs on boundaries
-    (`_dominant_turn`) and names chapters with (`apply_words_labels`). One manifest-store read for
-    however many shas; `shas=None` covers every manifested save. A sha with no manifest, or no
-    grounded stint, is simply absent -- pre-weave history stays subject-labeled."""
-    from ugh.intent.manifest import load_manifests
-
-    manifests = load_manifests(repo)
-    out: dict[str, list[dict]] = {}
-    for sha in manifests if shas is None else (s for s in shas if s in manifests):
-        entries = [
-            {"turn_id": s["turn"]["id"], "session": s["turn"]["key"], "ts": s["turn"]["ts"],
-             "text": s["turn"]["text"], "op_ids": s["op_ids"],
-             # Whose words these are travels WITH them: every surface that renders an ask says so
-             # (`_SOURCE`), and a feed that dropped the channel forced each caller to guess.
-             "channel": s["turn"]["channel"], "actor": s["turn"]["actor"]}
-            for s in derive_stints(manifests, sha, root=repo)["stints"] if s["op_ids"]
-        ]
-        if entries:
-            out[sha] = entries
-    return out
-
-
 def whole_save_turns(repo: str | Path, target: dict | None, sha: str) -> list[dict]:
     """The turns that are explicit claims about the WHOLE save `sha`, as opposed to ambient
     conversation. Two sources: a sha-keyed turn (`-m` via the CLI, or an MCP-carried prompt with
@@ -147,9 +108,7 @@ def whole_save_turns(repo: str | Path, target: dict | None, sha: str) -> list[di
     the window closed and tool_save re-reflects to pick it up), and an `agent`-channel chat turn
     inside the save's window (an MCP client without hooks produces no events, so its deliberate
     carry must not count for *less* than passing no session id at all would). A hook turn is
-    never here -- ambient words need event grounding (case 5). ONE rule, shared by the rationale
-    emission (`reflect_save`) and the context pack (`ugh.api.checkpoint_context`), so what a save
-    claims cannot differ between the why and the asked."""
+    never here -- ambient words need event grounding (case 5)."""
     from ugh.intent.turns import turns_for
 
     wide = list(turns_for(repo, sha, key_kind="sha"))
@@ -158,63 +117,15 @@ def whole_save_turns(repo: str | Path, target: dict | None, sha: str) -> list[di
     return wide
 
 
-def reflect_save(repo: str | Path, sha: str) -> list[str]:
-    """Emit rationale records for the save `sha`: one per grounded stint, plus save-wide ones for
-    the whole-save claims (sha-keyed turns; `agent`-channel carries in the window). Returns the
-    record ids (fresh or pre-existing -- everything here is idempotent). The caller guards; a
-    reflection hiccup must never disturb the verb it rides."""
-    from ugh.intent.gist import ROW_WIDTH, ask_gist
-    from ugh.intent.manifest import load_manifests
-    from ugh.intent.rationale import _subject_for, record_rationale
-
-    manifests = load_manifests(repo)
-    target = manifests.get(sha)
-    if target is None:
-        return []
-    ids = []
-    emitted: set[str] = set()  # reasons already claimed this save; a save-wide twin adds nothing
-    derived = derive_stints(manifests, sha, root=repo)
-    for st in derived["stints"]:
-        if not st["op_ids"]:
-            continue
-        reason = ask_gist(st["turn"]["text"], ROW_WIDTH)
-        rid = record_rationale(
-            repo, subject=_subject_for(repo, st["op_ids"]), reason=reason, actor="human",
-            evidence=[st["turn"]["id"]], recorded_by="stint",
-        )
-        if rid:
-            ids.append(rid)
-            emitted.add(reason)
-    all_op_ids = [o["id"] for o in target["ops"]]
-    if all_op_ids:
-        for t in whole_save_turns(repo, target, sha):
-            reason = ask_gist(t["text"], ROW_WIDTH)
-            if reason in emitted:  # its stint (or the hook twin's) already said this
-                continue
-            rid = record_rationale(
-                repo, subject=_subject_for(repo, all_op_ids), reason=reason, actor="human",
-                evidence=[t["id"]], recorded_by="stint",
-            )
-            if rid:
-                ids.append(rid)
-                emitted.add(reason)
-    return ids
-
-
-# Where a captured ask came from, in words. Here rather than in each renderer because there are
-# three of them -- the CLI, the terminal map, the editor's webview -- in two languages, and "whose
-# words are these" is the one thing the reader must not be told differently by two of them. The
-# distinction is the capture channel's trust tier (`ugh.intent.turns`): a harness capture is the
-# developer's own typing, an agent carry is an agent's claim about it, a note is a paraphrase.
+# Where a captured ask came from, in words: the capture channel's trust tier (`ugh.intent.turns`).
+# A harness capture is the developer's own typing, an agent carry is an agent's claim about it, a
+# note is a paraphrase.
 _SOURCE = {
     "hook": "you, in a Claude Code chat",
     "agent": "you, relayed by the assistant",
     "note": "the assistant's note",
     "cli": "your save message",
     "sidecar": "a recorded prompt",
-    # The `_atom_prompt` fallback ladder reaches sidecars, save messages and turns alike, so a word
-    # that arrived through it has no knowable channel. Say that rather than picking one.
-    "recorded": "a recorded prompt",
 }
 
 
@@ -266,11 +177,7 @@ def ask_record(text: str, *, channel: str, actor: str = "human", ts: float | Non
 def asks_for_ops(repo: str | Path, op_ids, shas) -> list[dict]:
     """Every captured ask that grounds any of `op_ids`, in conversation order.
 
-    The one join behind every surface that shows captured words for a *selection* rather than for a
-    save: the `asked` attribute on `ugh show`, the checkpoint context pack, the workbench card. It
-    has to be one function -- a second copy of "which prompts claim these ops" is a copy that will
-    disagree with the first about what a chapter was for, which is the whole thing these surfaces
-    exist to say.
+    The one join behind every surface that shows captured words for a selection of steps.
 
     Each ask carries `claimed` (how many of `op_ids` its stint grounds) so a caller can pick the
     dominant one for a one-line render, `scope` ("stint" for grounded ambient words, "save" for an

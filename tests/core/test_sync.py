@@ -3,8 +3,8 @@
 Op-store union is nearly free (git's own file merge dedups by content-addressed path); the real
 surface under test is what isn't free: same-symbol chain forks must be *surfaced* with a concrete
 remedy rather than silently resolved, a same-id op independently mined on both clones must end up
-with both sides' provenance (git's `-X ours` alone would drop one), pins/the feature tree must
-reconcile across the union, and a second `sync` must be a no-op.
+with both sides' provenance (git's `-X ours` alone would drop one), and a second `sync` must be a
+no-op.
 
 Two-clone fixtures are built directly with `GitBinding`/`lens` (no `tests/laws/corpus.py` case
 fits a bare-remote-plus-two-working-clones shape) but follow the same hermetic discipline: real
@@ -18,7 +18,6 @@ from pathlib import Path
 from ugh.core import lens, sync
 from ugh.core.fold import code
 from ugh.core.store import Store
-from ugh.lens.pins import Pins, load_pins, save_pins
 from ugh.store.gitbind import GitBinding
 from tests.conftest import _clone, _init_bare, _push
 
@@ -209,28 +208,6 @@ def test_sync_dedups_an_op_independently_mined_on_both_clones(tmp_path):
 
     baz_op = next(op for op in Store(b).all_ops() if "main.py::baz" in op.footprint)
     assert {a_sha, b_sha} <= set(baz_op.provenance)
-
-
-def test_sync_reports_a_pin_contradiction_and_still_merges(tmp_path):
-    a, b = _two_clones(tmp_path, _BASE)
-
-    save_pins(a, Pins(assign={"m1": "featureA", "m2": "featureB"}))
-    GitBinding(a).commit_all("A: pin m1/m2 to separate features")
-    _push(a)
-
-    save_pins(b, Pins(must_link=frozenset({("m1", "m2")})))
-    GitBinding(b).commit_all("B: must-link m1 and m2")
-
-    report = sync.sync(b, remote="origin", branch="main")
-
-    assert report.merged
-    assert len(report.pin_contradictions) == 1
-    contradiction = report.pin_contradictions[0]
-    assert contradiction.kind == "assign_conflict_in_must_link_group"
-
-    unioned = load_pins(b)
-    assert unioned.must_link == frozenset({("m1", "m2")})
-    assert unioned.assign == {"m1": "featureA", "m2": "featureB"}
 
 
 # -- U8: three-way resolve -- reverts travel, sync stops resurrecting removed work ---------------

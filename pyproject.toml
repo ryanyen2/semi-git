@@ -15,20 +15,10 @@ classifiers = [
     "Topic :: Software Development :: Version Control :: Git",
 ]
 
-# Everything needed for `ugh init` and the daily loop. `entities` (tree-sitter) and `lens`
-# (igraph/leidenalg) used to be extras, but `ugh.core.mine` and `ugh.lens.cluster` import them at
-# module scope -- a stock install without them crashed on the first command, so they are not
-# optional in any real sense.
 dependencies = [
-    "openai>=1.40",
-    # Six modules import pydantic directly. It arrives anyway as an `openai` dependency, but relying
-    # on that means a future openai release could drop it and break us with no version to point at.
-    "pydantic>=2",
     "tree-sitter>=0.25",
     "tree-sitter-python>=0.25",
     "tree-sitter-typescript>=0.23",
-    "igraph>=0.11",
-    "leidenalg>=0.10",
 ]
 
 [project.urls]

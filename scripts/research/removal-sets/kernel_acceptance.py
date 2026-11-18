@@ -71,7 +71,7 @@ def bring_back(repo: Path, op_ids, target: str) -> dict:
 
 
 def project(name: str, episodes: list[dict], scratch: Path) -> list[str]:
-    from ugh.select.resolve import _save
+    from ugh.address import resolve
 
     with tarfile.open(HERE / f"exp-{name}.tgz") as tar:
         members = [m for m in tar if not Path(m.name).name.startswith("._")]  # macOS resource forks
@@ -107,7 +107,7 @@ def project(name: str, episodes: list[dict], scratch: Path) -> list[str]:
     shutil.copytree(template, repo, symlinks=True)
     original = tree(repo)
     events = [e for e in requests if e["session"] in EVENTS]
-    op_ids = frozenset().union(*(_save(repo, e["sha"]).op_ids for e in events))
+    op_ids = frozenset().union(*(resolve(repo, e["sha"]) for e in events))
     from ugh.core import planner
 
     p = planner.plan(repo, op_ids, target="events", removal_set=True)

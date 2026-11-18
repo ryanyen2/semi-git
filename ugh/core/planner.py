@@ -532,18 +532,6 @@ def plan(repo, op_ids, *, verb: str = "revert", target: str = "", whole: bool = 
     return p
 
 
-def plan_many(repo, op_sets) -> list[Plan]:
-    """Revert plans for several op sets over one read of the record: the steps, what goes and
-    what is held, without files."""
-    ctx = _Ctx(repo)
-    plans = []
-    for op_ids in op_sets:
-        steps, ids = steps_of(ctx, op_ids)
-        undone, held, _ = _compute(ctx, steps, {})
-        plans.append(Plan("revert", "", steps=tuple(steps), ops=ids, undone=undone, held=held))
-    return plans
-
-
 # -- the judge -------------------------------------------------------------------------------
 
 _LOCATIONS = (re.compile(r'File "([^"]+)", line (\d+)'),

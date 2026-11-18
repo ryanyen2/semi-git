@@ -28,9 +28,9 @@ _PKG = _ROOT / "ugh"
 _FORBIDDEN = {
     "api.py": ("ugh.cli", "ugh.mcp"),
     "core": ("ugh.cli", "ugh.mcp", "ugh.api"),
-    "store": ("ugh.cli", "ugh.mcp", "ugh.api", "ugh.core", "ugh.lens"),
+    "store": ("ugh.cli", "ugh.mcp", "ugh.api", "ugh.core"),
     "entities": ("ugh.cli", "ugh.mcp", "ugh.api"),
-    "select": ("ugh.cli", "ugh.mcp", "ugh.api"),
+    "address.py": ("ugh.cli", "ugh.mcp", "ugh.api"),
 }
 
 

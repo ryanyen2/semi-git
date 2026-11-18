@@ -6,9 +6,7 @@ tips are surfaced as durable state. The construction removes each forked symbol'
 up-sets from the union -- a downward-closed set minus an upward-closed set is still downward-closed,
 so the remainder is a valid ideal *by construction* (the forked tips, and everything transitively
 built on either of them, are the only ops excluded; the common ancestor below the fork and every
-unrelated chain proceed). Pins union structurally with contradictions reported, and the feature
-tree is rebuilt from the fork-free union (Greene-matched against ours' own last tree so our feature
-ids stay stable).
+unrelated chain proceed). The names tables merge three-way per op (`ugh.names.merge`).
 
 `plan_sync` reuses `ingest -> resolve` as a dry run, so this stage takes its inputs explicitly and
 produces its outputs without persisting anything.
@@ -19,13 +17,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ugh import names
 from ugh.core import order
 from ugh.core.ideal import Ideal
 from ugh.intent import prompts as intent_prompts
-from ugh.lens import authored, reconcile
-from ugh.lens.authored import AuthoredFeature
-from ugh.lens.pins import Contradiction, Pins
-from ugh.store.gitbind import GitBinding
 
 from .ingest import Ingested
 
@@ -34,13 +29,10 @@ from .ingest import Ingested
 class Resolution:
     forks: tuple[tuple[str, str, str], ...]
     merged_ideal: Ideal | None = None
-    unioned_pins: Pins | None = None
-    pin_contradictions: tuple[Contradiction, ...] = ()
-    tree_result: dict | None = None
     prompts: dict[str, str] = field(default_factory=dict)  # union-by-key (U5/KTD5)
-    # Authored features merged field-by-field (U6/R3): OR-Set membership + witness-topo LWW label +
-    # carried af- id -- first-class merged state, never rebuilt from the op store like the tree.
-    unioned_authored: dict[str, AuthoredFeature] = field(default_factory=dict)
+    names: dict[str, str] = field(default_factory=dict)
+    # (op id, ours, theirs) for every op both sides relabelled differently; ours was kept.
+    name_conflicts: tuple[tuple[str, str, str], ...] = ()
 
 
 def resolve(repo: Path, ing: Ingested) -> Resolution:
@@ -90,23 +82,8 @@ def resolve(repo: Path, ing: Ingested) -> Resolution:
         order.reduce_to_ideal(merged_seed, ing.all_ops), ing.all_ops
     )
 
-    # Witness-topo tie-break (D6): the git DAG supplies the causal order over pin witnesses, so a
-    # deliberate re-pin (its witness a descendant of the stale one) wins regardless of sync order.
-    is_ancestor = GitBinding(repo).is_ancestor
-    unioned_pins, pin_contradictions = reconcile.union_pins(
-        ing.ours_pins, ing.theirs_pins, is_ancestor=is_ancestor
-    )
-    # Authored features are first-class merged state (U6/R3/KTD3), not rebuilt from the op store like
-    # the tree below: membership unions as an OR-Set, the label uses the same witness-topo LWW rule
-    # as pins, and the carried af- id is never recomputed. Reuses the exact `_assign_winner` tie-break.
-    unioned_authored = authored.merge(ing.ours_authored, ing.theirs_authored, is_ancestor=is_ancestor)
-    tree_result = reconcile.reconcile_tree(
-        repo, ing.all_ops, merged_ideal, unioned_pins, ing.ours_tree
-    )
-    # Prompt sidecar unions as a plain G-Set-by-key (U5/KTD5): write-once per key makes this
-    # conflict-free, unlike the tree (which is rebuilt, not merged -- themes follow the same
-    # re-derive rule and are rebuilt post-commit, once the merged history is real; see materialize).
     prompts = intent_prompts.merge(ing.ours_prompts, ing.theirs_prompts)
+    merged_names, name_conflicts = names.merge(ing.base_names, ing.ours_names, ing.theirs_names)
 
     # Surface only *resolvable* forks (synthetic-symbol and same-after pseudo-forks carry no user
     # remedy and are neutralized by `reduce_to_ideal` anyway). The full `fork_triples` still drives
@@ -116,9 +93,7 @@ def resolve(repo: Path, ing: Ingested) -> Resolution:
     return Resolution(
         forks=tuple(surfaced_forks),
         merged_ideal=merged_ideal,
-        unioned_pins=unioned_pins,
-        pin_contradictions=tuple(pin_contradictions),
-        tree_result=tree_result,
         prompts=prompts,
-        unioned_authored=unioned_authored,
+        names=merged_names,
+        name_conflicts=tuple(name_conflicts),
     )

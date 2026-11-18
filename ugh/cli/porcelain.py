@@ -10,9 +10,9 @@ Two things live here, both small and both *data*:
    on next contact -- the net that catches raw `git` too). This replaces U18's advisory-only
    posture; the routing table is one data table, not conditionals scattered through the passthrough.
 
-2. **The daily-loop verbs (D3): `save`, `undo`.** Each composed from existing lens machinery (no
-   new kernel call): `save` is the put-path sugar (`get` + a commit that is mined like any other);
-   `undo` reverses the last mutating operation by popping the operation log (`oplog.undo`). Everything git does that ugh does not wrap stays one keystroke away behind
+2. **The daily-loop verbs (D3): `save`, `undo`.** `save` is the put-path sugar (`get` + a commit
+   that is mined like any other); `undo` reverses the last mutating operation by popping the
+   operation log (`oplog.undo`). Everything git does that ugh does not wrap stays one keystroke away behind
    `ugh git …`; a verb is only wrapped where the ugh-native version is *semantically different*,
    never merely renamed (design doc §1 non-goal).
 """
@@ -60,15 +60,7 @@ def register(subs, parent) -> None:
     sv = subs.add_parser("save", parents=[parent])
     sv.add_argument("-m", "--message", dest="message")
     sv.add_argument("--as", dest="as_label", metavar="LABEL",
-                    help="name the feature this save's work lands in -- a permanent, user-authored "
-                         "label that wins over any auto-generated one")
-    sv.add_argument("--resolve-plan", action="store_true", dest="resolve_plan",
-                    help="settle plan-step matches this save couldn't auto-confirm (n:m / "
-                         "multi-step); runs standalone on a clean tree to resolve a prior save's "
-                         "leftover ambiguity. Pass --confirm-hollow/--confirm-op to confirm a group.")
-    sv.add_argument("--confirm-hollow", action="append", dest="confirm_hollow", default=[],
-                    help="(with --resolve-plan) the plan step hollow(s) to confirm against --confirm-op")
-    sv.add_argument("--confirm-op", action="append", dest="confirm_op", default=[])
+                    help="name this save's steps")
     sv.set_defaults(func=_cmd_save)
 
     uv = subs.add_parser("undo", parents=[parent])
@@ -80,588 +72,113 @@ def register(subs, parent) -> None:
 
 
 def _cmd_save(args) -> int:
-    return _save(".", args.message, args.as_json, resolve_plan=args.resolve_plan,
-                 confirm_hollow=args.confirm_hollow, confirm_op=args.confirm_op,
-                 as_label=args.as_label)
+    out = save(".", message=args.message, as_label=args.as_label)
+    if args.as_json or not out["ok"]:
+        return _emit_json(out) if args.as_json else _fail(out["error"])
+    _render_save(out, args.message, args.as_label)
+    return 0
 
 
 def _cmd_undo(args) -> int:
     return _undo(".", args.as_json, emit=args.emit)
 
 
-def _snapshot_cascade_tables(repo: str) -> dict[str, bytes | None]:
-    """Raw bytes of the committed `.sgt` tables the save cascade (`ledger.assign_at_save`) writes --
-    pins/authored/tree -- or `None` where a file is absent. Captured before the cascade so a `put`
-    that refuses afterward (or a cascade that errors mid-write) can restore them: a save that does
-    not finish must not leave `.sgt` dirty either (F1, on the error path)."""
-    from ugh import state
-    return {name: (state.path(repo, name).read_bytes() if state.path(repo, name).is_file() else None)
-            for name in ("pins", "authored_features", "tree")}
-
-
-def _restore_cascade_tables(repo: str, snapshot: dict[str, bytes | None]) -> None:
-    """Undo the cascade's writes to their pre-cascade bytes, deleting any file the cascade created,
-    so an aborted save leaves no committed-table dirt behind."""
-    from ugh import state
-    for name, raw in snapshot.items():
-        p = state.path(repo, name)
-        if raw is None:
-            p.unlink(missing_ok=True)
-        else:
-            p.write_bytes(raw)
-
-
 def save(repo: str, *, message: str | None = None, as_label: str | None = None) -> dict:
-    """Record the working tree's edits and return what the save did, as data.
+    """Record the working tree's edits as a save, name its steps when `as_label` is given, and
+    return what the save did: `{ok, saved, commit, steps, open_fork_count}` or `{ok: False, error}`.
 
-    The library entry point behind `ugh save`, for callers that are not a terminal -- the MCP
-    server, chiefly. It exists because the only way to reach a save's result used to be to print
-    it, which forced that server to run the verb through argparse with stdout redirected, on a
-    process whose stdout carries JSON-RPC frames."""
-    out = _save(repo, message, True, as_label=as_label, return_payload=True)
-    return out if isinstance(out, dict) else {"ok": False, "error": "save failed"}
+    "Nothing to save" is decided by the ideal, not git's dirty flag: with no uncommitted ops the
+    mined ideal equals the recorded one."""
+    import time
 
-
-def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool = False,
-          confirm_hollow: list[str] = (), confirm_op: list[str] = (),
-          as_label: str | None = None, return_payload: bool = False):
-    """`ugh save [-m]` (D3): the put-path sugar -- mine the working tree (R9), then materialize a
-    witness commit for the resulting ideal and record it. "Nothing to save" is decided by the
-    ideal, not git's dirty flag: with no uncommitted ops the mined ideal equals the recorded one
-    (a `.sgt/` untracked in an unconfigured repo would otherwise always read as dirty).
-
-    Plan-matching is folded in (U12/R10): after a save, every *unambiguous* single-step match
-    between an active plan session's pending steps and the just-mined ops auto-confirms -- no
-    separate `ugh checkpoint`. An n:m / multi-step match instead waits for `ugh save --resolve-plan`
-    (which also runs standalone on a clean tree to settle a prior save's leftover ambiguity, and,
-    given `--confirm-hollow`/`--confirm-op`, confirms one named group). Ops matching no active plan
-    (the old `ugh drift`) surface in this output; the working-tree sense of "drift" keeps its name
-    in `status`/`fsck --tree`."""
-    from ugh.core.lens import (
-        DirtyWorkingTreeError, current_ideal, get, merge_in_progress, put, sync_status,
-    )
+    from ugh import names
+    from ugh.address import Record
+    from ugh.api import forks_view
+    from ugh.core import opindex, oplog
+    from ugh.core.lens import DirtyWorkingTreeError, current_ideal, get, merge_in_progress, put, sync_status
+    from ugh.intent.manifest import load_manifests, record_manifest
     from ugh.store.gitbind import GitBinding, GitError
 
-    # 0.9/F26: an in-progress git merge/cherry-pick/revert leaves conflict-marker bytes in the tree
-    # and a *_HEAD pseudo-ref set. Refuse *before* mining (`get`) so those markers never become ops
-    # and the paused operation is never finalized blind. (`_sync` also skips its dirty pass while one
-    # is live, the shared safety net for revert/reads; save additionally refuses, loudly.)
+    from ._common import busy
+
+    # An in-progress git merge/cherry-pick/revert leaves conflict markers in the tree: refuse before
+    # mining so they never become ops and the paused operation is never finalized blind.
     gb = GitBinding(repo)
     verb = merge_in_progress(gb)
     if verb is not None:
-        return _fail_json(
-            f"in-progress git {verb} -- finish or abort the git {verb} first "
-            f"(git {verb} --continue / git {verb} --abort); ugh save won't commit conflict markers",
-            as_json,
-        )
-
-    from ._common import busy
+        return {"ok": False, "error": f"in-progress git {verb} -- finish or abort the git {verb} first "
+                                      f"(git {verb} --continue / git {verb} --abort); ugh save won't "
+                                      "commit conflict markers"}
     with busy("examining the working tree…"):
         ideal = get(repo)  # mine the working tree (R9)
-
-    # `save --resolve-plan --confirm-hollow ... --confirm-op ...` settles one ambiguous group by
-    # name -- exactly what the removed `checkpoint --confirm-*` did, now reached through `save`.
-    if resolve_plan and (confirm_hollow or confirm_op):
-        return _confirm_plan_match(repo, list(confirm_hollow), list(confirm_op), as_json)
-
     prev_ids = current_ideal(repo).op_ids
-    nothing_new = ideal.op_ids == prev_ids
-    saved, sha, n = False, None, len(ideal.op_ids)
-    cascade = None
-    if not nothing_new:
-        # Fold the save-time ownership cascade in (U6/R1/R2): assign every genuinely-new symbol a
-        # durable lane (assign pin + authored CRDT) and patch the persisted tree's `op_leaf` so the
-        # new op is visible on the grid immediately. This runs *before* `put` so the introducing
-        # witness is stamped as the cascade's *parent* commit -- the causal anchor D6
-        # (`verbs._save_pins`) documents -- rather than this verb's own commit. (Phase 1.2 made the
-        # F1 invariant structural: pins/authored/tree are now gitignored and travel on
-        # `refs/ugh/state`, which `put` publishes at its boundary, so `commit_all`'s `git add -A` no
-        # longer sees them at all -- they can't dirty the tree regardless of ordering.)
-        # Guarded: a lane-assignment hiccup must never fail the save. Local import keeps the path light.
-        from ugh.core.store import Store
-        from ugh.lens import ledger
-        prev_head = gb.head()  # the previous save: seeds the first capture window's start (weave P1)
-        with busy("recording the save…"):
-            pre = _snapshot_cascade_tables(repo)
-            try:
-                cascade = ledger.assign_at_save(repo, ideal, Store(repo).all_ops())
-            except Exception:  # noqa: BLE001 -- a save must still succeed even if the cascade errors
-                _restore_cascade_tables(repo, pre)  # never commit a half-applied cascade
-                cascade = None
-            try:
-                sha = put(repo, ideal, message=message or "ugh save")
-            except (DirtyWorkingTreeError, GitError, ValueError) as e:
-                # `put` refused (an uncommitted conflict or out-of-scope drift): roll the cascade's
-                # writes back so an aborted save leaves the `.sgt` tables exactly as it found them,
-                # not dirty -- the same F1 invariant, on the error path.
-                _restore_cascade_tables(repo, pre)
-                return _fail_json(str(e), as_json)
-            from ugh.core import oplog
-            oplog.append(repo, {"kind": "commit", "sha": sha, "verb": "save", "target": message or ""})
-        saved = True
-        # Zero-burden intent capture (intent-ledger M1): the `-m` message is the user's own words
-        # about what this work was -- harvested as a turn keyed by the witness commit sha (a key
-        # `_atom_prompt` already joins by, reachable from the new ops' provenance), never a new
-        # prompt we asked them to type. Only a user-supplied message counts; the "ugh save" default
-        # placeholder is not intent. Guarded like the cascade: capture must never fail a save.
-        if message:
-            try:
-                from ugh.intent.turns import record_turn
-                record_turn(repo, key=sha, key_kind="sha", actor="human", channel="cli",
-                            text=message)
-            except Exception:  # noqa: BLE001
-                pass
-    elif not resolve_plan:
-        # F78: "nothing to save" is a claim about the user's working tree, so only make it when the
-        # tree was actually examined. `mine()` skips its dirty pass on any chunk whose deadline is
-        # spent on history (`mine.py:791`), so while a backfill is still walking, a real edit can go
-        # unmined -- and reporting that as `✓ nothing to save` is the silent-success shape this
-        # project treats as its worst bug class. Refuse to make the claim instead: say the mine is
-        # incomplete and that re-running advances it, since each contact mines one more chunk.
+    if ideal.op_ids == prev_ids:
+        # Only claim "nothing to save" once the tree was actually examined: while history is still
+        # being mined, the dirty pass is skipped and a real edit could go unmined.
         if not sync_status(repo)["complete"]:
-            return _fail_json(
-                "can't tell yet whether there's anything to save -- this repo's history is still "
-                "being mined, and until that finishes ugh does not examine the working tree. "
-                "Re-run `ugh save` (each run mines another chunk) until it reports a result",
-                as_json,
-            )
-        msg = "nothing to save -- no uncommitted ops"
-        nothing = {"ok": True, "saved": False, "message": msg}
-        if return_payload:  # this early exit is a real outcome, not a shortcut past the payload
-            return nothing
-        if as_json:
-            return _emit_json(nothing)
-        print(f"✓ {msg}")
-        return 0
+            return {"ok": False, "error": "can't tell yet whether there's anything to save -- this "
+                    "repo's history is still being mined, and until that finishes ugh does not examine "
+                    "the working tree. Re-run `ugh save` (each run mines another chunk) until it "
+                    "reports a result"}
+        return {"ok": True, "saved": False, "message": "nothing to save -- no uncommitted ops"}
+    prev_head = gb.head()
+    with busy("recording the save…"):
+        try:
+            sha = put(repo, ideal, message=message or "ugh save")
+        except (DirtyWorkingTreeError, GitError, ValueError) as e:
+            return {"ok": False, "error": str(e)}
+        oplog.append(repo, {"kind": "commit", "sha": sha, "verb": "save", "target": message or ""})
+    if message:  # the user's own words about this save, keyed by its commit
+        from ugh.intent.turns import record_turn
 
-    # The labeling moment (feedforward): the save is when the user encodes what this work *was*,
-    # so show which feature(s) the new ops landed in -- by name -- and let `--as` name the
-    # dominant one right here (an authored label, which permanently wins over generated ones).
+        record_turn(repo, key=sha, key_kind="sha", actor="human", channel="cli", text=message)
+    # Close the capture window: the turns and activity since the previous save, with this save's
+    # ops, become one manifest, which `show` reads to give the ask behind the save.
     new_op_ids = ideal.op_ids - prev_ids
-    features = _save_attribution(repo, new_op_ids, cascade) if saved else []
-    renamed = _apply_save_label(repo, features, as_label) if (saved and as_label) else None
-    if as_label and not saved:
-        print('  --as names the feature a save lands in; nothing was saved, so nothing to name.')
+    prev_ts = gb.commit_times().get(prev_head) if prev_head and not load_manifests(repo) else None
+    record_manifest(repo, sha=sha, ops=[op for op in opindex.index_ops(repo) if op.id in new_op_ids],
+                    end=time.time(), prev_save_ts=prev_ts)
+    rec = Record(repo)
+    if as_label:
+        names.name(repo, rec.save_ops(sha), as_label)
+        rec.names = names.load(repo)
+    return {"ok": True, "saved": True, "commit": sha, "steps": rec.steps(rec.save_ops(sha)),
+            "open_fork_count": forks_view(repo)["open"]}
 
-    plan = _fold_plan_matches(repo)
-    # Drain the residual (intent-ledger P1): a save is when new work lands, so this is the beat to
-    # retire any stated-but-never-landed intent the save (or its plan confirmations) fulfilled, and
-    # to age out stale ones -- so `ugh status`'s "what needs attention" stays honest without
-    # an open/done queue to groom. Guarded like every intent side-effect: it must never fail a save.
-    if saved:
-        try:
-            from ugh.intent.rationale import auto_retire_open
-            auto_retire_open(repo)
-        except Exception:  # noqa: BLE001 -- draining the residual is subordinate to the save
-            pass
-        # Close the capture window (weave P1, design doc 2026-09-01 §4b): fold everything captured
-        # since the previous save -- turns, activity events -- plus the new ops' footprint anchors
-        # into one durable per-commit manifest. The save beat is the only moment this join is
-        # cheap: the window is small and the ops are in hand. After this, the activity ring
-        # buffer's trim loses nothing. Guarded like every capture side-effect: never fail a save.
-        try:
-            import time as _time
 
-            from ugh.core import opindex
-            from ugh.intent.manifest import load_manifests, record_manifest
-            prev_ts = None
-            if not load_manifests(repo) and prev_head:  # first window ever: seed its start edge
-                prev_ts = gb.commit_times().get(prev_head)
-            record_manifest(repo, sha=sha,
-                            ops=[op for op in opindex.index_ops(repo) if op.id in new_op_ids],
-                            end=_time.time(), prev_save_ts=prev_ts)
-            # ...and reflect it (weave P2): each grounded stint and each sha-keyed turn becomes a
-            # standard rationale record, so `ugh show` answers with the user's own words from the
-            # next read on. Idempotent all the way down; a retried save re-emits nothing.
-            from ugh.intent.stint import reflect_save
-            reflect_save(repo, sha)
-        except Exception:  # noqa: BLE001 -- the manifest is subordinate to the save
-            pass
-    words = _echo_words(repo, message, plan) if saved else None
-    why = _aligned_why(repo, new_op_ids, words) if saved else None  # pure read; the ledger already
-    # Open forks are non-blocking (save never refuses on them), but a divergence you must resolve
-    # shouldn't hide -- surface it at the end of every save, each with its remedy.
+def _render_save(out: dict, message: str | None, as_label: str | None) -> None:
     from ugh.api import forks_view
-    open_forks = forks_view(repo)["forks"]
-    if return_payload:
-        return save_payload(saved=saved, sha=sha, n=n, plan=plan, words=words, why=why,
-                            features=features, renamed=renamed, open_forks=open_forks)
-    return _render_save(as_json, saved, sha, n, plan, resolve_plan, words=words,  # holds only ALIGN
-                        message=message, features=features, renamed=renamed, why=why,  # + confirmed
-                        open_forks=open_forks)
 
-
-def _fold_plan_matches(repo: str) -> dict | None:
-    """After a save (U12/R10), auto-confirm every unambiguous single-step plan match -- one pending
-    step matched to its op(s) -- and leave n:m / multi-step groups for `save --resolve-plan`. Then
-    the housekeeping beat: auto-close any stalled plan whose remaining work clearly already landed
-    (file-covered but never name-matched -- see `ugh.loop.plan.sweep_built_sessions`), so
-    built-but-unmatched plans don't accrete on the "needs you" surface.
-    Returns the fold summary, or `None` when no active plan session produced any match/drift and
-    nothing was auto-closed (the common case), so `save`'s output and JSON are byte-unchanged then."""
-    from ugh.loop import plan as plan_mod
-    from ugh.loop.match import compute_checkpoint, confirm_match
-
-    result = compute_checkpoint(repo)
-    auto, ambiguous = [], []
-    for g in result.matches:
-        entry = {"session_id": g.session_id, "hollow_ids": list(g.hollow_ids), "op_ids": list(g.op_ids)}
-        if len(g.hollow_ids) == 1:  # one pending step, unambiguous which -> confirm it now
-            confirm_match(repo, g.session_id, list(g.hollow_ids), list(g.op_ids))
-            auto.append(entry)
-        else:  # multiple steps tangled in one op cluster -> needs `save --resolve-plan`
-            ambiguous.append(entry)
-    # After confirm, so coverage reads the leftovers -- but never close a session this very save is
-    # about to tell the user to resolve. Doing so printed "run `ugh save --resolve-plan`" and
-    # deleted the hollow that command needs, so the advertised next step answered "not a known
-    # pending hollow id".
-    auto_closed = plan_mod.sweep_built_sessions(
-        repo, exclude=frozenset(e["session_id"] for e in ambiguous))
-    if not result.matches and not result.drift_op_ids and not auto_closed:
-        return None
-    return {"auto_confirmed": auto, "ambiguous": ambiguous,
-            "drift_op_ids": list(result.drift_op_ids), "auto_closed": auto_closed}
-
-
-def _resolve_op(repo, ops, ref: str) -> tuple[str | None, str]:
-    """Resolve `ref` against the whole store: `<ref>:<file::symbol>` resolves that ref's own
-    frontier tip for the symbol; otherwise `ref` is an exact op-id or an unambiguous prefix."""
-    from ugh.core import lens
-
-    if ":" in ref:
-        branch, _, sym = ref.partition(":")
-        if "::" in sym:
-            tip = lens.ideal_for_ref(repo, branch).frontier(ops).get(sym)
-            if tip is None:
-                return None, f"symbol {sym!r} is not live on {branch!r}"
-            return tip, ""
-    ids = {op.id for op in ops}
-    if ref in ids:
-        return ref, ""
-    matches = sorted(oid for oid in ids if oid.startswith(ref))
-    if len(matches) == 1:
-        return matches[0], ""
-    if matches:
-        return None, f"ambiguous op-id prefix {ref!r}: {matches[:5]}"
-    return None, f"{ref!r} is not a known op id (use <ref>:<file::symbol> to resolve on another branch)"
-
-
-def _resolve_prefix(ref: str, known: set[str], kind: str) -> tuple[str | None, str]:
-    """Resolve `ref` to a full id in `known` -- exact, else unique prefix -- mirroring
-    `_resolve_op` for ids that aren't ops (a pending hollow). The `--resolve-plan` output
-    prints truncated ids, so a user pasting one back must resolve, not be rejected for not being a
-    verbatim full id (and a silently-wrong key must never reach `plan_matches.json`)."""
-    if ref in known:
-        return ref, ""
-    matches = sorted(k for k in known if k.startswith(ref))
-    if len(matches) == 1:
-        return matches[0], ""
-    if matches:
-        return None, f"ambiguous {kind} prefix {ref!r}: {[m[:12] for m in matches[:5]]}"
-    return None, f"{ref!r} is not a known pending {kind} id"
-
-
-def _confirm_plan_match(repo: str, hollow_refs: list[str], op_refs: list[str], as_json: bool) -> int:
-    """`save --resolve-plan --confirm-hollow ... --confirm-op ...`: confirm one named step<->op
-    group, the explicit path the removed `checkpoint --confirm-*` verb owned (`confirm_match` is
-    unchanged). Both ref kinds resolve by exact-or-unique-prefix so the (truncated) ids the
-    `--resolve-plan` preview prints can be pasted straight back -- an op ref *must* resolve to a
-    full canonical id, or `plan_matches.json` would key the match under the prefix and the real op
-    would resurface as drift on the next checkpoint."""
-    from pathlib import Path
-
-    from ugh.core.store import Store
-    from ugh.loop import plan as plan_mod
-    from ugh.loop.match import confirm_match
-
-    sessions = plan_mod.active_sessions(repo)
-    known_hollows = {s["hollow_id"] for rec in sessions.values() for s in rec["steps"]}
-    hollow_ids: list[str] = []
-    for ref in hollow_refs:
-        hid, err = _resolve_prefix(ref, known_hollows, "hollow")
-        if hid is None:
-            return _fail_json(err, as_json)
-        hollow_ids.append(hid)
-
-    ops = Store(repo).all_ops()
-    op_ids: list[str] = []
-    for ref in op_refs:
-        oid, err = _resolve_op(Path(repo), ops, ref)
-        if oid is None:
-            return _fail_json(err, as_json)
-        op_ids.append(oid)
-
-    session_id = next(
-        (sid for sid, rec in sessions.items() if any(s["hollow_id"] in hollow_ids for s in rec["steps"])),
-        None,
-    )
-    if session_id is None:
-        return _fail_json(f"no active session owns hollow(s) {hollow_ids}", as_json)
-    confirm_match(repo, session_id, hollow_ids, op_ids)
-    if as_json:
-        return _emit_json({"ok": True, "session_id": session_id, "hollow_ids": hollow_ids, "op_ids": op_ids})
-    print(f"✓ confirmed {len(hollow_ids)} hollow(s) matched to {len(op_ids)} op(s) in session {session_id}")
-    return 0
-
-
-def _save_attribution(repo: str, new_op_ids: frozenset, cascade: dict | None) -> list[dict]:
-    """Which feature(s) this save's new ops touched -- the label feedforward. One row per
-    touched feature: its id, current label, a typeable handle, the symbols this save touched in
-    it, and whether the save minted the lane (`new` -- still unnamed). Empty when no tree has
-    been built yet (a brand-new repo has nothing to attribute against).
-
-    Symbol-granular, the same spread `save_preview_view` reports, and for the same reason: one
-    op can span several features' symbols (the study's stage-1 tree mines as ONE op touching
-    every page), and the old per-op filing (persisted `op_leaf`, first-member fallback) echoed
-    that as a single feature -- so the echo contradicted the ghost preview the user had just
-    been looking at. Each symbol reports to the lane that owns it (residue/anchor symbols follow
-    their anchor entity, `tree._member_leaf_for`'s own vote), so the echo and the ghosts tell
-    one story. The ledger still files each atomic op under one home lane; this echo answers
-    "what did this save touch", not "where did the record file it"."""
-    from ugh.core import opindex
-    from ugh.lens.tree import _anchor_entity_of, _member_leaf_for
-    from ugh.lens.tree import leaf_member_index as tree_leaf_member_index
-    from ugh.lens.tree import load as load_tree
-
-    tree_result = load_tree(repo)
-    if not tree_result or not new_op_ids:
-        return []
-    nodes = tree_result.get("nodes", {})
-    member_leaf = tree_leaf_member_index(nodes)
-    by_id = {op.id: op for op in opindex.index_ops(repo)}
-    new_lanes = set((cascade or {}).get("new_lanes", []))
-
-    rows: dict[str, dict] = {}
-    for oid in new_op_ids:
-        op = by_id.get(oid)
-        if op is None:
-            continue
-        for sym in op.footprint:
-            leaf = _member_leaf_for(sym, member_leaf)
-            if leaf is None:
-                continue
-            row = rows.setdefault(leaf, {"feature_id": leaf, "symbols": set(), "op_ids": set()})
-            row["op_ids"].add(oid)
-            row["symbols"].add(_anchor_entity_of(sym) or sym)
-    out = []
-    for leaf, row in rows.items():
-        nd = nodes.get(leaf, {})
-        out.append({
-            "feature_id": leaf,
-            "label": nd.get("label", leaf),
-            "handle": leaf[2:10] if leaf.startswith("f-") else leaf[:11],
-            "symbols": sorted(row["symbols"]),
-            "edits": len(row["op_ids"]),
-            "new": leaf in new_lanes,
-        })
-    out.sort(key=lambda r: (-len(r["symbols"]), -r["edits"], r["feature_id"]))
-    return out
-
-
-def _apply_save_label(repo: str, features: list[dict], label: str) -> dict:
-    """`ugh save --as "<label>"`: name the save's feature at the moment of encoding. A lane this
-    save minted wins (naming a brand-new thing); otherwise the save's dominant feature. Routed
-    through the same plan/apply rename every `ugh feature rename` uses (authored LWW register,
-    permanent)."""
-    from ugh.lens import verbs as lens_verbs
-
-    target = next((f for f in features if f["new"]), features[0] if features else None)
-    if target is None:
-        return {"ok": False,
-                "message": 'no feature attribution yet -- run `ugh log --refresh`, then '
-                           '`ugh feature rename <handle> "..."`'}
-    pv = lens_verbs.plan_rename(repo, target["feature_id"], label)
-    if not pv.ok:
-        return {"ok": False, "message": pv.message}
-    lens_verbs.apply_rename(repo, pv)
-    target["label"] = label  # reflect the new name in this very output
-    return {"ok": True, "feature_id": target["feature_id"], "label": label}
-
-
-def _echo_words(repo: str, message: str | None, plan: dict | None) -> str | None:
-    """The words captured for THIS save, from rung-0 (key-contained) sources only -- never a guessed
-    nearest turn. Priority: the `-m` message the user just typed, else the stated intent of any plan
-    step this save auto-confirmed (harvested at plan intake, joined into `plan_matches` by
-    `confirm_match`). `None` when neither exists, so the caller renders an explicit "no words
-    captured" rather than inventing one -- the save echo is the trust loop and must never bluff
-    (a confidently-wrong words line at the highest-frequency surface teaches distrust faster than
-    silence). Chat-session words are deliberately absent here: they arrive with the P2 alignment
-    rung, not this pure-projection stage."""
-    if message and message.strip():
-        return message.strip()
-    if plan:
-        from ugh.loop.match import recorded_matches
-        matches = recorded_matches(repo)
-        seen: list[str] = []
-        for e in plan.get("auto_confirmed", []):
-            for oid in e["op_ids"]:
-                intent = (matches.get(oid) or {}).get("intent")
-                if intent and intent not in seen:
-                    seen.append(intent)
-        if seen:
-            return "; ".join(seen)
-    return None
-
-
-def _aligned_why(repo: str, new_op_ids: frozenset, words: str | None) -> str | None:
-    """The aligned *why* for the ops this save just landed: the reason texts the intent ledger
-    already holds for them -- an aligner ALIGN (high-posterior), a human-confirmed review, or a
-    plan-step intent. Distinct from `_echo_words` ("what you said" for this save): this is the
-    ledger's answer to "why does this code exist", surfaced at the save beat.
-
-    Honest by construction: the ledger only ever holds ALIGN + human-confirmed records (REVIEW-region
-    guesses live in the separate `intent_review` queue and never reach here), so there is no pending
-    guess to leak. Superseded and open (never-landed) records are skipped, and any reason identical
-    to the words already echoed is dropped so the line never just repeats itself. `None` when the
-    ledger has nothing landed for these ops -- the common case at save time, since the aligner runs
-    as its own pass, not on the save beat."""
-    if not new_op_ids:
-        return None
-    from ugh.intent import rationale
-
-    recs = list(rationale.load_rationale(repo).values())
-    dead = rationale._superseded_ids(recs)
-    already = words.strip().lower() if words else None
-    reasons: list[str] = []
-    for r in recs:
-        if r["id"] in dead or r.get("open") or not r.get("reason"):
-            continue
-        if not any(s["op"] in new_op_ids for s in r.get("subject", [])):
-            continue
-        reason = r["reason"].strip()
-        if reason.lower() == already or reason in reasons:
-            continue
-        reasons.append(reason)
-    return "; ".join(reasons) if reasons else None
-
-
-def save_payload(*, saved: bool, sha: str | None, n: int, plan: dict | None = None,
-                 words: str | None = None, why: str | None = None, features=(),
-                 renamed: dict | None = None, open_forks=()) -> dict:
-    """What a save did, as data. Extracted from `_render_save` so a non-CLI caller can have the
-    save's result without the CLI printing it: the MCP server used to run the verb through argparse
-    with stdout redirected, purely because the only way to reach this dict was to print it -- on a
-    process that speaks JSON-RPC over stdout, which made the redirect load-bearing rather than
-    incidental. One builder, two renderers."""
-    out: dict = {"ok": True, "saved": saved, "open_fork_count": len(open_forks)}
-    if saved:
-        out["commit"], out["ops"] = sha, n
-    if words:  # the captured words, structured for the editor/VSCode surface
-        out["words"] = words
-    if why:  # the ledger's aligned reason for these ops (distinct from the captured words)
-        out["why"] = why
-    if features:
-        out["features"] = list(features)
-    if renamed is not None:
-        out["renamed"] = renamed
-    if plan is not None:
-        out["plan"] = plan
-    return out
-
-
-def _render_save(as_json: bool, saved: bool, sha: str | None, n: int,
-                 plan: dict | None, resolve_plan: bool, *, message: str | None = None,
-                 features: list[dict] = (), renamed: dict | None = None,
-                 words: str | None = None, why: str | None = None,
-                 open_forks: list[dict] = ()) -> int:
-    if as_json:
-        return _emit_json(save_payload(
-            saved=saved, sha=sha, n=n, plan=plan, words=words, why=why,
-            features=features, renamed=renamed, open_forks=open_forks,
-        ))
-
-    if saved:
-        title = f' "{message}"' if message else ""
-        print(f"✓ save {sha[:7]}{title}")
-        # Capture legibility (intent-ledger P1): when the header didn't already echo an `-m`
-        # message, show what capture actually holds for this save -- the plan step's words, or an
-        # explicit empty state. Never the temporally-nearest turn: the echo shows only words truly
-        # keyed to this save, so it cannot misattribute.
-        if not message:
-            import textwrap
-            print(f'  · {textwrap.shorten(words, width=72, placeholder="…")}' if words
-                  else "  · no words captured")
-        if why:
-            import textwrap
-            print(f'  · why (aligned): {textwrap.shorten(why, width=60, placeholder="…")}')
-        # The feature(s) this save's ops landed in, as attributed at save time.
-        for f in features:
-            syms = ", ".join(f["symbols"][:3]) + (f" +{len(f['symbols']) - 3} more"
-                                                  if len(f["symbols"]) > 3 else "")
-            if f["new"]:
-                name = (f'new feature ({f["handle"]}) — unnamed; name it: '
-                        f'ugh feature rename {f["handle"]} "<label>"')
-            else:
-                name = f'{f["label"]} ({f["handle"]})'
-            print(f"  · {name}  {syms}")
-        if renamed is not None:
-            if renamed["ok"]:
-                print(f'  ✓ named "{renamed["label"]}"')
-            else:
-                print(f"  ⚠ --as failed: {renamed['message']}")
-        if len(features) >= 3:
-            # Stated, not queried. A save that spans several features is a fact about the change --
-            # the agent-authored one this is most often read after touches five of them, and that
-            # spread is the answer to "what did this change touch", not a symptom. Under a `⚠` and
-            # the word "deliberate?" it read as "you have done something wrong", pointing at a
-            # regroup nobody needed; in a timed study stage that is an invitation to go repair
-            # correct work.
-            print(f"  · one save, {len(features)} features — `ugh log` draws them")
-        # Un-save discoverability (Issue 2): make reversing the save one obvious command. `ugh undo`
-        # pops the tail event of the op-log, which right now is this save's ideal edit -- so it drops
-        # exactly this save.
-        #
-        # Named for what it does to the TREE, not only to the record. This comment used to end
-        # "returning its ops to pending (they stay on the tree, re-minable)", and that is not what
-        # happens: undo materializes the prior ideal, which does not contain the work, so the edits
-        # leave the working copy and a following `save` finds nothing to mine. "Reverse this save"
-        # is heard as "put me back where I was" -- edits in hand and unsaved -- so it had to say the
-        # other half.
-        print("  ⤺ undo this save, and take its edits back off the working copy:  ugh undo")
-    if plan is not None:
-        for e in plan["auto_confirmed"]:
-            steps = ", ".join(h[:12] for h in e["hollow_ids"])
-            print(f"  ✓ plan step {steps} fulfilled by {len(e['op_ids'])} op(s)")
-        for e in plan["ambiguous"]:  # show the group so the user can name it to --resolve-plan
-            print(f"  ⚠ ambiguous: {len(e['hollow_ids'])} step(s) <-> {len(e['op_ids'])} op(s) "
-                  "-- run `ugh save --resolve-plan`")
-            if resolve_plan:
-                print(f"      hollow: {', '.join(h[:12] for h in e['hollow_ids'])}")
-                print(f"      op:     {', '.join(o[:12] for o in e['op_ids'])}")
-                # The executable form, ids filled in. Printing only the group under a heading that
-                # repeats "run `ugh save --resolve-plan`" makes this a closed loop: the user has
-                # just run that command, and the `--confirm-*` flags that actually settle the group
-                # are named nowhere in the output. Confirming the whole group is the common case,
-                # and the ids are right here, so hand over the line rather than the vocabulary.
-                confirm = " ".join(f"--confirm-hollow {h[:12]}" for h in e["hollow_ids"])
-                confirm += " " + " ".join(f"--confirm-op {o[:12]}" for o in e["op_ids"])
-                print(f"      settle it:  ugh save --resolve-plan {confirm}")
-        if plan["drift_op_ids"]:
-            print(f"  drift: {', '.join(o[:12] for o in plan['drift_op_ids'])}")
-        for sid in plan.get("auto_closed", []):
-            print(f"  ✓ auto-closed built plan {sid[:12]} (work landed under a different name "
-                  "than predicted)")
-    elif resolve_plan and not saved:
-        print("✓ no plan matches to resolve")
-    for line in fork_lines(open_forks):
-        print(line)
-    return 0
+    if not out["saved"]:
+        print(f"✓ {out['message']}")
+        if as_label:
+            print("  --as names a save's steps; nothing was saved, so nothing to name.")
+        return
+    title = f' "{message}"' if message else ""
+    print(f"✓ save {out['commit'][:7]}{title}")
+    for st in out["steps"]:
+        print(f"    {st['kind']:<7} {st['address']}" + (f"  [{st['name']}]" if st["name"] else ""))
+    # Reversing the save takes its edits back off the working copy, not only out of the record.
+    print("  ⤺ undo this save, and take its edits back off the working copy:  ugh undo")
+    if out["open_fork_count"]:
+        for line in fork_lines(forks_view(".")["forks"]):
+            print(line)
 
 
 def _undo_preview_lines(pv: dict) -> list[str]:
-    """One undo preview rendered for a human: what is being reversed and the symbols by name."""
+    """One undo preview rendered for a human: what is being reversed and the steps that go."""
     lines = [f"undo: {pv['message']}"]
     if pv["undone"] or pv["held"]:
         lines.append(f"  {pv['undone']} step(s) go" + (f", {pv['held']} held" if pv["held"] else ""))
-    if pv["symbols"]:
-        lines.append(f"  touches {', '.join(pv['symbols'][:6])}" + (" …" if len(pv["symbols"]) > 6 else ""))
+    if pv["steps"]:
+        lines.append(f"  {', '.join(pv['steps'][:6])}" + (" …" if len(pv["steps"]) > 6 else ""))
     return lines
 
 
 def _undo(repo: str, as_json: bool, *, emit: bool = False) -> int:
     """`ugh undo`: reverse the last mutating operation. A commit ugh made (a save, a take-out, a
-    bring-back) is reversed by taking out the ops mined from it, which is a new commit; a feature
-    reorg restores its snapshot. A tty sees the preview and confirms first."""
+    bring-back) is reversed by taking out the ops mined from it, which is a new commit; a `name` or
+    `rename` restores the names it changed. A tty sees the preview and confirms first."""
     from ugh.core import oplog
     from ugh.core.lens import DirtyWorkingTreeError
     from ugh.store.gitbind import GitError
@@ -704,10 +221,10 @@ def _undo(repo: str, as_json: bool, *, emit: bool = False) -> int:
         return 0
 
     if outcome.status in ("commit", "refused"):
-        from ugh.core import planner
+        from ugh.address import plan_json
 
         if as_json:
-            view = planner.to_json(outcome.plan, applied=outcome.status == "commit")
+            view = plan_json(repo, outcome.plan, applied=outcome.status == "commit")
             return _emit_json({**view, "ok": outcome.status == "commit", "message": outcome.message})
         if outcome.status == "refused":
             return _fail(outcome.message)
@@ -715,7 +232,7 @@ def _undo(repo: str, as_json: bool, *, emit: bool = False) -> int:
               + (f", {len(outcome.plan.held)} held" if outcome.plan.held else ""))
         return 0
 
-    # A metadata-snapshot kind (feature reorg).
+    # A names snapshot (`name`, `rename`).
     if as_json:
         return _emit_json({"ok": True, "undone": True, "kind": outcome.kind, "message": outcome.message})
     print(f"✓ undo: {outcome.message}")

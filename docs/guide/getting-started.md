@@ -37,14 +37,17 @@ ugh save -m "add email validation"
 ```
 
 `ugh save` is the commit step of your daily loop. It reads what changed on disk, records the new
-ops, and commits. It also tells you which feature your edits landed in.
+ops, and commits. It prints each step it recorded with its address, such as
+`app.py::validate_email@3f2a1c0`. Add `--as <name>` to give the save's steps a name, such as `ugh
+save -m "add email validation" --as signup`.
 
 Here are the commands you'll use to see where you are.
 
 ```bash
-ugh log                      # one row per feature, its edits in each recent save
-ugh status                   # files, symbols, features, coverage, and any drift
-ugh show app.py --at 12      # read a file as it was at save 12, without checking anything out
+ugh log                      # the saves, newest first, with the names on their steps
+ugh status                   # files, symbols, coverage, drift, untracked files, the plan
+ugh show signup              # the steps named signup and what taking them out would take
+ugh find email               # addresses whose names, subjects or definitions mention email
 ```
 
 `ugh status` tells you whether your working tree matches the state `ugh` has recorded or has drifted
@@ -52,9 +55,10 @@ ahead of it.
 
 ## Remove a symbol and bring it back
 
-You name a target as `file::symbol`, an op id, a save's commit sha, or a feature id or label. In a
-terminal, `revert` and `restore` first show you what would go, what is held and why, and which saves
-stand on it. They wait for you to confirm before writing anything, so the preview is the default
+You name the steps with an address: a name, `name@<rev>`, a file, `file::symbol`,
+`file::symbol@<rev>` (one step), a save's commit sha, or a range `<rev>..<rev>`. In a terminal,
+`revert` and `restore` first show you what would go, what is held and why, and which saves stand on
+it. They wait for you to confirm before writing anything, so the preview is the default
 rather than a flag.
 
 ```bash
@@ -65,37 +69,17 @@ ugh restore app.py::validate_email
 After the revert, `validate_email` is gone from `app.py`, and every other symbol is byte for byte
 what it was before. `ugh undo` steps back if you change your mind.
 
-If you don't know the exact name, you can describe it instead, e.g., `ugh revert "the email
-validation logic"`. That form asks a language model to propose candidates and previews each one
-before applying anything, so it needs an API key. See
-[workflows.md](workflows.md#2-remove-one-thing-from-a-big-tangled-edit) for how it works.
-
-## Setting an API key
-
-The daily loop needs no API key. A few steps call a language model, and they're all optional:
-
-- the feature labeler in `ugh log --refresh`
-- `ugh plan intake`
-- the checkpoint naming in `ugh log --refresh`
-- the plain English forms of `ugh revert` and `ugh restore`
-
-Put your key in a `.env` file at the root of your repo.
-
-```
-OPENAI_API_KEY=sk-...
-```
-
-You aren't tied to OpenAI. Point `OPENAI_BASE_URL` at any OpenAI-compatible endpoint, e.g., a
-litellm proxy serving Claude models, and pick the model with `UGH_MODEL`. The default model is
-`gpt-5.4-mini`.
+If you don't know the address, `ugh find email validation` lists the addresses whose names, save
+subjects, definition names or captured asks contain those words. `revert` itself takes only an
+address, and a phrase is refused with the nearest `find` hits.
 
 ## Where things live
 
 | Path | What it holds |
 | --- | --- |
-| `.sgt/ops/` | The op store, committed to git along with your code. |
-| `.sgt/tree/` | The feature tree `ugh log --refresh` builds, also committed. |
-| `.sgt/local/` | Working state for this checkout only, and not committed. Holds the current state, the undo journal, plans, and caches. |
+| `.sgt/ops/` | The op store. It travels on `refs/ugh/state`, alongside your branches. |
+| `.sgt/names.json` | The names you and your agents gave to steps, travelling the same way. |
+| `.sgt/local/` | Working state for this checkout only, and not committed. Holds the current state, the undo journal, the plan, the captured asks, and caches. |
 | `.git/` | Ordinary git, where `ugh` commits the files it builds from that state. |
 
 The directory is `.sgt/` because the tool used to be called sgt. Every op store ever committed sits
@@ -115,12 +99,11 @@ It writes `.mcp.json` so Claude Code offers the `ugh` tools, pre-approves that s
 extension at your `ugh` install through `.vscode/settings.json`.
 
 Behind `.mcp.json` is `ugh mcp`, a stdio MCP server that lets an agent call `ugh` directly instead
-of shelling out. It exposes 13 tools: `ugh_init`, `ugh_log`, `ugh_show`, `ugh_find`, `ugh_save`,
-`ugh_advanced_fsck`, `ugh_revert`, `ugh_restore`, `ugh_plan_intake`, `ugh_checkpoint`, `ugh_drift`,
-`ugh_plan_done`, and `ugh_plan_adopt`.
+of shelling out. It exposes 10 tools: `ugh_init`, `ugh_log`, `ugh_check`, `ugh_save` (with `as`),
+`ugh_name`, `ugh_revert`, `ugh_restore`, `ugh_show`, `ugh_find`, and `ugh_plan`.
 
-An agent with those tools can inspect state, find a thing it can describe, run the plan and
-checkpoint and drift loop, save its own work, and revert or restore individual symbols. The commands
+An agent with those tools can declare a plan, save its own work under the names it declared, find an
+address it can describe, and revert or restore steps by address. The commands
 for working with other people have no MCP tool, so `ugh sync` and `ugh resolve` run from the
 terminal. See
 [user workflows](workflows.md) for the full picture.

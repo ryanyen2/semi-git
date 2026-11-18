@@ -1,86 +1,93 @@
 {
-  "map_view": {
-    "edges": [],
-    "feature_count": 1,
-    "identity_events": [
+  "log_view": {
+    "saves": [
       {
-        "event": "birth",
-        "feature_id": "f-0a91a7a089a9450bcad7ff729acd7eb505e7dd0fa300b643cb9c07e2136f5d47"
-      }
-    ],
-    "nodes": [
+        "date": "2023-11-14T23:13:20+00:00",
+        "sha": "2befb60a54671a84cc3c34250c02bd8cf6d951a8",
+        "steps": [
+          {
+            "address": "slugify.py::slugify@2befb60",
+            "kind": "change",
+            "name": null,
+            "out": false
+          }
+        ],
+        "subject": "release: strip in slugify"
+      },
       {
-        "children": [],
-        "dir": "slugify.py",
-        "id": "f-0a91a7a089a9450bcad7ff729acd7eb505e7dd0fa300b643cb9c07e2136f5d47",
-        "kind": "feature",
-        "label": "slugify",
-        "members": [
-          "slugify.py::__residue__::\u0000HEAD\u0000",
-          "slugify.py::__residue__::slugify",
-          "slugify.py::slugify"
+        "date": "2023-11-14T22:13:20+00:00",
+        "sha": "0428ab18085bf3ca168611f4ce302cd2d7b7fb39",
+        "steps": [
+          {
+            "address": "slugify.py::slugify@0428ab1",
+            "kind": "create",
+            "name": null,
+            "out": false
+          },
+          {
+            "address": "slugify.py@0428ab1",
+            "kind": "create",
+            "name": null,
+            "out": false
+          }
         ],
-        "op_count": 4,
-        "own_symbols": [
-          "slugify.py::slugify"
-        ],
-        "parent": null,
-        "sessions": [],
-        "size": 3,
-        "split_reason": "max_leaf",
-        "why": "Auto-derived from slugify.py (no LLM label available)."
+        "subject": "base slugify"
       }
-    ],
-    "roots": [
-      "f-0a91a7a089a9450bcad7ff729acd7eb505e7dd0fa300b643cb9c07e2136f5d47"
-    ],
-    "sync_status": {
-      "complete": true
-    }
+    ]
   },
-  "oplog_view": {
-    "count": 4,
-    "kinds": {
-      "add": 2,
-      "rework": 2
+  "show_view": {
+    "address": "2befb60",
+    "ok": true,
+    "plan": {
+      "applied": false,
+      "check": "not_run",
+      "files": {
+        "slugify.py": {
+          "after": "def slugify(s):\n    return s.lower()\n",
+          "before": "def slugify(s):\n    return s.lower().strip()\n"
+        }
+      },
+      "held": [],
+      "message": "",
+      "ok": true,
+      "removal_set": {
+        "saves": [
+          {
+            "sha": "2befb60",
+            "steps": 1,
+            "subject": "release: strip in slugify"
+          }
+        ],
+        "steps": 1
+      },
+      "target": "2befb60",
+      "undone": [
+        {
+          "address": "slugify.py::slugify@2befb60",
+          "op": "0a91a7a089a9450bcad7ff729acd7eb505e7dd0fa300b643cb9c07e2136f5d47",
+          "save": "2befb60",
+          "subject": "release: strip in slugify",
+          "symbol": "slugify.py::slugify"
+        }
+      ],
+      "verb": "revert"
     },
-    "ops": [
+    "saves": [
       {
-        "id": "0a91a7a089a9450bcad7ff729acd7eb505e7dd0fa300b643cb9c07e2136f5d47",
-        "intent": null,
-        "kind": "rework",
-        "symbols": [
-          "slugify.py::slugify"
-        ]
-      },
-      {
-        "id": "2c1eb18e2b568dbb1e383f026d149a7e3da3774b704c4b234a67c6f0fa0e5432",
-        "intent": null,
-        "kind": "add",
-        "symbols": [
-          "slugify.py::__anchor__::slugify",
-          "slugify.py::__residue__::slugify",
-          "slugify.py::slugify"
-        ]
-      },
-      {
-        "id": "f557df1991b79b5265f394be364c9d57f399ce4d214f35d981bf118ede3d1bda",
-        "intent": null,
-        "kind": "rework",
-        "symbols": [
-          "slugify.py::slugify"
-        ]
-      },
-      {
-        "id": "fb88315a6a4fef7203f6c14aa9168bc1b214fd421e032d060cf28c3a875bd0c8",
-        "intent": null,
-        "kind": "add",
-        "symbols": [
-          "slugify.py::__residue__::\u0000HEAD\u0000"
-        ]
+        "ask": null,
+        "date": "2023-11-14T23:13:20+00:00",
+        "sha": "2befb60a54671a84cc3c34250c02bd8cf6d951a8",
+        "subject": "release: strip in slugify"
       }
     ],
-    "truncated": false
+    "steps": [
+      {
+        "address": "slugify.py::slugify@2befb60",
+        "kind": "change",
+        "name": null,
+        "out": false
+      }
+    ]
   },
   "state_view": {
     "coverage_fraction": 1.0,
@@ -100,7 +107,6 @@
       "any": false,
       "paths": []
     },
-    "features": 1,
     "files": 1,
     "forks": {
       "open": 0,
@@ -111,6 +117,7 @@
       "configured": false,
       "status": "unconfigured"
     },
+    "plan": null,
     "symbols": 4,
     "sync_status": {
       "complete": true

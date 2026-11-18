@@ -35,7 +35,6 @@ def test_index_ops_matches_all_ops_modulo_images(tmp_path):
         assert idx_op.kind == op.kind
         assert idx_op.intent == op.intent
         assert idx_op.miner_version == op.miner_version
-        assert idx_op.off_chain == op.off_chain
         assert idx_op.derived == op.derived
         assert idx_op.images == {}  # never carried by the sidecar
 

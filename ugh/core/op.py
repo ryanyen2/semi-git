@@ -95,6 +95,13 @@ def unit_of(sym: str) -> str:
     return f"{path}::{rest.split('.', 1)[0]}"
 
 
+def step_address(unit: str, sha: str) -> str:
+    """How a step on `unit` in save `sha` is printed: `path::def@<short sha>`, or `path@<short sha>`
+    for a whole file, a file's head or an import."""
+    path = unit if _symbol_kind(unit) == "entity" else unit.split("::", 1)[0]
+    return f"{path}@{sha[:7]}"
+
+
 # The symbol kinds `fold._fold_file` splices bytes for on their own: a whole-file image, a
 # top-level entity's image, or a file's residue. `anchor` (pure ordering metadata, never revised
 # to BOTTOM) and `nested` (already subsumed by its containing top-level entity's image) emit
@@ -108,25 +115,6 @@ def is_content_bearing(sym: str) -> bool:
     and residue were pruned (a fully-removed file) can't keep the path alive as an empty `b''`,
     so `covered_paths` and `code` agree exactly on which paths exist (R7/R20)."""
     return _symbol_kind(sym) in CONTENT_BEARING_KINDS
-
-
-# A named top-level entity or a whole (unparsed) file -- the symbols whose creation/removal is a
-# *behavioral* change the user would recognize as a distinct piece of work. Deliberately excludes
-# `residue`: residue is positional gap-bytes that shift merely because an entity was inserted
-# before/after them (appending `sub` after `mul` "modifies" `__residue__::mul`), so counting it
-# would attribute new behavior to a neighbour that did not change. Anchors/nested emit no bytes.
-# `import` is excluded for the same reason as residue: an import line is a mechanical consequence
-# of writing a reference, not work anyone would name. Counting it as behavioral would inflate every
-# change by its import churn and let a file's import block cluster into a feature of its own.
-BEHAVIORAL_KINDS = frozenset({"whole_file", "entity"})
-
-
-def is_behavioral(sym: str) -> bool:
-    """True iff `sym` is a named entity or whole file -- a behavioral unit, not positional residue
-    or ordering metadata. `is_content_bearing` is the *fold* predicate (residue carries bytes, so
-    it is content); this is the *segmentation* predicate (residue is not new behaviour). They
-    differ only on `residue`, and that difference is the point."""
-    return _symbol_kind(sym) in BEHAVIORAL_KINDS
 
 
 @dataclass(frozen=True)
@@ -157,8 +145,6 @@ class Op:
     # one entry per SHA carrying >=1 non-None field; appendable; excluded from the id like provenance
     intent: str | None = None  # advisory label/rationale only; excluded from the id
     miner_version: str = MINER_VERSION
-    off_chain: bool = False  # R18: a hollow plan-intake op. Lifecycle/storage state (which store
-    # directory holds it), not content -- excluded from the id.
     derived: bool = False  # S4/U27: touches a generated/vendored file (e.g. a lockfile) --
     # advisory only, like intent/provenance/attribution, so review surfaces can collapse it;
     # excluded from the id since re-tagging a path derived/not-derived is not a content change.
@@ -201,7 +187,6 @@ def make_op(
     attribution: tuple[Attribution, ...] = (),
     intent: str | None = None,
     miner_version: str = MINER_VERSION,
-    off_chain: bool = False,
     derived: bool = False,
     resolves: frozenset[str] = frozenset(),
 ) -> Op:
@@ -219,7 +204,6 @@ def make_op(
         attribution=attribution,
         intent=intent,
         miner_version=miner_version,
-        off_chain=off_chain,
         derived=derived,
         resolves=resolves,
     )

@@ -1,6 +1,6 @@
 """`ugh sync [remote] [branch]` (plan U15, R19/AE4): fetch a teammate's work, union the op
-store, reconcile pins and the feature tree, and surface any same-symbol chain fork
-(with the `ugh resolve` remedy) instead of doing a textual merge. `push` lives alongside it."""
+store, merge the names three-way per op, and surface any same-symbol chain fork (with the `ugh
+resolve` remedy) instead of doing a textual merge. `push` lives alongside it."""
 
 from __future__ import annotations
 
@@ -141,8 +141,7 @@ def _sync_preview_lines(pview: dict) -> list[str]:
     lines = [f"  {pview['so_what']}"]
     for sym, _a, _b in pview["forks"]:
         lines.append(f"    fork on {sym}  →  ugh resolve {sym}")
-    for c in pview["pin_contradictions"]:
-        lines.append(f"    ⚠ pin contradiction: {c['detail']}")
+    lines += _name_conflict_lines(pview["name_conflicts"])
     if pview["base_recovery"] == "none":
         lines.append("    ⚠ base recovery: none — no witnessed merge-base; union semantics "
                      "(cannot delete work one side removed)")
@@ -175,11 +174,9 @@ def _sync(repo: str, remote: str | None, branch: str | None, as_json: bool) -> i
             return _dirty_fail(repo, as_json)
         except (GitError, ValueError, MinerVersionMismatch) as e:
             return _fail_json(str(e), as_json)
-        if pview.get("up_to_date"):
-            print(f"✓ sync {pview['remote']}/{pview['target']}: already up to date")
-            _open_fork_reminder(repo)
-            return 0
-        if not confirm(_sync_preview_lines(pview), f"sync {pview['remote']}/{pview['target']}?"):
+        # Up to date on the branch, there is nothing to confirm: the sync below only merges names.
+        if not pview.get("up_to_date") and not confirm(
+                _sync_preview_lines(pview), f"sync {pview['remote']}/{pview['target']}?"):
             print("  aborted — nothing synced.")
             return 1
 
@@ -195,7 +192,7 @@ def _sync(repo: str, remote: str | None, branch: str | None, as_json: bool) -> i
 
     from ugh.api import sync_view
 
-    view = sync_view(report)
+    view = sync_view(repo, report)
     up_to_date = report.message == "already up to date"
     casualties = [] if up_to_date else _closure_casualties(repo, before_ids, report.forks)
     if as_json:
@@ -205,6 +202,8 @@ def _sync(repo: str, remote: str | None, branch: str | None, as_json: bool) -> i
 
     if up_to_date:
         print(f"✓ sync {report.remote}/{report.branch}: already up to date")
+        for line in _name_conflict_lines(view["name_conflicts"]):
+            print(line)
         _open_fork_reminder(repo)
         return 0
 
@@ -230,8 +229,14 @@ def _sync(repo: str, remote: str | None, branch: str | None, as_json: bool) -> i
               f"until resolved:")
         for sym, _a, _b in report.forks:
             print(f"      {sym}: ugh resolve {sym}")
-    if report.pin_contradictions:
-        print(f"    ⚠ {len(report.pin_contradictions)} pin contradiction(s):")
-        for c in report.pin_contradictions:
-            print(f"      {c.detail}")
+    for line in _name_conflict_lines(view["name_conflicts"]):
+        print(line)
     return 1 if report.forks else 0
+
+
+def _name_conflict_lines(conflicts: list[dict]) -> list[str]:
+    """Each op both sides relabelled differently: its address and both labels (ours was kept)."""
+    if not conflicts:
+        return []
+    return ([f"    ⚠ {len(conflicts)} step(s) renamed differently on both sides — kept ours:"]
+            + [f'      {c["address"]}: ours "{c["ours"]}", theirs "{c["theirs"]}"' for c in conflicts])

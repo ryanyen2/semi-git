@@ -46,19 +46,12 @@ class StateRefError(Exception):
 
 # The JSON tables that move off the branch tree onto `refs/ugh/state`. This is every committed
 # artifact in `state._ARTIFACTS` EXCEPT the two that must stay tracked in the branch tree:
-# `oracle_config` (genuinely team-editable config) and `tiers`
-# (correctness-critical -- read as-of each mined commit, LAW-0). `ideal` still travels here during
-# the transition; Step 4 stops writing it and it then simply stops being on disk to carry.
+# `oracle_config` (genuinely team-editable config) and `tiers` (correctness-critical -- read as-of
+# each mined commit, LAW-0).
 _TRAVELING_TABLES: tuple[str, ...] = (
-    "pins",
-    "tree",
-    "ideal",
     "forks",
-    "authored_features",
+    "names",
     "intent_prompts",
-    "intent_themes",
-    "intent_segments",
-    "intent_segment_pins",
 )
 
 # The op store is content-addressed: a shared path holds byte-identical content on both sides by
@@ -107,19 +100,21 @@ def _local_blobs(repo: Path) -> dict[str, bytes]:
     return blobs
 
 
-def publish_from_local(gb: GitBinding, repo: Path) -> str | None:
+def publish_from_local(gb: GitBinding, repo: Path, merged: str | None = None) -> str | None:
     """Rebuild the state-ref tree from this clone's local mirror and advance `refs/ugh/state` to it,
-    returning the new tip sha (or the existing tip when nothing changed). Called once per mutating
-    verb at its transaction boundary (inside the existing `locked_section`, so there is no concurrent
-    *local* writer -- the CAS retry only guards a pathological interleave). Raises `StateRefError` on
-    final CAS failure: this ref is correctness-bearing and a lost write must not pass silently."""
+    returning the new tip sha (or the existing tip when nothing changed). `merged` is a state commit
+    the local mirror has just merged in (a sync's theirs): it becomes a second parent, so the next
+    sync's merge base sees it. Called once per mutating verb at its transaction boundary. Raises
+    `StateRefError` on final CAS failure: this ref is correctness-bearing and a lost write must not
+    pass silently."""
     blobs = _local_blobs(repo)
     for _ in range(_PUBLISH_RETRIES):
         tip = gb.rev_parse(STATE_REF)
         new_tree = gb.write_tree_from_blobs(blobs)
-        if tip is not None and gb.rev_parse(f"{tip}^{{tree}}") == new_tree:
+        extra = [merged] if merged and not (tip and gb.is_ancestor(merged, tip)) else []
+        if not extra and tip is not None and gb.rev_parse(f"{tip}^{{tree}}") == new_tree:
             return tip  # nothing changed since the last publish -- don't churn the ref
-        parents = [tip] if tip else []
+        parents = ([tip] if tip else []) + extra
         commit = gb.commit_tree(new_tree, parents, "ugh state")
         if gb.update_ref_cas(STATE_REF, commit, tip):
             return commit
@@ -133,12 +128,17 @@ def _reconcile_remote_into_ref(gb: GitBinding, repo: Path, local_tip: str | None
     fast-forward. The content-addressed op blobs union conflict-free (a shared
     path is byte-identical -- it *is* its content address); the mutable derived tables prefer *ours*
     (the just-synced, already-merged local copy is the more-reconciled side) and we fold in any table
-    only the remote carries. Any content-addressed blob only the remote had is also written onto the
-    local `.sgt/` mirror so it stays a faithful superset of the ref. Returns whether the CAS advanced
-    our local `STATE_REF` (False = a concurrent local publisher moved it; the caller re-loops).
+    only the remote carries. The names table merges three-way against the two tips' merge base, as in
+    sync, and lands on the local mirror too. Any content-addressed blob only the remote had is also
+    written onto the local `.sgt/` mirror so it stays a faithful superset of the ref. Returns whether
+    the CAS advanced our local `STATE_REF` (False = a concurrent local publisher moved it; the
+    caller re-loops)."""
+    from ugh import names
 
-    This is deliberately not a field-level table merge: the derived tables self-heal on the next
-    sync/mine."""
+    base = gb.merge_base(local_tip, remote_sha) if local_tip else None
+    table, _conflicts = names.merge(names.at(gb, base), names.load(repo), names.at(gb, remote_sha))
+    if table:
+        names.save(repo, table)
     ours = _local_blobs(repo)
     theirs = read_tree(gb, remote_sha)
 

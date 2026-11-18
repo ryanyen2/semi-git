@@ -1,7 +1,7 @@
 """Sync stage 2 -- capture both sides and union the op store *in memory* (plan U19, D4).
 
-Everything here is read-only against disk: ours' pins/tree/ideal from the working tree,
-theirs' from blobs at `theirs_sha` (no checkout). The op-store union is built in memory too --
+Everything here is read-only against disk: ours' names/ideal from the working tree, theirs' from
+blobs at `theirs_sha` (no checkout). The op-store union is built in memory too --
 theirs' op files are read as raw blobs and parsed (never `store.add`-ed here) -- so the downstream
 fork check can run before anything is persisted. That ordering is load-bearing: the old pipeline
 leaned on `git merge --abort` to roll back a real merge on a fork; explicit tree construction has
@@ -17,17 +17,16 @@ import json
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from ugh import state
+from ugh import names
 from ugh.core import lens
 from ugh.core.ideal import Ideal
 from ugh.core.mine import mine
 from ugh.core.op import MINER_VERSION, Op, merge_attribution
 from ugh.core.store import Store, _deserialize
 from ugh.intent import prompts as intent_prompts
-from ugh.lens import authored, tree
-from ugh.lens.authored import AuthoredFeature
-from ugh.lens.pins import Pins, _pins_from_payload, load_pins
 from ugh.store.gitbind import GitBinding, parse_op_ids
+
+from . import state_ref as _state_ref
 
 
 class MinerVersionMismatch(Exception):
@@ -41,9 +40,6 @@ class MinerVersionMismatch(Exception):
 
 @dataclass(frozen=True)
 class Ingested:
-    ours_pins: Pins
-    theirs_pins: Pins
-    ours_tree: dict | None
     ours_ideal: Ideal
     theirs_ideal_ids: frozenset[str]
     all_ops: list[Op]  # in-memory union of ours' store and theirs' op files, sorted by id
@@ -64,15 +60,11 @@ class Ingested:
     # (tests) doesn't need to know about it.
     ours_prompts: dict[str, str] = field(default_factory=dict)
     theirs_prompts: dict[str, str] = field(default_factory=dict)
-    # Authored features (U6/R3/KTD3), merged field-by-field in `resolve` -- defaulted like the
-    # other post-U15 additions so a direct `Ingested(...)` construction (tests) needn't supply them.
-    ours_authored: dict[str, AuthoredFeature] = field(default_factory=dict)
-    theirs_authored: dict[str, AuthoredFeature] = field(default_factory=dict)
-
-
-def _pins_at(gb: GitBinding, sha: str) -> Pins:
-    body = state.load_blob_json(gb, sha, "pins")
-    return Pins() if body is None else _pins_from_payload(body)
+    # The names tables, merged three-way per op in `resolve` against the merge base of the two
+    # state-ref tips.
+    ours_names: dict[str, str] = field(default_factory=dict)
+    theirs_names: dict[str, str] = field(default_factory=dict)
+    base_names: dict[str, str] = field(default_factory=dict)
 
 
 def ingest(
@@ -135,14 +127,15 @@ def ingest(
     theirs_all_ids = {op.id for op in theirs_ops} | {op.id for op in mined_ops}
     ops_added = len(theirs_all_ids - {op.id for op in ours_ops})
 
+    ours_state = _state_ref.read_sha(gb)
+    names_base = (gb.merge_base(ours_state, theirs_state_sha)
+                  if ours_state and theirs_state_sha else None)
     return Ingested(
-        ours_pins=load_pins(repo),
-        theirs_pins=_pins_at(gb, state_sha),
         ours_prompts=intent_prompts.load_prompts(repo),
         theirs_prompts=intent_prompts.prompts_at(gb, state_sha),
-        ours_authored=authored.load_authored(repo),
-        theirs_authored=authored.authored_at(gb, state_sha),
-        ours_tree=tree.load(repo),
+        ours_names=names.load(repo),
+        theirs_names=names.at(gb, theirs_state_sha),
+        base_names=names.at(gb, names_base),
         ours_ideal=lens.current_ideal(repo),
         theirs_ideal_ids=theirs_ideal_ids,
         all_ops=all_ops,

@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from ugh.intent.gist import ask_gist
+from ugh.intent.gist import ask_parts
 
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURE = json.loads((ROOT / "scripts/study/capture-prompts.json").read_text(encoding="utf-8"))
@@ -119,7 +119,7 @@ def test_every_prompt_yields_an_ask_worth_putting_on_a_line():
             for prompt in entry["prompts"]:
                 if prompt.get("question"):
                     continue  # a question owns no ops and names nothing
-                gist = ask_gist(prompt["text"], 60)
+                gist = ask_parts(prompt["text"], 60).gist
                 assert len(gist) >= 12, f"{project}/{subject}: excerpt too thin: {gist!r}"
                 assert not gist.casefold().startswith(openers), \
                     f"{project}/{subject}: excerpt still opens with throat-clearing: {gist!r}"

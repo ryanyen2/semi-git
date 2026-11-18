@@ -1,17 +1,14 @@
 """Tests for ugh.core.oplog -- the operation log and `ugh undo`: a commit ugh made is undone by
-taking out the ops mined from it; a feature reorg by restoring its snapshot."""
+taking out the ops mined from it; a `name` or `rename` by restoring its names snapshot."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
+from ugh import names
 from ugh.core import oplog
 from ugh.core.lens import current_ideal, get
 from ugh.core.store import Store
-from ugh.lens import authored
-from ugh.lens import map as lensmap
-from ugh.lens import tree
-from ugh.lens import verbs as fverbs
 from ugh.store.gitbind import init_store
 from tests.laws import corpus
 
@@ -30,8 +27,8 @@ def _revert(repo, op_id):
 def test_append_tail_is_reverse_chronological(tmp_path):
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     get(repo)
-    oplog.append(repo, {"kind": "feature_reorg", "snapshot": {}, "verb": "a"})
-    oplog.append(repo, {"kind": "feature_reorg", "snapshot": {}, "verb": "b"})
+    oplog.append(repo, {"kind": "names", "snapshot": {}, "verb": "a"})
+    oplog.append(repo, {"kind": "names", "snapshot": {}, "verb": "b"})
 
     tail = oplog.tail(repo)
     assert tail is not None and tail["verb"] == "b"  # LIFO: newest is the tail
@@ -54,8 +51,8 @@ def test_drop_event_removes_the_target_and_never_clobbers_a_concurrent_append(tm
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     get(repo)
     key = oplog._ref_key(Path(repo))
-    a = {"kind": "feature_reorg", "snapshot": {}, "verb": "a"}
-    b = {"kind": "feature_reorg", "snapshot": {}, "verb": "b"}
+    a = {"kind": "names", "snapshot": {}, "verb": "a"}
+    b = {"kind": "names", "snapshot": {}, "verb": "b"}
     oplog.append(repo, a, ref_key=key)
     oplog.append(repo, b, ref_key=key)  # a concurrent append landing during undo's apply window
 
@@ -120,28 +117,23 @@ def test_undo_keeps_work_committed_after_the_take_out(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# feature-reorg kind (the previously-un-journaled gap)
+# names kind
 # ---------------------------------------------------------------------------
 
 
-def test_feature_reorg_undo_restores_prior_label_and_membership(tmp_path):
-    """A feature rename mutates `tree`/`pins`/`authored_features` but no ideal -- previously
-    un-journaled, so `undo` could not reverse it. The unified log snapshots those artifacts at
-    append time; `undo` restores them, so the prior label/membership comes back."""
-    repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
+def test_undo_of_a_rename_restores_the_names_before_it(tmp_path):
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     get(repo)
-    result = lensmap.build_map(repo)
-    fid = next(iter(result["nodes"]))
-    original_label = result["nodes"][fid].get("label", fid)
-
-    fverbs.apply_rename(repo, fverbs.plan_rename(repo, fid, "renamed-xyz"))
-    assert tree.load(repo)["nodes"][fid]["label"] == "renamed-xyz"
-    assert any(f.label == "renamed-xyz" for f in authored.load_authored(repo).values())
+    op = next(iter(current_ideal(repo).op_ids))
+    names.name(repo, [op], "checkout")
+    names.rename(repo, "checkout", "billing")
+    assert names.load(repo) == {op: "billing"}
 
     outcome = oplog.undo(repo)
-    assert outcome.status == "reorg"
-    assert tree.load(repo)["nodes"][fid]["label"] == original_label  # label restored
-    assert not any(f.label == "renamed-xyz" for f in authored.load_authored(repo).values())
+    assert outcome.status == "names"
+    assert names.load(repo) == {op: "checkout"}
+    assert oplog.undo(repo).status == "names"
+    assert names.load(repo) == {}
 
 
 # ---------------------------------------------------------------------------
@@ -154,7 +146,7 @@ def test_preview_names_what_undo_would_take_out(tmp_path):
     _revert(repo, _bar(repo))
     pv = oplog.preview(repo)
     assert pv["kind"] == "commit" and pv["ok"] is True
-    assert pv["undone"] and "a.py::bar" in pv["symbols"]
+    assert pv["undone"] and any(st.startswith("a.py::bar@") for st in pv["steps"])
 
 
 def test_preview_of_an_empty_log_says_so_without_raising(tmp_path):

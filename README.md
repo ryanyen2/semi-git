@@ -31,7 +31,9 @@ From then on, edit files however you normally do, and record the edits when you'
 ugh save -m "add input validation"
 ```
 
-`ugh save` tells you which feature each edit landed in.
+`ugh save` prints each step it recorded with its address, for example `cart.py::tax@3f2a1c0`: one
+save's change to one definition. Add `--as checkout` to give those steps a name. `ugh` never names
+anything itself, so a name is always one you or your agent gave.
 
 ## Set up your coding agent and editor
 
@@ -58,8 +60,8 @@ afterward, and `ugh-workflow`, which covers choosing between commands that look 
 For an agent that only has a shell, there's nothing to wire up. Every read command takes `--json`,
 and `ugh help` lists the full surface.
 
-Your agent can record its own work, and it should. `ugh save` asks the agent for its own words, and
-those words become the name of any feature born from the work. `ugh undo` reverses a save.
+Your agent can record its own work, and it should. `ugh save` takes the agent's own words as the
+message and a name for the steps with `--as`. `ugh undo` reverses a save.
 
 Two commands change state other people can see, and they stay with you rather than your agent.
 They are `ugh sync` and `ugh resolve`. Each one asks you to confirm, and no single command undoes
@@ -72,18 +74,6 @@ Download `ugh-0.1.0.vsix` from the
 Extensions view, click the `...` menu, and choose "Install from VSIX".
 
 Run `ugh init --agent` in your repo so the extension knows where `ugh` is.
-
-## Setting an API key
-
-The daily loop needs no API key. A few commands call a language model, e.g., `ugh plan intake`. Put
-your key in a `.env` file at the root of your repo.
-
-```
-OPENAI_API_KEY=sk-...
-```
-
-You can point `ugh` at any OpenAI-compatible endpoint by setting `OPENAI_BASE_URL`, and you can pick
-the model with `UGH_MODEL`. The default model is `gpt-5.4-mini`.
 
 ## The problem it solves
 
@@ -114,33 +104,45 @@ rebase still knows they are out. `ugh restore cache.py::get_cached` puts it back
 
 A step that other remaining work stands on is held, with the reason (other code uses it, a later
 save changed it, a later save rewrote the same lines) and the saves that hold it. `--whole` takes
-the work out together with everything that stands on it. The same command works on a save (its
-commit sha), a feature, or a checkpoint.
+the work out together with everything that stands on it. The same command takes a name, a save (its
+commit sha), a range of saves, a file, or one step.
 [docs/guide/workflows.md](docs/guide/workflows.md) covers the details.
-[docs/guide/workflows.md](docs/guide/workflows.md) covers when that grouping is reliable and when it
-isn't.
 
 ## Daily commands
 
-A target for `revert` or `restore` can be a `file::symbol` name, an op id, a save's commit sha, a
-feature, or, if you set an API key, a plain English phrase.
+Every command that acts on steps takes an address:
+
+| Address | The steps it names |
+| --- | --- |
+| `checkout` | the steps named `checkout` |
+| `checkout@3f2a1c0` | those steps in one save |
+| `cart.py` | the steps on one file |
+| `cart.py::tax` | the steps on one top-level definition |
+| `cart.py::tax@3f2a1c0` | one step |
+| `3f2a1c0` | one save's steps (anything `git rev-parse` takes) |
+| `3f2a1c0..9b1e004`, `3f2a1c0..` | the saves in that range (`..` alone runs through HEAD) |
+
+An address reaches steps that are out as well as steps that are in. A word that names two of these
+(a name that is also a branch) is refused, naming both, and a word that names none is refused with
+the nearest `ugh find` hits.
 
 | Command | What it's for |
 | --- | --- |
 | `ugh init` | Read your existing git history into `ugh`. Run once per repo. |
-| `ugh save -m "..."` | Record the edits you just made, and name the feature they landed in. |
-| `ugh log` | One row per feature, with how many edits it got in each recent save. `--refresh` re-reads new edits first. |
-| `ugh status` | What needs attention right now: open forks, drift, and files ugh does not track. |
-| `ugh show <target>` | What an id, feature, or symbol is, and what removing it would cost. Add `--at <point>` to read a file as it was then. Nothing is checked out. |
-| `ugh find <words>` | Find a feature, save, or symbol you can describe but not name. |
+| `ugh save -m "..." [--as <name>]` | Record the edits you just made; `--as` names this save's steps. |
+| `ugh name <address> <name>` | Give a name to the steps at an address. This is also how you merge, split or move them. |
+| `ugh rename <name> <new>` | Rename every step with a name; an existing name absorbs them. |
+| `ugh log` | The saves, newest first: each with the names on its steps, how many are unnamed, and how many are out. |
+| `ugh status` | What needs attention right now: open forks, drift, files ugh does not track, and the plan. |
+| `ugh show <address>` | Its steps, the ask behind each save, and what taking them out would take. |
+| `ugh find <words>` | Addresses whose names, save subjects, definitions or captured asks contain the words. |
 | `ugh undo` | Reverse your last `ugh` command as a new change, rather than by rewriting history. It shows what it will do first. |
-| `ugh revert <target>` | Take a save's, symbol's, feature's or checkpoint's work out as a new edit; what other work stands on is held, with the reason. `--whole` takes what stands on it too. |
-| `ugh restore <target>` | Bring back what a revert took out, combined with edits made since. |
+| `ugh revert <address>` | Take steps out as a new edit; what other work stands on is held, with the reason. `--whole` takes what stands on them too. |
+| `ugh restore <address>` | Bring back steps a revert took out, combined with edits made since. |
 | `ugh resolve <symbol>` | Walk through reconciling a symbol that was edited two different ways at once. |
-| `ugh plan ...` | State a plan up front so later saves can be matched against it. |
-| `ugh feature rename` | Rename a feature. Labels only, and it never touches your code. |
+| `ugh plan [<name>...] [--done]` | Declare names before you build; `ugh plan` reports which have saves and which are missing. |
 | `ugh check` | Verify the op store. `--repair` re-derives the record after a git history rewrite. |
-| `ugh sync` | Fetch a teammate's work and merge it, flagging any real conflict. |
+| `ugh sync` | Fetch a teammate's work and merge it, flagging any real conflict. Names merge per step. |
 | `ugh push` | Push. If the push is rejected, it points you at `ugh sync`. |
 | `ugh mcp` | Run an MCP server so a coding agent can call `ugh` directly. |
 
@@ -152,13 +154,13 @@ Run `ugh help` for the full list.
 of edits that are currently in, and `ugh` can rebuild your files from that set exactly. Run it and
 you get back, byte for byte, what is checked out.
 
-Removing an edit also removes anything built on top of it, so whatever is left still rebuilds into
-working files. Two versions of the same function can never both be in at once. When that happens,
+Taking a step out is itself a new edit, and a step that other remaining work stands on is held, so
+whatever is left still rebuilds into working files. Two versions of the same function can never both be in at once. When that happens,
 because two people edited it in parallel, `ugh` calls it a fork and asks you to reconcile it rather
 than picking a side. `ugh check` checks that the current state is still valid, and `ugh check
 --tree` that the files it builds match what git has.
 
-[docs/guide/the-semantic-tree.md](docs/guide/the-semantic-tree.md) has the formal version.
+[docs/design/2026-11-16-removal-sets.md](docs/design/2026-11-16-removal-sets.md) has the model.
 
 For the curious, `ugh` calls one per-symbol edit an op, the current set of edits an ideal, and
 rebuilding your files from that set the fold.
@@ -177,9 +179,8 @@ points where a person still has to step in.
 
 ## Docs
 
-Start with [docs/guide/](docs/guide/). It covers how `ugh` models your code, a getting started
-walk-through, the VS Code extension, and a tour by use case in
-[workflows.md](docs/guide/workflows.md) that also lists today's limits.
+Start with [docs/guide/](docs/guide/). It covers a getting started walk-through and a tour by use
+case in [workflows.md](docs/guide/workflows.md) that also lists today's limits.
 
 ## Contributing
 

@@ -4,9 +4,8 @@ plan-intake session id, a `ugh session` name, or a commit sha. `Op`/`Attribution
 (KTD1): prompts attach to a *plan/session*, not per-op, and free text has no business inside the
 frozen, content-addressed, merge-semilattice `Op`.
 
-Write-once per key: the first `record_prompt` for a key wins, and a later call on an existing key
-is a no-op. This is what makes the sync merge trivial (`merge`, U5) -- a G-Set union by key is
-conflict-free only because no key's value ever changes after it is first observed.
+Write-once per key, which is what makes the sync merge trivial (`merge`, U5): a G-Set union by key
+is conflict-free only because no key's value ever changes after it is first observed.
 """
 
 from __future__ import annotations
@@ -19,30 +18,15 @@ _ARTIFACT = "intent_prompts"
 
 
 def load_prompts(repo: str | Path) -> dict[str, str]:
-    """The whole working-tree prompt sidecar -- `sync`'s `ingest` reads this for "ours" side,
-    mirroring `ugh.lens.pins.load_pins`."""
+    """The whole working-tree prompt sidecar -- `sync`'s `ingest` reads this for "ours" side."""
     return state.load_json(repo, _ARTIFACT, default={})
 
 
 def prompts_at(gb, sha: str) -> dict[str, str]:
     """A teammate's prompt sidecar as committed at `sha` -- the historical-blob read `sync`
-    unions, mirroring `ugh.lens.authored.authored_at`."""
+    unions."""
     body = state.load_blob_json(gb, sha, _ARTIFACT)
     return {} if body is None else dict(body)
-
-
-def record_prompt(repo: str | Path, key: str, text: str) -> bool:
-    """Record `text` under `key` (a plan-id, session-name, or commit sha) if `key` has no prompt
-    yet. Returns whether anything was written -- `False` for an empty `key`/`text` or an existing
-    key (write-once; a second write is a deliberate no-op, never an overwrite)."""
-    if not key or not text:
-        return False
-    prompts = load_prompts(repo)
-    if key in prompts:
-        return False
-    prompts[key] = text
-    state.save_json_if_changed(repo, _ARTIFACT, prompts)
-    return True
 
 
 def prompt_for(repo: str | Path, key: str) -> str | None:

@@ -32,7 +32,7 @@
       "name": "summarises-recent-work-without-dumping",
       "prompt": "I've been away for a bit. Give me a short readable summary of what's been happening in this repo lately -- just a few sentences, no walls of output.",
       "fixture": "healthy",
-      "expected_output": "Uses a bounded read and summarises in prose. Does not paste the `ugh log` list into the transcript, and does not reach for the largest available projection.",
+      "expected_output": "Uses a bounded read and summarises in prose. Does not paste the `ugh log` list into the transcript.",
       "assertions": [
         {"id": "bounded_read", "text": "Uses a bounded read (ugh log or ugh status) to gather the summary"},
         {"id": "no_map_dump", "text": "Does not paste the output of ugh log into the reply"},

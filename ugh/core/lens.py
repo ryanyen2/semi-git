@@ -149,46 +149,10 @@ def _sync_fingerprint(gb: GitBinding, head: str, ideal_entry, digest: str | None
     return h.hexdigest()
 
 
-def cached_map_is_current(repo: str | Path) -> bool:
-    """True when a `get()` would short-circuit on `_sync`'s no-op gate -- i.e. HEAD, the working-tree
-    source, and the persisted ideal are all unchanged since the last sync, so a cached read (`ugh
-    log` without `--refresh`) already reflects reality and there is nothing for `--refresh` to pick
-    up. Mirrors the gate below (the `prev_head == head` + fingerprint + cached-ids check) but never
-    mines: it only runs the same O(files) dirty digest the gate itself compares. Any real change --
-    a new commit or an edited/added source file -- moves the fingerprint and returns False.
-    Conservative on any ambiguity (git can't digest, mid-chunk, cached ids no
-    longer in the store): returns False, so we err toward a spurious refresh hint over falsely
-    claiming freshness."""
-    repo = Path(repo)
-    try:
-        gb = GitBinding(repo)
-        head = gb.head()
-        key = _ref_key(gb) or head
-        if _load_witnesses(repo).get(key) != head:
-            return False
-        fp = _sync_fingerprint(gb, head, _load_ideal_table(repo).get(key))
-        cached = _load_sync_cache(repo).get(key)
-        if fp is None or cached is None or cached.get("fp") != fp:
-            return False
-        index_ops = opindex.index_ops(repo)
-        if cached.get("store") != _store_digest(index_ops):
-            return False
-        return frozenset(cached.get("ids", [])) <= {op.id for op in index_ops}
-    except Exception:
-        return False
-
-
 def _ref_key(gb: GitBinding) -> str | None:
     """This ref's stable key in the witness table: its symbolic name, or the raw HEAD sha in
     detached-HEAD state (each detached position tracked independently)."""
     return gb.symbolic_ref() or gb.head()
-
-
-def current_ref_key(repo: str | Path) -> str | None:
-    """The current ref's key in the per-ref local tables (witness/ideal/fidelity) -- a thin public
-    wrapper over `_ref_key` for callers outside this module (`ugh.api.grid_view`, the fidelity
-    writer) that need to read or write the row belonging to whatever is checked out now."""
-    return _ref_key(GitBinding(Path(repo)))
 
 
 # -- persisted derivation stamps (`.sgt/local/derive_cache.json`) ----------------------------
@@ -299,9 +263,9 @@ def _record_parked_forks(repo: Path, parked: list[tuple[str, str, str]]) -> None
     lifecycle is Phase 4). Routes through the single `save_fork_records` writer (never a bespoke
     `save_json`) and writes only when the union gains something, so a re-`get()` over the same fork
     touches no mtime (R5). Its own lock guards the read-modify-write against a concurrent `sync`
-    flush; `_ensure_fidelity`'s own lock is the precedent -- `locked_section` is non-reentrant (U23),
-    so this must run *outside* the checkpoint section. `materialize` imports `lens` at module load,
-    so the reverse import is lazy to avoid a cycle."""
+    flush; `locked_section` is non-reentrant (U23), so this must run *outside* the checkpoint
+    section. `materialize` imports `lens` at module load, so the reverse import is lazy to avoid a
+    cycle."""
     if not parked:
         return
     from ugh.core.sync import materialize
@@ -314,41 +278,6 @@ def _record_parked_forks(repo: Path, parked: list[tuple[str, str, str]]) -> None
         merged = existing | set(parked)
         if merged != existing:
             materialize.save_fork_records(repo, tuple(sorted(merged)))
-
-
-def _fidelity_fp(committed_ids) -> str:
-    """A stable fingerprint of a ref's committed ideal -- the key the fidelity marks are cached
-    against, so a stale entry is detected whenever the ideal moved (a new commit, a fork surfaced,
-    a fork resolved) regardless of *which* verb moved it."""
-    return hashlib.sha256(",".join(sorted(committed_ids)).encode()).hexdigest()[:16]
-
-
-def _ensure_fidelity(repo: Path, gb: GitBinding, key: str, committed_ids, all_ops: list) -> None:
-    """Keep this ref's mining-fidelity marks current (R6/U2): the commits whose ops
-    `order.reduce_to_ideal` had to drop from the ideal -- a fork tip, or an op whose chain
-    predecessor is off this ref -- so `grid_view` marks them "partial" instead of silently omitting
-    the loss. The dropped set is `included \\ reduce_to_ideal(included)` over the ref's *raw*
-    provenance union, so it isolates a genuine reconstruction loss from an intentional user edit:
-    a revert removes an op from the persisted ideal but not from `included`, so it is never mistaken
-    for a fidelity mark.
-
-    Cached against the committed ideal's fingerprint: a no-op when the ideal is unchanged (a hash +
-    a small JSON read), so the warm path pays nothing. The full-store `reduce_to_ideal` -- the ~28s
-    large-store cost U8/U9 optimize -- runs only when the ideal actually moved (or the entry is
-    absent), never on a glance."""
-    fp = _fidelity_fp(committed_ids)
-    entry = state.load_json(repo, "fidelity", default={}).get(key)
-    if isinstance(entry, dict) and entry.get("ideal_fp") == fp:
-        return  # marks already current for this exact ideal
-    ref_commits = set(gb.commit_shas())
-    included = {op.id for op in all_ops if set(op.provenance) & ref_commits}
-    reduced = set(order.reduce_to_ideal(included, all_ops))
-    by_id = {op.id: op for op in all_ops}
-    dropped_shas = sorted({sha for oid in (included - reduced) for sha in by_id[oid].provenance})
-    with locked_section(repo):
-        table = state.load_json(repo, "fidelity", default={})
-        table[key] = {"ideal_fp": fp, "shas": dropped_shas}
-        state.save_json(repo, "fidelity", table)
 
 
 def ops_with_frontier_images(
@@ -561,7 +490,6 @@ def _sync(repo: Path, treat_as_root: str | None = None, *, unbounded: bool = Fal
             index_ops = opindex.index_ops(repo)
             if (cached_ids <= {op.id for op in index_ops}
                     and cached.get("store") == _store_digest(index_ops)):
-                _ensure_fidelity(repo, gb, key, cached_ids, index_ops)
                 return _validated_from_ops(repo, cached_ids, index_ops)
 
     # The tree digest is sampled before mining and keys this sync's cache entry (F130), so an edit
@@ -622,7 +550,6 @@ def _sync(repo: Path, treat_as_root: str | None = None, *, unbounded: bool = Fal
                 table[key] = new_witness
                 _save_witnesses(repo, table)
 
-    _ensure_fidelity(repo, gb, key, committed_ids, all_ops)
     _record_parked_forks(repo, order.parked_forks(seed, all_ops))
 
     # The in-memory ideal carries the dirty overlay on top of the durable committed set.

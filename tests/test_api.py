@@ -1,23 +1,11 @@
-"""The canonical JSON projection (ugh.api) consumed by the CLI --json mode and MCP.
-
-The operation-ideal kernel's read surface: the op DAG, the current ideal, and ideal-vs-ideal
-semantic diffs. Fixtures are deterministic git repos (tests/laws/corpus.py, pinned SHAs) mined by
-`ugh.core.lens.get`.
-"""
+"""The canonical JSON projection (ugh.api) consumed by the CLI --json mode and MCP. Fixtures are
+deterministic git repos (tests/laws/corpus.py, pinned SHAs) mined by `ugh.core.lens.get`."""
 
 import json
 
-from ugh import state
-from ugh.api import (
-    drift_view, fold_view, history_view, map_view, oplog_view, plan_view,
-    save_preview_view, state_view, status_view,
-)
-from ugh.core import lens
+from ugh.api import log_view, state_view, status_view
 from ugh.core.lens import get
-from ugh.core.op import make_op
 from ugh.core.store import Store
-from ugh.loop import match as match_mod
-from ugh.loop import plan as plan_mod
 from ugh.store.gitbind import init_store
 from tests.laws import corpus
 
@@ -58,702 +46,36 @@ def test_state_view_coverage_fraction_on_mixed_fixture(tmp_path):
     assert "config.yaml" in v["frontier"]
 
 
-def test_oplog_view_is_sorted_and_carries_op_fields(tmp_path):
-    """The op DAG is emitted in a deterministic (id-sorted) order with each op's kind, footprint,
-    provenance, structured attribution (U22/D7), and intent -- no set-iteration leakage."""
-    v = oplog_view(_mined(tmp_path, "mixed_coverage"), full=True)
-    assert v["count"] == len(v["ops"]) > 0
-    assert [op["id"] for op in v["ops"]] == sorted(op["id"] for op in v["ops"])
-    op = v["ops"][0]
-    assert set(op) == {"id", "kind", "footprint", "provenance", "attribution", "intent"}
-    assert op["footprint"] and all({"symbol", "before", "after"} == set(f) for f in op["footprint"])
-    assert op["provenance"]  # every mined op carries at least its witnessing commit
-    assert op["attribution"] == []  # no session/agent/plan stamped by plain mining
-
-
 def test_kernel_views_are_pure(tmp_path):
     """Views are side-effect-free reads: called twice over a freshly-mined store they produce
     byte-identical output and mint no new ops (no network/timestamp leakage)."""
     repo = _mined(tmp_path, "mixed_coverage")
-    first = json.dumps(state_view(repo), sort_keys=True)
-    op_count = oplog_view(repo)["count"]
-    second = json.dumps(state_view(repo), sort_keys=True)
+    first = json.dumps([state_view(repo), log_view(repo)], sort_keys=True)
+    op_count = len(Store(repo).all_ops())
+    second = json.dumps([state_view(repo), log_view(repo)], sort_keys=True)
     assert first == second
-    assert oplog_view(repo)["count"] == op_count
+    assert len(Store(repo).all_ops()) == op_count
 
 
-def test_log_cli_json_matches_views_byte_for_byte(tmp_path, capsys, monkeypatch):
-    """R21: the CLI `--json` surface is byte-identical to the api views -- one projection, no drift.
-    `ugh log` defaults to the grid (`grid_view`, KTD9); the raw op DAG is `ugh log --ops`
-    (`oplog_view`)."""
-    from ugh.api import grid_view
+def test_log_cli_json_matches_the_view_byte_for_byte(tmp_path, capsys, monkeypatch):
+    """R21: the CLI `--json` surface is byte-identical to the api view -- one projection, no drift."""
     from ugh.cli import main
-    from ugh.lens.map import build_map
 
     repo = _mined(tmp_path, "mixed_coverage")
-    build_map(repo)  # a stable built map so `ugh log`'s grid doesn't auto-build mid-test
-    expected = {
-        ("log",): json.dumps(grid_view(repo), indent=2),
-        ("log", "--ops"): json.dumps(oplog_view(repo), indent=2),
-    }
-
+    want = json.dumps(log_view(repo), indent=2)
     monkeypatch.chdir(repo)
-    for argv, want in expected.items():
-        assert main([*argv, "--json"]) == 0
-        assert capsys.readouterr().out.rstrip("\n") == want
+    assert main(["log", "--json"]) == 0
+    assert capsys.readouterr().out.rstrip("\n") == want
 
 
-def test_history_view_orders_commits_chronologically_and_places_every_op_on_the_axis(tmp_path):
-    """`commits` is oldest-first (matching `GitBinding.history`); every op's `commit_index` is a
-    valid position in that list, and the whole `ops` list is sorted by (commit_index, id)."""
-    repo = _mined(tmp_path, "linear_history")
-    v = history_view(repo, full=True)
-
-    assert [c["index"] for c in v["commits"]] == list(range(len(v["commits"])))
-    subjects = [c["subject"] for c in v["commits"]]
-    assert subjects.index("add foo, qux, config, binary") < subjects.index("modify foo")
-    assert subjects.index("modify foo") < subjects.index("rename foo -> bar within a.py")
-
-    assert v["ops"]  # linear_history mints several ops
-    valid_indices = {c["index"] for c in v["commits"]}
-    for op in v["ops"]:
-        assert set(op) == {"id", "kind", "feature_id", "commit_index"}
-        assert op["commit_index"] in valid_indices
-        assert op["feature_id"] is None  # no `ugh map` has run in this fixture
-    assert [(o["commit_index"], o["id"]) for o in v["ops"]] == sorted(
-        (o["commit_index"], o["id"]) for o in v["ops"]
-    )
-
-
-def test_history_view_reports_feature_id_once_a_tree_is_built(tmp_path):
-    """After `ugh map`, `op_leaf` is populated -- every op with a feature assignment reports it."""
-    from ugh.lens.map import build_map
-
+def test_sync_status_reports_complete_on_a_fresh_fully_synced_fixture(tmp_path):
     repo = _mined(tmp_path, "mixed_coverage")
-    build_map(repo)
+    assert status_view(repo)["sync_status"] == {"complete": True}
 
-    v = history_view(repo, full=True)
-    assert v["ops"]
-    assert any(op["feature_id"] is not None for op in v["ops"])
 
-
-def _shared_feature_dag(tmp_path):
-    """Build a minimal DAG for the shared-feature projection tests. Corpus fixtures are all
-    single-node, so we reshape a freshly built `tree.json` by hand: a LEAF listed under *both* N1
-    and N2 (a DAG) but canonically parented to N1 -- N2 only borrows it. Returns
-    (repo, leaf_id, real_op_id); the caller reads `map_view(repo)`."""
-    from ugh.lens import tree
-    from ugh.lens.map import build_map
-
-    repo = _mined(tmp_path, "mixed_coverage")
-    build_map(repo)
-    res = tree.load(repo)
-    real_op = next(iter(res["op_leaf"]))  # a real op so leaf_op_count / attribution pick it up
-
-    def node(nid, parent, children, label, members=()):
-        return {"id": nid, "parent": parent, "children": list(children), "depth": 0,
-                "members": list(members), "size": max(1, len(members)), "dir": "",
-                "label": label, "why": "", "split_reason": None}
-
-    leaf = "f-shared"
-    res["nodes"] = {
-        "N0": node("N0", None, ["N1", "N2"], "root"),
-        "N1": node("N1", "N0", [leaf], "SubA"),
-        "N2": node("N2", "N0", [leaf], "SubB"),  # DAG: also lists the leaf, but is not its parent
-        leaf: node(leaf, "N1", [], "Shared", members=["x"]),
-    }
-    res["roots"] = ["N0"]
-    res["op_leaf"] = {real_op: leaf}
-    tree.save(repo, res)
-    return repo, leaf, real_op
-
-
-def test_map_view_never_emits_a_node_id_as_its_label(tmp_path):
-    """A node id is a content hash (`f-`/`af-`), not a name. A tree persisted without a label pass
-    (or a node minted after it) can arrive label-less or with the id copied into `label`; `map_view`
-    must derive a readable name from the node's members instead of leaking the raw hash to the graph
-    / grid, which is what made the workbench show `f-<hash>` rows ("unreadable")."""
-    from ugh.lens import tree
-    from ugh.lens.map import build_map
-
-    repo = _mined(tmp_path, "mixed_coverage")
-    build_map(repo)
-    res = tree.load(repo)
-    real_op = next(iter(res["op_leaf"]))
-
-    def node(nid, parent, children, label, members=()):
-        return {"id": nid, "parent": parent, "children": list(children), "depth": 0,
-                "members": list(members), "size": max(1, len(members)), "dir": "",
-                "label": label, "why": "", "split_reason": None}
-
-    blank, idlab = "f-blanklabel", "f-idislabel"
-    res["nodes"] = {
-        "R": node("R", None, [blank, idlab], "root"),
-        blank: node(blank, "R", [], "", members=["svc/auth.py::login", "svc/auth.py::logout"]),
-        idlab: node(idlab, "R", [], idlab, members=["net/wire.py::encode"]),  # label copied from id
-    }
-    res["roots"] = ["R"]
-    res["op_leaf"] = {real_op: blank}
-    tree.save(repo, res)
-
-    by_id = {n["id"]: n for n in map_view(repo)["nodes"]}
-    assert by_id[blank]["label"] not in ("", blank)  # empty label -> derived name, not blank/hash
-    assert "login" in by_id[blank]["label"]          # derived from the leading member symbols
-    assert by_id[idlab]["label"] != idlab            # id-copied-into-label -> derived name instead
-
-
-def test_map_view_renders_a_shared_feature_under_its_one_canonical_parent(tmp_path):
-    """The tree is a DAG: an authored feature can be spliced under more than one subsystem, so its
-    id is listed in several parents' `children` while carrying a single canonical `parent`. `map_view`
-    must render it once -- under that one parent -- so the feature tree, the workbench timeline, and
-    the TUI agree, and it must not double-count the shared ops in every ancestor's `op_count` rollup."""
-    repo, leaf, _ = _shared_feature_dag(tmp_path)
-
-    v = map_view(repo)
-    by_id = {n["id"]: n for n in v["nodes"]}
-    # the shared leaf is rendered under its canonical parent only, never the borrowing subsystem
-    assert by_id["N1"]["children"] == [leaf]
-    assert by_id["N2"]["children"] == []
-    assert [n["id"] for n in v["nodes"] if leaf in n["children"]] == ["N1"]
-    # and its single op is counted once at the root, not once per listing parent
-    assert by_id[leaf]["op_count"] == 1
-    assert by_id["N2"]["op_count"] == 0
-    assert by_id["N0"]["op_count"] == 1
-    # `kind` must agree with the now-canonical `children`: a borrower-only node (all its listed
-    # children are borrowed, none canonically its own) is a leaf, not a subsystem. Consumers gate on
-    # this pair -- VS Code tree actions/collapsibility, TUI expand, timeline recursion -- so a
-    # `kind:"subsystem"` row emitting `children:[]` is mishandled (drops actions / vanishes).
-    assert by_id["N2"]["kind"] == "feature"
-    assert by_id["N1"]["kind"] == "subsystem"
-    # `feature_count` counts feature nodes, so it must agree with the canonical `kind`: the borrower-
-    # only N2 and the shared leaf are the two features here (raw children would miscount N2 as a
-    # subsystem and report 1).
-    assert v["feature_count"] == 2
-    # Canonical de-duplication must yield a proper forest, which is what makes each node's canonical
-    # parent well-defined (the residual-risk the whole scheme rests on): every non-root node appears
-    # in exactly one node's emitted `children`, and that node is its `parent`. Reverting `children`
-    # to raw would list the shared leaf under both N1 and N2 (listers == ["N1", "N2"]) -- so this
-    # bites the double-listing directly, and also flags an orphan (a parent that fails to list its
-    # child would give listers == []).
-    for nid, nd in by_id.items():
-        if nd["parent"] is None:
-            continue
-        listers = [p for p in by_id if nid in by_id[p]["children"]]
-        assert listers == [nd["parent"]], (nid, listers)
-
-
-def test_map_view_rolls_sessions_up_through_the_canonical_parent_only(tmp_path, monkeypatch):
-    """`node_sessions` must roll provenance up through *canonical* children, exactly like `op_count`:
-    a session attributed to the shared leaf reaches its one canonical ancestor chain (N1 -> N0), not
-    the borrowing subsystem N2. Sessions come from `opindex` attribution keyed by op-id and can't be
-    injected via `tree.save`, so we attach one to the shared leaf's op. Reverting `node_sessions` to
-    raw children would leak the session onto N2 -- this asserts it does not."""
-    import dataclasses
-
-    from ugh.core import opindex
-    from ugh.core.op import Attribution
-
-    repo, leaf, real_op = _shared_feature_dag(tmp_path)
-
-    real_ops = opindex.index_ops(repo)
-    assert any(op.id == real_op for op in real_ops)  # the leaf's op is attributable
-
-    def with_session(_repo):
-        return [
-            dataclasses.replace(op, attribution=op.attribution + (Attribution(sha=op.id, session="sess-1"),))
-            if op.id == real_op else op
-            for op in real_ops
-        ]
-
-    monkeypatch.setattr(opindex, "index_ops", with_session)
-
-    v = map_view(repo)
-    by_id = {n["id"]: n for n in v["nodes"]}
-    assert by_id[leaf]["sessions"] == ["sess-1"]  # attributed directly to the shared leaf
-    assert by_id["N1"]["sessions"] == ["sess-1"]  # its one canonical parent rolls it up
-    assert by_id["N0"]["sessions"] == ["sess-1"]  # ...to the root
-    assert by_id["N2"]["sessions"] == []  # the borrower does NOT (bites a raw-children revert)
-
-
-def test_grid_view_joins_ops_into_feature_commit_cells(tmp_path):
-    """U1/R5: `grid_view` is the canonical (op -> cell) join. Every cell holds exactly the ops that
-    share one (feature_id, commit_index), and that join is faithful to `history_view` -- each
-    cell's ops carry that cell's feature and commit-index, and every attributed op lands in exactly
-    one cell."""
-    from ugh.api import grid_view
-    from ugh.lens.map import build_map
-
-    repo = _mined(tmp_path, "mixed_coverage")
-    build_map(repo)
-
-    hv = history_view(repo, full=True)
-    v = grid_view(repo)
-
-    # the join reproduces history_view's attributed ops exactly, partitioned by cell.
-    attributed = {op["id"] for op in hv["ops"] if op["feature_id"] is not None}
-    from_cells = [oid for cell in v["cells"] for oid in cell["op_ids"]]
-    assert sorted(from_cells) == sorted(attributed)          # every attributed op, once
-    assert len(from_cells) == len(set(from_cells))           # no op in two cells
-
-    op_by_id = {op["id"]: op for op in hv["ops"]}
-    for cell in v["cells"]:
-        assert cell["op_count"] == len(cell["op_ids"])
-        assert cell["fidelity"] == "full"                    # nothing dropped in this fixture
-        for oid in cell["op_ids"]:
-            assert op_by_id[oid]["feature_id"] == cell["feature_id"]
-            assert op_by_id[oid]["commit_index"] == cell["commit_index"]
-
-    # cells sorted by (feature_id, commit_index); the feature roster covers every celled feature.
-    assert v["cells"] == sorted(v["cells"], key=lambda c: (c["feature_id"], c["commit_index"]))
-    assert set(v["features"]) == {c["feature_id"] for c in v["cells"]}
-    assert v["commits"] == hv["commits"]
-
-
-def test_grid_view_is_deterministic_across_calls(tmp_path):
-    """A grid surface polls; the join must be byte-stable so a re-render never reshuffles."""
-    from ugh.api import grid_view
-    from ugh.lens.map import build_map
-
-    repo = _mined(tmp_path, "mixed_coverage")
-    build_map(repo)
-    assert json.dumps(grid_view(repo), sort_keys=True) == json.dumps(grid_view(repo), sort_keys=True)
-
-
-def test_grid_view_omits_unattributed_ops_before_a_tree_is_built(tmp_path):
-    """An op with no feature (no `ugh map` yet) has no lane, so it produces no cell -- the same
-    drop `graph_layout`/`episodes` already apply. The commit axis is still present."""
-    from ugh.api import grid_view
-
-    repo = _mined(tmp_path, "mixed_coverage")  # mined, but no build_map
-    v = grid_view(repo)
-    assert v["cells"] == []
-    assert v["feature_count"] == 0
-    assert v["op_count"] == 0
-    assert v["commits"]  # the time axis exists regardless of feature assignment
-    assert v["partial_commits"] == []
-
-
-def test_segments_view_reports_which_chapters_are_still_in_head(tmp_path):
-    """A reverted checkpoint stays in the history -- that is what makes `ugh restore` possible -- so
-    the chapter list must keep it and say it is gone, not drop it and not show it as live. Before
-    this field the only screen that prints the `@n` handles rewound the ops and then redrew the
-    chapter exactly as before: same solid bar, same `N checkpoint(s)`, nothing to distinguish the
-    chapter whose code had just left the working tree from the two beside it that were still in it.
-    `present_op_count` is the count of the chapter's ops still in HEAD's ideal, so a client can draw
-    the removal the revert preview already draws; `None` means the ideal could not be read (an unborn
-    or unmined ref), which a renderer must read as "no claim", never as "removed"."""
-    from ugh.api import segments_view
-
-    gb, _ = init_store(tmp_path)
-    for i in range(3):
-        body = "".join(f"def f{j}():\n    return {j}\n\n\n" for j in range(i + 1))
-        (tmp_path / "a.py").write_text(body, encoding="utf-8")
-        gb.commit_all(f"feat(s{i}): step {i}")  # a fresh scope each time -> a fresh chapter
-    get(tmp_path)
-    from ugh.lens import tree
-    ops = Store(tmp_path).all_ops()
-    nodes = {"F-A": {"parent": None, "children": [], "members": [f"a.py::f{j}" for j in range(3)],
-                     "size": 3, "dir": "", "label": "Steps"}}
-    tree.save(tmp_path, {"nodes": nodes, "roots": ["F-A"], "max_depth": 0,
-                         "op_leaf": tree.assign_ops_to_leaves(nodes, ops),
-                         "cannot_link_moves": [], "identity_events": []})
-
-    before = segments_view(tmp_path)
-    assert len(before) >= 2, "distinct scopes should cut distinct chapters"
-    assert all(s["present_op_count"] == s["op_count"] for s in before)  # nothing reverted yet
-
-    last = before[-1]
-    _take_out(tmp_path, last["op_ids"])  # what `ugh revert <feature>@<n>` takes out
-
-    after = {s["checkpoint"]: s for s in segments_view(tmp_path)}
-    assert last["checkpoint"] in after, "a reverted chapter stays listed -- restore needs it"
-    assert after[last["checkpoint"]]["state"] == "reverted"
-    assert after[last["checkpoint"]]["taken_out_by"]
-    for s in before[:-1]:
-        assert after[s["checkpoint"]]["state"] == "live"
-
-
-def test_segment_state_is_read_per_symbol_not_per_op_count(tmp_path):
-    """A chapter whose steps are partly out reads `partial`, and its `symbols` say which function
-    is gone and which is still there."""
-    from ugh.api import segments_view
-    from ugh.core.opindex import index_ops
-
-    gb, _ = init_store(tmp_path)
-    (tmp_path / "a.py").write_text("def g():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("feat(s0): add g")
-    (tmp_path / "a.py").write_text("def g():\n    return 1 + 1\n\n\ndef h():\n    return 2\n",
-                                   encoding="utf-8")
-    gb.commit_all("feat(s1): rework g, add h")  # a fresh scope -> a second chapter
-    get(tmp_path)
-    from ugh.lens import tree
-    ops = Store(tmp_path).all_ops()
-    nodes = {"F-A": {"parent": None, "children": [], "members": ["a.py::g", "a.py::h"],
-                     "size": 2, "dir": "", "label": "Steps"}}
-    tree.save(tmp_path, {"nodes": nodes, "roots": ["F-A"], "max_depth": 0,
-                         "op_leaf": tree.assign_ops_to_leaves(nodes, ops),
-                         "cannot_link_moves": [], "identity_events": []})
-
-    before = {s["checkpoint"]: s for s in segments_view(tmp_path)}
-    assert len(before) == 2 and all(s["state"] == "live" for s in before.values())
-    later = max(before.values(), key=lambda s: s["seg_index"])
-    h_op = next(o.id for o in index_ops(tmp_path) if o.id in later["op_ids"] and "a.py::h" in o.footprint)
-    _take_out(tmp_path, {h_op})
-
-    after = {s["checkpoint"]: s for s in segments_view(tmp_path)}[later["checkpoint"]]
-    assert after["state"] == "partial", after
-    assert {x["symbol"]: x["live"] for x in after["symbols"]} == {"a.py::g": True, "a.py::h": False}
-
-
-def test_grid_view_marks_no_partial_commits_until_a_reduction_is_recorded(tmp_path):
-    """U1's fidelity field reads "full" for every cell until U2's producer records a real drop --
-    forward-compatible, not a stub: `partial_commits` is empty and no cell is "partial"."""
-    from ugh.api import grid_view
-    from ugh.lens.map import build_map
-
-    repo = _mined(tmp_path, "mixed_coverage")
-    build_map(repo)
-    v = grid_view(repo)
-    assert v["partial_commits"] == []
-    assert all(c["fidelity"] == "full" for c in v["cells"])
-
-
-def _is_code_symbol(footprint: str) -> bool:
-    """A `file::symbol` footprint naming real code -- not a whole-file op (`config.yaml`) and not a
-    layout sentinel (`a.py::__anchor__::foo`), neither of which a person would recognize as missing."""
-    return "::" in footprint and "__" not in footprint.split("::", 1)[1]
-
-
-def test_grid_view_names_reverted_work_no_lane_can_show(tmp_path):
-    """The false-green this closes: `build_map` clusters *alive* symbols, so a reverted symbol's ops
-    belong to no leaf, drop out of `op_leaf`, and therefore out of every cell and every chapter. The
-    grid then draws each chapter solid and each lane whole while the code is still missing from disk
-    -- a read layer asserting a state the working tree contradicts. Ops the ideal excludes that no
-    cell accounts for are reported instead of dropped, so a surface can say what it cannot draw."""
-    from ugh import api
-    from ugh.api import grid_view
-    from ugh.lens.map import build_map
-
-    repo = _mined(tmp_path, "linear_history")
-    build_map(repo)
-    assert grid_view(repo)["reverted_unaccounted"]["op_count"] == 0  # nothing reverted yet
-
-    from ugh.core.opindex import index_ops
-
-    baz = next(o for o in index_ops(repo) if o.footprint.get("b.py::baz", ("x",))[0] is None)
-    done = _take_out(repo, {baz.id})
-    assert done.undone
-    build_map(repo)
-    gap = api._reverted_unaccounted(repo, set())
-    assert gap["op_count"] >= 1
-    assert any(_is_code_symbol(s) for s in gap["symbols"]), gap["symbols"]
-
-
-def test_grid_view_marks_partial_commits_over_a_fork(tmp_path):
-    """U2/R6 end to end: once `_record_fidelity` records a fork's dropped commits, `grid_view`
-    reports them in `partial_commits` and marks every cell at those commit-indices "partial" --
-    the commit couldn't be fully reconstructed, so its whole column is flagged."""
-    from ugh.api import grid_view
-    from ugh.core import sync
-    from ugh.lens.map import build_map
-    from tests.core.test_sync import _BASE, _edit_and_commit, _push, _two_clones
-
-    a, b = _two_clones(tmp_path, _BASE)
-    _edit_and_commit(a, "main.py", "def foo():\n    return 999\n\n\ndef bar():\n    return 2\n", "A: rework foo")
-    _push(a)
-    _edit_and_commit(b, "main.py", "def foo():\n    return 42\n\n\ndef bar():\n    return 2\n", "B: rework foo")
-    sync.sync(b, remote="origin", branch="main")
-    get(b)          # record fidelity for the post-fork ideal
-    build_map(b)    # so surviving ops land in cells
-
-    v = grid_view(b)
-    assert v["partial_commits"]  # the fork's commits are flagged
-    partial = set(v["partial_commits"])
-    for cell in v["cells"]:
-        assert cell["fidelity"] == ("partial" if cell["commit_index"] in partial else "full")
-
-
-def test_grid_view_surfaces_a_pending_plan_prediction_as_a_ghost(tmp_path):
-    """A pending plan step predicting a feature is a ghost cell -- the only place a prediction
-    reaches the grid (off-chain hollows never enter the ideal). `known_feature` flags whether the
-    predicted lane still exists."""
-    from ugh.api import grid_view
-    from ugh.lens.map import build_map
-
-    repo = _mined(tmp_path, "mixed_coverage")
-    build_map(repo)
-    real_feature = next(iter(grid_view(repo)["features"]))
-
-    table = plan_mod._load_sessions(repo)
-    table["s1"] = {
-        "plan_text": "1. extend it\n2. ghost step\n", "created_ts": 0.0, "last_activity_ts": 0.0,
-        "status": "active", "baseline_op_ids": [],
-        "steps": [
-            {"hollow_id": "h0", "title": "extend it", "predicted_footprint": [],
-             "predicted_feature": real_feature, "rationale": "", "status": "pending", "matched_op_ids": []},
-            {"hollow_id": "h1", "title": "unknown lane", "predicted_footprint": [],
-             "predicted_feature": "f-doesnotexist", "rationale": "", "status": "matched", "matched_op_ids": []},
-        ],
-    }
-    plan_mod._save_sessions(repo, table)
-
-    ghosts = grid_view(repo)["ghosts"]
-    assert len(ghosts) == 1  # only the pending step; the matched one is not a ghost
-    g = ghosts[0]
-    assert g["feature_id"] == real_feature
-    assert g["title"] == "extend it"
-    assert g["known_feature"] is True
-
-
-def test_grid_view_feature_roster_labels_match_the_map(tmp_path):
-    """The label a lane shows on the grid is the same one `ugh map` shows -- `grid_view` resolves
-    labels the same way `map_view` does (tree labels + authored overrides), just without the
-    expensive `fused_graph` recompute."""
-    from ugh.api import grid_view
-    from ugh.lens.map import build_map
-
-    repo = _mined(tmp_path, "mixed_coverage")
-    build_map(repo)
-    map_labels = {n["id"]: n["label"] for n in map_view(repo)["nodes"]}
-    for fid, roster in grid_view(repo)["features"].items():
-        assert roster["label"] == map_labels[fid]
-
-
-def test_save_preview_view_splits_affected_features_from_new_work(tmp_path):
-    """The in-situ save preview answers "which features gain ops if I save now". A clean tree has
-    nothing pending; uncommitted work that reworks an existing feature's symbol lands in `affected`
-    (attributed to that feature's leaf), while a brand-new symbol -- a member of no built leaf --
-    falls into the `new_work` bucket. `total_op_count` accounts for both."""
-    from ugh.lens.map import build_map
-    from ugh.lens.tree import load as load_tree
-
-    repo = tmp_path / "repo"
-    gb, _ = init_store(repo)
-    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("add foo")
-    get(repo)
-    build_map(repo)
-
-    # the leaf that owns the committed symbol -- affected work should attribute here
-    nodes = load_tree(repo)["nodes"]
-    foo_leaf = next(nid for nid, nd in nodes.items()
-                    if not nd["children"] and "a.py::foo" in nd["members"])
-
-    # clean tree: nothing would land on save
-    assert save_preview_view(repo) == {"affected": [], "new_work_count": 0, "total_op_count": 0}
-
-    # uncommitted: rework the existing symbol (-> its feature) + add a brand-new one (-> new work)
-    (repo / "a.py").write_text(
-        "def foo():\n    return 2\n\n\ndef bar():\n    return 3\n", encoding="utf-8")
-
-    v = save_preview_view(repo)
-    assert v["total_op_count"] > 0
-    affected_ids = {row["feature_id"] for row in v["affected"]}
-    assert foo_leaf in affected_ids  # the reworked symbol's feature is flagged
-    assert v["new_work_count"] >= 1  # `bar` belongs to no built leaf
-    # the touched symbols are named, so the ghost can say WHAT would land, not just where
-    foo_row = next(row for row in v["affected"] if row["feature_id"] == foo_leaf)
-    assert "a.py::foo" in foo_row["symbols"]
-    # the split is exhaustive: every pending op is either attributed somewhere or new work
-    # (symbol-granular spread: one op may count in several lanes, so union op_ids, don't sum)
-    attributed = set()
-    for row in v["affected"]:
-        attributed.update(row["op_ids"])
-    assert len(attributed) + v["new_work_count"] == v["total_op_count"]
-
-
-def test_fold_view_at_commit_index_matches_that_frontiers_code(tmp_path):
-    """`--at <commit-index>` folds every op at or before that position on `history_view`'s axis --
-    an earlier index yields fewer files/ops than a later one, and the returned bytes match a
-    direct `code()` fold of the same op-set."""
-    from ugh.core.fold import code
-    from ugh.core.ideal import Ideal
-    from ugh.core.store import Store
-
-    repo = _mined(tmp_path, "linear_history")
-    hist = history_view(repo, full=True)
-    last_index = hist["commits"][-1]["index"]
-
-    v = fold_view(repo, at_commit_index=last_index)
-    assert "error" not in v and not v.get("forked")
-
-    ops = Store(repo).all_ops()
-    frontier_ids = frozenset(o["id"] for o in hist["ops"] if o["commit_index"] <= last_index)
-    ideal = Ideal.from_ops(frontier_ids, ops)
-    expected = {p: b.decode("utf-8", "replace") for p, b in code(ideal, ops).items()}
-    assert v["files"] == expected
-    assert v["op_count"] == len(frontier_ids)
-
-    earlier = fold_view(repo, at_commit_index=0)
-    assert earlier["op_count"] < v["op_count"]
-
-
-def test_fold_view_ref_matches_ideal_for_ref(tmp_path):
-    """`--at <ref>` folds a ref's own committed ideal (`lens.ideal_for_ref`), matching `state`'s
-    own notion of a ref -- HEAD here, since the fixture never branches."""
-    from ugh.core.fold import code
-    from ugh.core.lens import ideal_for_ref
-    from ugh.core.store import Store
-
-    repo = _mined(tmp_path, "mixed_coverage")
-    v = fold_view(repo, ref="HEAD")
-    ops = Store(repo).all_ops()
-    expected = {p: b.decode("utf-8", "replace") for p, b in code(ideal_for_ref(repo, "HEAD"), ops).items()}
-    assert v["files"] == expected
-
-
-def test_fold_view_requires_exactly_one_frontier_kwarg(tmp_path):
-    repo = _mined(tmp_path, "mixed_coverage")
-    assert "error" in fold_view(repo)
-    assert "error" in fold_view(repo, ref="HEAD", at_commit_index=0)
-
-
-def test_fold_view_rejects_an_ungrounded_op_id_set_without_raising(tmp_path):
-    """An explicit `op_ids` set that isn't downward-closed (here: a single non-root op missing
-    its own chain prerequisites) is refused as `{"forked": True, "message": ...}` -- the same
-    `Ideal.from_ops` refusal turns into a preview outcome elsewhere,
-    never a raised `ValueError` through the API."""
-    repo = _mined(tmp_path, "linear_history")
-    hist = history_view(repo, full=True)
-    non_root = next(o["id"] for o in hist["ops"] if o["commit_index"] > 0)
-
-    v = fold_view(repo, op_ids=[non_root])
-    assert v.get("forked") is True
-    assert "message" in v
-
-
-def test_plan_view_and_drift_view_are_empty_with_no_active_sessions(tmp_path):
-    """A repo that's never seen `ugh plan intake` reports no sessions, no checkpoint groups, and
-    no drift -- drift is only meaningful relative to a plan session's own predictions."""
-    repo = _mined(tmp_path, "mixed_coverage")
-    assert plan_view(repo) == {"sessions": [], "checkpoint": {"matches": [], "drift_op_ids": []}}
-    assert drift_view(repo) == {"count": 0, "op_ids": [], "kinds": {}}
-
-
-def test_plan_view_reports_matched_step_spans_and_drift_view_reports_the_unpredicted_op(tmp_path):
-    """A hand-seeded session predicting `a.py::foo` matches the real op that edits it; a second,
-    unrelated real op (`a.py::bar`) is unpredicted -- it shows up as drift, with its own current
-    line span, decoupled from the session. The session carries a second, never-built step so it
-    stays active after the first match confirms -- that partial-progress state is exactly when
-    `plan_view` surfaces a matched step's spans (a fully-matched session completes and drops off)."""
-    repo = tmp_path / "repo"
-    gb, _ = init_store(repo)
-    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("add foo")
-    get(repo)
-    store = Store(repo)
-    baseline = sorted(op.id for op in store.all_ops())
-
-    footprint = {"a.py::foo": (None, plan_mod._PENDING), "__plan__::s1::step0": (None, plan_mod._PENDING)}
-    hollow = make_op(footprint, {}, kind="planned", off_chain=True, intent="touch foo")
-    store.add_hollow(hollow)
-    # A second step predicting an entity that never gets built: it stays pending, keeping the
-    # session active so its already-matched sibling step still surfaces through `plan_view`.
-    fp2 = {"a.py::qux": (None, plan_mod._PENDING), "__plan__::s1::step1": (None, plan_mod._PENDING)}
-    hollow2 = make_op(fp2, {}, kind="planned", off_chain=True, intent="build qux")
-    store.add_hollow(hollow2)
-    table = plan_mod._load_sessions(repo)
-    table["s1"] = {
-        "plan_text": "1. touch foo\n2. build qux\n", "created_ts": 0.0, "last_activity_ts": 0.0,
-        "status": "active", "baseline_op_ids": baseline,
-        "steps": [{
-            "hollow_id": hollow.id, "title": "touch foo", "predicted_footprint": ["a.py::foo"],
-            "predicted_feature": None, "rationale": "", "status": "pending", "matched_op_ids": [],
-        }, {
-            "hollow_id": hollow2.id, "title": "build qux", "predicted_footprint": ["a.py::qux"],
-            "predicted_feature": None, "rationale": "", "status": "pending", "matched_op_ids": [],
-        }],
-    }
-    plan_mod._save_sessions(repo, table)
-
-    (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
-    gb.commit_all("touch foo")
-    (repo / "a.py").write_text("def foo():\n    return 2\n\n\ndef bar():\n    return 3\n", encoding="utf-8")
-    gb.commit_all("add bar")
-    get(repo)
-
-    checkpoint = plan_view(repo)["checkpoint"]
-    assert len(checkpoint["matches"]) == 1
-    group = checkpoint["matches"][0]
-    assert group["session_id"] == "s1"
-    assert checkpoint["drift_op_ids"]  # bar's own op, unpredicted
-
-    match_mod.confirm_match(repo, "s1", group["hollow_ids"], group["op_ids"])
-
-    view = plan_view(repo, full=True)
-    step = view["sessions"][0]["steps"][0]
-    assert step["status"] == "matched"
-    assert step["files"] == [{"path": "a.py", "spans": [{"symbol": "a.py::foo", "start_line": 1, "end_line": 2}]}]
-
-    # mining also mints residue/anchor pseudo-symbol ops for the same two commits (their own,
-    # unpredicted drift) -- assert on `bar`'s own entry specifically, not the total count.
-    drift = drift_view(repo, full=True)
-    bar_entries = [e for e in drift["entries"] if "a.py::bar" in e["footprint"]]
-    assert len(bar_entries) == 1
-
-
-def _seed_repo(root):
-    gb, _ = init_store(root)
-    state.save_json(root, "oracle_config", {"tiers": [{"name": "gate", "command": "exit 0"}]})
-    (root / "main.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("init")
-    ideal = get(root)
-    lens.put(root, ideal, message="ugh: init")
-    return gb
-
-
-def test_plan_view_places_an_unplaced_step_on_a_lane_by_its_footprint_or_its_title(tmp_path, monkeypatch):
-    """With no LLM the decomposer leaves every step unplaced, so a pending step had no lane to draw
-    its ghost on. `plan_view(full=True)` places it at read time: by its footprint when it has one,
-    else by a `file::Symbol` its title names, through the main map's membership. A step naming
-    nothing the map knows stays unplaced, and the stored record is never rewritten."""
-    from ugh.lens.map import build_map
-
-    def no_client(*args, **kwargs):
-        raise RuntimeError("no key")
-
-    monkeypatch.setattr(plan_mod, "get_client", no_client)
-    _seed_repo(tmp_path)
-    build_map(tmp_path)
-    foo_lane = next(n["id"] for n in map_view(tmp_path)["nodes"] if "main.py::foo" in n["own_symbols"])
-    plan_mod.intake(tmp_path, "1. make it return two\n2. main.py::foo -- return two\n3. write the docs\n",
-                    session_id="s1")
-    table = plan_mod._load_sessions(tmp_path)
-    table["s1"]["steps"][0]["predicted_footprint"] = ["main.py::foo"]  # a footprint, no feature
-    plan_mod._save_sessions(tmp_path, table)
-
-    steps = plan_view(tmp_path, full=True)["sessions"][0]["steps"]
-
-    assert [s["predicted_feature"] for s in steps] == [foo_lane, foo_lane, None]
-    assert all(s["predicted_feature"] is None for s in plan_mod._load_sessions(tmp_path)["s1"]["steps"])
-
-
-def test_map_view_reports_no_sessions_for_a_plain_mined_tree(tmp_path):
-    """No `ugh session` has ever landed against this repo, so every node's rollup is empty --
-    additive to `map_view` (plan U31, S7), never a required field elsewhere."""
-    from ugh.lens.map import build_map
-
-    repo = _mined(tmp_path, "mixed_coverage")
-    build_map(repo)
-    v = map_view(repo)
-    assert v["nodes"]
-    assert all(n["sessions"] == [] for n in v["nodes"])
-
-
-def test_sync_status_reports_complete_from_both_views_on_a_fresh_fully_synced_fixture(tmp_path):
-    """U6: a freshly-mined, fully-synced fixture reports `sync_status.complete == True` from both
-    `map_view` and `status_view`, per the plan's own scenario (1)."""
-    repo = _mined(tmp_path, "mixed_coverage")
-
-    synced = {"complete": True}
-    assert map_view(repo)["sync_status"] == synced
-    assert status_view(repo)["sync_status"] == synced
-
-
-def test_sync_status_reports_incomplete_from_both_views_and_neither_view_mines(tmp_path, monkeypatch):
-    """U6 scenario (2): a ref whose first-contact `_sync()` chunk is cut short by a deadline (same
-    fixture technique as U4's tests) reports `complete == False` from both views, and reading
-    either view alone triggers no additional mining."""
+def test_sync_status_reports_incomplete_and_the_view_does_not_mine(tmp_path, monkeypatch):
+    """A ref whose first-contact `_sync()` chunk is cut short by a deadline reports `complete ==
+    False`, and reading the view triggers no additional mining."""
     import ugh.core.lens as lens_mod
 
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")  # a chunk mines one commit
@@ -761,61 +83,12 @@ def test_sync_status_reports_incomplete_from_both_views_and_neither_view_mines(t
     get(repo)
 
     op_count_before = len(Store(repo).all_ops())
-    behind = {"complete": False}
-    assert map_view(repo)["sync_status"] == behind
-    assert status_view(repo)["sync_status"] == behind
+    assert status_view(repo)["sync_status"] == {"complete": False}
     assert len(Store(repo).all_ops()) == op_count_before
 
 
 # -- compact-by-default view contracts (plan: optimize the ugh agent surface for context +
 # retrieval speed, Part B) -----------------------------------------------------------------------
-
-
-def test_oplog_view_default_is_compact_and_full_restores_today_shape(tmp_path):
-    repo = _mined(tmp_path, "mixed_coverage")
-    compact = oplog_view(repo)
-    full = oplog_view(repo, full=True)
-
-    assert set(compact) == {"count", "kinds", "truncated", "ops"}
-    assert compact["count"] == full["count"]
-    assert sum(compact["kinds"].values()) == compact["count"]
-    op = compact["ops"][0]
-    assert set(op) == {"id", "kind", "symbols", "intent"}
-    assert op["symbols"] == sorted(op["symbols"])
-    assert set(full) == {"ops", "count"}
-    assert set(full["ops"][0]) == {"id", "kind", "footprint", "provenance", "attribution", "intent"}
-
-
-def test_oplog_view_paginates_and_reports_truncated(tmp_path):
-    repo = _mined(tmp_path, "mixed_coverage")
-    total = oplog_view(repo)["count"]
-    assert total > 1  # the fixture mints more than one op
-
-    page = oplog_view(repo, limit=1, offset=0)
-    assert len(page["ops"]) == 1
-    assert page["truncated"] is True
-
-    rest = oplog_view(repo, limit=total, offset=0)
-    assert len(rest["ops"]) == total
-    assert rest["truncated"] is False
-
-
-def test_oplog_view_last_page_past_offset_is_not_truncated(tmp_path):
-    """A regression guard: `truncated` must mean "more ops remain beyond this window", not just
-    "this window is smaller than the total" -- the latter is trivially true for any page after
-    the first, which would make an agent paginating forward (offset += limit while truncated)
-    issue one guaranteed-empty extra request on every walk."""
-    repo = _mined(tmp_path, "mixed_coverage")
-    total = oplog_view(repo)["count"]
-    assert total > 2  # the fixture mints more than two ops
-
-    last_page = oplog_view(repo, limit=total, offset=total - 1)
-    assert len(last_page["ops"]) == 1
-    assert last_page["truncated"] is False  # nothing left after this partial-but-final page
-
-    past_the_end = oplog_view(repo, limit=total, offset=total)
-    assert past_the_end["ops"] == []
-    assert past_the_end["truncated"] is False
 
 
 def test_state_view_default_is_compact_and_full_restores_frontier(tmp_path):
@@ -829,91 +102,6 @@ def test_state_view_default_is_compact_and_full_restores_frontier(tmp_path):
     # fields status_view depends on stay present at the default
     for key in ("covered_paths", "coverage_fraction", "derived_paths", "oracle_configured", "oracle_verdict"):
         assert compact[key] == full[key]
-
-
-def test_history_view_default_is_compact_with_latest_commits_most_recent_first(tmp_path):
-    repo = _mined(tmp_path, "linear_history")
-    compact = history_view(repo)
-    full = history_view(repo, full=True)
-
-    assert set(compact) == {"commit_count", "save_count", "bookkeeping_count",
-                            "op_count", "kinds", "features", "latest_commits"}
-    assert compact["commit_count"] == len(full["commits"])
-    assert compact["op_count"] == len(full["ops"])
-    # `linear_history` is all real work, so the two counts coincide here; the split is exercised
-    # by `test_history_view_folds_ugh_s_own_materialization_commits` below.
-    assert compact["save_count"] == compact["commit_count"]
-    assert compact["bookkeeping_count"] == 0
-    assert [c["index"] for c in compact["latest_commits"]] == sorted(
-        (c["index"] for c in full["commits"]), reverse=True
-    )
-
-
-def test_history_view_latest_commits_respects_limit_and_offset(tmp_path):
-    repo = _mined(tmp_path, "linear_history")
-    full = history_view(repo, full=True)
-    n = len(full["commits"])
-    assert n > 1
-
-    first = history_view(repo, limit=1)["latest_commits"]
-    assert len(first) == 1
-    assert first[0]["index"] == n - 1  # most recent
-
-    second = history_view(repo, limit=1, offset=1)["latest_commits"]
-    assert len(second) == 1
-    assert second[0]["index"] == n - 2
-
-
-def test_drift_view_default_is_compact(tmp_path):
-    repo = _mined(tmp_path, "mixed_coverage")
-    compact = drift_view(repo)
-    assert set(compact) == {"count", "op_ids", "kinds"}
-    assert compact["op_ids"] == sorted(compact["op_ids"])
-
-
-def test_plan_view_default_reports_step_counts_not_steps(tmp_path):
-    """Compact `plan_view` drops the per-step list (and its spans) in favor of counts, but keeps
-    the checkpoint's small op-id lists intact -- `ugh checkpoint --confirm-...` needs them."""
-    repo = tmp_path / "repo"
-    gb, _ = init_store(repo)
-    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("add foo")
-    get(repo)
-    store = Store(repo)
-    baseline = sorted(op.id for op in store.all_ops())
-
-    footprint = {"a.py::foo": (None, plan_mod._PENDING), "__plan__::s1::step0": (None, plan_mod._PENDING)}
-    hollow = make_op(footprint, {}, kind="planned", off_chain=True, intent="touch foo")
-    store.add_hollow(hollow)
-    table = plan_mod._load_sessions(repo)
-    table["s1"] = {
-        "plan_text": "1. touch foo\n", "created_ts": 0.0, "last_activity_ts": 0.0, "status": "active",
-        "baseline_op_ids": baseline,
-        "steps": [{
-            "hollow_id": hollow.id, "title": "touch foo", "predicted_footprint": ["a.py::foo"],
-            "predicted_feature": None, "rationale": "", "status": "pending", "matched_op_ids": [],
-        }],
-    }
-    plan_mod._save_sessions(repo, table)
-
-    (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
-    gb.commit_all("touch foo")
-    get(repo)
-
-    compact = plan_view(repo)
-    session = compact["sessions"][0]
-    assert "steps" not in session
-    assert session["step_count"] == 1
-    assert session["matched_count"] == 0
-
-    checkpoint = compact["checkpoint"]
-    assert checkpoint["matches"]  # the real op matches the predicted footprint
-    match = checkpoint["matches"][0]
-    assert "files" not in match
-    assert match["hollow_ids"] and match["op_ids"]  # kept -- `--confirm-...` needs them
-
-    full = plan_view(repo, full=True)["checkpoint"]["matches"][0]
-    assert "files" in full
 
 
 def _seed_plan_session(repo, gb, *, session_id, last_activity_ts, claude_session_id=None):
@@ -936,46 +124,6 @@ def _seed_plan_session(repo, gb, *, session_id, last_activity_ts, claude_session
         }],
     }
     plan_mod._save_sessions(repo, table)
-
-
-def test_plan_view_derives_building_and_stalled_from_activity_and_candidates(tmp_path):
-    """A pending plan is `building` while recently active, `stalled` once it goes quiet past
-    STALLED_SECONDS with no work flowing toward it, and `building` again -- age notwithstanding --
-    the moment a checkpoint candidate names it. `claude_session_id` is surfaced for the Resume
-    hand-off, and `pending_count`/`remaining_titles` come along without a `full` fetch."""
-    import time
-
-    from ugh.loop.plan import STALLED_SECONDS
-
-    repo = tmp_path / "repo"
-    gb, _ = init_store(repo)
-    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("add foo")
-    get(repo)
-
-    # Recent activity, pending step, no candidate -> building.
-    _seed_plan_session(repo, gb, session_id="fresh", last_activity_ts=time.time(),
-                       claude_session_id="sess-abc")
-    session = plan_view(repo)["sessions"][0]
-    assert session["derived_status"] == "building"
-    assert session["pending_count"] == 1
-    assert session["remaining_titles"] == ["touch foo"]
-    assert session["claude_session_id"] == "sess-abc"
-
-    # Same session backdated well past STALLED_SECONDS with still no candidate -> stalled.
-    table = plan_mod._load_sessions(repo)
-    table["fresh"]["last_activity_ts"] = time.time() - STALLED_SECONDS - 60
-    plan_mod._save_sessions(repo, table)
-    assert plan_view(repo)["sessions"][0]["derived_status"] == "stalled"
-
-    # Commit work matching the predicted footprint -> a live candidate names the session, so it
-    # reads `building` again despite the stale activity timestamp (candidate overrides age).
-    (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
-    gb.commit_all("touch foo")
-    get(repo)
-    view = plan_view(repo)
-    assert view["checkpoint"]["matches"], "expected a checkpoint candidate for the matching work"
-    assert view["sessions"][0]["derived_status"] == "building"
 
 
 def test_open_forks_surface_only_resolvable_divergent_forks(tmp_path):
@@ -1012,81 +160,17 @@ def test_open_forks_surface_only_resolvable_divergent_forks(tmp_path):
     assert [f["symbol"] for f in status_view(repo)["forks"]["records"]] == ["c.py::baz"]
 
 
-def test_headline_for_falls_back_to_the_feature_label_on_a_low_signal_subject():
-    """`headline_for` is the one definition of "what to call this commit", shared by the rail, the
-    save list, `ugh now`'s recently-done, and the extension's Now tree. It used to be TUI-only, so
-    the terminal's history views read as feature work while `ugh now` -- the surface a user reads
-    first -- still listed the raw `sss`/`wip` subjects for those same commits."""
-    from ugh.api import headline_for
-
-    labels = {"f-1": "retry backoff on the fetch path"}
-
-    # A subject that says something is kept verbatim.
-    assert headline_for("add a real credential check", "f-1", labels) == "add a real credential check"
-    # Bare stamps, too-short, and empty subjects borrow the dominant feature's label.
-    for junk in ("wip", "sss", "done", "ok", "", "  ", "fix"):
-        assert headline_for(junk, "f-1", labels) == "retry backoff on the fetch path", junk
-    # Case-insensitive on the stamp list.
-    assert headline_for("WIP", "f-1", labels) == "retry backoff on the fetch path"
-    # With no feature, or no label for it, a weak subject beats no name at all.
-    assert headline_for("wip", None, labels) == "wip"
-    assert headline_for("wip", "f-unknown", labels) == "wip"
-
-
-def test_history_view_latest_commits_carry_a_headline(tmp_path):
-    """The projection, not just the helper: each recent commit gets `headline` beside its raw
-    `subject`, so every surface can lead with what the work was without re-deriving the rule."""
-    from ugh.api import history_view
-
-    repo = tmp_path / "repo"
-    gb, _ = init_store(repo)
-    (repo / "auth.py").write_text("def login(u, p):\n    return True\n", encoding="utf-8")
-    gb.commit_all("sss")
-    (repo / "auth.py").write_text(
-        "def login(u, p):\n    return True\n\n\ndef logout():\n    pass\n", encoding="utf-8")
-    gb.commit_all("add a logout path")
-    get(repo)
-    from ugh.lens import map as lensmap
-    lensmap.build_map(repo)
-
-    rows = history_view(repo)["latest_commits"]
-    assert rows
-    by_subject = {r["subject"]: r for r in rows}
-    assert by_subject["add a logout path"]["headline"] == "add a logout path"
-    # The `sss` commit borrows a real name from the feature its ops landed in.
-    junk = by_subject["sss"]
-    assert junk["headline"] != "sss"
-    assert junk["feature_id"]
-
-
 # -- bookkeeping folding: ugh's own commits are not the developer's work ---------------------------
 
-def test_history_view_folds_ugh_s_own_materialization_commits(tmp_path):
-    """History is append-only, so a revert is itself a forward commit. Unmarked, it is
-    indistinguishable from real work, and `ugh now` reported `ugh revert <hex>` back to the
-    developer as something they had done."""
+def test_log_view_leaves_out_ugh_s_own_take_out_commits(tmp_path):
+    """History is append-only, so a revert is itself a forward commit; `log` lists the saves."""
     repo = _mined(tmp_path, "linear_history")
-    before = history_view(repo)
+    before = log_view(repo)
     _take_out(repo, _head_ops(repo))  # materializes a real commit for its own mechanics
 
-    after = history_view(repo)
-    assert after["commit_count"] == before["commit_count"] + 1  # the axis grew
-    assert after["save_count"] == before["save_count"]  # the developer did no new work
-    assert after["bookkeeping_count"] == before["bookkeeping_count"] + 1
-    subjects = [c["subject"] for c in after["latest_commits"]]
-    assert not any(s.startswith("ugh revert") for s in subjects)
-
-
-def test_bookkeeping_commits_keep_their_place_on_the_time_axis(tmp_path):
-    """Folding is display-only. Every op's `commit_index` refers to the full axis, so dropping a
-    commit from the axis (rather than from a list) would silently move every later op."""
-    repo = _mined(tmp_path, "linear_history")
-    _take_out(repo, _head_ops(repo))
-
-    full = history_view(repo, full=True)
-    indices = [c["index"] for c in full["commits"]]
-    assert indices == list(range(len(indices)))  # contiguous: nothing was removed from the axis
-    assert any(c["bookkeeping"] for c in full["commits"])  # marked, not missing
+    after = log_view(repo)
+    assert [s["sha"] for s in after["saves"]] == [s["sha"] for s in before["saves"]]
+    assert any(st["out"] for st in after["saves"][0]["steps"])
 
 
 def test_a_user_save_is_never_marked_as_bookkeeping(tmp_path):
@@ -1097,9 +181,7 @@ def test_a_user_save_is_never_marked_as_bookkeeping(tmp_path):
     repo = _mined(tmp_path, "linear_history")
     put(repo, get(repo), message="add the thing I meant to add")
 
-    view = history_view(repo)
-    assert view["latest_commits"][0]["subject"] == "add the thing I meant to add"
-    assert view["latest_commits"][0]["bookkeeping"] is False
+    assert log_view(repo)["saves"][0]["subject"] == "add the thing I meant to add"
 
 
 def test_forks_across_miner_versions_are_marked_as_store_generations_not_divergent_edits(tmp_path):
@@ -1107,7 +189,7 @@ def test_forks_across_miner_versions_are_marked_as_store_generations_not_diverge
     same commit can sit in the store twice with different ids. The two generations disagree about a
     symbol's after-state and collide on its `before_version`, which reads as a fork -- 619 of the 642
     on ugh's own repo. Nobody made those edits, and no hand-merge closes them (the remedy is
-    `ugh advanced migrate ops-v3`), so a fork whose tips carry different miner_versions must be
+    a re-mine), so a fork whose tips carry different miner_versions must be
     flagged as such rather than presented as a divergence the user is expected to resolve."""
     from ugh import state
     from ugh.api import forks_view

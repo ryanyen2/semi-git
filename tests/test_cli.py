@@ -11,12 +11,7 @@ from types import SimpleNamespace
 import pytest
 
 from ugh.cli import main
-from ugh.intent import resolve as resolve_mod
-from ugh.store.gitbind import init_store
-
-
-def _boom(*args, **kwargs):
-    raise AssertionError("the NL intent resolver must never be called when a deterministic rung matches")
+from ugh.store.gitbind import GitBinding, init_store
 
 
 def _in(tmp_path, argv):
@@ -54,44 +49,12 @@ def test_init_with_horizon_mines_only_from_that_commit_forward(tmp_path, capsys)
     assert not (tmp_path / "--horizon").exists()  # not misparsed as the repo path
 
     capsys.readouterr()
-    assert _in(tmp_path, ["log", "--ops", "--json", "--full"]) == 0
+    assert _in(tmp_path, ["log", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
-    foo_ops = [op for op in payload["ops"] if "a.py::foo" in [f["symbol"] for f in op["footprint"]]]
-    # v1 (pre-horizon) is never mined at all; v2 becomes one root "add", v3 one modify on top --
-    # not the 3-op chain a horizon-less init would produce.
-    assert len(foo_ops) == 2
-    assert {op["kind"] for op in foo_ops} == {"add", "rework"}
-
-
-def test_init_and_log_roundtrip(tmp_path, capsys):
-    # U1 moved the raw op-DAG dump under `ugh log --ops` (bare `ugh log` is now the lane×commit
-    # grid, which doesn't print raw `file::symbol` names).
-    _seed(tmp_path, 1)
-    capsys.readouterr()  # drain seed commit output (none, but keep symmetry with other tests)
-    assert _in(tmp_path, ["log", "--ops"]) == 0
-    out = capsys.readouterr().out
-    assert "op(s)" in out and "a.py::foo" in out
-
-
-def test_log_lists_each_feature_with_its_edits_per_save(tmp_path, capsys):
-    """Bare `ugh log`: a header naming each recent save by its short sha, newest to the right, and
-    one row per feature with its handle, label and edit count under each save."""
-    import subprocess
-
-    _seed(tmp_path, 3)
-    _in(tmp_path, ["log", "--refresh"])
-    capsys.readouterr()
-    assert _in(tmp_path, ["log"]) == 0
-    head, *rows = capsys.readouterr().out.splitlines()
-    shas = subprocess.run(["git", "log", "--format=%h", "--abbrev=7", "--reverse"], cwd=tmp_path,
-                          capture_output=True, text=True, check=True).stdout.split()
-    assert head.split() == ["id", "feature", *shas]
-    from ugh.lens.tree import load as load_tree
-
-    fid = next(nid for nid, nd in load_tree(tmp_path)["nodes"].items() if not nd["children"])
-    row = next(r for r in rows if r.startswith(fid.removeprefix("f-")[:8]))
-    assert all(cell.isdigit() for cell in row.split()[-3:])
-    assert not any("no feature" in r for r in rows)
+    foo = [st["kind"] for s in payload["saves"] for st in s["steps"] if st["address"].startswith("a.py::foo@")]
+    # v1 (pre-horizon) is never mined at all; v2 becomes one creation, v3 one change on top --
+    # not the 3-step chain a horizon-less init would produce.
+    assert foo == ["change", "create"]
 
 
 def _seed_resolvable_fork(tmp_path, symbol="a.py::foo"):
@@ -120,73 +83,25 @@ def test_status_names_an_open_fork_and_its_remedy(tmp_path, capsys):
     assert "ugh resolve a.py::foo" in capsys.readouterr().out
 
 
-def test_log_json_is_machine_readable(tmp_path, capsys):
-    _seed(tmp_path, 1)
-    assert _in(tmp_path, ["log", "--ops", "--json"]) == 0
-    payload = json.loads(capsys.readouterr().out)
-    assert payload["count"] >= 1
-    assert any("a.py::foo" in op["symbols"] for op in payload["ops"])
-
-
-def test_log_json_full_is_machine_readable(tmp_path, capsys):
-    _seed(tmp_path, 1)
-    assert _in(tmp_path, ["log", "--ops", "--json", "--full"]) == 0
-    payload = json.loads(capsys.readouterr().out)
-    assert payload["count"] >= 1
-    assert any("a.py::foo" in [f["symbol"] for f in op["footprint"]] for op in payload["ops"])
-
-
-def test_log_json_limit_and_offset_flags(tmp_path, capsys):
-    _seed(tmp_path, 3)  # a.py::foo v1/v2/v3, at least 3 distinct ops
-    capsys.readouterr()
-
-    assert _in(tmp_path, ["log", "--ops", "--json"]) == 0
-    total = json.loads(capsys.readouterr().out)["count"]
-    assert total > 1
-
-    assert _in(tmp_path, ["log", "--ops", "--json", "--limit", "1", "--offset", "0"]) == 0
-    first_page = json.loads(capsys.readouterr().out)
-    assert len(first_page["ops"]) == 1
-
-    assert _in(tmp_path, ["log", "--ops", "--json", "--limit", str(total), "--offset", "1"]) == 0
-    rest = json.loads(capsys.readouterr().out)
-    assert len(rest["ops"]) == total - 1
-    assert rest["ops"][0]["id"] != first_page["ops"][0]["id"]
-
-
 def test_revert_emit_previews_without_writing(tmp_path, capsys):
     _seed(tmp_path, 2)
-    assert _in(tmp_path, ["revert", "--emit", "a.py::foo"]) == 0
+    assert _in(tmp_path, ["revert", "--emit", _head(tmp_path)]) == 0
     out = capsys.readouterr().out
-    assert "revert a.py::foo" in out and "check: not run yet" in out
+    assert f"revert {_head(tmp_path)}" in out and "check: not run yet" in out
     assert (tmp_path / "a.py").read_text() == "def foo():\n    return 2\n"  # untouched
 
 
 def test_revert_then_restore_roundtrip(tmp_path, capsys):
     _seed(tmp_path, 2)
-    assert _in(tmp_path, ["revert", "a.py::foo", "--yes"]) == 0
+    step = _head(tmp_path)
+    assert _in(tmp_path, ["revert", step, "--yes"]) == 0
     capsys.readouterr()
     assert (tmp_path / "a.py").read_text() == "def foo():\n    return 1\n"
 
-    assert _in(tmp_path, ["restore", "--json", "a.py::foo"]) == 0
+    assert _in(tmp_path, ["restore", "--json", step]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["ok"] is True and payload["applied"] and payload["undone"]
     assert (tmp_path / "a.py").read_text() == "def foo():\n    return 2\n"
-
-
-def test_revert_unknown_ref_fails_with_message(tmp_path, monkeypatch, capsys):
-    # An unresolved ref now falls to the NL rung (`_resolve_via_intent`) once every deterministic
-    # rung fails; force it offline so this stays the deterministic-failure case it always was.
-    # Offline means every credential `config.resolve_api_key` consults, not just `OPENAI_API_KEY`:
-    # any test whose code path calls `load_env(".")` imports this repo's real `.env` -- a Claude
-    # `UGH_MODEL` and an `ANTHROPIC_AUTH_TOKEN` -- into `os.environ` for the rest of the process, so
-    # deleting the one variable left these assertions passing or failing by collection order.
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    _seed(tmp_path, 1)
-    assert _in(tmp_path, ["revert", "nope::nothing"]) == 1
-    assert "✗" in capsys.readouterr().out
 
 
 # -- NL intent-resolution rung (fallback ladder's last step: op-id -> prefix -> file::symbol ->
@@ -210,190 +125,6 @@ class FakeClient:
         self.responses = _FakeResponses(output_parsed)
 
 
-def test_revert_by_op_id_never_touches_the_intent_resolver(tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr(resolve_mod, "get_client", _boom)
-    _seed(tmp_path, 2)
-    assert _in(tmp_path, ["log", "--ops", "--json"]) == 0
-    op_id = json.loads(capsys.readouterr().out)["ops"][0]["id"]
-
-    assert _in(tmp_path, ["revert", "--emit", op_id]) == 0  # resolves as an op-id; NL rung never runs
-
-
-def test_revert_by_feature_label_never_touches_the_intent_resolver(tmp_path, monkeypatch, capsys):
-    from ugh.api import map_view
-    from ugh.lens.map import build_map
-
-    monkeypatch.setattr(resolve_mod, "get_client", _boom)
-    _seed(tmp_path, 2)
-    _in(tmp_path, ["log"])
-    build_map(tmp_path)
-    label = next(n["label"] for n in map_view(tmp_path)["nodes"] if n["kind"] == "feature")
-    capsys.readouterr()
-
-    assert _in(tmp_path, ["revert", "--emit", label]) == 0  # resolves via resolve_feature; NL rung never runs
-
-
-def test_revert_nl_query_prints_candidates_and_leaves_ideal_unchanged(tmp_path, monkeypatch, capsys):
-    from ugh.core.lens import current_ideal, get
-
-    _seed(tmp_path, 2)
-    get(tmp_path)  # mine, so "before" reflects the real ideal the command itself would mine
-    before = current_ideal(tmp_path).op_ids
-    candidate = resolve_mod.Candidate(ref="a.py::foo", kind="symbol", rationale="matches the query")
-    monkeypatch.setattr(resolve_mod, "get_client", lambda repo: FakeClient(
-        resolve_mod.IntentResolution(candidates=[candidate])
-    ))
-    capsys.readouterr()
-
-    assert _in(tmp_path, ["revert", "the foo logic"]) == 2
-    out = capsys.readouterr().out
-    assert "a.py::foo" in out
-    assert "ugh revert a.py::foo" in out
-    assert (tmp_path / "a.py").read_text() == "def foo():\n    return 2\n"  # untouched
-    assert current_ideal(tmp_path).op_ids == before
-
-
-def test_revert_nl_yes_applies_top_candidate(tmp_path, monkeypatch, capsys):
-    _seed(tmp_path, 2)
-    candidate = resolve_mod.Candidate(ref="a.py::foo", kind="symbol", rationale="matches the query")
-    monkeypatch.setattr(resolve_mod, "get_client", lambda repo: FakeClient(
-        resolve_mod.IntentResolution(candidates=[candidate])
-    ))
-    capsys.readouterr()
-
-    assert _in(tmp_path, ["revert", "--yes", "the foo logic"]) == 0
-    assert (tmp_path / "a.py").read_text() == "def foo():\n    return 1\n"
-
-
-def test_revert_nl_drops_hallucinated_candidate(tmp_path, monkeypatch, capsys):
-    _seed(tmp_path, 2)
-    hallucinated = resolve_mod.Candidate(ref="ghost.py::nope", kind="symbol", rationale="a guess")
-    real = resolve_mod.Candidate(ref="a.py::foo", kind="symbol", rationale="matches the query")
-    monkeypatch.setattr(resolve_mod, "get_client", lambda repo: FakeClient(
-        resolve_mod.IntentResolution(candidates=[hallucinated, real])
-    ))
-    capsys.readouterr()
-
-    assert _in(tmp_path, ["revert", "--json", "the foo logic"]) == 2
-    payload = json.loads(capsys.readouterr().out)
-    assert [c["ref"] for c in payload["candidates"]] == ["a.py::foo"]  # hallucinated ref dropped
-    assert (tmp_path / "a.py").read_text() == "def foo():\n    return 2\n"  # never applied
-
-
-def test_revert_nl_abstains_when_llm_returns_no_candidates(tmp_path, monkeypatch, capsys):
-    """An empty candidate list (the LLM declining to guess on an out-of-domain query) is a clean
-    exit 1, not a crash and never an applied edit -- the safety valve against confidently
-    reverting real work for a query that names nothing in this codebase."""
-    _seed(tmp_path, 2)
-    monkeypatch.setattr(resolve_mod, "get_client", lambda repo: FakeClient(
-        resolve_mod.IntentResolution(candidates=[])
-    ))
-    capsys.readouterr()
-
-    assert _in(tmp_path, ["revert", "--yes", "the blockchain consensus module"]) == 1
-    out = capsys.readouterr().out
-    assert "plausibly matches" in out
-    assert (tmp_path / "a.py").read_text() == "def foo():\n    return 2\n"  # never applied
-
-
-def test_revert_nl_dedups_candidates_with_identical_effect(tmp_path, monkeypatch, capsys):
-    """An op-id and its `file::symbol` that re-plan to the same edit are one choice, not two --
-    the user sees one entry per distinct outcome, not the same revert spelled several ways."""
-    _seed(tmp_path, 2)
-    dup_a = resolve_mod.Candidate(ref="a.py::foo", kind="symbol", rationale="one phrasing")
-    dup_b = resolve_mod.Candidate(ref="a.py::foo", kind="op", rationale="same effect, other phrasing")
-    monkeypatch.setattr(resolve_mod, "get_client", lambda repo: FakeClient(
-        resolve_mod.IntentResolution(candidates=[dup_a, dup_b])
-    ))
-    capsys.readouterr()
-
-    assert _in(tmp_path, ["revert", "--json", "the foo logic"]) == 2
-    payload = json.loads(capsys.readouterr().out)
-    assert len(payload["candidates"]) == 1
-
-
-def test_restore_nl_drops_noop_candidate(tmp_path, monkeypatch, capsys):
-    """A `restore` of an already-live symbol adds nothing; it must be dropped, not offered as a
-    choice the user can't tell apart from doing nothing. `a.py::foo` is live, so it was never in
-    `restore`'s shown vocabulary (only *removed* symbols are, per `_context`'s verb-aware pool) --
-    the shared confinement guard (U7/R9) now drops it before `resolve_intent` even returns, one
-    stage earlier than the caller's own re-plan-and-drop safety net."""
-    _seed(tmp_path, 2)  # nothing reverted -- a.py::foo is live
-    candidate = resolve_mod.Candidate(ref="a.py::foo", kind="symbol", rationale="already present")
-    monkeypatch.setattr(resolve_mod, "get_client", lambda repo: FakeClient(
-        resolve_mod.IntentResolution(candidates=[candidate])
-    ))
-    capsys.readouterr()
-
-    assert _in(tmp_path, ["restore", "bring back foo"]) == 1
-    assert "plausibly matches" in capsys.readouterr().out
-
-
-def test_revert_nl_feature_candidate_routes_through_feature_plan(tmp_path, monkeypatch, capsys):
-    """A `feature`-kind NL candidate must resolve the way the deterministic feature rung does --
-    otherwise the prompt invites feature ids the survivor filter then silently drops."""
-    from ugh.api import map_view
-    from ugh.lens.map import build_map
-
-    _seed(tmp_path, 2)
-    _in(tmp_path, ["log"])  # mine
-    build_map(tmp_path)
-    fid = next(n["id"] for n in map_view(tmp_path)["nodes"] if n["kind"] == "feature")
-    candidate = resolve_mod.Candidate(ref=fid, kind="feature", rationale="the whole foo feature")
-    monkeypatch.setattr(resolve_mod, "get_client", lambda repo: FakeClient(
-        resolve_mod.IntentResolution(candidates=[candidate])
-    ))
-    capsys.readouterr()
-
-    assert _in(tmp_path, ["revert", "--json", "the entire foo feature"]) == 2
-    payload = json.loads(capsys.readouterr().out)
-    assert payload["candidates"] and payload["candidates"][0]["undone"] >= 1  # survived + actionable
-
-
-def test_revert_nl_offline_reports_clear_message(tmp_path, monkeypatch, capsys):
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    _seed(tmp_path, 2)
-    capsys.readouterr()
-
-    assert _in(tmp_path, ["revert", "something vague"]) == 1
-    out = capsys.readouterr().out
-    assert "✗" in out and "OPENAI_API_KEY" in out
-
-
-def test_restore_nl_query_prints_candidates_and_leaves_ideal_unchanged(tmp_path, monkeypatch, capsys):
-    from ugh.core.lens import current_ideal
-
-    _seed(tmp_path, 2)
-    assert _in(tmp_path, ["revert", "a.py::foo", "--yes"]) == 0
-    capsys.readouterr()
-    before = current_ideal(tmp_path).op_ids
-
-    candidate = resolve_mod.Candidate(ref="a.py::foo", kind="symbol", rationale="the old foo")
-    monkeypatch.setattr(resolve_mod, "get_client", lambda repo: FakeClient(
-        resolve_mod.IntentResolution(candidates=[candidate])
-    ))
-
-    assert _in(tmp_path, ["restore", "bring back the old foo logic"]) == 2
-    out = capsys.readouterr().out
-    assert "ugh restore a.py::foo" in out
-    assert current_ideal(tmp_path).op_ids == before
-
-
-def test_restore_nl_offline_reports_clear_message(tmp_path, monkeypatch, capsys):
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    _seed(tmp_path, 2)
-    assert _in(tmp_path, ["revert", "a.py::foo", "--yes"]) == 0
-    capsys.readouterr()
-
-    assert _in(tmp_path, ["restore", "something vague"]) == 1
-    out = capsys.readouterr().out
-    assert "✗" in out and "OPENAI_API_KEY" in out
-
-
 def test_check_reports_clean_store(tmp_path, capsys):
     _seed(tmp_path, 1)
     _in(tmp_path, ["log"])  # mine, so the store isn't empty
@@ -403,252 +134,11 @@ def test_check_reports_clean_store(tmp_path, capsys):
     assert payload["ok"] is True and payload["checked"] >= 1
 
 
-def _no_client(*args, **kwargs):
-    raise RuntimeError("no client")
-
-
-def test_plan_intake_and_status_json(tmp_path, capsys, monkeypatch):
-    from ugh.loop import plan as plan_mod
-
-    monkeypatch.setattr(plan_mod, "get_client", _no_client)
-    _seed(tmp_path, 1)
-    capsys.readouterr()
-
-    assert _in(tmp_path, ["plan", "intake", "1. step one\n2. step two"]) == 0
-    assert "step one" in capsys.readouterr().out
-
-    assert _in(tmp_path, ["plan", "status", "--json", "--full"]) == 0
-    payload = json.loads(capsys.readouterr().out)
-    assert len(payload["sessions"]) == 1
-    assert [s["title"] for s in payload["sessions"][0]["steps"]] == ["step one", "step two"]
-
-
-def test_plan_abandon(tmp_path, capsys, monkeypatch):
-    from ugh.loop import plan as plan_mod
-
-    monkeypatch.setattr(plan_mod, "get_client", _no_client)
-    _seed(tmp_path, 1)
-    _in(tmp_path, ["plan", "intake", "1. step one", "--json"])
-    session_id = json.loads(capsys.readouterr().out)["session_id"]
-
-    assert _in(tmp_path, ["plan", "abandon", session_id]) == 0
-    capsys.readouterr()
-    assert _in(tmp_path, ["plan", "status", "--json"]) == 0
-    assert json.loads(capsys.readouterr().out)["sessions"] == []
-
-    assert _in(tmp_path, ["plan", "abandon", "no-such-session"]) == 1
-
-
-def test_status_surfaces_the_residual_of_open_intents(tmp_path, capsys, monkeypatch):
-    """`ugh status` folds in the residual (intent-ledger P1): a plan step stated but never
-    landed (its session abandoned with the step pending) resurfaces here as "what needs attention",
-    so an unfinished intention isn't lost -- and without a separate open/done queue to groom."""
-    from ugh.loop import plan as plan_mod
-
-    monkeypatch.setattr(plan_mod, "get_client", _no_client)
-    _seed(tmp_path, 1)
-    _in(tmp_path, ["plan", "intake", "1. wire the retry backoff", "--json"])
-    session_id = json.loads(capsys.readouterr().out)["session_id"]
-    _in(tmp_path, ["plan", "abandon", session_id])
-    capsys.readouterr()
-
-    assert _in(tmp_path, ["status"]) == 0
-    out = capsys.readouterr().out
-    assert "never landed" in out
-    assert "wire the retry backoff" in out
-
-
-def test_status_omits_the_residual_when_nothing_is_open(tmp_path, capsys):
-    """No open intents -> no residual noise in the summary (the section prints only when there is
-    something to attend to, like every other warning in `_status`)."""
-    _seed(tmp_path, 1)
-    capsys.readouterr()
-    assert _in(tmp_path, ["status"]) == 0
-    assert "never landed" not in capsys.readouterr().out
-
-
-def test_fmt_age_is_coarse():
-    """The residual age is a coarse day/hour/minute string, never a raw timestamp."""
-    from ugh.cli.inspect import _fmt_age
-
-    assert _fmt_age(0) == "just now"
-    assert _fmt_age(120) == "2m ago"
-    assert _fmt_age(7200) == "2h ago"
-    assert _fmt_age(2 * 86400) == "2d ago"
-
-
-def _seed_pending_step(tmp_path, plan_mod, hollow_id_suffix: str, *, session="s1",
-                       symbol: str = "a.py::foo"):
-    """A pending step in an active plan session predicting `symbol`, the baseline being the current
-    op set. Appends to the session if it already exists. Returns the step's hollow id."""
-    from pathlib import Path
-
-    from ugh.core.op import make_op
-    from ugh.core.store import Store
-
-    store = Store(tmp_path)
-    baseline = sorted(op.id for op in store.all_ops())
-    title = f"touch {symbol.split('::')[-1]}"
-    footprint = {symbol: (None, plan_mod._PENDING),
-                 f"__plan__::{session}::{hollow_id_suffix}": (None, plan_mod._PENDING)}
-    hollow = make_op(footprint, {}, kind="planned", off_chain=True, intent=title)
-    store.add_hollow(hollow)
-    table = plan_mod._load_sessions(Path(tmp_path))
-    table.setdefault(session, {
-        "plan_text": "1. touch foo\n", "created_ts": 0.0, "last_activity_ts": 0.0, "status": "active",
-        "baseline_op_ids": baseline, "steps": [],
-    })
-    table[session]["steps"].append({
-        "hollow_id": hollow.id, "title": title, "predicted_footprint": [symbol],
-        "predicted_feature": None, "rationale": "", "status": "pending", "matched_op_ids": [],
-    })
-    plan_mod._save_sessions(Path(tmp_path), table)
-    return hollow.id
-
-
-def test_save_auto_confirms_a_single_plan_step(tmp_path, capsys, monkeypatch):
-    """A save fulfilling exactly one pending plan step auto-confirms it -- no separate `checkpoint`
-    verb (U12/R10). The save reports the fold and the step flips to `matched`."""
-    from ugh.loop import plan as plan_mod
-
-    monkeypatch.setattr(plan_mod, "get_client", _no_client)
-    _seed(tmp_path, 1)  # a.py::foo == "return 1"
-    _seed_pending_step(tmp_path, plan_mod, "step0")
-
-    (tmp_path / "a.py").write_text("def foo():\n    return 99\n", encoding="utf-8")
-    capsys.readouterr()
-    assert _in(tmp_path, ["save", "-m", "touch foo", "--json"]) == 0
-    out = json.loads(capsys.readouterr().out)
-    assert out["saved"] is True
-    assert len(out["plan"]["auto_confirmed"]) == 1
-    assert out["plan"]["auto_confirmed"][0]["session_id"] == "s1"
-    assert not out["plan"]["ambiguous"]
-
-    # Auto-confirming the only step completes the one-step session: it leaves the active
-    # `plan status` surface, and its step is recorded matched in the full table.
-    assert _in(tmp_path, ["plan", "status", "--json", "--full"]) == 0
-    assert json.loads(capsys.readouterr().out)["sessions"] == []
-    table = plan_mod._load_sessions(tmp_path)
-    assert table["s1"]["status"] == "completed"
-    assert table["s1"]["steps"][0]["status"] == "matched"
-
-
-def test_save_auto_confirms_every_step_of_a_plan_built_as_stated(tmp_path, capsys, monkeypatch):
-    """The pilot's `0/3` at the surface it was seen on (pilot-01-findings O11). Two steps naming
-    different work, one save that does both: each step is its own match, so the save confirms both
-    and the plan closes. Sharing a save -- or a single op inside it -- is not ambiguity; only two
-    steps predicting the same work are, and that path is the test below."""
-    from ugh.loop import plan as plan_mod
-
-    monkeypatch.setattr(plan_mod, "get_client", _no_client)
-    _seed(tmp_path, 1)
-    _seed_pending_step(tmp_path, plan_mod, "step0", symbol="a.py::foo")
-    _seed_pending_step(tmp_path, plan_mod, "step1", symbol="b.py::bar")
-
-    (tmp_path / "a.py").write_text("def foo():\n    return 99\n", encoding="utf-8")
-    (tmp_path / "b.py").write_text("def bar():\n    return 1\n", encoding="utf-8")
-    capsys.readouterr()
-    assert _in(tmp_path, ["save", "-m", "touch foo and bar", "--json"]) == 0
-    out = json.loads(capsys.readouterr().out)
-    assert len(out["plan"]["auto_confirmed"]) == 2
-    assert not out["plan"]["ambiguous"]
-    assert not out["plan"]["drift_op_ids"]
-
-    table = plan_mod._load_sessions(tmp_path)
-    assert [s["status"] for s in table["s1"]["steps"]] == ["matched", "matched"]
-    assert table["s1"]["status"] == "completed"
-
-
-def test_save_resolve_plan_settles_an_ambiguous_match(tmp_path, capsys, monkeypatch):
-    """Two pending steps both predicting `a.py::foo` tangle into one op cluster on a save -- an n:m
-    match that does NOT auto-confirm. `save --resolve-plan --confirm-hollow/--confirm-op` settles
-    one group by name (the standalone-on-a-clean-tree resolution path)."""
-    from ugh.loop import plan as plan_mod
-
-    monkeypatch.setattr(plan_mod, "get_client", _no_client)
-    _seed(tmp_path, 1)
-    h0 = _seed_pending_step(tmp_path, plan_mod, "step0")
-    _seed_pending_step(tmp_path, plan_mod, "step1")  # second step, same predicted symbol -> n:m
-
-    (tmp_path / "a.py").write_text("def foo():\n    return 99\n", encoding="utf-8")
-    capsys.readouterr()
-    assert _in(tmp_path, ["save", "-m", "touch foo", "--json"]) == 0
-    out = json.loads(capsys.readouterr().out)
-    assert out["saved"] is True
-    assert not out["plan"]["auto_confirmed"]  # two steps -> ambiguous, nothing auto-confirmed
-    ambiguous = out["plan"]["ambiguous"]
-    assert len(ambiguous) == 1 and len(ambiguous[0]["hollow_ids"]) == 2
-    op_id = ambiguous[0]["op_ids"][0]
-
-    # Resolve one step by name, standalone on the now-clean tree (nothing new to save).
-    argv = ["save", "--resolve-plan", "--confirm-hollow", h0, "--confirm-op", op_id, "--json"]
-    assert _in(tmp_path, argv) == 0
-    confirmed = json.loads(capsys.readouterr().out)
-    assert confirmed["ok"] is True and confirmed["session_id"] == "s1"
-
-    assert _in(tmp_path, ["plan", "status", "--json", "--full"]) == 0
-    steps = json.loads(capsys.readouterr().out)["sessions"][0]["steps"]
-    by_hollow = {s["hollow_id"]: s["status"] for s in steps}
-    assert by_hollow[h0] == "matched"  # exactly the named step resolved; the other stays pending
-
-
-def test_resolve_plan_confirm_resolves_truncated_refs_to_full_ids(tmp_path, capsys, monkeypatch):
-    """`--resolve-plan` prints truncated (12-char) ids, so a user pasting one back must resolve to
-    the full canonical id -- and the recorded match must key on the *full* op id, never the prefix.
-    Keying on a prefix would leave the real op absent from `recorded_matches`, so it would resurface
-    as drift on the next checkpoint. Also asserts unknown/ambiguous refs fail cleanly."""
-    from ugh.loop import plan as plan_mod
-    from ugh.loop.match import recorded_matches
-
-    monkeypatch.setattr(plan_mod, "get_client", _no_client)
-    _seed(tmp_path, 1)
-    h0 = _seed_pending_step(tmp_path, plan_mod, "step0")
-    _seed_pending_step(tmp_path, plan_mod, "step1")  # second step, same symbol -> n:m, no auto-confirm
-
-    (tmp_path / "a.py").write_text("def foo():\n    return 99\n", encoding="utf-8")
-    capsys.readouterr()
-    assert _in(tmp_path, ["save", "-m", "touch foo", "--json"]) == 0
-    full_op = json.loads(capsys.readouterr().out)["plan"]["ambiguous"][0]["op_ids"][0]
-
-    # Confirm using the *truncated* ids the preview prints (h0/full_op are 64-char; feed 12).
-    argv = ["save", "--resolve-plan", "--confirm-hollow", h0[:12], "--confirm-op", full_op[:12], "--json"]
-    assert _in(tmp_path, argv) == 0
-    confirmed = json.loads(capsys.readouterr().out)
-    assert confirmed["op_ids"] == [full_op] and confirmed["hollow_ids"] == [h0]  # resolved, not echoed
-    assert full_op in recorded_matches(tmp_path)  # keyed on the FULL id -> never resurfaces as drift
-    assert full_op[:12] not in recorded_matches(tmp_path)  # the prefix is NOT an orphan key
-
-    capsys.readouterr()
-    assert _in(tmp_path, ["save", "--resolve-plan", "--confirm-hollow", h0[:12],
-                          "--confirm-op", "deadbeef", "--json"]) == 1  # unknown op ref fails cleanly
-
-
-def test_map_rebuild_forces_a_full_recluster(tmp_path, capsys):
-    """`ugh log --tree --rebuild` (the former `ugh map --rebuild`, folded into `log` in U14) is the
-    escape hatch out of dirty-subtree splicing (Phase 2): it must at least run without error and
-    still produce a valid tree, even though the common no-op-edit case would otherwise splice
-    everything through verbatim."""
-    _seed(tmp_path, n=2)
-    capsys.readouterr()
-    assert _in(tmp_path, ["log", "--tree", "--refresh", "--json"]) == 0
-    capsys.readouterr()
-    assert _in(tmp_path, ["log", "--tree", "--rebuild", "--json"]) == 0
-    assert json.loads(capsys.readouterr().out)["feature_count"] >= 1
-
-
 def test_help_mentions_kernel_verbs(capsys):
     main(["help"])
     out = capsys.readouterr().out
     assert "revert" in out and "restore" in out and "check" in out
     assert "--json" in out
-
-
-def test_help_mentions_agentic_loop_verbs(capsys):
-    # The agentic loop is `ugh plan` + `ugh save --resolve-plan`; checkpoint/drift folded into
-    # `save` (U12), so help advertises the loop, not those (now-removed) verbs.
-    main(["help"])
-    out = capsys.readouterr().out
-    assert "plan" in out and "resolve-plan" in out
 
 
 def test_unknown_verb_is_an_error_not_a_help_dump(capsys):
@@ -662,20 +152,14 @@ def test_unknown_verb_is_an_error_not_a_help_dump(capsys):
 
 
 def test_verbs_is_exactly_the_surviving_surface():
-    """The top-level verbs after the phase-1 deletion: the daily spine, `log`/`status`/`show`/`find`
-    to read, `plan`, `feature rename`, `check`, the collaboration and setup verbs, and the hidden
-    `intent` hook entry point."""
+    """The daily spine, `name`/`rename`, `log`/`status`/`show`/`find` to read, `plan`, `check`, the
+    collaboration and setup verbs, and the hidden `intent` hook entry point."""
     from ugh.cli import _VERBS
 
     assert _VERBS == {
-        "save", "log", "status", "undo", "revert", "restore", "resolve", "show", "find", "plan",
-        "feature", "check", "sync", "push", "init", "mcp", "intent",
+        "save", "name", "rename", "log", "status", "show", "find", "undo", "revert", "restore",
+        "resolve", "plan", "check", "sync", "push", "init", "mcp", "intent",
     }
-
-
-def test_bare_feature_grouping_prints_its_subhelp(capsys):
-    assert main(["feature"]) == 0
-    assert "rename" in capsys.readouterr().out
 
 
 # -- inline revert confirm gate (feedforward graph + `[y/N]` in the normal log flow) -------------
@@ -683,6 +167,11 @@ def test_bare_feature_grouping_prints_its_subhelp(capsys):
 # A bare `ugh revert <ref>` on an interactive tty draws the feedforward inline (no modal pane) and
 # gates on `[y/N]`. Both isattys are forced so the gate is entered deterministically regardless of
 # how pytest was invoked, and `input` is monkeypatched so no real prompt blocks the suite.
+
+def _head(tmp_path) -> str:
+    """The newest save's foo step: one address, one op."""
+    return f"a.py::foo@{GitBinding(tmp_path).head()[:7]}"
+
 
 def _force_tty(monkeypatch, stdin=True, stdout=True):
     monkeypatch.setattr(sys.stdin, "isatty", lambda: stdin)
@@ -694,7 +183,7 @@ def test_revert_on_a_tty_applies_when_the_user_confirms(tmp_path, monkeypatch, c
     _force_tty(monkeypatch)
     monkeypatch.setattr("builtins.input", lambda *a: "y")
 
-    assert _in(tmp_path, ["revert", "a.py::foo"]) == 0
+    assert _in(tmp_path, ["revert", _head(tmp_path)]) == 0
     assert "applied" in capsys.readouterr().out
     assert (tmp_path / "a.py").read_text() == "def foo():\n    return 1\n"  # reverted
 
@@ -704,7 +193,7 @@ def test_revert_on_a_tty_changes_nothing_when_the_user_declines(tmp_path, monkey
     _force_tty(monkeypatch)
     monkeypatch.setattr("builtins.input", lambda *a: "n")
 
-    assert _in(tmp_path, ["revert", "a.py::foo"]) == 1
+    assert _in(tmp_path, ["revert", _head(tmp_path)]) == 1
     assert "skipped" in capsys.readouterr().out
     assert (tmp_path / "a.py").read_text() == "def foo():\n    return 2\n"  # untouched
 
@@ -715,7 +204,7 @@ def test_revert_without_tty_or_yes_still_refuses_with_exit_2(tmp_path, monkeypat
     _seed(tmp_path, 2)
     _force_tty(monkeypatch, stdin=False)
 
-    assert _in(tmp_path, ["revert", "a.py::foo"]) == 2
+    assert _in(tmp_path, ["revert", _head(tmp_path)]) == 2
     assert "not applied — this was the preview" in capsys.readouterr().out
     assert (tmp_path / "a.py").read_text() == "def foo():\n    return 2\n"  # untouched
 
@@ -723,7 +212,7 @@ def test_revert_without_tty_or_yes_still_refuses_with_exit_2(tmp_path, monkeypat
 def test_revert_json_still_applies_immediately_without_the_pane(tmp_path, capsys):
     """`--json` is the immediate-apply machine contract VS Code/tests depend on -- unchanged."""
     _seed(tmp_path, 2)
-    assert _in(tmp_path, ["revert", "a.py::foo", "--json"]) == 0
+    assert _in(tmp_path, ["revert", _head(tmp_path), "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["ok"] and payload["applied"] and payload["undone"]
     assert (tmp_path / "a.py").read_text() == "def foo():\n    return 1\n"  # reverted
@@ -732,48 +221,3 @@ def test_revert_json_still_applies_immediately_without_the_pane(tmp_path, capsys
 
 # -- P0 repair: verb spellings a developer actually types -----------------------------------------
 
-def test_show_prints_a_file_as_it_was_at_a_past_point(tmp_path, capsys):
-    """The bytes were always computable -- `fold_view` reconstructs `code(I)` at any frontier and the
-    workbench playhead already displayed them. A terminal simply had no way to ask: `ugh fold --at`
-    prints file names and never their contents.
-
-    Reached as `ugh show <file> --at <spec>`: `show` is one verb for "show me this thing", and `--at`
-    is the same time modifier `log --at`/`fold --at` already use, so the past is a modifier on a verb
-    rather than a second verb to learn."""
-    _seed(tmp_path, 3)  # a.py::foo returns 1, then 2, then 3
-
-    assert _in(tmp_path, ["show", "a.py", "--at", "0"]) == 0
-    assert "return 1" in capsys.readouterr().out
-
-    assert _in(tmp_path, ["show", "a.py", "--at", "2"]) == 0
-    assert "return 3" in capsys.readouterr().out
-
-
-def test_show_without_a_path_lists_what_existed_there(tmp_path, capsys):
-    _seed(tmp_path, 2)
-    assert _in(tmp_path, ["show", "--at", "1", "--json"]) == 0
-    out = json.loads(capsys.readouterr().out)
-    assert out["files"] == ["a.py"]
-
-
-def test_show_resolves_a_bare_filename_and_explains_a_miss(tmp_path, capsys):
-    """A reader knows the file by its name far more reliably than by its repo-relative path, and a
-    miss should say what *does* exist rather than only that this doesn't."""
-    _seed(tmp_path, 1)
-    assert _in(tmp_path, ["show", "a.py", "--at", "0"]) == 0
-    capsys.readouterr()
-
-    assert _in(tmp_path, ["show", "nope.py", "--at", "0"]) != 0
-    err = capsys.readouterr()
-    assert "does not exist" in (err.out + err.err)
-
-
-def test_show_never_touches_the_working_tree(tmp_path, capsys):
-    """Visiting the past is a read. ugh's history is append-only, so this must never be confusable
-    with a checkout."""
-    _seed(tmp_path, 3)
-    before = (tmp_path / "a.py").read_text(encoding="utf-8")
-
-    assert _in(tmp_path, ["show", "a.py", "--at", "0"]) == 0
-
-    assert (tmp_path / "a.py").read_text(encoding="utf-8") == before

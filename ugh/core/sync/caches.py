@@ -18,7 +18,7 @@ _KEEPS_LOCAL = frozenset({"oracle.json", "lock"})
 
 def _iter_local_caches(repo: Path):
     """The top-level `.sgt/local/` files a `plan_sync` dry run rolls back. Top-level only,
-    so the `.sgt/local/hollow/` op-store subtree (monotone, like `.sgt/ops/`) is left untouched; the
+    so any subdirectory is left untouched; the
     exempt caches and in-flight temp files are skipped."""
     local = repo / state.SGT_DIR / "local"
     if not local.is_dir():

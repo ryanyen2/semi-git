@@ -1,27 +1,13 @@
-"""A dependency-free MCP stdio server exposing the operation-ideal kernel (plan U7/U8/U9, flipped
-onto MCP in U10).
+"""A dependency-free MCP stdio server over ugh.
 
-The protocol is JSON-RPC 2.0 over newline-delimited stdin/stdout (the MCP stdio transport).
-We implement only the small surface a tool server needs — ``initialize``, ``tools/list``,
-``tools/call`` — with no third-party dependency, matching the project's minimal footprint and
-keeping the dispatch (``handle_request``) a pure function that is unit-tested without a process.
+The protocol is JSON-RPC 2.0 over newline-delimited stdin/stdout (the MCP stdio transport). Only the
+small surface a tool server needs is implemented -- ``initialize``, ``tools/list``, ``tools/call`` --
+with ``handle_request`` a pure function that is unit-tested without a process.
 
-Tool surface:
-
-* **read** (no API key, no writes): ``ugh_log`` (the mined op DAG), ``ugh_show`` (what an id
-  covers, or a file at a past point), ``ugh_find`` (rank features/saves/symbols against a phrase),
-  ``ugh_advanced_fsck`` (op-store integrity).
-* **write**: ``ugh_init`` (bind git + the kernel store, mine existing history), ``ugh_save``,
-  ``ugh_revert`` / ``ugh_restore`` (take work out and bring it back, with an `emit` dry-run
-  preview).
-* **agentic loop** (plan U14): ``ugh_plan_intake`` (decompose a plan into predicted hollow
-  ops), ``ugh_checkpoint`` (the pure step<->op footprint-overlap preview, or -- given
-  ``confirm`` -- the explicit, one-group-at-a-time write that resolves it), ``ugh_drift``
-  (ops no active plan predicted), ``ugh_plan_done`` (close a finished session so it leaves the
-  active surface -- a fully-matched plan closes itself on the last confirm).
-
-Every write tool mines the working tree on contact first (R9), so it reflects whatever the agent
-just edited. `ugh feature rename` has no MCP surface.
+Tools: ``ugh_init``, ``ugh_log``, ``ugh_check``, ``ugh_save`` (with ``as``), ``ugh_name``,
+``ugh_revert``, ``ugh_restore``, ``ugh_show``, ``ugh_find``, ``ugh_plan``. Every operand is an
+address (`ugh.address`) and every step in a result carries its address. Every tool mines the working
+tree on contact first (R9), so it reflects whatever the agent just edited.
 """
 
 from __future__ import annotations
@@ -50,20 +36,15 @@ def tool_init(repo_path: str, args: dict) -> dict:
 
 
 def tool_log(repo_path: str, args: dict) -> dict:
-    from ugh.api import oplog_view
+    """The saves, newest first, each with its steps (`ugh log --json`), the newest `limit` (30)."""
+    from ugh.api import log_view
     from ugh.core.lens import get
 
-    get(repo_path)  # mine-on-contact before inspecting the store
-    kwargs = {"full": bool(args.get("full", False))}
-    # Default to a tight window over MCP -- an agent rarely needs 100 ops of context at once, and
-    # the payload is pure context cost. The CLI keeps its own larger default; this caps only here.
-    kwargs["limit"] = int(args["limit"]) if args.get("limit") is not None else 30
-    if args.get("offset") is not None:
-        kwargs["offset"] = int(args["offset"])
-    return oplog_view(repo_path, **kwargs)
+    get(repo_path)
+    return log_view(repo_path, limit=int(args.get("limit") or 30))
 
 
-def tool_fsck(repo_path: str, args: dict) -> dict:
+def tool_check(repo_path: str, args: dict) -> dict:
     from ugh.core.store import fsck as run_fsck
 
     report = run_fsck(repo_path)
@@ -74,24 +55,23 @@ def tool_fsck(repo_path: str, args: dict) -> dict:
 
 
 def _verb(repo_path: str, verb: str, ref: str, emit: bool, whole: bool = False) -> dict:
-    """Resolve `ref` the way the CLI does, plan, and apply unless `emit`."""
-    from ugh.cli.ideal_edit import resolve_ref
+    """Resolve the address `ref`, plan, and apply unless `emit`."""
+    from ugh.address import AddressError, plan_json, resolve
     from ugh.core import planner
     from ugh.core.lens import DirtyWorkingTreeError
 
-    resolved = resolve_ref(repo_path, verb, ref)
-    if resolved is None:
-        return {"ok": False, "verb": verb, "target": ref,
-                "message": f"{ref!r} names no feature, checkpoint, save, op or symbol here"}
-    op_ids, label = resolved
-    p = planner.plan(repo_path, op_ids, verb=verb, target=label, whole=whole, removal_set=emit)
+    try:
+        op_ids = resolve(repo_path, ref)
+    except AddressError as e:
+        return {"ok": False, "verb": verb, "target": ref, "message": str(e), "hits": e.hits}
+    p = planner.plan(repo_path, op_ids, verb=verb, target=ref, whole=whole, removal_set=emit)
     if emit or not p.ok or not p.files:
-        return planner.to_json(p)
+        return plan_json(repo_path, p)
     try:
         done = planner.apply(repo_path, p)
     except DirtyWorkingTreeError as e:
-        return {"ok": False, "verb": verb, "target": label, "message": str(e)}
-    return planner.to_json(done, applied=done.check != "not_run" and done.check["passed"])
+        return {"ok": False, "verb": verb, "target": ref, "message": str(e)}
+    return plan_json(repo_path, done, applied=done.check != "not_run" and done.check["passed"])
 
 
 def _carry_prompt(repo_path: str, args: dict, *, key: str | None = None,
@@ -143,201 +123,83 @@ def tool_restore(repo_path: str, args: dict) -> dict:
     return _verb(repo_path, "restore", ref, bool(args.get("emit", False)))
 
 
-def tool_plan_intake(repo_path: str, args: dict) -> dict:
-    """Decompose a plan into predicted hollow ops (plan U14). Mines the working tree first (R9)
-    so `baseline_op_ids` reflects current reality."""
-    from ugh.core.lens import get
-    from ugh.loop import plan as plan_mod
-
-    plan_text = (args.get("plan_text") or "").strip()
-    if not plan_text:
-        return {"error": "missing 'plan_text'"}
-    session_id = (args.get("session_id") or "").strip() or None
-    claude_session_id = (args.get("claude_session_id") or "").strip() or None
-    get(repo_path)
-    session = plan_mod.intake(repo_path, plan_text, session_id=session_id,
-                              claude_session_id=claude_session_id)
-    # `predicted_footprint` is echoed so the agent can SEE prediction quality: an all-empty
-    # column means checkpoint's footprint-overlap will never match these steps (testbed
-    # 2026-07-31: an intake whose predictions all came back [] silently guaranteed zero matches
-    # downstream, and the agent had no way to notice).
-    return {
-        "session_id": session.session_id, "status": session.status, "step_count": len(session.steps),
-        "steps": [
-            {"title": s["title"], "predicted_feature": s["predicted_feature"],
-             "predicted_footprint": s["predicted_footprint"], "rationale": s["rationale"]}
-            for s in session.steps
-        ],
-    }
-
-
-def tool_checkpoint(repo_path: str, args: dict) -> dict:
-    """The pure step<->op footprint-overlap preview (plan U14); given `confirm` (a list of
-    `{hollow_ids, op_ids}` groups), applies exactly those groups via `confirm_match` first --
-    still "never auto-resolved" since nothing is confirmed unless a group is explicitly named."""
-    from ugh.api import plan_view
-    from ugh.core.lens import get
-    from ugh.loop import plan as plan_mod
-    from ugh.loop.match import confirm_match
-
-    get(repo_path)
-    # Intent-ledger M1: an optional `note` -- the user's latest instruction/correction, relayed at
-    # checkpoint time. Alignment-timing evidence (channel `note`, agent paraphrase), never the
-    # authoritative user voice (that's the verbatim `UserPromptSubmit` hook). Guarded: capture
-    # must never break a checkpoint.
-    note = (args.get("note") or "").strip()
-    if note:
-        try:
-            from ugh.intent.turns import record_turn
-            from ugh.loop import plan as _plan
-            sid = args.get("session_id") or next(iter(sorted(_plan.active_sessions(repo_path))), None)
-            if sid:
-                record_turn(repo_path, key=sid, key_kind="plan", actor="agent", channel="note",
-                            text=note)
-        except Exception:  # noqa: BLE001
-            pass
-    confirm = args.get("confirm")
-    if confirm:
-        actor = (args.get("claude_session_id") or "").strip() or None
-        sessions = plan_mod.active_sessions(repo_path)
-        for group in confirm:
-            hollow_ids = group.get("hollow_ids") or []
-            op_ids = group.get("op_ids") or []
-            session_id = next(
-                (sid for sid, rec in sessions.items()
-                 if any(s["hollow_id"] in hollow_ids for s in rec["steps"])),
-                None,
-            )
-            if session_id is None:
-                return {"error": f"no active session owns hollow(s) {hollow_ids}"}
-            # Ownership-checked like `plan done`/`abandon`: a confirm consumes the hollow and credits
-            # the plan, so confirming into another agent's session both steals its pending step and
-            # attributes work that session never did.
-            try:
-                confirm_match(repo_path, session_id, hollow_ids, op_ids, actor=actor)
-            except plan_mod.PlanOwnershipError as e:
-                return {"error": str(e), "owner": e.owner, "session_id": e.session_id}
-    # Compact by default: each candidate group keeps its `hollow_ids`/`op_ids` -- everything a
-    # follow-up `confirm` call needs -- and drops the per-op file/line span fold, the bulky part.
-    # Pass `detail=true` for the spans when the agent wants to eyeball the actual changes.
-    detail = bool(args.get("detail", False))
-    return plan_view(repo_path, full=detail)["checkpoint"]
-
-
 def tool_find(repo_path: str, args: dict) -> dict:
-    """Rank features, saves and symbols against a description (`ugh find`)."""
-    from ugh.core.lens import get as _get
-    from ugh.lens.search import search
+    """Addresses whose names, save subjects, definition names or captured asks match (`ugh find`)."""
+    from ugh.api import find_view
+    from ugh.core.lens import get
 
     query = (args.get("query") or "").strip()
     if not query:
         return {"error": "missing 'query'"}
-    _get(repo_path)
-    return search(repo_path, query, k=int(args.get("limit") or 8))
-
-
-def tool_drift(repo_path: str, args: dict) -> dict:
-    """Every op not predicted by any active plan session (plan U14)."""
-    from ugh.api import drift_view
-    from ugh.core.lens import get
-
     get(repo_path)
-    return drift_view(repo_path, full=bool(args.get("full", False)))
+    return find_view(repo_path, query, limit=int(args.get("limit") or 10))
 
 
 def tool_save(repo_path: str, args: dict) -> dict:
-    """`ugh save`: record the agent's edits as a real save.
-
-    Without this an agent could read the graph and edit code but not record either, so a human had
-    to relay every save by hand -- the exact back-and-forth between editor, terminal and agent that
-    the graph exists to remove. A save is additive and `ugh undo` reverses it, which is what makes
-    it safe to hand over."""
+    """`ugh save`: record the agent's edits as a real save, naming its steps when `as` is given.
+    Additive, and `ugh undo` reverses it."""
     from ugh.cli.porcelain import save
 
-    # Carry the driving prompt (weave P1): with a chat key, record it BEFORE the save so it lands
-    # inside the capture window this save is about to close; without one, record it after, keyed
-    # by the new commit sha -- a key `_atom_prompt` already joins by directly, so the words still
-    # reach every read surface, just not through the manifest.
+    # Carry the driving prompt: with a chat key, before the save so it lands in the capture window
+    # this save closes; without one, after, keyed by the new commit sha.
     chat = (args.get("claude_session_id") or "").strip()
     if chat:
         _carry_prompt(repo_path, args)
     out = save(repo_path,
                message=(args.get("message") or "").strip() or None,
-               as_label=(args.get("as_feature") or "").strip() or None)
-    if not chat and out.get("saved") and out.get("commit"):
+               as_label=(args.get("as") or "").strip() or None)
+    if not chat and out.get("saved"):
         _carry_prompt(repo_path, args, key=out["commit"], key_kind="sha")
-        # The carry landed after the save's own reflection ran -- re-reflect so the sha-keyed
-        # prompt becomes a save-wide rationale record too (idempotent; guarded like the carry).
-        try:
-            from ugh.intent.stint import reflect_save
-            reflect_save(repo_path, out["commit"])
-        except Exception:  # noqa: BLE001
-            pass
     return out
 
 
-def tool_show(repo_path: str, args: dict) -> dict:
-    """`ugh show`: two readings of "show me this", chosen by whether a point in time was named.
-
-    Without `at`, `sel` is an id -- a feature handle, a checkpoint, an op id, a `file::name` symbol,
-    a path, a save id -- and the answer is what it covers, how much a revert would remove (including
-    the work built on top), and the commands that apply. With `at`, `sel` is a file and the answer is its
-    content as it was at that frontier, or the list of what existed there when `sel` is omitted.
-
-    One tool because a caller holds one intent (point at a thing, see it), and `at` is the same time
-    modifier the rest of ugh uses. Both readings share their projection with the CLI verb rather than
-    resolving anything here: the historical read was rebuilt separately once and had already drifted
-    before it shipped -- the CLI matched an exact repo-relative path *or* a suffix and told "no such
-    file" apart from "ambiguous", while the copy did suffixes only and collapsed both errors."""
-    from ugh.api import show_at_view, show_view
+def tool_name(repo_path: str, args: dict) -> dict:
+    """`ugh name <address> <label>`: give a label to the steps at an address."""
+    from ugh import names
+    from ugh.address import AddressError, Record, resolve
     from ugh.core.lens import get
 
-    spec = (args.get("at") or "").strip()
-    sel = (args.get("sel") or args.get("path") or "").strip()
-    if spec:
-        get(repo_path)  # mine-on-contact so the fold reflects current reality (R9)
-        return show_at_view(repo_path, spec, sel or None)
-    if not sel:
-        return {"error": "pass 'sel' (what is this?) or 'at' (what existed at a past point)"}
-    return show_view(repo_path, sel, include_asked=bool(args.get("asked")))
-
-
-def tool_plan_done(repo_path: str, args: dict) -> dict:
-    """Close a finished plan session (plan U14). A fully-matched session already completes on its
-    own via `ugh_checkpoint`'s confirm; this is the explicit close for a plan whose remaining steps
-    were done differently than predicted and will never match, so it stops showing as active.
-
-    Ownership-checked: closing unlinks the still-pending hollows, so an agent closing a *different*
-    agent's plan would make that agent's remaining steps permanently unmatchable with nothing
-    anywhere explaining why. Passing `claude_session_id` is what lets the check protect you too."""
-    from ugh.loop import plan as plan_mod
-
-    session_id = (args.get("session_id") or "").strip()
-    if not session_id:
-        return {"error": "missing 'session_id'"}
-    actor = (args.get("claude_session_id") or "").strip() or None
+    ref, label = (args.get("address") or "").strip(), (args.get("label") or "").strip()
+    if not ref or not label:
+        return {"error": "pass 'address' and 'label'"}
+    get(repo_path)
+    rec = Record(repo_path)
     try:
-        ok = plan_mod.mark_done(repo_path, session_id, actor=actor)
-    except plan_mod.PlanOwnershipError as e:
-        return {"error": str(e), "owner": e.owner, "session_id": e.session_id}
-    return {"ok": ok} if ok else {"error": f"no such session: {session_id}"}
+        ids = [o for o in resolve(repo_path, ref, rec) if o in rec.units]
+    except AddressError as e:
+        return {"ok": False, "message": str(e), "hits": e.hits}
+    if not ids:
+        return {"ok": False, "message": f"{ref!r} has no steps to name"}
+    names.name(repo_path, ids, label)
+    rec.names = names.load(repo_path)
+    return {"ok": True, "name": label, "steps": rec.steps(ids)}
 
 
-def tool_plan_adopt(repo_path: str, args: dict) -> dict:
-    """Take over a plan session another Claude session started -- typically one left stalled when
-    its agent stopped. Non-destructive: the steps, their confirmed matches, and the pending hollows
-    all survive, so you continue from where the previous agent stopped rather than re-intaking (which
-    would mint duplicate hollows for work already done)."""
-    from ugh.loop import plan as plan_mod
+def tool_show(repo_path: str, args: dict) -> dict:
+    """`ugh show <address>`: its steps, the ask behind each save, and the planner's answer."""
+    from ugh.api import show_view
+    from ugh.core.lens import get
 
-    session_id = (args.get("session_id") or "").strip()
-    if not session_id:
-        return {"error": "missing 'session_id'"}
-    actor = (args.get("claude_session_id") or "").strip() or None
-    ok, previous = plan_mod.adopt(repo_path, session_id, actor)
-    if not ok:
-        return {"error": f"no such session: {session_id}"}
-    return {"ok": True, "session_id": session_id, "previous_owner": previous, "owner": actor}
+    ref = (args.get("address") or "").strip()
+    if not ref:
+        return {"error": "missing 'address'"}
+    get(repo_path)
+    return show_view(repo_path, ref)
+
+
+def tool_plan(repo_path: str, args: dict) -> dict:
+    """`ugh plan`: `declare` adds names, `done` clears the plan; no arguments is the status."""
+    from ugh import names
+    from ugh.api import plan_view
+    from ugh.core.lens import get
+
+    if args.get("done"):
+        names.plan_done(repo_path)
+        return {"ok": True, "plan": None}
+    if args.get("declare"):
+        names.declare(repo_path, [str(label) for label in args["declare"]])
+    get(repo_path)
+    return {"ok": True, "plan": plan_view(repo_path)}
 
 
 # ---------------------------------------------------------------------------
@@ -347,34 +209,24 @@ def _schema(props: dict, required: list[str]) -> dict:
     return {"type": "object", "properties": props, "required": required, "additionalProperties": False}
 
 
-# The caller's own Claude Code session id, used by the plan tools to tell agents apart. Declared once
-# because it now appears on several tools and its guidance (which env var, and why not the bridge
-# one) must not drift between them.
-# The capture-weave carry pair (P1, design doc 2026-09-01 §4a): an MCP client has no
-# `UserPromptSubmit` hook, so a mutating verb is the only door the user's ask can arrive through.
+# An MCP client has no `UserPromptSubmit` hook, so a mutating tool is the only door the user's ask
+# can arrive through.
 _DRIVING_PROMPT_PROP = {
     "type": "string",
     "description": "the user's ask that drove this work, verbatim as you received it (optional "
-                   "but valuable): it is recorded as capture evidence, so `ugh show` and the "
-                   "checkpoint labels can answer with the user's own words instead of a guess. "
-                   "Pass their words, not your paraphrase.",
+                   "but valuable): it is recorded as capture evidence, so `ugh show` can answer "
+                   "with the user's own words. Pass their words, not your paraphrase.",
 }
 _CHAT_KEY_PROP = {
     "type": "string",
     "description": "your Claude Code session id (read $CLAUDE_CODE_SESSION_ID via Bash -- the "
                    "per-session UUID; do NOT use $CLAUDE_CODE_BRIDGE_SESSION_ID, which can carry "
                    "a parent session's id in nested runs). Keys the carried prompt to your "
-                   "conversation so the work it produced can be traced back -- and resumed -- "
-                   "from the checkpoint it lands in.",
+                   "conversation so the work it produced can be traced back to it.",
 }
-
-_OWN_SESSION_PROP = {
-    "type": "string",
-    "description": "your Claude Code session id (read $CLAUDE_CODE_SESSION_ID via Bash -- the "
-                   "per-session UUID; do NOT use $CLAUDE_CODE_BRIDGE_SESSION_ID, which can carry a "
-                   "parent session's id in nested runs). Identifies you as the plan's owner so "
-                   "another agent cannot close your plan out from under you, and vice versa.",
-}
+_ADDRESS = ("An address is `<label>` (the steps with that name), `<label>@<rev>`, `<path>`, "
+            "`<path>::<def>`, `<path>::<def>@<rev>` (one step), a `<rev>` (one save) or "
+            "`<rev>..<rev>`. Anything else is refused with the nearest `ugh_find` hits.")
 
 
 TOOLS: dict[str, tuple[str, dict, Any]] = {
@@ -384,157 +236,81 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
         tool_init,
     ),
     "ugh_log": (
-        "Read the mined operation DAG. Compact by default: {count, kinds, truncated, ops} where "
-        "each op is {id, kind, symbols, intent}, windowed by limit/offset. Pass full=true for "
-        "each op's before->after footprint, witnessing-commit provenance, and attribution, unpaged.",
-        _schema(
-            {"full": {"type": "boolean", "description": "the full per-op payload instead of the compact default"},
-             "limit": {"type": "integer", "description": "compact mode only: window size (default 30)"},
-             "offset": {"type": "integer", "description": "compact mode only: window start (default 0)"}},
-            [],
-        ),
+        "The saves, newest first: {saves: [{sha, subject, date, steps: [{address, kind, name, "
+        "out}]}]}. `name` is the label a person or agent gave the step (null when unnamed); "
+        "`out` is whether a revert took it out.",
+        _schema({"limit": {"type": "integer", "description": "the newest N saves (default 30)"}}, []),
         tool_log,
     ),
-    # `ugh_grid` is deliberately NOT exposed. `grid_view` is a *complete* projection by design --
-    # a grid surface needs every cell to draw -- which is right for the VS Code webview
-    # and wrong for a language model, because a model never draws it. Measured on a 290-commit repo:
-    # ~515 KB, about 129,000 tokens in a single tool result, growing linearly with history (1.5k
-    # tokens at 10 commits, 6.5k at 60). One call would consume most of a context window and answer
-    # no question that `ugh_log` (capped at 30) doesn't answer more cheaply. An agent that genuinely needs the raw join can shell out to `ugh log --json` and page
-    # it itself. Please don't re-add it without a compact, paged shape.
+    "ugh_check": (
+        "Verify the op store's content-address integrity.",
+        _schema({}, []),
+        tool_check,
+    ),
     "ugh_save": (
-        "Record your edits as a save. Pass `message` -- your own words about what this work was; "
-        "they become the save's subject and the recorded intent, and a feature born from this work "
-        "is named from them rather than by a model. Additive and reversible (`ugh undo`).",
+        "Record your edits as a save. Pass `message`, your own words about what this work was, and "
+        "`as` to name the save's steps. Returns the steps with their addresses. Additive and "
+        "reversible (`ugh undo`).",
         _schema({"message": {"type": "string", "description": "what this work was, in your words"},
-                 "as_feature": {"type": "string", "description": "name the feature this work lands in (optional)"},
+                 "as": {"type": "string", "description": "a name for this save's steps (optional)"},
                  "prompt": _DRIVING_PROMPT_PROP,
                  "claude_session_id": _CHAT_KEY_PROP},
                 []),
         tool_save,
     ),
+    "ugh_name": (
+        "Give a label to the steps at an address: naming, merging into an existing name, splitting "
+        "and moving are all this. A later edit carries no name unless it is saved with `as` or "
+        "named again. " + _ADDRESS,
+        _schema({"address": {"type": "string"}, "label": {"type": "string"}}, ["address", "label"]),
+        tool_name,
+    ),
     "ugh_show": (
-        "Show me this thing. With `sel` alone it explains an id — a feature handle, a `feature@n` "
-        "checkpoint, an op id, a `file::name` symbol, a path, or a save id (the commit sha `ugh "
-        "log` prints in its id column) — reporting what it covers, how many "
-        "edits a revert would remove (and how many of those are work built on top), and which "
-        "commands apply. Use it before proposing a revert so you can state the consequence. Add "
-        "`at` to read the past instead: `sel` is then a file and you get its content as it was at "
-        "that point (a commit index like `12`, an op set `op:<id>,...`, or a ref), or the list of "
-        "what existed there if you omit `sel`. Read-only either way — nothing is checked out, and "
-        "the id reading never calls an LLM.\n\n"
-        "`asked` on the answer is what the user asked for, in their own words: an excerpt of the "
-        "prompt that produced this work, with who typed it and how much of the selection it "
-        "accounts for. Quote it back rather than paraphrasing when you report what a piece of "
-        "work was for. Pass `asked: true` to get every ask in full (`asked.asks[].text`) when the "
-        "excerpt is not enough to act on.",
-        _schema({"sel": {"type": "string",
-                         "description": "an id/label/symbol to explain, or (with `at`) a file to read"},
-                 "at": {"type": "string",
-                        "description": "read it as it was at this point: a commit index, `op:<id>,...`, or a ref"},
-                 "asked": {"type": "boolean",
-                           "description": "include every captured ask in full, verbatim, not just the excerpt"}},
-                []),
+        "The steps at an address with their names and whether they are out, the saves they came "
+        "from with the user's ask behind each (`saves[].ask`, quote it rather than paraphrase), "
+        "and the planner's answer (`plan`): what taking them out would take, which steps are held "
+        "and why, and the removal set. Read-only. Use it before proposing a revert. " + _ADDRESS,
+        _schema({"address": {"type": "string"}}, ["address"]),
         tool_show,
     ),
-    "ugh_advanced_fsck": (
-        "Verify the op store's content-address integrity.",
-        _schema({}, []),
-        tool_fsck,
-    ),
     "ugh_find": (
-        "Find something you can describe but cannot name: ranks features, saves and symbols "
-        "against a phrase like 'the thing that formats dates'. Use this before revert/restore "
-        "when you do not already hold an id. Report-only. The `mode` field says whether the "
-        "answer came from meaning ('semantic') or word overlap ('lexical').",
-        _schema({"query": {"type": "string", "description": "a description in plain words"},
-                 "limit": {"type": "integer", "description": "how many hits (default 8)"}},
+        "Addresses whose names, save subjects, definition names or captured asks contain the "
+        "words. Plain word matching. Use it when you do not already hold an address.",
+        _schema({"query": {"type": "string", "description": "a few words"},
+                 "limit": {"type": "integer", "description": "how many hits (default 10)"}},
                 ["query"]),
         tool_find,
     ),
     "ugh_revert": (
-        "Take a piece of work out of the code as a new edit. Steps that other remaining work "
-        "stands on are held, each with its reason and the saves that hold it; the project's "
-        "check runs on the result before anything is committed. `ref` is anything the map "
-        "prints: a feature id or label, a ◆ label, a `<feature>@<n>` checkpoint, a save's commit "
-        "sha, an op-id or its prefix, or a `file::name` symbol (its latest edit). "
-        "Pass emit=true for a dry-run preview -- writes nothing. Pass whole=true to take out the "
-        "removal set: the work plus everything that stands on it.",
-        _schema({"ref": {"type": "string"}, "emit": {"type": "boolean", "description": "dry-run preview only"},
+        "Take the steps at an address out of the code as a new edit. Steps that other remaining "
+        "work stands on are held, each with its reason and the saves that hold it; the project's "
+        "check runs on the result before anything is committed. Pass emit=true for a dry-run "
+        "preview (writes nothing), whole=true to take out the removal set: the steps plus "
+        "everything that stands on them. " + _ADDRESS,
+        _schema({"ref": {"type": "string", "description": "an address"},
+                 "emit": {"type": "boolean", "description": "dry-run preview only"},
                  "whole": {"type": "boolean", "description": "take out the removal set"},
                  "prompt": _DRIVING_PROMPT_PROP, "claude_session_id": _CHAT_KEY_PROP}, ["ref"]),
         tool_revert,
     ),
     "ugh_restore": (
-        "Bring back what a revert took out, by taking out the edit that took it out. Edits "
+        "Bring back steps a revert took out, by taking out the edit that took them out. Edits "
         "made since combine; where they rewrote the same lines nothing is written and both "
-        "versions are reported. `ref` is anything revert takes. Pass emit=true for a dry-run "
-        "preview -- writes nothing.",
-        _schema({"ref": {"type": "string"}, "emit": {"type": "boolean", "description": "dry-run preview only"},
+        "versions are reported. Pass emit=true for a dry-run preview. " + _ADDRESS,
+        _schema({"ref": {"type": "string", "description": "an address"},
+                 "emit": {"type": "boolean", "description": "dry-run preview only"},
                  "prompt": _DRIVING_PROMPT_PROP, "claude_session_id": _CHAT_KEY_PROP}, ["ref"]),
         tool_restore,
     ),
-    "ugh_plan_intake": (
-        "Decompose a plan (an agent's or human's stated intent before doing the work) into "
-        "predicted hollow ops -- one per step, off-chain, never touching the ideal algebra. "
-        "Grounds `predicted_feature` in the repo's own feature tree (`ugh log --tree`) when one exists.",
-        _schema(
-            {"plan_text": {"type": "string"},
-             "session_id": {"type": "string", "description": "explicit id (optional; defaults to a fresh one)"},
-             "claude_session_id": {"type": "string", "description": "your Claude Code session id (read $CLAUDE_CODE_SESSION_ID via Bash -- the per-session UUID; do NOT use $CLAUDE_CODE_BRIDGE_SESSION_ID, which can carry a parent session's id in nested runs); stored so an interrupted plan can be resumed directly with `claude --resume <uuid>` and so hook-captured prompts join to this plan's commits"}},
-            ["plan_text"],
-        ),
-        tool_plan_intake,
-    ),
-    "ugh_checkpoint": (
-        "Preview candidate step<->op groups (footprint-overlap between pending plan steps and "
-        "ops mined since each session's own baseline) plus drift op-ids. Pass `confirm` -- a "
-        "list of `{hollow_ids, op_ids}` groups -- to apply exactly those groups; omit it for a "
-        "pure, read-only preview. Compact by default; pass detail=true for each match's file/line "
-        "spans.",
-        _schema(
-            {"detail": {"type": "boolean", "description": "include each match's file/line spans (bulkier)"},
-             "confirm": {
-                "type": "array",
-                "items": _schema(
-                    {"hollow_ids": {"type": "array", "items": {"type": "string"}},
-                     "op_ids": {"type": "array", "items": {"type": "string"}}},
-                    ["hollow_ids", "op_ids"],
-                ),
-            },
-             "session_id": {"type": "string", "description": "which plan session a `note` belongs to (optional; defaults to the single active one)"},
-             "claude_session_id": _OWN_SESSION_PROP,
-             "note": {"type": "string", "description": "the user's latest instruction/correction in this conversation, verbatim -- recorded as intent evidence so `ugh show` can answer later"}},
-            [],
-        ),
-        tool_checkpoint,
-    ),
-    "ugh_drift": (
-        "Every op not predicted by any active plan session. Compact by default: {count, op_ids, "
-        "kinds}, no spans. Pass full=true for each entry's footprint and current file/line spans.",
-        _schema({"full": {"type": "boolean", "description": "restore per-op footprint and file/line spans"}}, []),
-        tool_drift,
-    ),
-    "ugh_plan_done": (
-        "Close a finished plan session so it stops showing as active. A fully-matched plan "
-        "completes automatically when its last step is confirmed; call this for a plan whose "
-        "remaining steps were built differently than predicted and will never match. The record is "
-        "kept as completed history (its work stays attributable); use `ugh plan abandon` to delete "
-        "an unwanted plan entirely. Pass your own claude_session_id: closing another agent's plan "
-        "is refused, because it would make that agent's remaining steps permanently unmatchable.",
-        _schema({"session_id": {"type": "string"},
-                 "claude_session_id": _OWN_SESSION_PROP}, ["session_id"]),
-        tool_plan_done,
-    ),
-    "ugh_plan_adopt": (
-        "Take over a plan session another Claude session started — use this when a plan shows as "
-        "stalled and the agent that owned it is gone, so you can finish and close it. "
-        "Non-destructive: its steps, confirmed matches, and pending predictions all survive, so "
-        "continue from where that agent stopped instead of re-intaking the same plan (which would "
-        "predict work that is already done).",
-        _schema({"session_id": {"type": "string"},
-                 "claude_session_id": _OWN_SESSION_PROP}, ["session_id"]),
-        tool_plan_adopt,
+    "ugh_plan": (
+        "A plan is the names you declare before their edits exist, with the baseline (HEAD when "
+        "declared). `declare` adds names; save each piece of work with `ugh_save` `as` one of them. "
+        "No arguments reports each declared name with the saves since the baseline that carry it "
+        "(none = missing), then the steps since the baseline that carry no declared name. `done` "
+        "clears the plan.",
+        _schema({"declare": {"type": "array", "items": {"type": "string"}},
+                 "done": {"type": "boolean"}}, []),
+        tool_plan,
     ),
 }
 

@@ -2,15 +2,14 @@
 
 `tests/core/test_sync.py` proves one two-clone sync does the right thing on a handful of hand-built
 scenarios. This module generalizes that rig to N replicas (2-3) over a bare remote and asserts the
-*algebraic* laws the design doc names -- that sync's outcome is a function of the delivered op/pin
-sets and nothing else (order, schedule, or which replica initiated). Each law from §8 has a named,
+*algebraic* laws the design doc names -- that sync's outcome is a function of the delivered op and
+name sets and nothing else (order, schedule, or which replica initiated). Each law from §8 has a named,
 findable home here from this freeze unit (U16) onward, so every later behavior change is measured
 against a red or green test that already exists:
 
 - LAW-0 (replica determinism): same history, same miner -> byte-identical op stores. GREEN.
 - LAW-U (order independence): any two schedules delivering the same op sets converge to identical
-  `.sgt/` state (stores, orders, pins, feature trees, ids included). Disjoint edits converge today
-  (GREEN); contradicting pins and replica-local feature ids do NOT (xfail, U21).
+  `.sgt/` state (stores, orders, names). GREEN.
 - LAW-I (idempotence): sync twice = sync once. GREEN.
 - LAW-F (fork completeness & soundness): sync reports a fork iff the union forks a chain. GREEN.
 - LAW-R (resolutions travel): a resolved fork stays resolved on every replica. Red today -- forks
@@ -37,8 +36,6 @@ from ugh import state
 from ugh.core import lens, sync
 from ugh.core.lens import get
 from ugh.core.store import Store
-from ugh.lens import tree
-from ugh.lens.pins import Pins, load_pins, save_pins
 from ugh.store.gitbind import GitBinding
 from tests.conftest import _clone, _init_bare, _push
 from tests.laws import corpus
@@ -154,117 +151,21 @@ def test_law_u_disjoint_edits_converge_under_a_randomized_schedule(tmp_path):
         assert want in trees[0]  # all three disjoint edits survived the union
 
 
-def test_law_u_contradicting_pins_converge_across_schedules(tmp_path):
-    """LAW-U: two replicas assign the *same* member to *different* features -- a genuine pin
-    contradiction. Two schedules deliver the identical pin facts but let a different side be
-    `theirs` in the reconciling sync. Before U21 `union_pins` was latest-wins by merge order, so the
-    schedules converged to *different* committed `assign` maps; U21's witness-topo + hash tie-break
-    makes the winner a pure function of the pin facts (here: witness-less, so the content-hash
-    fallback), so both schedules must now converge to the identical `assign`.
-
-    In each schedule the side that publishes *first* is the one that pushes -- the other reconciles
-    it as `theirs` in a fast-forward-free sync (the second side never force-pushes over the first;
-    it absorbs and, in real use, would push the merge). This makes a genuinely different side
-    `theirs` across the two schedules while every push is a legal fast-forward from the shared
-    base."""
-    def _world(sub: Path, theirs_side: str) -> dict[str, str]:
-        _remote, (a, b) = _replicas(sub, _BASE, 2)
-        save_pins(a, Pins(assign={"m1": "featureA"}))
-        GitBinding(a).commit_all("A: pin m1 -> featureA")
-        save_pins(b, Pins(assign={"m1": "featureB"}))
-        GitBinding(b).commit_all("B: pin m1 -> featureB")
-        if theirs_side == "a":
-            _push(a)  # a publishes first; b reconciles a-as-theirs
-            sync.sync(b, remote="origin", branch="main")
-            return load_pins(b).assign
-        _push(b)  # b publishes first; a reconciles b-as-theirs
-        sync.sync(a, remote="origin", branch="main")
-        return load_pins(a).assign
-
-    schedule_1 = _world(tmp_path / "w1", theirs_side="a")
-    schedule_2 = _world(tmp_path / "w2", theirs_side="b")
-    assert schedule_1 == schedule_2  # same pin facts, two schedules -> identical assign (LAW-U)
-
-
-def test_law_u_feature_ids_are_replica_independent(tmp_path):
-    """LAW-U (feature-tree half): the *same* feature (same member set, same ops) must carry the
-    same id on every replica. Feature ids are content-addressed at birth (`f-<founding op>`, U21/D6),
-    so two replicas that birth the feature independently over a byte-identical op store mint the
-    identical id with no coordination -- modelled here as two fresh builds (`previous=None`) over
-    one shared op store."""
-    repo = corpus.CORPUS["class_with_methods"].build(tmp_path / "repo")
-    ideal = get(repo)
-    ops = Store(repo).all_ops()
-
-    # Two replicas each birthing the feature from scratch over the identical op store.
-    tree_a = tree.build(repo, ops, ideal, pins=Pins(), previous=None)
-    tree_b = tree.build(repo, ops, ideal, pins=Pins(), previous=None)
-
-    members = sorted({m for nd in tree_a["nodes"].values() if not nd["children"] for m in nd["members"]})
-    assert members  # the fixture produced at least one alive feature
-    probe = members[0]
-
-    def _feature_of(built: dict, member: str) -> str:
-        return next(nid for nid, nd in built["nodes"].items() if not nd["children"] and member in nd["members"])
-
-    fid = _feature_of(tree_a, probe)
-    assert fid.startswith("f-")  # content-addressed, not a replica-local id
-    assert _feature_of(tree_b, probe) == fid  # same feature, one id on both replicas (LAW-U)
-
-
-def test_law_u_authored_feature_survives_a_two_clone_sync_roundtrip(tmp_path):
-    """R3 / DoD: an *authored* feature -- id + OR-Set membership + LWW label -- survives a real
-    `sync` between two clones through the production `ingest -> resolve.merge -> materialize`
-    pipeline (not just the pure `authored.merge` functions covered in tests/lens/test_authored.py),
-    keeping the SAME carried `af-` id. A rename made before the fork travels intact; a concurrent
-    membership edit on each side converges by OR-Set union after both sync (LAW-U): both clones end
-    on the same id, label, and live-member set regardless of who reconciled whom."""
-    from ugh.lens import authored
+def test_law_u_names_converge_across_a_two_clone_sync(tmp_path):
+    """LAW-U for the names table: two replicas each name a different step of the shared base; after
+    each has synced the other's state, both hold the identical table."""
+    from ugh import names
 
     _remote, (a, b) = _replicas(tmp_path, _BASE, 2)
-
-    # A authors a feature, renames it, adds a member, then commits + publishes the collection.
-    feat = authored.add_member(
-        authored.rename(authored.create(["foo", "bar"], "Parser"), "Parser Core"), "baz"
-    )
-    fid = feat.id
-    authored.save_authored(a, {fid: feat})
-    GitBinding(a).commit_all("A: author 'Parser Core'")
+    foo, bar = (next(op.id for op in Store(a).all_ops() if f"main.py::{n}" in op.footprint)
+                for n in ("foo", "bar"))
+    names.name(a, [foo], "checkout")
     _push(a)
-
-    # Round-trip 1: B syncs and receives the feature verbatim via the real pipeline -- same af- id,
-    # the pre-fork rename, and every member.
+    names.name(b, [bar], "billing")
     sync.sync(b, remote="origin", branch="main")
-    on_b = authored.load_authored(b)
-    assert fid in on_b, "the carried af- id must survive sync (never re-minted)"
-    assert on_b[fid].label == "Parser Core"
-    assert on_b[fid].live_members() == frozenset({"foo", "bar", "baz"})
-
-    # Concurrent membership edits on the SAME feature id: A adds `aaa` and publishes; B adds `bbb`
-    # locally, diverging from origin, so B's next sync is a genuine merge (not a fast-forward).
-    a_feat = authored.add_member(authored.load_authored(a)[fid], "aaa")
-    authored.save_authored(a, {fid: a_feat})
-    GitBinding(a).commit_all("A: add member aaa")
-    _push(a)
-
-    b_feat = authored.add_member(on_b[fid], "bbb")
-    authored.save_authored(b, {fid: b_feat})
-    GitBinding(b).commit_all("B: add member bbb")
-
-    # B reconciles A-as-theirs: resolve.merge unions the OR-Sets through materialize.save_authored.
-    sync.sync(b, remote="origin", branch="main")
-    merged_b = authored.load_authored(b)[fid]
-    assert merged_b.id == fid
-    assert merged_b.label == "Parser Core"
-    assert merged_b.live_members() == frozenset({"foo", "bar", "baz", "aaa", "bbb"})
-
-    # B publishes the merged result; A reconciles it and converges to the identical feature (LAW-U).
     _push(b)
     sync.sync(a, remote="origin", branch="main")
-    merged_a = authored.load_authored(a)[fid]
-    assert merged_a.id == merged_b.id
-    assert merged_a.label == merged_b.label
-    assert merged_a.live_members() == merged_b.live_members()
+    assert names.load(a) == names.load(b) == {foo: "checkout", bar: "billing"}
 
 
 # --- LAW-I: idempotence (GREEN) ----------------------------------------------------------------

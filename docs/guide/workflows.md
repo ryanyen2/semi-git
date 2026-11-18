@@ -1,7 +1,7 @@
 # User workflows
 
 This is a tour of what `ugh` does today, one use case at a time. Each section names the commands,
-walks through a real example, and says where the feature is solid and where it still has limits.
+walks through a real example, and says where it is solid and where it still has limits.
 The [last section](#5-what-is-fixed-and-what-still-has-limits) collects the limits in one place.
 
 Read [The model](the-semantic-tree.md) first. The short version: history is a set of symbol-level
@@ -20,7 +20,7 @@ This is git's daily loop, with `ugh` reading along.
 ugh init                    # once per repo: read your existing history into the op store
 # edit files with your editor or agent, the same as always
 ugh save -m "add input validation"   # read your edits into ops and commit a record of them
-ugh status                  # files, symbols, features, coverage, and any open forks or drift
+ugh status                  # files, symbols, coverage, open forks, drift, untracked files, the plan
 ugh undo                    # step back: undo your last save, revert, or restore
 ```
 
@@ -28,12 +28,12 @@ ugh undo                    # step back: undo your last save, revert, or restore
 revert or restore did as a new change, so you never lose the record of what actually happened and
 work you committed since stays.
 
-A save also answers "where did that work go": it prints the feature(s) the new edits landed in,
-by name, with a typeable handle. That moment is when you remember what the work was, so it is
-also when you can name it — `ugh save -m "..." --as "rate limiting"` names the save's feature on
-the spot (a permanent, user-authored label that wins over any auto-generated one). A save that
-scatters across three or more features says so, since that usually means the grouping and your
-intent have drifted apart.
+A save prints each step it recorded with its address (`rate_limit.py::limit@3f2a1c0`). That moment
+is when you remember what the work was, so it is also when you can name it: `ugh save -m "..." --as
+"rate limiting"` names the save's steps. `ugh` never names anything itself, and a later edit to a
+named definition carries no name unless you save it `--as` that name or run `ugh name <address>
+"rate limiting"`. `ugh log` prints each save with the names on its steps, how many steps carry no
+name, and how many are out.
 
 ## 2. Remove one thing from a big, tangled edit
 
@@ -87,52 +87,35 @@ tree before anything is written. Then it runs on the result, together with the p
 that parsed must still parse): a failure at a line inside a definition the take-out changed holds
 that step, and a failure anywhere else applies nothing and shows the output.
 
-The target here was a `file::symbol` name. It can also be an op id, a save's commit sha, a feature,
-or one of a feature's checkpoints:
+The target here was an address. Every verb that acts on steps takes one:
 
 ```bash
-ugh revert <sha>                     # every step one save made
-ugh revert <feature-id-or-label>     # every op the feature tree grouped under that feature
-ugh revert <feature>@<n>             # the ops of one checkpoint, as `ugh log` numbers them
+ugh revert caching                   # every step named caching
+ugh revert caching@787d66b           # those steps in one save
+ugh revert cache.py                  # every step on one file
+ugh revert cache.py::get_cached      # every step on one top-level definition
+ugh revert cache.py::get_cached@787d66b   # one step
+ugh revert 787d66b                   # every step one save made
+ugh revert 787d66b..                 # every save from there through HEAD
 ```
 
-How reliable the grouped forms are depends on where the grouping comes from.
+An address reaches steps that are out as well as steps that are in, so `restore` takes the same
+addresses. `ugh show <address>` prints the steps, the ask behind each save it touches, and the
+planner's answer before anything is changed.
 
-- Symbol-level and save-level revert always work. They only need the op set, nothing else.
-- Feature-level revert needs the feature tree to have grouped the ops first. `ugh log --refresh` builds
-  that grouping from how symbols tend to change together across your history, so it needs enough
-  commits and enough churn to find real seams. On a brand-new repo it reports one feature for
-  everything, because there is no history yet to split on. Use `ugh feature rename` to name a
-  feature in your own words.
+### When you do not know the address
 
-So symbol-level and save-level revert are the reliable tools today. Feature-level revert works well once
-`ugh log --refresh` has had real history to learn from. Run `ugh show <file>::<symbol>` to see which
-feature a symbol landed in before you trust the grouping.
-
-### When you do not know the exact name
-
-If none of op id, `file::symbol`, or feature label matches, `ugh revert` and `ugh restore` fall
-back to a plain-English target.
+`ugh revert` takes only an address. A phrase like `ugh revert "the caching layer"` is refused, with
+the nearest `ugh find` hits:
 
 ```
-$ ugh revert "the caching layer"
-? [revert] 'the caching layer' did not resolve; did you mean:
-  1. cache.py::get_cached (symbol) — the only caching-related function in the diff
-     would undo 1 step(s), hold 0
-     re-invoke: ugh revert cache.py::get_cached
+$ ugh find caching
+  caching        name
+  787d66b        subject: agent pass: rate limit, caching
 ```
 
-An LLM proposes ranked candidates grounded in your repo's own op ids, symbols, and feature labels.
-It never invents one. Each candidate is checked for real before it is shown, so a made-up or
-no-longer-live name never makes it into the list. Nothing is applied by default. Re-run the
-command with the exact name it printed to apply it, or add `--yes` to apply the top candidate
-directly. This needs `OPENAI_API_KEY`. With no key set, the command fails with a clear message
-instead of guessing.
-
-This is the least reliable of the three ways to name a target, by design. It is a proposal, always
-previewed first, and whatever gets applied is still the same exact, predictable op, symbol, or
-feature revert described above. The only difference is that you pointed at it with a guess in
-plain English instead of an exact name.
+`ugh find` matches names, save subjects, definition names and captured asks by plain word
+matching, and prints addresses. No language model is involved anywhere in `ugh`.
 
 ## 3. Working with other people: sync and forks
 
@@ -191,16 +174,25 @@ and the fork record closes.
 When nothing forks, which is the common case because most syncs touch separate files, `ugh sync`
 just merges, reports `merged=True`, and you see none of the above.
 
+Names travel with the ops and merge per step against the last state both sides shared: a step one
+side renamed takes the new name, and a step both sides renamed differently keeps yours, with both
+names printed under its address so you can settle it with `ugh name`.
+
 ## 4. Using this with Claude Code or any MCP client
 
 `ugh mcp` runs a stdio MCP server so an agent can call `ugh` directly instead of running it as a
-shell command. It exposes 13 tools, not the full command set: `ugh_init`, `ugh_log`, `ugh_save`,
-`ugh_show`, `ugh_find`, `ugh_advanced_fsck`, `ugh_revert`, `ugh_restore`, `ugh_plan_intake`,
-`ugh_checkpoint`, `ugh_drift`, `ugh_plan_done`, and `ugh_plan_adopt`.
+shell command. It exposes 10 tools: `ugh_init`, `ugh_log`, `ugh_check`, `ugh_save` (with `as`),
+`ugh_name`, `ugh_revert`, `ugh_restore`, `ugh_show`, `ugh_find`, and `ugh_plan`. Every operand is an
+address, and every step in a result carries its address.
 
-So an agent driving `ugh` over MCP can inspect state, run the plan → checkpoint → drift loop, save
-its own work, and do symbol-level revert and restore, which covers section 1 and part of section 2
-above. The commands for working with other people, `sync` and `resolve`, have no MCP tool. If a
+A plan is a list of names declared before their edits exist: `ugh plan export audit` (or
+`ugh_plan` with `declare`) records them with HEAD as the baseline. The agent saves each piece of work
+`--as` the name it declared. `ugh plan` then reports each name with the saves since the baseline
+that carry it, or `missing`, and lists the steps since the baseline that carry no declared name.
+`ugh plan --done` clears it.
+
+So an agent driving `ugh` over MCP can declare a plan, save and name its own work, and revert and
+restore by address, which covers sections 1 and 2 above. The commands for working with other people, `sync` and `resolve`, have no MCP tool. If a
 sync produces a fork, a person has to run those commands in the terminal.
 
 ## 5. What is fixed, and what still has limits

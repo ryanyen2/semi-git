@@ -9,18 +9,16 @@ Two things are being locked:
      parser as an argparse package; these snapshots are the contract that its text and (especially)
      `--json` output do not drift for any pre-existing verb. `--json` is the machine surface the
      VSCode extension consumes (R21), so its byte-stability is the one that must not move.
-  2. **Provenance exclusion, proven end to end.** Op ids appear verbatim in `log`/`map`/…
-     output; because these fixtures are byte-identical across independent builds (provenance is
-     excluded from `compute_id`), the ids -- and therefore this whole snapshot -- are stable. A
-     later unit that adds structured provenance (U22) must keep every id here unchanged.
+  2. **Determinism, proven end to end.** Commit shas appear verbatim in every address; because
+     these fixtures are byte-identical across independent builds, the addresses -- and therefore
+     this whole snapshot -- are stable.
 
 Regenerate after an intentional, reviewed CLI change:
 
     UGH_UPDATE_GOLDEN=1 uv run pytest tests/golden/test_cli_golden.py -q
 
 then review the snapshot diff before committing. Same hermetic discipline as the rest of the
-golden/laws suites: real ``git``, no network, no wall-clock, deterministic offline feature labels
-(no API key). `ugh mcp` is the one verb deliberately not captured -- it is a long-lived stdio
+golden/laws suites: real ``git``, no network, no wall-clock. `ugh mcp` is the one verb deliberately not captured -- it is a long-lived stdio
 server, not a request/response command.
 """
 
@@ -37,7 +35,6 @@ import re
 import pytest
 
 from ugh import cli
-from ugh.api import map_view
 from ugh.core.lens import get
 from tests.laws import corpus
 
@@ -46,8 +43,8 @@ _SNAPSHOTS = pathlib.Path(__file__).resolve().parent / "snapshots"
 
 def _capture(repo: pathlib.Path, argv: list[str]) -> dict:
     """Run `ugh <argv>` with `repo` as cwd (the CLI operates on the working directory, like every
-    real invocation), capturing exit code and stdout. Determinism: op ids are content-addressed,
-    feature labels use the offline fallback, so the captured bytes are stable across runs."""
+    real invocation), capturing exit code and stdout. The fixtures pin their commit shas, so the
+    captured bytes are stable across runs."""
     cwd = os.getcwd()
     os.chdir(repo)
     buf = io.StringIO()
@@ -64,25 +61,19 @@ def _both(repo: pathlib.Path, argv: list[str]) -> dict:
     return {"text": _capture(repo, argv), "json": _capture(repo, [*argv, "--json"])}
 
 
-def _feature_ids(repo: pathlib.Path) -> list[str]:
-    return [n["id"] for n in map_view(repo)["nodes"] if n.get("kind") == "feature"]
-
-
 def capture_cli_surface(root: str) -> dict:
     """Build fresh fixtures and capture every `ugh` verb. A verb that mutates committed/staged
     state captures its text and its `--json` form on two *separate* fresh fixtures (running it
-    twice on one repo would see already-applied state); read verbs share one mined+mapped repo,
+    twice on one repo would see already-applied state); read verbs share one mined repo,
     since re-running a read verb is idempotent."""
     root = pathlib.Path(root)
     views: dict[str, dict] = {}
     seq = [0]
 
-    def fresh(case: str = "linear_history", prep: list[str] | None = None, mapped: bool = False) -> pathlib.Path:
+    def fresh(case: str = "linear_history", prep: list[str] | None = None) -> pathlib.Path:
         seq[0] += 1
         repo = corpus.CORPUS[case].build(root / f"f{seq[0]}")
         get(repo)
-        if mapped:
-            _capture(repo, ["log", "--refresh"])
         if prep:
             _capture(repo, prep)
         return repo
@@ -93,13 +84,13 @@ def capture_cli_surface(root: str) -> dict:
         rt, rj = fresh(**kw), fresh(**kw)
         return {"text": _capture(rt, argv_fn(rt)), "json": _capture(rj, [*argv_fn(rj), "--json"])}
 
-    # -- read surface (one mined + mapped linear_history repo; read verbs are idempotent) -------
-    rf = fresh(mapped=True)
+    # -- read surface (one mined linear_history repo; read verbs are idempotent) ----------------
+    rf = fresh()
     views["help"] = _capture(rf, ["help"])
-    for key, argv in (("log", ["log"]), ("status", ["status"]), ("check", ["check"])):
+    for key, argv in (("log", ["log"]), ("status", ["status"]), ("check", ["check"]),
+                      ("show", ["show", "c.py::qux"]), ("find", ["find", "qux"]),
+                      ("plan_status", ["plan"])):
         views[key] = _both(rf, argv)
-    views["map"] = {"json": _capture(rf, ["log", "--tree", "--json"])}
-    views["plan_status"] = _both(rf, ["plan", "status"])
     views["revert_emit"] = _both(fresh(), ["revert", "--emit", "c.py::qux"])  # --emit writes nothing
 
     # -- deterministic error / refusal surfaces (fail before mutating; safe to re-run) ----------
@@ -115,14 +106,13 @@ def capture_cli_surface(root: str) -> dict:
     # `--yes` skips the feedforward confirm gate so the mutation actually applies (a non-tty capture
     # would otherwise draw the preview and refuse, exit 2). The gate itself is covered in
     # tests/cli/test_revert.py; here we freeze the applied surface.
-    views["revert"] = both_isolated(lambda r: ["revert", "c.py::qux", "--yes"], mapped=True)
+    views["revert"] = both_isolated(lambda r: ["revert", "c.py::qux", "--yes"])
     views["restore"] = {
         k: _redact_bookkeeping_sha(v) for k, v in both_isolated(
             lambda r: ["restore", "c.py::qux", "--yes"],
-            prep=["revert", "c.py::qux", "--yes"], mapped=True).items()}
-    views["rename"] = both_isolated(
-        lambda r: ["feature", "rename", _feature_ids(r)[0], "Renamed Feature"], mapped=True
-    )
+            prep=["revert", "c.py::qux", "--yes"]).items()}
+    views["name"] = both_isolated(lambda r: ["name", "c.py::qux", "Qux"])
+    views["rename"] = both_isolated(lambda r: ["rename", "Qux", "Quux"], prep=["name", "c.py::qux", "Qux"])
 
     # -- porcelain daily-loop verbs (U26/D3): save/undo --------------------------------------------
 
@@ -134,8 +124,8 @@ def capture_cli_surface(root: str) -> dict:
         return repo
 
     views["save"] = {
-        "text": _redact_witness_sha(_capture(_dirty_repo(), ["save", "-m", "add new_file"])),
-        "json": _redact_witness_sha(_capture(_dirty_repo(), ["save", "-m", "add new_file", "--json"])),
+        "text": _redact_witness_sha(_capture(_dirty_repo(), ["save", "-m", "add new_file", "--as", "new"])),
+        "json": _redact_witness_sha(_capture(_dirty_repo(), ["save", "-m", "add new_file", "--as", "new", "--json"])),
     }
     views["save_nothing_to_save"] = _both(fresh(), ["save"])
 
@@ -162,31 +152,29 @@ def capture_cli_surface(root: str) -> dict:
     return views
 
 
-_WITNESS_SHA_TEXT_RE = re.compile(r"(save |undo )[0-9a-f]{7}(?=[\s\n:]|$)")
-
-
-def _redact_witness_sha(capture: dict) -> dict:
-    """`save`/`undo` are the only verbs that print their own witness commit's sha (every other
-    verb reports only content-addressed op ids). That commit is freshly made with the real
-    wall-clock author/committer date (no pinned timestamp, unlike the corpus fixtures), so its sha
-    is not reproducible across runs -- freeze a placeholder instead of the literal value."""
+def _redact(capture: dict, shas) -> dict:
     out = capture["out"]
-    if out.startswith("{"):
-        sha = json.loads(out).get("commit")
-        if sha:
-            out = out.replace(sha, "<witness-sha>")
-    else:
-        out = _WITNESS_SHA_TEXT_RE.sub(r"\1<witness-sha>", out)
+    for sha in shas:
+        out = re.sub(rf"\b{sha}(?:[0-9a-f]{{33}})?\b", "<witness-sha>", out)
     return {**capture, "out": out}
 
 
-_BOOKKEEPING_SHA_RE = re.compile(r'([("]|"save": ")[0-9a-f]{7}(" ?,?\s*(?:"subject": )?"ugh |\s"ugh )')
+def _redact_witness_sha(capture: dict) -> dict:
+    """A save's own commit is made with the real wall-clock date (no pinned timestamp, unlike the
+    corpus fixtures), so its sha -- in its header and in every step's address -- is not
+    reproducible across runs: freeze a placeholder instead of the literal value."""
+    out = capture["out"]
+    sha = json.loads(out).get("commit") if out.startswith("{") else re.findall(r"save ([0-9a-f]{7})", out)[:1]
+    return _redact(capture, [sha[:7]] if isinstance(sha, str) else sha)
+
+
+_BOOKKEEPING_SHA_RE = re.compile(r'([0-9a-f]{7})(?:" ?,?\s*(?:"subject": )?"ugh |\s"ugh )')
 
 
 def _redact_bookkeeping_sha(capture: dict) -> dict:
-    """A restore names the save that took the step out: ugh's own commit, made with the real
-    wall-clock date, so its sha is not reproducible across runs."""
-    return {**capture, "out": _BOOKKEEPING_SHA_RE.sub(r"\1<witness-sha>\2", capture["out"])}
+    """A restore or an undo names the commit that took the step out: ugh's own commit, made with
+    the real wall-clock date, so its sha is not reproducible across runs."""
+    return _redact(capture, set(_BOOKKEEPING_SHA_RE.findall(capture["out"])))
 
 
 def _dump(views: dict) -> str:

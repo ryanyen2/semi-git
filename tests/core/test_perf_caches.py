@@ -139,7 +139,9 @@ def test_sync_no_op_gate_misses_after_miner_upgrade(tmp_path, monkeypatch):
     (tmp_path / "a.py").write_text("def alpha():\n    return 1\n", encoding="utf-8")
     gb.commit_all("seed")
     lens.get(tmp_path)  # warm the sync memo under the current miner version
-    assert lens.cached_map_is_current(tmp_path)
+    key = lens._ref_key(gb)
+    cached = lens._load_sync_cache(tmp_path)[key]["fp"]
+    assert lens._sync_fingerprint(gb, gb.head(), lens._load_ideal_table(tmp_path).get(key)) == cached
 
     monkeypatch.setattr(lens, "MINER_VERSION", lens.MINER_VERSION + "-next")
-    assert not lens.cached_map_is_current(tmp_path)
+    assert lens._sync_fingerprint(gb, gb.head(), lens._load_ideal_table(tmp_path).get(key)) != cached

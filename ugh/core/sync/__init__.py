@@ -2,7 +2,7 @@
 
 Source files are *derived* (`code(I)`), so sync never merges them textually -- it fetches the
 remote branch, unions the op store (near-free: `Store.add` unions provenance on any
-content-address collision, R8), reconciles the ideal, pins, and feature tree, and
+content-address collision, R8), reconciles the ideal, merges the names three-way per op, and
 then re-folds the working tree from the union. Footprint-disjoint work merges with zero
 interaction; a same-symbol chain fork is *surfaced* (with the `ugh resolve` remedy) rather than
 silently resolved -- the ADR's "the only possible conflict is chain
@@ -15,10 +15,10 @@ back -- there is no real `git merge` to abort, unlike the pre-U19 pipeline.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
-from ugh.lens.pins import Contradiction
+from ugh import names
 from ugh.store.gitbind import GitBinding
 
 from . import fetch as _fetch
@@ -43,8 +43,8 @@ class SyncReport:
     merge_sha: str | None = None
     ops_added: int = 0
     forks: tuple[tuple[str, str, str], ...] = ()
-    pin_contradictions: tuple[Contradiction, ...] = ()
-    identity_events: tuple[dict, ...] = field(default_factory=tuple)
+    # (op id, ours, theirs) for each op both sides relabelled differently; ours was kept.
+    name_conflicts: tuple[tuple[str, str, str], ...] = ()
     # U7/R12: how the merge-base ideal was recovered for three-way resolve, and how theirs' tip was
     # -- `trailers` | `mined` | `none`. `base_recovery == "none"` means the
     # base degraded to ∅ (union semantics); `theirs_recovery == "none"` is the tip footgun (ops but
@@ -67,15 +67,15 @@ class SyncPlan:
     up_to_date: bool = False
     ops_added: int = 0
     forks: tuple[tuple[str, str, str], ...] = ()
-    pin_contradictions: tuple[Contradiction, ...] = ()
+    name_conflicts: tuple[tuple[str, str, str], ...] = ()
     base_recovery: str = "none"
     theirs_recovery: str = "mined"
 
 
 def plan_sync(repo: str | Path, remote: str | None = None, branch: str | None = None) -> SyncPlan:
     """Dry-run a `sync` (D4): fetch the teammate's branch and run `ingest -> resolve` to compute what
-    the merge *would* bring in -- incoming op count, any same-symbol fork that would surface, pin
-    issues, and the recovery modes -- then roll the transactional local caches back so
+    the merge *would* bring in -- incoming op count, any same-symbol fork that would surface, name
+    conflicts, and the recovery modes -- then roll the transactional local caches back so
     the preview leaves no trace (R7). Skips `materialize` entirely (the only stage that moves the
     working tree or the local branch), so a feedforward pane can show the consequence before the
     merge lands. Mirrors `sync`'s own `ops_added` so the preview predicts the report."""
@@ -99,11 +99,24 @@ def plan_sync(repo: str | Path, remote: str | None = None, branch: str | None = 
         res = _resolve.resolve(repo, ing)
         return SyncPlan(
             remote=fetched.remote, branch=fetched.branch, ops_added=ing.ops_added,
-            forks=res.forks, pin_contradictions=res.pin_contradictions,
+            forks=res.forks, name_conflicts=res.name_conflicts,
             base_recovery=ing.base_recovery, theirs_recovery=ing.theirs_recovery,
         )
     finally:
         _restore_local_caches(repo, local_before)
+
+
+def _merge_state_only(repo: Path, gb: GitBinding, theirs_state: str | None) -> tuple:
+    """The branch is up to date but theirs' state ref may have moved (a `name` or `rename` with no
+    commit): fold it into ours -- names three-way, their op blobs -- and return the name
+    conflicts."""
+    ours_state = _state_ref.read_sha(gb)
+    if theirs_state is None or (ours_state and gb.is_ancestor(theirs_state, ours_state)):
+        return ()
+    base = gb.merge_base(ours_state, theirs_state) if ours_state else None
+    _merged, conflicts = names.merge(names.at(gb, base), names.load(repo), names.at(gb, theirs_state))
+    _state_ref._reconcile_remote_into_ref(gb, repo, ours_state, theirs_state)
+    return tuple(conflicts)
 
 
 def sync(repo: str | Path, remote: str | None = None, branch: str | None = None) -> SyncReport:
@@ -115,6 +128,7 @@ def sync(repo: str | Path, remote: str | None = None, branch: str | None = None)
         return SyncReport(
             remote=fetched.remote, branch=fetched.branch, merged=False,
             fetched_sha=fetched.theirs_sha, message="already up to date",
+            name_conflicts=_merge_state_only(repo, gb, fetched.theirs_state_sha),
         )
 
     # Phase 1.2: theirs' ops/tables come from the fetched `refs/ugh/state` tip (`theirs_state_sha`);
@@ -137,7 +151,7 @@ def sync(repo: str | Path, remote: str | None = None, branch: str | None = None)
     # boundary. The merge above unioned theirs' ops/tables into our on-disk mirror; this rebuilds
     # the state-ref tree from it and advances the ref (off theirs' fetched tip -> a fast-forward
     # push later). Raises `StateRefError` on a lost CAS -- the ref is correctness-bearing.
-    _state_ref.publish_from_local(gb, repo)
+    _state_ref.publish_from_local(gb, repo, merged=fetched.theirs_state_sha)
 
     if res.forks:
         remedies = "; ".join(f"ugh resolve {_sym}" for _sym, a, b in res.forks)
@@ -162,8 +176,7 @@ def sync(repo: str | Path, remote: str | None = None, branch: str | None = None)
         remote=fetched.remote, branch=fetched.branch, merged=not res.forks,
         fetched_sha=fetched.theirs_sha, merge_sha=merge_sha, ops_added=ing.ops_added,
         forks=res.forks,
-        pin_contradictions=res.pin_contradictions,
-        identity_events=tuple(res.tree_result.get("identity_events", [])),
+        name_conflicts=res.name_conflicts,
         base_recovery=ing.base_recovery, theirs_recovery=ing.theirs_recovery,
         message=message,
     )

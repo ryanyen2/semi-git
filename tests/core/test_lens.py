@@ -30,11 +30,13 @@ from tests.laws import corpus
 
 
 def _revert(repo, ref):
-    from ugh.cli.ideal_edit import resolve_ref
-    from ugh.core import planner
+    """Take out one op: an op id, or a `file::name` symbol's latest edit."""
+    from ugh.core import opindex, planner
+    from ugh.core.lens import current_ideal
 
-    ops, label = resolve_ref(str(repo), "revert", ref)
-    return planner.apply(repo, planner.plan(repo, ops, target=label))
+    if "::" in ref:
+        ref = current_ideal(repo).frontier(opindex.index_ops(repo))[ref]
+    return planner.apply(repo, planner.plan(repo, {ref}, target=ref))
 
 def test_put_get_fixed_point(tmp_path):
     """put-get: materializing an ideal and re-mining the witness commit it just wrote yields
@@ -733,59 +735,6 @@ def test_local_rebuild_records_a_genuine_fork_in_the_shared_store(tmp_path):
     # ...and the parked fork is surfaced in the one shared store, not silently excluded.
     records = state.load_json(repo, "forks", default=[])
     assert any(r["symbol"] == "a.py::foo" for r in records)
-
-
-# -- U2: mining-fidelity marks (which commits reduce_to_ideal could not fully reconstruct) -----
-
-def test_fidelity_marks_the_commits_of_a_reduction_drop(tmp_path):
-    """U2/R6: a two-clone same-symbol fork lands both tips in one ref's history but neither in the
-    reduced ideal (`reduce_to_ideal`/`fork_free` drops them). `_record_fidelity` marks the commits
-    that witnessed the dropped ops, so `grid_view` flags them "partial" rather than silently
-    omitting the loss. Deterministic: the recorded set is stable across repeated `get()`s."""
-    from ugh import state
-    from ugh.core import sync
-    from tests.core.test_sync import _BASE, _edit_and_commit, _push, _two_clones
-
-    a, b = _two_clones(tmp_path, _BASE)
-    _edit_and_commit(a, "main.py", "def foo():\n    return 999\n\n\ndef bar():\n    return 2\n", "A: rework foo")
-    _push(a)
-    _edit_and_commit(b, "main.py", "def foo():\n    return 42\n\n\ndef bar():\n    return 2\n", "B: rework foo")
-    report = sync.sync(b, remote="origin", branch="main")
-    assert report.forks  # the fork was surfaced (both tips excluded from the ideal)
-
-    get(b)  # records fidelity for the post-fork ideal (sync's own get() ran before the fork existed)
-    key = _ref_key(GitBinding(b))
-    marks = state.load_json(b, "fidelity", default={})
-    assert marks[key]["shas"]  # the dropped fork tips' witnessing commits are recorded, non-empty
-
-    get(b)  # deterministic — a second reduction records the identical set
-    assert state.load_json(b, "fidelity", default={}) == marks
-
-
-def test_fidelity_is_empty_on_clean_linear_history(tmp_path):
-    """A single-clone linear history reconstructs fully -- no fork, nothing ungrounded -- so
-    `reduce_to_ideal` drops nothing and no commit is marked partial."""
-    from ugh import state
-
-    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
-    get(repo)
-    marks = state.load_json(repo, "fidelity", default={})
-    assert all(not e["shas"] for e in marks.values())
-
-
-def test_fidelity_does_not_mark_a_user_revert(tmp_path):
-    """The correctness distinction (R6): a revert removes an op from the *persisted* ideal but not
-    from the ref's raw provenance union, so `included \\ reduce_to_ideal(included)` never contains
-    it -- an intentional edit is never mistaken for a reconstruction loss. Reverting on clean
-    history leaves the marks empty."""
-    from ugh import state
-
-    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
-    get(repo)
-    _revert(repo, "c.py::qux")  # a leaf symbol
-    get(repo)
-    marks = state.load_json(repo, "fidelity", default={})
-    assert all(not e["shas"] for e in marks.values())  # the revert created no spurious partial mark
 
 
 # -- U1: safe materialization (symlink guard + deletion backstop) -----------------------------

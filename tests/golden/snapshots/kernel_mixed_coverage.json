@@ -1,111 +1,181 @@
 {
-  "map_view": {
-    "edges": [],
-    "feature_count": 1,
-    "identity_events": [
+  "log_view": {
+    "saves": [
       {
-        "event": "birth",
-        "feature_id": "f-1c0e33a256b2bae188f148b90b838fbec3560b07ca898db84de46bffa6455e37"
-      }
-    ],
-    "nodes": [
-      {
-        "children": [],
-        "dir": "pkg.py",
-        "id": "f-1c0e33a256b2bae188f148b90b838fbec3560b07ca898db84de46bffa6455e37",
-        "kind": "feature",
-        "label": "compute helper",
-        "members": [
-          "config.yaml",
-          "notes.md",
-          "pkg.py::__residue__::\u0000HEAD\u0000",
-          "pkg.py::__residue__::compute",
-          "pkg.py::compute",
-          "util.py::__residue__::\u0000HEAD\u0000",
-          "util.py::__residue__::helper",
-          "util.py::helper"
+        "date": "2023-11-14T22:13:20+00:00",
+        "sha": "7231aa16afff4bc420acda30722f73fd9dc1453b",
+        "steps": [
+          {
+            "address": "config.yaml@7231aa1",
+            "kind": "create",
+            "name": null,
+            "out": false
+          },
+          {
+            "address": "notes.md@7231aa1",
+            "kind": "create",
+            "name": null,
+            "out": false
+          },
+          {
+            "address": "pkg.py::compute@7231aa1",
+            "kind": "create",
+            "name": null,
+            "out": false
+          },
+          {
+            "address": "pkg.py@7231aa1",
+            "kind": "create",
+            "name": null,
+            "out": false
+          },
+          {
+            "address": "util.py::helper@7231aa1",
+            "kind": "create",
+            "name": null,
+            "out": false
+          },
+          {
+            "address": "util.py@7231aa1",
+            "kind": "create",
+            "name": null,
+            "out": false
+          }
         ],
-        "op_count": 6,
-        "own_symbols": [
-          "config.yaml",
-          "notes.md",
-          "pkg.py::compute",
-          "util.py::helper"
-        ],
-        "parent": null,
-        "sessions": [],
-        "size": 8,
-        "split_reason": "max_leaf",
-        "why": "Auto-derived from pkg.py (no LLM label available)."
+        "subject": "add mixed python and non-parseable paths"
       }
-    ],
-    "roots": [
-      "f-1c0e33a256b2bae188f148b90b838fbec3560b07ca898db84de46bffa6455e37"
-    ],
-    "sync_status": {
-      "complete": true
-    }
+    ]
   },
-  "oplog_view": {
-    "count": 6,
-    "kinds": {
-      "add": 6
+  "show_view": {
+    "address": "7231aa1",
+    "ok": true,
+    "plan": {
+      "applied": false,
+      "check": "not_run",
+      "files": {
+        "config.yaml": {
+          "after": null,
+          "before": "setting: value\n"
+        },
+        "notes.md": {
+          "after": null,
+          "before": "# notes\n"
+        },
+        "pkg.py": {
+          "after": null,
+          "before": "def compute():\n    return 1\n"
+        },
+        "util.py": {
+          "after": null,
+          "before": "def helper():\n    return 2\n"
+        }
+      },
+      "held": [],
+      "message": "",
+      "ok": true,
+      "removal_set": {
+        "saves": [
+          {
+            "sha": "7231aa1",
+            "steps": 6,
+            "subject": "add mixed python and non-parseable paths"
+          }
+        ],
+        "steps": 6
+      },
+      "target": "7231aa1",
+      "undone": [
+        {
+          "address": "config.yaml@7231aa1",
+          "op": "3d477b98827466bacf7dabd8e7781b534b35ad9892881c00bcb553e5ca96c7a6",
+          "save": "7231aa1",
+          "subject": "add mixed python and non-parseable paths",
+          "symbol": "config.yaml"
+        },
+        {
+          "address": "notes.md@7231aa1",
+          "op": "20a4f402e281b25356ef2f6626594a1dc3379e9a32dc7ce2c50c3209c7e87cb6",
+          "save": "7231aa1",
+          "subject": "add mixed python and non-parseable paths",
+          "symbol": "notes.md"
+        },
+        {
+          "address": "pkg.py@7231aa1",
+          "op": "36981ae4257f6e934350d274e1496a15066ce623974c189563e35921a485a89a",
+          "save": "7231aa1",
+          "subject": "add mixed python and non-parseable paths",
+          "symbol": "pkg.py::__residue__::\u0000HEAD\u0000"
+        },
+        {
+          "address": "pkg.py::compute@7231aa1",
+          "op": "4ce63baedb88d801aca95c73783c93ff28f4a8fc63cfb18846f987cf7dd17bd0",
+          "save": "7231aa1",
+          "subject": "add mixed python and non-parseable paths",
+          "symbol": "pkg.py::compute"
+        },
+        {
+          "address": "util.py@7231aa1",
+          "op": "1c0e33a256b2bae188f148b90b838fbec3560b07ca898db84de46bffa6455e37",
+          "save": "7231aa1",
+          "subject": "add mixed python and non-parseable paths",
+          "symbol": "util.py::__residue__::\u0000HEAD\u0000"
+        },
+        {
+          "address": "util.py::helper@7231aa1",
+          "op": "a89d2cbef5d1118c1a50d005bad9acf9914f0fc44df0c51d597e648d93970447",
+          "save": "7231aa1",
+          "subject": "add mixed python and non-parseable paths",
+          "symbol": "util.py::helper"
+        }
+      ],
+      "verb": "revert"
     },
-    "ops": [
+    "saves": [
       {
-        "id": "1c0e33a256b2bae188f148b90b838fbec3560b07ca898db84de46bffa6455e37",
-        "intent": null,
-        "kind": "add",
-        "symbols": [
-          "util.py::__residue__::\u0000HEAD\u0000"
-        ]
-      },
-      {
-        "id": "20a4f402e281b25356ef2f6626594a1dc3379e9a32dc7ce2c50c3209c7e87cb6",
-        "intent": null,
-        "kind": "add",
-        "symbols": [
-          "notes.md"
-        ]
-      },
-      {
-        "id": "36981ae4257f6e934350d274e1496a15066ce623974c189563e35921a485a89a",
-        "intent": null,
-        "kind": "add",
-        "symbols": [
-          "pkg.py::__residue__::\u0000HEAD\u0000"
-        ]
-      },
-      {
-        "id": "3d477b98827466bacf7dabd8e7781b534b35ad9892881c00bcb553e5ca96c7a6",
-        "intent": null,
-        "kind": "add",
-        "symbols": [
-          "config.yaml"
-        ]
-      },
-      {
-        "id": "4ce63baedb88d801aca95c73783c93ff28f4a8fc63cfb18846f987cf7dd17bd0",
-        "intent": null,
-        "kind": "add",
-        "symbols": [
-          "pkg.py::__anchor__::compute",
-          "pkg.py::__residue__::compute",
-          "pkg.py::compute"
-        ]
-      },
-      {
-        "id": "a89d2cbef5d1118c1a50d005bad9acf9914f0fc44df0c51d597e648d93970447",
-        "intent": null,
-        "kind": "add",
-        "symbols": [
-          "util.py::__anchor__::helper",
-          "util.py::__residue__::helper",
-          "util.py::helper"
-        ]
+        "ask": null,
+        "date": "2023-11-14T22:13:20+00:00",
+        "sha": "7231aa16afff4bc420acda30722f73fd9dc1453b",
+        "subject": "add mixed python and non-parseable paths"
       }
     ],
-    "truncated": false
+    "steps": [
+      {
+        "address": "config.yaml@7231aa1",
+        "kind": "create",
+        "name": null,
+        "out": false
+      },
+      {
+        "address": "notes.md@7231aa1",
+        "kind": "create",
+        "name": null,
+        "out": false
+      },
+      {
+        "address": "pkg.py::compute@7231aa1",
+        "kind": "create",
+        "name": null,
+        "out": false
+      },
+      {
+        "address": "pkg.py@7231aa1",
+        "kind": "create",
+        "name": null,
+        "out": false
+      },
+      {
+        "address": "util.py::helper@7231aa1",
+        "kind": "create",
+        "name": null,
+        "out": false
+      },
+      {
+        "address": "util.py@7231aa1",
+        "kind": "create",
+        "name": null,
+        "out": false
+      }
+    ]
   },
   "state_view": {
     "coverage_fraction": 0.5,
@@ -128,7 +198,6 @@
       "any": false,
       "paths": []
     },
-    "features": 1,
     "files": 4,
     "forks": {
       "open": 0,
@@ -139,6 +208,7 @@
       "configured": false,
       "status": "unconfigured"
     },
+    "plan": null,
     "symbols": 10,
     "sync_status": {
       "complete": true

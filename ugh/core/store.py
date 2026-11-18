@@ -4,9 +4,9 @@ One committed file per op under ``.sgt/ops/<id>`` -- append-only makes push conf
 structurally impossible for ops: two developers adding different ops never touch the same
 file, and the same op mined twice (by different developers, or by a squash/rebase re-mine,
 R8) is byte-identical and lands on the same path, so a second write is a no-op beyond
-appending a witness. Local, uncommitted state (ref->ideal table, caches, oracle verdicts, and
-hollow off-chain ops, R18) lives under ``.sgt/local/``, gitignored -- this module only
-guarantees that directory exists with a ``.gitignore`` inside; U6/U9/U14 populate it further.
+appending a witness. Local, uncommitted state (ref->ideal table, caches, oracle verdicts) lives
+under ``.sgt/local/``, gitignored -- this module only guarantees that directory exists with a
+``.gitignore`` inside.
 
 Concurrency: a single-writer ``flock`` on ``.sgt/local/lock`` serializes mutating store operations
 across processes; every mutable-file write is write-temp-then-rename (``os.replace``, atomic
@@ -47,7 +47,6 @@ _RACY_SLACK_NS = 2_000_000_000  # > any real filesystem timestamp granularity (H
 
 _OPS_DIR = "ops"
 _LOCAL_DIR = "local"
-_HOLLOW_DIR = "local/hollow"
 _LOCK_FILE = "lock"
 
 # `.sgt/.gitignore` body (Phase 1.2). Patterns are relative to `.sgt/`. Keeps the op store and the
@@ -62,12 +61,9 @@ _SGT_GITIGNORE = b"""\
 # .sgtignore here -- those stay tracked in the branch tree.
 .gitignore
 ops/
-pins/
-tree/
-authored/
 intent/
-ideal.json
 forks.json
+names.json
 """
 
 
@@ -104,7 +100,6 @@ def _payload(op: Op) -> dict:
         "provenance": provenance,
         "intent": op.intent,
         "miner_version": op.miner_version,
-        "off_chain": op.off_chain,
         "derived": op.derived,
         "resolves": sorted(op.resolves),
     }
@@ -158,7 +153,6 @@ def _op_from_payload(payload: dict, images: Images) -> Op:
         attribution=attribution,
         intent=payload.get("intent"),
         miner_version=payload["miner_version"],
-        off_chain=payload.get("off_chain", False),
         derived=payload.get("derived", False),
         resolves=frozenset(payload.get("resolves", [])),
     )
@@ -209,12 +203,10 @@ class Store:
         self.sgt_dir = self.repo / ".sgt"
         self.ops_dir = self.sgt_dir / _OPS_DIR
         self.local_dir = self.sgt_dir / _LOCAL_DIR
-        self.hollow_dir = self.sgt_dir / _HOLLOW_DIR
 
     def init(self) -> None:
         """Create the store's directories. Idempotent."""
         self.ops_dir.mkdir(parents=True, exist_ok=True)
-        self.hollow_dir.mkdir(parents=True, exist_ok=True)
         self._ensure_local()
         self._ensure_gitignore()
 
@@ -234,10 +226,11 @@ class Store:
         regenerates it locally via `Store.init` before any `.sgt/` content exists, so tracking it
         buys nothing. The listed set mirrors `state_ref._TRAVELING_TABLES` +
         `_CONTENT_ADDRESSED_PREFIXES`; team-editable / correctness-critical config stays TRACKED and
-        is deliberately absent here: `oracle.json`, `tiers.json`, `.sgtignore` (the last read as-of each mined commit for LAW-0). Only written when absent, so
-        it never churns the tree on a re-init."""
+        is deliberately absent here: `oracle.json`, `tiers.json`, `.sgtignore` (the last read as-of
+        each mined commit for LAW-0). Rewritten whenever it differs, so a new traveling table is
+        ignored in an existing `.sgt` too."""
         gitignore = self.sgt_dir / ".gitignore"
-        if gitignore.exists():
+        if gitignore.is_file() and gitignore.read_bytes() == _SGT_GITIGNORE:
             return
         _write_atomic(gitignore, _SGT_GITIGNORE)
 
@@ -290,8 +283,7 @@ class Store:
     def attribute(self, op_id: str, entries: tuple[Attribution, ...]) -> Op | None:
         """Merge structured attribution `entries` into a committed op's provenance shape (D7),
         rewriting its file only when the merge actually changes something. Returns the updated op,
-        or ``None`` if no committed op with that id exists -- hollow ops (never committed) are not
-        attributed."""
+        or ``None`` if no committed op with that id exists."""
         with self._locked():
             path = self._path(op_id)
             if not path.is_file():
@@ -367,23 +359,6 @@ class Store:
 
     def __contains__(self, op_id: str) -> bool:
         return self._path(op_id).is_file()
-
-    # -- hollow ops (R18 substrate; workflow lands in U14) -----------------------------------
-    def add_hollow(self, op: Op) -> Op:
-        """Store a hollow (``off_chain=True``) op under ``.sgt/local/hollow/`` -- never
-        committed, never in the main chain, so a human editing the same symbol mid-plan can't
-        collide with it."""
-        if not op.off_chain:
-            raise StoreError(f"add_hollow requires an off_chain op, got {op.id}")
-        with self._locked():
-            _write_atomic(self.hollow_dir / op.id, _serialize(op))
-            return op
-
-    def get_hollow(self, op_id: str) -> Op | None:
-        path = self.hollow_dir / op_id
-        if not path.is_file():
-            return None
-        return _deserialize(path.read_bytes())
 
 
 @dataclass(frozen=True)

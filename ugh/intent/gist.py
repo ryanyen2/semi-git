@@ -1,9 +1,7 @@
 """The ask inside a captured prompt.
 
-Everything that shows captured words -- a checkpoint's name, a recorded reason, the `asked`
-attribute on `ugh show` -- needs one short line to put on screen. Until now that line was the
-prompt's first *line*, which is the ask only when
-the prompt was typed like a commit message. The dogfood turn store says they are not: prompts open
+`ugh show` and `ugh find` need one short line of captured words to put on screen. The prompt's
+first *line* is the ask only when the prompt was typed like a commit message. The dogfood turn store says they are not: prompts open
 with "so i think we should probably", carry the reasoning after the request, run three asks together
 with commas, and a long one has no line break at all -- so "the first line" is the whole paragraph,
 and a 60-character name built from it is 40 characters of throat-clearing.
@@ -16,8 +14,7 @@ the prompt; it may never be tidier than the prompt.
 
 Deliberately deterministic and offline, for the same reason `ugh show` is: this runs inside read
 paths a cautious user repeats, and a name that came back different on the second read would be
-worse than a clumsy one. Nothing here is persisted either -- `apply_words_labels` applies it at
-read time, so a verbatim prompt never leaks into shared state through a label.
+worse than a clumsy one. Nothing here is persisted either.
 """
 
 from __future__ import annotations
@@ -25,10 +22,6 @@ from __future__ import annotations
 import re
 from typing import NamedTuple
 
-# What a status row, a lane label and a card can hold. One place, because the same excerpt has to
-# degrade across all three rather than each surface inventing its own truncation.
-ROW_WIDTH = 72
-LABEL_WIDTH = 60
 CARD_WIDTH = 120
 
 # Throat-clearing: matched at a clause's start, stripped repeatedly. Longest first so "i would like
@@ -244,8 +237,11 @@ def _is_subordinate(clause: str) -> bool:
                for w in _SUBORDINATE)
 
 
-def ask_parts(text: str, width: int = ROW_WIDTH) -> Ask:
-    """The excerpt and whether the prompt held more than it. See `ask_gist` for the rule."""
+def ask_parts(text: str, width: int = CARD_WIDTH) -> Ask:
+    """The excerpt of `text` and whether the prompt held more than it: the first clause that reads
+    as a request, verbatim, with its conversational opening and trailing filler removed and clipped
+    to `width`. An empty excerpt for nothing captured. Never a paraphrase, never re-cased, never
+    spell-corrected."""
     cleaned = _clean(text)
     if not cleaned:
         return Ask("", False)
@@ -272,9 +268,3 @@ def ask_parts(text: str, width: int = ROW_WIDTH) -> Ask:
     return Ask(gist, clipped or gist.casefold() != _drop_trailing(cleaned).casefold())
 
 
-def ask_gist(text: str, width: int = ROW_WIDTH) -> str:
-    """One line of `text` to put on screen: the first clause that reads as a request, verbatim,
-    with its conversational opening and trailing filler removed and clipped to `width`.
-
-    `""` for nothing captured. Never a paraphrase, never re-cased, never spell-corrected."""
-    return ask_parts(text, width).gist

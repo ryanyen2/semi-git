@@ -158,26 +158,6 @@ def test_concurrent_same_op_adds_across_processes_lose_no_provenance(tmp_path):
     assert fsck(tmp_path).ok
 
 
-def test_hollow_op_roundtrips_with_empty_images(tmp_path):
-    store = Store(tmp_path)
-    store.init()
-    hollow = make_op({"a.py::planned": (None, "predicted")}, {}, off_chain=True, intent="plan: add caching")
-    store.add_hollow(hollow)
-
-    fetched = store.get_hollow(hollow.id)
-    assert fetched == hollow
-    assert fetched.off_chain is True
-    assert fetched.images == {}
-    assert hollow.id not in store  # never lands in the main chain
-
-
-def test_add_hollow_rejects_a_normal_op(tmp_path):
-    store = Store(tmp_path)
-    store.init()
-    with pytest.raises(StoreError):
-        store.add_hollow(_op())
-
-
 def test_fsck_clean_store(tmp_path):
     store = Store(tmp_path)
     store.init()
@@ -235,7 +215,6 @@ def _v0_bytes(op, provenance: list[str]) -> bytes:
         "provenance": provenance,
         "intent": op.intent,
         "miner_version": op.miner_version,
-        "off_chain": op.off_chain,
     }
     return json.dumps(payload, indent=2, sort_keys=True).encode("utf-8") + b"\n"
 
@@ -417,7 +396,7 @@ def test_resolves_roundtrips_through_the_store(tmp_path):
 
 def test_payload_missing_resolves_key_deserializes_to_empty_frozenset(tmp_path):
     """A pre-D5 op file has no `resolves` key at all -- old shapes read back with `resolves ==
-    frozenset()` rather than raising (the same `.get(..., default)` discipline as `off_chain`)."""
+    frozenset()` rather than raising (the same `.get(..., default)` discipline as `derived`)."""
     store = Store(tmp_path)
     store.init()
     op = _op()

@@ -1,7 +1,5 @@
-"""Materializing a fold onto disk: the `revert/restore --emit --out <dir>` counterfactual.
-
-`fold_view` has always been able to reconstruct `code(I)` at any frontier, but only as JSON text
-decoded `utf-8, "replace"` -- right for a preview pane, lossy for a file. These pin the two
+"""Materializing a fold onto disk: the `revert/restore --emit --out <dir>` counterfactual. These
+pin the two
 properties that make the difference: the bytes are the fold's own bytes, and the write is a
 *sync* against a long-lived overlay directory (the render panel's target, which also holds
 `node_modules` and a dev-server cache) rather than a dump into a directory anyone may wipe.
@@ -10,7 +8,7 @@ properties that make the difference: the bytes are the fold's own bytes, and the
 import json
 import subprocess
 
-from ugh.api import FOLD_MANIFEST, _parse_show_spec, fold_view
+from ugh.api import FOLD_MANIFEST
 from ugh.core.fold import code
 from ugh.core.store import Store
 from ugh.core.lens import current_ideal, get, ideal_for_ref
@@ -24,14 +22,17 @@ def _mined(tmp_path, name):
 
 
 def _forward_subtracting_target(repo):
-    """An op whose revert changes files. Found rather than hardcoded so a re-mine that reshuffles
-    op-ids fails loudly here instead of silently weakening every assertion downstream."""
+    """A step address whose revert changes files. Found rather than hardcoded so a re-mine that
+    reshuffles op-ids fails loudly here instead of silently weakening every assertion downstream."""
+    from ugh.address import Record, resolve
     from ugh.core import planner
 
-    for op_id in sorted(current_ideal(repo).op_ids):
-        p = planner.plan(repo, {op_id}, target=op_id)
+    rec = Record(repo)
+    for op_id in sorted(rec.units):
+        address = rec.address(op_id)
+        p = planner.plan(repo, resolve(repo, address, rec), target=address)
         if p.ok and p.files:
-            return op_id
+            return address
     raise AssertionError("fixture has no revert that changes a file")
 
 
@@ -67,32 +68,6 @@ def _tree(out):
     }
 
 
-def test_fold_at_now_resolves_the_current_ideal_never_a_ref(tmp_path):
-    """`now` reads `lens.current_ideal` -- the table -- and consults no ref at all.
-
-    This test used to assert `now != HEAD` after a revert, and that was true when it was written:
-    `ideal_for_ref` projected by commit provenance, `apply` mints its compensating ops with none,
-    so a HEAD fold returned the pre-revert tree. Fixing `ideal_for_ref` to read the ref tip's own
-    `Sgt-Op:` trailers removed that divergence -- the revert commit records the post-revert ideal,
-    so the two now agree, which is the correct outcome and the reason the assertion was retired
-    rather than the test.
-
-    What `now` still guarantees, and what is pinned here, is its *source*: the present as ugh
-    records it, independent of whether any commit's trailers survived, whether HEAD is detached, or
-    whether a ref exists to name. Numeric agreement with HEAD on a healthy repo is a property of
-    that repo, not of the spelling."""
-    repo = _mined(tmp_path, "linear_history")
-    target = _forward_subtracting_target(repo)
-    assert _in(repo, ["revert", target, "--json"]) == 0
-
-    now = fold_view(repo, current=True)
-    assert now["op_count"] == len(current_ideal(repo).op_ids)
-
-    # ...and the trailer fix means HEAD now agrees rather than lagging. Asserted so that a
-    # regression in `ideal_for_ref` surfaces here too, on the frontier the extension defaults to.
-    assert fold_view(repo, ref="HEAD")["files"] == now["files"]
-
-
 def test_ideal_for_ref_agrees_with_the_current_ideal_after_a_take_out(tmp_path):
     """Every op comes from mining a commit, the take-out's included, so the ideal a ref's history
     implies is the current ideal."""
@@ -105,32 +80,6 @@ def test_ideal_for_ref_agrees_with_the_current_ideal_after_a_take_out(tmp_path):
     live = current_ideal(repo).op_ids
     assert all(o.provenance for o in opindex.index_ops(repo) if o.id in live)
     assert set(ideal_for_ref(repo, "HEAD").op_ids) == set(live)
-
-
-def test_an_unresolvable_ref_stays_a_clean_refusal(tmp_path):
-    """`commit_shas` answers `[]` for a ref that does not resolve, so the provenance rung has always
-    degraded to an empty ideal rather than raising. Reading trailers introduced a way to break that:
-    `commit_message` raises `GitError` where `commit_shas` returns empty, which turned a fold at
-    `no-such-branch` into a traceback instead of a refusal. Caught in review
-    of my own change, pinned here so the trailer rung cannot re-tighten what the fallback keeps
-    loose."""
-    repo = _mined(tmp_path, "linear_history")
-
-    assert ideal_for_ref(repo, "no-such-branch").op_ids == frozenset()
-    view = fold_view(repo, ref="no-such-branch")
-    assert view["op_count"] == 0 and view["files"] == {}
-
-
-def test_at_now_parses_to_the_current_ideal_and_never_to_a_ref(tmp_path):
-    """The grammar rung itself. `now` shadows a branch of that name, exactly as the all-digit rung
-    already shadows a branch named `5`; `refs/heads/now` is the escape hatch."""
-    assert _parse_show_spec("now") == {"current": True}
-    assert _parse_show_spec("refs/heads/now") == {"ref": "refs/heads/now"}
-    assert _parse_show_spec("5") == {"at_commit_index": 5}
-    assert _parse_show_spec("main") == {"ref": "main"}
-
-    repo = _mined(tmp_path, "linear_history")
-    assert fold_view(repo, **_parse_show_spec("now"))["op_count"] == len(current_ideal(repo).op_ids)
 
 
 def test_emit_out_materializes_the_tree_the_apply_leaves(tmp_path):

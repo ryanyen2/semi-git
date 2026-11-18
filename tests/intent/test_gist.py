@@ -13,7 +13,11 @@ input is a gist that works on the input nobody types.
 
 from __future__ import annotations
 
-from ugh.intent.gist import ask_gist
+from ugh.intent.gist import ask_parts
+
+
+def ask_gist(text: str, width: int = 72) -> str:
+    return ask_parts(text, width).gist
 
 # The prompt that prompted this module, near enough verbatim: two asks, a clarification, three
 # qualifications, no full stop anywhere, 900 characters of it.

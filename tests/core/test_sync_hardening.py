@@ -23,7 +23,6 @@ from ugh.core.store import Store, _serialize
 from ugh.core.sync import MinerVersionMismatch
 from ugh.core.sync.ingest import Ingested
 from ugh.core.sync.resolve import resolve
-from ugh.lens.pins import Pins
 from ugh.store.gitbind import GitBinding, PushRejected
 
 from tests.core.test_sync import (
@@ -242,8 +241,6 @@ def test_c4_fork_free_construction_is_a_valid_ideal(tmp_path):
     all_ops = [add_foo, rework_a, rework_b, add_bar]
 
     ing = Ingested(
-        ours_pins=Pins(), theirs_pins=Pins(),
-        ours_tree=None,
         ours_ideal=Ideal.from_ops({add_foo.id, rework_b.id, add_bar.id}, all_ops),
         theirs_ideal_ids=frozenset({add_foo.id, rework_a.id, add_bar.id}),
         all_ops=all_ops, theirs_ops=[rework_a], mined_ops=[], ops_added=1,

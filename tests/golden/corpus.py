@@ -1,11 +1,10 @@
-"""Deterministic, offline corpus for the operation-ideal kernel's characterization golden master.
+"""Deterministic, offline corpus for the characterization golden master.
 
-The kernel's read surface (`oplog_view`/`state_view`/`map_view`/`status_view`) reads a mined git
-repo, not an in-memory object, so it needs git-repo fixtures. We reuse the deterministic, pinned-SHA fixtures the round-trip law harness already builds
-(`tests/laws/corpus.py`) -- same discipline (no LLM/network/wall-clock) -- so these snapshots are
-byte-stable across runs. `test_golden.py` snapshots the views these builders produce and fails on
-drift. The feature lens (`build_map`) falls back to deterministic offline labels with no API key,
-so `map_view`/`status_view` are golden-safe too.
+The read surface (`log_view`/`state_view`/`status_view`/`show_view`) reads a mined git repo, so it
+needs git-repo fixtures. We reuse the deterministic, pinned-SHA fixtures the round-trip law harness
+already builds (`tests/laws/corpus.py`) -- same discipline (no network/wall-clock) -- so these
+snapshots are byte-stable across runs. `test_golden.py` snapshots the views these builders produce
+and fails on drift.
 """
 
 from __future__ import annotations
@@ -29,11 +28,10 @@ KERNEL_CORPUS: dict[str, KernelCase] = {
 
 
 def capture_kernel_views(name: str, root: str) -> dict:
-    """Build a deterministic git-repo kernel fixture, mine it (`get`), build the feature tree
-    (`build_map`), and capture the kernel views: the op DAG, the current ideal, and the U13
-    feature-lens projection (`map_view`/`status_view`)."""
+    """Build a deterministic git-repo kernel fixture, mine it (`get`), and capture the views: the
+    saves, the current ideal, the status, and `show` of the newest save."""
     from ugh.core.lens import get
-    from ugh.lens.map import build_map
+    from ugh.store.gitbind import GitBinding
 
     case = KERNEL_CORPUS[name]
     repo = _kernel_git_corpus.CORPUS[case.laws_name].build(Path(root))
@@ -44,12 +42,10 @@ def capture_kernel_views(name: str, root: str) -> dict:
     else:
         get(repo)
 
-    build_map(repo)  # cluster + label (deterministic fallback labels, offline) + persist tree.json
-
     views: dict = {
-        "oplog_view": api.oplog_view(repo),
+        "log_view": api.log_view(repo),
         "state_view": api.state_view(repo),
-        "map_view": api.map_view(repo),
         "status_view": api.status_view(repo),
+        "show_view": api.show_view(repo, GitBinding(repo).head()[:7]),
     }
     return views

@@ -1,7 +1,7 @@
 """`ugh undo` over the unified operation log (plan U8, R7).
 
 `tests/test_porcelain.py` covers `undo` over the ideal-edit journal alone; this file proves the
-*unified* walk-back: a mixed sequence of mutating verbs (save, revert, feature rename) each
+*unified* walk-back: a mixed sequence of mutating verbs (save, revert, name) each
 appends one event, and repeated `undo` pops them one at a time, reverse-chronologically, restoring
 the prior state at every step -- the "arbitrarily far back" (= sequential-undo depth) promise.
 """
@@ -12,11 +12,9 @@ import json
 import os
 
 import ugh.cli as cli
+from ugh import names
 from ugh.core import lens
 from ugh.core.store import Store
-from ugh.lens import map as lensmap
-from ugh.lens import tree
-from ugh.lens import verbs as fverbs
 from ugh.store.gitbind import init_store
 
 
@@ -60,7 +58,7 @@ def _files(repo):
     return {p: (repo / p).read_bytes() for p in ("a.py", "m.py")}
 
 
-def test_three_undos_walk_back_through_save_revert_rename(tmp_path, capsys):
+def test_three_undos_walk_back_through_save_revert_name(tmp_path, capsys):
     repo = tmp_path / "repo"
     _seed(repo)
     after_seed = _files(repo)
@@ -76,15 +74,12 @@ def test_three_undos_walk_back_through_save_revert_rename(tmp_path, capsys):
     after_revert = _files(repo)
     assert after_revert != after_save
 
-    result = lensmap.build_map(repo)
-    fid = next(iter(result["nodes"]))
-    original_label = result["nodes"][fid].get("label", fid)
-    fverbs.apply_rename(repo, fverbs.plan_rename(repo, fid, "renamed-feature"))
-    assert tree.load(repo)["nodes"][fid]["label"] == "renamed-feature"
+    assert _in(repo, ["name", "m.py::helper", "helpers"]) == 0
+    assert set(names.load(repo).values()) == {"helpers"}
     capsys.readouterr()
 
-    assert _in(repo, ["undo"]) == 0                             # undo the rename (feature reorg)
-    assert tree.load(repo)["nodes"][fid]["label"] == original_label
+    assert _in(repo, ["undo"]) == 0                             # undo the name
+    assert names.load(repo) == {}
     assert _files(repo) == after_revert
 
     assert _in(repo, ["undo"]) == 0                             # undo the revert
@@ -128,5 +123,5 @@ def test_emit_says_what_undo_would_reverse_without_reversing_it(tmp_path, capsys
     view = json.loads(capsys.readouterr().out)
     assert view["ok"] is True and view["applied"] is False
     assert view["kind"] == "commit" and view["undone"]
-    assert any("bar" in s for s in view["symbols"])
+    assert any(st.startswith("a.py::bar@") for st in view["steps"])
     assert b"def bar" not in (repo / "a.py").read_bytes()

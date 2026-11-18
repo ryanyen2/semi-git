@@ -2,10 +2,10 @@
 from the verb-family modules below, and `ugh git <args...>` forwards verbatim to real git (refusing
 tree-mutating subcommands) before argparse is entered.
 
-History is a mined, content-addressed op DAG; a codebase state is an order ideal of that DAG.
-`revert`/`restore` are exact ideal edits (`I \\ ↑X` / `I ∪ ↓X`) with `--emit` previews.
-`log` lists features and their edits per save; `status` says what needs attention. `check` verifies
-the op store's integrity. Every verb mines the working tree on contact before acting (R9).
+History is mined from git into steps (one save's change to one definition). Every verb that takes
+an operand takes an address (`ugh.address`); `revert`/`restore` take steps out and bring them back
+through the planner. `log` lists the saves with their names, `status` says what needs attention, and
+`check` verifies the op store. Every verb mines the working tree on contact before acting (R9).
 """
 
 from __future__ import annotations
@@ -15,16 +15,15 @@ import difflib
 import subprocess
 import sys
 
-from . import feature, ideal_edit, init, inspect, intent, loop, porcelain, resolve, select, show, sync
+from . import ideal_edit, init, inspect, intent, name, plan, porcelain, resolve, show, sync
 
 # `intent` is the hidden entry point the editor hooks call (`intent record` / `intent activity`).
 _VERBS = {
-    "save", "log", "status", "undo", "revert", "restore", "resolve", "show", "find", "plan",
-    "feature", "check", "sync", "push", "init", "mcp", "intent",
+    "save", "name", "rename", "log", "status", "show", "find", "undo", "revert", "restore",
+    "resolve", "plan", "check", "sync", "push", "init", "mcp", "intent",
 }
 
-_FAMILIES = (init, inspect, ideal_edit, feature, loop, sync, porcelain, select, intent, resolve,
-             show)
+_FAMILIES = (init, inspect, ideal_edit, name, plan, sync, porcelain, intent, resolve, show)
 
 
 class _CLIExit(Exception):
@@ -161,33 +160,30 @@ def _git_passthrough(args: list[str]) -> int:
 
 def _help() -> int:
     print(
-        "ugh — semantic operation-ideal version control\n\n"
-        "  the daily spine (a selection — symbol / glob / NL / feature / set — is the argument):\n"
-        '  ugh save [-m "<msg>"] [--as "<feature>"]   record your edits + show which feature they landed in\n'
-        "  ugh log [--refresh]         one row per feature, its edits in each recent save\n"
-        "  ugh status                  what needs attention: forks, drift, untracked files\n"
-        "  ugh show <sel>              what is this? — any id ugh printed: what it covers, what\n"
-        "                              would go with it, and what you can do next\n"
-        "  ugh find <words>            find a feature, save or symbol you can describe but not name\n"
-        "  ugh undo                    invert the last mutating operation (the unified op log)\n"
-        "  ugh revert <sel>            remove a selection and everything built on it\n"
-        "  ugh restore <sel>           bring a selection back, along with what it needs\n"
-        "  ugh resolve <symbol>        guided fork resolution when two versions of one symbol compete\n"
-        "  ugh feature rename <feature> <label>   name a feature in your own words\n"
-        "\n"
-        "  agentic loop:\n"
-        "  ugh plan <cmd>              intake/abandon/status a stated plan's predicted hollow ops\n"
-        "  ugh save --resolve-plan     settle an ambiguous plan-step match a save couldn't auto-confirm\n"
+        "ugh — steps you can name, take out and bring back\n\n"
+        "  the daily spine (an <address> names steps — see below):\n"
+        '  ugh save [-m "<msg>"] [--as "<label>"]   record your edits; --as names this save\'s steps\n'
+        "  ugh name <address> <label>  give a label to the steps at an address\n"
+        "  ugh rename <label> <new>    relabel every step with a label (an existing label absorbs them)\n"
+        "  ugh log                     the saves, newest first, with the names on their steps\n"
+        "  ugh status                  what needs attention: forks, drift, untracked files, the plan\n"
+        "  ugh show <address>          its steps, the ask behind each save, what taking it out takes\n"
+        "  ugh find <words>            addresses whose names, subjects, definitions or asks match\n"
+        "  ugh undo                    invert the last mutating operation\n"
+        "  ugh revert <address>        take steps out of the code, holding what others stand on\n"
+        "  ugh restore <address>       bring steps that are out back\n"
+        "  ugh resolve <symbol>        choose between two versions of one definition\n"
+        "  ugh plan [<label>...] [--done]   declare names before their edits exist; report on them\n"
         "\n"
         "  collaboration + setup:\n"
-        "  ugh sync [remote] [branch]  fetch + merge a teammate's work; union ops, reconcile, fork\n"
+        "  ugh sync [remote] [branch]  fetch + merge a teammate's work; union ops, merge names\n"
         "  ugh push [remote] [branch]  non-forcing git push; a rejection routes you to `ugh sync`\n"
         "  ugh check [--tree] [--repair]   verify the op store; --repair re-derives after a history rewrite\n"
         "  ugh init [path] [--horizon <ref>]   bind git + the kernel op store; mine existing history\n"
         "  ugh mcp [path]              run the MCP stdio server for coding-agent clients\n"
         "  ugh git <args...>           pass through to real git (refuses tree-mutating verbs)\n"
         "\n"
-        "  <sel> resolves an op-id / prefix, a `file::name` symbol, a glob, a feature id/label, or\n"
-        "  an NL phrase; read verbs take --json for the machine-readable ugh.api projection.\n"
+        "  an <address> is a <label>, <label>@<rev>, <path>, <path>::<def>, <path>::<def>@<rev>,\n"
+        "  a <rev>, or <rev>..<rev>; read verbs take --json for the machine-readable ugh.api shape.\n"
     )
     return 0

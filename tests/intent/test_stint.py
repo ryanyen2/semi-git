@@ -1,11 +1,10 @@
 """Tests for `ugh.intent.stint` (capture weave P2, design doc 2026-09-01 §4c): the deterministic
 prompt→op join over capture manifests. Each derivation test carries one of the design's numbered
-cases; `reflect_save`'s emission is covered here on constructed stores, and end-to-end through a
-real save in tests/test_porcelain.py / tests/mcp/test_server.py."""
+cases."""
 
 from __future__ import annotations
 
-from ugh.intent.stint import derive_stints, reflect_save
+from ugh.intent.stint import derive_stints
 
 
 def _turn(tid, session, ts, text, *, seq=0, kind="chat", channel="hook"):
@@ -131,7 +130,6 @@ def test_a_correction_chain_keeps_both_claims(tmp_path):
 
 def test_a_pre_weave_save_derives_to_honest_nothing(tmp_path):
     assert derive_stints({}, "c0", root=tmp_path) == {"stints": [], "residual_op_ids": []}
-    assert reflect_save(tmp_path, "c0") == []
 
 
 def test_absolute_event_paths_ground_repo_relative_footprints(tmp_path):

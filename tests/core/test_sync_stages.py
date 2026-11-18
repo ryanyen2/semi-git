@@ -18,7 +18,6 @@ from ugh.core.store import Store
 from ugh.core.sync.fetch import fetch
 from ugh.core.sync.ingest import Ingested, ingest
 from ugh.core.sync.resolve import resolve
-from ugh.lens.pins import Pins
 from ugh.store.gitbind import GitBinding
 
 from tests.core.test_sync import _BASE, _edit_and_commit, _push, _two_clones
@@ -34,8 +33,6 @@ def test_resolve_advances_the_fork_free_part_and_surfaces_the_fork(tmp_path):
     theirs = make_op({"a.py::foo": (None, "v2")}, {"a.py::foo": b"2"})  # same (sym, before) -> fork
     all_ops = [ours, theirs]
     ing = Ingested(
-        ours_pins=Pins(), theirs_pins=Pins(),
-        ours_tree=None,
         ours_ideal=Ideal.from_ops({ours.id}, all_ops),
         theirs_ideal_ids=frozenset({theirs.id}),
         all_ops=all_ops, theirs_ops=[theirs], mined_ops=[], ops_added=1,
@@ -246,8 +243,6 @@ def _resolve_ingested(tmp_path, all_ops, ours_ids, theirs_ids, base_ids, theirs_
     `theirs_recovery` to "trailers" so `theirs_ids` is treated as theirs' *full* ideal and a
     revert there (an op absent from it) drives the three-way subtraction."""
     return Ingested(
-        ours_pins=Pins(), theirs_pins=Pins(),
-        ours_tree=None,
         ours_ideal=Ideal.from_ops(ours_ids, all_ops),
         theirs_ideal_ids=frozenset(theirs_ids),
         all_ops=all_ops, theirs_ops=[], mined_ops=[], ops_added=0,

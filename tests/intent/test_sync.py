@@ -1,20 +1,13 @@
-"""Tests for the intent overlay's sync reconciliation (plan U5, KTD7): the prompt sidecar unions
-by key as a real part of the sync commit (transactional, like pins/tree), while
-`themes.json` is deliberately left to the next explicit `ugh intent build` -- rebuilding it needs
-`GitBinding.history()`, which only reflects the merged history once the sync/land commit actually
-exists, so a transactional rebuild would either see stale history or write a committed artifact
-into the tree *after* it was already committed. `build_themes`, called as a normal follow-up once
-the sync commit is real, correctly re-derives over the merged op union.
-
-Fixture mirrors `tests/core/test_sync.py`'s two-clone idiom (a bare remote + two working clones)."""
+"""The prompt sidecar unions by key as a real part of the sync commit. Fixture mirrors
+`tests/core/test_sync.py`'s two-clone idiom (a bare remote + two working clones)."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
+from ugh import state
 from ugh.core import lens, sync
-from ugh.core.store import Store
-from ugh.intent import group, prompts, theme
+from ugh.intent import prompts
 from ugh.store.gitbind import GitBinding
 
 from tests.conftest import _clone, _init_bare, _push
@@ -39,17 +32,21 @@ def _two_clones(tmp_path: Path, main_py: str) -> tuple[Path, Path]:
     return a, b
 
 
+def _record(repo: Path, key: str, text: str) -> None:
+    state.save_json(repo, "intent_prompts", {**prompts.load_prompts(repo), key: text})
+
+
 _BASE = "def foo():\n    return 1\n\n\ndef bar():\n    return 2\n"
 
 
 def test_prompt_sidecars_union_across_a_sync_with_distinct_keys(tmp_path):
     a, b = _two_clones(tmp_path, _BASE)
 
-    prompts.record_prompt(a, "plan-a", "fix foo")
+    _record(a, "plan-a", "fix foo")
     _edit_and_commit(a, "main.py", "def foo():\n    return 100\n\n\ndef bar():\n    return 2\n", "bump foo")
     _push(a)
 
-    prompts.record_prompt(b, "plan-b", "fix bar")
+    _record(b, "plan-b", "fix bar")
     _edit_and_commit(b, "main.py", "def foo():\n    return 1\n\n\ndef bar():\n    return 200\n", "bump bar")
 
     report = sync.sync(b, remote="origin", branch="main")
@@ -62,11 +59,11 @@ def test_prompt_sidecars_union_across_a_sync_with_distinct_keys(tmp_path):
 def test_prompt_sidecar_same_key_both_sides_merges_deterministically_no_crash(tmp_path):
     a, b = _two_clones(tmp_path, _BASE)
 
-    prompts.record_prompt(a, "shared-key", "a's version")
+    _record(a, "shared-key", "a's version")
     _edit_and_commit(a, "main.py", "def foo():\n    return 100\n\n\ndef bar():\n    return 2\n", "bump foo")
     _push(a)
 
-    prompts.record_prompt(b, "shared-key", "b's version")
+    _record(b, "shared-key", "b's version")
     _edit_and_commit(b, "main.py", "def foo():\n    return 1\n\n\ndef bar():\n    return 200\n", "bump bar")
 
     report = sync.sync(b, remote="origin", branch="main")
@@ -74,55 +71,3 @@ def test_prompt_sidecar_same_key_both_sides_merges_deterministically_no_crash(tm
 
     result = prompts.prompt_for(b, "shared-key")
     assert result in ("a's version", "b's version")  # deterministic pick, no crash, no duplicate
-
-
-def test_build_themes_after_sync_rederives_over_the_merged_op_union(tmp_path):
-    a, b = _two_clones(tmp_path, _BASE)
-
-    _edit_and_commit(a, "main.py", "def foo():\n    return 100\n\n\ndef bar():\n    return 2\n", "fix(foo): bump foo")
-    _push(a)
-    _edit_and_commit(b, "main.py", "def foo():\n    return 1\n\n\ndef bar():\n    return 200\n", "fix(bar): bump bar")
-
-    report = sync.sync(b, remote="origin", branch="main")
-    assert report.merged
-
-    themes = theme.build_themes(b)
-    all_op_ids = {op.id for op in Store(b).all_ops()}
-    all_shas = {sha for t in themes.values() for sha in t["atom_shas"]}
-
-    # every theme's members are commit shas, never op-ids, and no theme-id repeats for the same
-    # member set (content-addressed minting, U4) -- rebuilding twice in a row proves it.
-    assert all_shas.isdisjoint(all_op_ids)
-    assert theme.build_themes(b) == themes
-
-
-def test_sync_with_no_new_ops_leaves_themes_json_byte_identical(tmp_path):
-    a, b = _two_clones(tmp_path, _BASE)
-    theme.build_themes(b)
-    before = (b / ".sgt" / "intent" / "themes.json").read_text(encoding="utf-8")
-    GitBinding(b).commit_all("build intent themes")  # a clean tree is sync's precondition
-
-    # A no-op sync (nothing new on either side) followed by rebuilding themes again must not
-    # churn the file.
-    sync.sync(b, remote="origin", branch="main")
-    theme.build_themes(b)
-    after = (b / ".sgt" / "intent" / "themes.json").read_text(encoding="utf-8")
-
-    assert before == after
-
-
-def test_two_clones_diverge_then_sync_atoms_partition_the_full_union(tmp_path):
-    """Rung-0/1 determinism carries through a sync: after the union, `group.atoms` still forms a
-    total partition of the merged store with no dropped or duplicated op."""
-    a, b = _two_clones(tmp_path, _BASE)
-
-    _edit_and_commit(a, "main.py", "def foo():\n    return 100\n\n\ndef bar():\n    return 2\n", "bump foo")
-    _push(a)
-    _edit_and_commit(b, "main.py", "def foo():\n    return 1\n\n\ndef bar():\n    return 200\n", "bump bar")
-
-    report = sync.sync(b, remote="origin", branch="main")
-    assert report.merged
-
-    all_op_ids = {op.id for op in Store(b).all_ops()}
-    partitioned = {op_id for atom in group.atoms(b) for op_id in atom.op_ids}
-    assert partitioned == all_op_ids

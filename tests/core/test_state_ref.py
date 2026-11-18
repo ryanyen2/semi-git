@@ -15,7 +15,7 @@ def _seed_local(repo):
     ops.mkdir(parents=True, exist_ok=True)
     (ops / "op-aaa").write_bytes(b'{"id": "op-aaa"}\n')
     (ops / "op-bbb").write_bytes(b'{"id": "op-bbb"}\n')
-    state.save_json(repo, "pins", {"f-0001": "auth"})
+    state.save_json(repo, "names", {"op-aaa": "auth"})
 
 
 def test_publish_then_read_tree_carries_the_traveling_state(tmp_path):
@@ -30,7 +30,7 @@ def test_publish_then_read_tree_carries_the_traveling_state(tmp_path):
     assert set(tree) == {
         ".sgt/ops/op-aaa",
         ".sgt/ops/op-bbb",
-        ".sgt/pins/pins.json",
+        ".sgt/names.json",
     }
     assert tree[".sgt/ops/op-aaa"] == b'{"id": "op-aaa"}\n'
 
@@ -73,12 +73,12 @@ def test_publish_advances_the_ref_when_a_table_changes(tmp_path):
     _seed_local(tmp_path)
     first = state_ref.publish_from_local(gb, tmp_path)
 
-    state.save_json(tmp_path, "pins", {"f-0001": "auth", "f-0002": "sync"})
+    state.save_json(tmp_path, "names", {"op-aaa": "auth", "op-bbb": "sync"})
     second = state_ref.publish_from_local(gb, tmp_path)
 
     assert second != first
     assert gb.parent_of(second) == first  # a new tip chained off the old one
-    assert state_ref.read_tree(gb)[".sgt/pins/pins.json"] != b""
+    assert state_ref.read_tree(gb)[".sgt/names.json"] != b""
 
 
 def test_publish_round_trips_the_mirror_byte_for_byte(tmp_path):

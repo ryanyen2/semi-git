@@ -95,13 +95,3 @@ def test_turns_for_isolates_by_key_and_kind(tmp_path):
     assert turns.turns_for(tmp_path, "a", key_kind="session") == []
 
 
-def test_plan_intake_records_a_turn_keyed_by_session_id(tmp_path):
-    from ugh.loop import plan as plan_mod
-
-    init_store(tmp_path)
-    session = plan_mod.intake(tmp_path, "Fix the login bug across auth and session store.")
-
-    got = turns.turns_for(tmp_path, session.session_id, key_kind="plan")
-    assert len(got) == 1
-    assert got[0]["text"] == "Fix the login bug across auth and session store."
-    assert got[0]["actor"] == "human"

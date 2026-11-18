@@ -2,7 +2,7 @@
 
 Before this module, `.sgt/` layout knowledge was scattered across a dozen modules, each
 hand-rolling its own path and `json.loads`/`write_text`, with no schema versioning. That is a
-problem specific to ugh: `sync` reads committed artifacts (pins, tree) not just from the
+problem specific to ugh: `sync` reads committed artifacts (names, prompts) not just from the
 working tree but from *arbitrary historical git blobs* -- a teammate's ref tip can be any vintage
 (`gb.blob_bytes(theirs_sha, ...)`). So an on-disk format is never retired from the read path; once
 a new schema ships, every reader must keep parsing every schema any ugh version ever committed,
@@ -12,12 +12,11 @@ Every JSON artifact's payload is wrapped in a uniform envelope, `{"schema": <int
 A payload lacking that envelope is implicitly v0 (the pre-U17 shape, byte-for-byte what is committed
 in every real repo's history today). `load_*` accept v0 *and* v1 (dispatch on the envelope); `dump`/
 `save_json` emit the current version. The same decoder serves a working-tree read and a
-blob-at-SHA read, so the historical-blob dispatch that `sync`'s `_pins_at` did ad hoc per artifact
-now lives in exactly one place (`load_blob_json`).
+blob-at-SHA read (`load_blob_json`).
 
-Only the small JSON tables route through here. The content-addressed op store (`.sgt/ops/`,
-`.sgt/local/hollow/`) keeps its own atomic-write + fsck codec in `ugh.core.store` -- it is not a
-"small JSON table" and its content-addressing already gives it cross-version stability.
+Only the small JSON tables route through here. The content-addressed op store (`.sgt/ops/`) keeps
+its own atomic-write + fsck codec in `ugh.core.store` -- it is not a "small JSON table" and its
+content-addressing already gives it cross-version stability.
 """
 
 from __future__ import annotations
@@ -75,21 +74,11 @@ class _Artifact:
 _ARTIFACTS: dict[str, _Artifact] = {
     # committed, team-shared -- read from arbitrary-vintage historical blobs by `sync`.
     "oracle_config": _Artifact(("oracle.json",), committed=True),
-    "pins": _Artifact(("pins", "pins.json"), committed=True, sort_keys=False),
-    "tree": _Artifact(("tree", "tree.json"), committed=True),
-    # committed recovery record of a witness commit's own ideal (op-id list) -- survives a
-    # squash/rebase that destroys `Sgt-Op:` trailers (C5). Distinct from the local, per-ref
-    # `ideal_table` below (that stays authoritative for the *current* ref; this is in-tree history).
-    "ideal": _Artifact(("ideal.json",), committed=True),
     # committed record of the open same-symbol forks a sync surfaced (C4) -- a fork is durable,
     # shared state that travels with the repo so a teammate's next sync (and `ugh status`) sees it.
     "forks": _Artifact(("forks.json",), committed=True),
-    # committed collection of authored features (`ugh.lens.authored`, U6/R3/KTD3): af-id ->
-    # {label, label_witness, member OR-Set (adds+tombstones)}. A user-authored named selection that
-    # is first-class merged state, not a `tree.build` output -- merged field-by-field on sync (OR-Set
-    # membership + witness-topo LWW label + carried af- id), so it travels and is read from
-    # historical blobs like every committed slot.
-    "authored_features": _Artifact(("authored", "features.json"), committed=True, sort_keys=False),
+    # committed names a person or agent gave (`ugh.names`): {op id: label}, merged three-way per op.
+    "names": _Artifact(("names.json",), committed=True),
     # committed three-tier file-boundary overrides (`ugh tiers set`, U27/D4): explicit
     # entity/opaque/ignored patterns, the escape hatch over the built-in grammar-presence
     # default. Read from historical blobs at mining time (`ugh.core.tiers.load_tiers_at`) so
@@ -99,63 +88,28 @@ _ARTIFACTS: dict[str, _Artifact] = {
     # plan-id, session-name, or commit sha -- the same keys `Attribution` carries) -> prompt text.
     # Write-once per key, so sync's merge is a trivial G-Set union (`ugh.intent.prompts.merge`).
     "intent_prompts": _Artifact(("intent", "prompts.json"), committed=True, sort_keys=False),
-    # committed intent-overlay LLM theme assignment (`ugh.intent.theme`, plan U4/KTD7): theme-id
-    # -> label/rationale/member atom-shas/source. Rebuilt-on-sync like the feature tree (re-derive
-    # over the merged op partition, never merged field-by-field) -- content-hash-keyed, so an
-    # unchanged partition re-derives byte-identically and never re-pays or re-names (U5).
-    "intent_themes": _Artifact(("intent", "themes.json"), committed=True, sort_keys=False),
-    # committed feature-scoped intent segments (`ugh.intent.theme_segment`, the checkpoint model):
-    # feature-id -> chronological list of {commit_shas, label, rationale, source}. Persists only the
-    # LLM's boundary+label decision; op membership is re-derived deterministically from commit_shas
-    # on read (KTD6). Rebuilt on demand by `ugh intent build`, same read-vs-build split as themes.
-    "intent_segments": _Artifact(("intent", "segments.json"), committed=True, sort_keys=False),
-    # committed user relabels of a checkpoint (`ugh intent relabel`): feature-id -> {first-commit-sha
-    # -> label}. A separate layer from segments.json (LLM/deterministic boundaries+labels) so a user
-    # edit survives `ugh intent build`. Keyed by the segment's first commit sha -- a stable-ish
-    # identity: if a rebuild moves boundaries so that sha no longer starts a segment, the pin simply
-    # doesn't match and is ignored, exactly like a stale feature-label pin.
-    "intent_segment_pins": _Artifact(("intent", "segment_pins.json"), committed=True, sort_keys=False),
     # local, gitignored -- per-clone, never travels, never read from a blob.
     "verdicts": _Artifact(("local", "oracle.json"), committed=False),
     "witness": _Artifact(("local", "witness.json"), committed=False),
     # local: the miner version that wrote `witness` and `ideal_table`; another version's are stale.
     "mined_by": _Artifact(("local", "mined_by.json"), committed=False),
     "ideal_table": _Artifact(("local", "ideal.json"), committed=False),
-    # local, gitignored clustering/merge suggestion queue (U7): {id: record}, add-only until a
-    # suggestion is accepted (via `ugh feature merge`/`split`/`move`) or dismissed. Local, not a
-    # committed G-Set: suggestions are advisory and *dismissable* (a committed G-Set would need
-    # tombstones), and a cross-clone conflict (U6) surfaces on the clone that ran the sync, which
-    # is where it is resolved. Content-addressed id, so re-emitting the same suggestion is a no-op.
-    "suggestions": _Artifact(("local", "suggestions.json"), committed=False),
-    # local, gitignored per-ref mining-fidelity marks: {ref_key: [sha, ...]} recording the
-    # witnessing commits whose mined ops `order.reduce_to_ideal` had to drop (a fork tip, an
-    # ungrounded op). `grid_view` reads it to mark those commits "partial" instead of silently
-    # omitting the loss (R6). Derived from *this* clone's own reduction pass -- never travels.
-    "fidelity": _Artifact(("local", "fidelity.json"), committed=False),
     # local, gitignored per-ref no-op gate: {ref_key: {fp, ids}} recording the last `_sync`'s
     # fingerprint (HEAD + dirty source content + persisted ideal) and the ideal it produced, so an
     # unchanged tree short-circuits the O(files) dirty mining pass. Derived from this clone's own
     # working state -- never travels, like `witness`.
     "sync_cache": _Artifact(("local", "sync_cache.json"), committed=False),
     # local, gitignored per-ref operation log (`ugh.core.oplog`): the commits ugh made and the
-    # feature-reorg snapshots, which `ugh undo` pops one at a time. Never travels.
+    # names snapshots, which `ugh undo` pops one at a time. Never travels.
     "ideal_journal": _Artifact(("local", "ideal_journal.json"), committed=False),
-    "label_cache": _Artifact(("local", "label_cache.json"), committed=False, sort_keys=False, newline=False),
-    "intent_cache": _Artifact(("local", "intent_cache.json"), committed=False, sort_keys=False, newline=False),
-    "plan_sessions": _Artifact(("local", "plan_sessions.json"), committed=False),
-    "plan_matches": _Artifact(("local", "plan_matches.json"), committed=False),
+    # local, gitignored plan (`ugh.api.plan_view`): {names: [label, ...], baseline: sha}.
+    "plan": _Artifact(("local", "plan.json"), committed=False),
     # local, gitignored raw conversation-turn capture (`ugh.intent.turns`, intent-ledger M1):
     # {turn-id: record} keyed on the same plan-id/session-name/sha provenance keys `intent_prompts`
-    # uses, but multi-turn, ordered, and kept-not-pruned -- the evidence layer reflection reasons
-    # over to derive shareable rationale. Never travels (raw conversation stays on its machine), so
+    # uses, but multi-turn, ordered, and kept-not-pruned -- the evidence `ugh show` quotes the ask
+    # behind a save from. Never travels (raw conversation stays on its machine), so
     # unlike `intent_prompts` it needs no merge; content-addressed, so re-capture is a no-op.
     "intent_turns": _Artifact(("local", "turns.json"), committed=False),
-    # local, gitignored derived rationale records (`ugh.intent.rationale`, intent-ledger M1):
-    # {rationale-id: record} -- reflection's answer to "why do these ops exist", transcribed from a
-    # confirmed plan match over `intent_turns` evidence. Local in M1 (proves the bet with no sync
-    # surface); the committed, CRDT-merged, liveness-joined team tier is M2, gated on the state-model
-    # rework (2026-07-31-001 Phase 1.2). Content-addressed + append-only, so re-reflection is a no-op.
-    "intent_rationale": _Artifact(("local", "rationale.json"), committed=False),
     # local, gitignored agent-action feed (`ugh.intent.activity`): a bounded ring buffer of the
     # last N tool events (one row per Edit/Write) the `PostToolUse` hook appends, which each save's
     # capture manifest copies its window of. Unlike turns it is NOT content-
@@ -183,12 +137,6 @@ _ARTIFACTS: dict[str, _Artifact] = {
     # structural; a bad entry degrades to a re-parse. Per-clone, never travels.
     "extract_cache": _Artifact(("local", "extract_cache.json"), committed=False, compact=True),
     "refs_cache": _Artifact(("local", "refs_cache.json"), committed=False, compact=True),
-    # local, gitignored cache of `ugh.entities.graph.build_entity_graph`'s edges at a given HEAD
-    # sha (`ugh.lens.cluster`): that full-repo source parse is by far the costliest step in the
-    # clustering signal build, yet its result is a pure function of HEAD alone -- so a no-op
-    # refresh or small edit (HEAD unchanged) skips the reparse entirely. Self-healing (a sha
-    # mismatch just triggers a rebuild), never authoritative. Per-clone, never travels.
-    "structural_edge_cache": _Artifact(("local", "structural_edges.json"), committed=False),
     # local, gitignored racy-clean record of the last full `.sgt/ops/` dirent scan
     # (`ugh.core.opindex._ops_dir_stat`): the ops dir's mtime, its dirent count + max entry mtime,
     # and the wall-clock instant the scan *started*. A reader that finds the dir mtime unchanged
@@ -206,14 +154,6 @@ _ARTIFACTS: dict[str, _Artifact] = {
     # only per-path byte-equality and path membership, so a repeat status over an unchanged ideal
     # skips loading frontier images entirely. Self-healing, never authoritative, never travels.
     "mat_manifest": _Artifact(("local", "mat_manifest.json"), committed=False, compact=True),
-    # local, gitignored cache of the fused coupling graph (`ugh.lens.tree.build`) that produced the
-    # last-saved `tree.json`, tagged with that tree's own leaf-structure fingerprint. Lets the next
-    # build detect cross-leaf coupling that gained/lost significance since then (Phase 2's
-    # cross-edge dirtying trigger) without re-deriving the old graph. A fingerprint mismatch (a
-    # foreign `previous`, e.g. from `reconcile`) or missing cache just means that trigger is
-    # skipped for this build -- member-set dirtying still applies. Self-healing, never
-    # authoritative, per-clone, never travels.
-    "fused_snapshot": _Artifact(("local", "fused_snapshot.json"), committed=False),
 }
 
 

@@ -43,18 +43,27 @@ with the ops. The files you see are just this ideal turned back into code.
 `ugh check` checks that the current ideal is valid, and `ugh check --tree` that the files it
 produces match what git actually has.
 
-## The feature tree
+## Steps, names and addresses
 
-Ops are small, one per symbol edit. The feature tree groups them into features, so you can think
-and work at a larger scale than one function at a time. `ugh log --refresh` builds this tree by clustering
-symbols that tend to change together and that reference each other across your history. Each
-feature gets an id like `F3` and a label, and the ids stay the same across rebuilds, so a feature
-keeps its identity as your code grows.
+`ugh` shows each op as a step: one save's change to one definition. Every step prints with its
+address, `path::def@<short sha>`, or `path@<short sha>` for a step on a whole file, a file's head or
+an import.
 
-This automatic grouping needs history to learn from. On a brand-new repo there is not enough
-signal yet to split features apart, so `ugh log` lists one feature for everything. As real
-commits build up, the seams start to appear. You can name a feature in your own words at any time
-with `ugh feature rename`. It only changes the label and never touches your code.
+A name is a label a person or an agent gave to some steps, with `ugh save --as <name>`, `ugh name
+<address> <name>` or `ugh rename <name> <new>`. A step has one name or none. `ugh` never names
+anything itself, and a name never grows by itself: a later edit to a named definition carries no
+name unless it was saved with `--as` or named again. The names live in `.sgt/names.json` and
+travel with your ops; `ugh sync` merges them per step, and when both sides renamed the same step
+differently it keeps yours and prints both.
+
+What stands on a name is not stored. It is the planner's answer to "what would it take to take this
+out": the steps that would go, the steps held because other work stands on them (with the reason),
+and the removal set, the smallest set of steps around the start that nothing outside stands on.
+`ugh show <address>` prints that answer.
+
+Every command that acts on steps takes an address: a name, `name@<rev>`, a path, `path::def`,
+`path::def@<rev>` (one step), a `<rev>` (one save), or `<rev>..<rev>`. An address reaches steps that
+are out as well as steps that are in, so `restore` takes the same addresses as `revert`.
 
 ## The one rule: ugh never writes your code
 
@@ -64,8 +73,8 @@ whether something is `ugh`'s job is whether it would have to invent logic that w
 there. If it would, that is the coding agent's job, not `ugh`'s.
 
 One thing follows from this. Your working tree is always just the current ideal turned back into
-files. Reverting a feature drops that feature's ops and rebuilds the files from what is left. That
-is why a removal still looks clean months later.
+files, and taking steps out is a new edit to the definitions they touched. That is why a removal
+still looks clean months later.
 
 ## Drift
 
@@ -73,15 +82,3 @@ When you edit files directly, your working tree moves ahead of the ideal `ugh` h
 calls that gap drift. It detects drift and refuses to change state on top of edits it has not
 recorded yet, so it never overwrites your work. Run `ugh save` to record the edits as new ops, and
 the drift clears.
-
-## How the visual tools use this model
-
-The [VS Code extension](vscode-extension.md) reads this same model through `ugh <command>
---json`.
-
-- Feature blame shows which feature owns each symbol in a file. It is the per-feature version of
-  `git blame`.
-- The feature map shows the tree itself, with each feature in its own color and a timeline of its
-  ops across commits.
-- The revert preview runs `ugh revert <feature> --emit` and shows what a removal would change,
-  before you commit to it.
