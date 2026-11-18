@@ -19,7 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ugh.core import lens, order
+from ugh.core import order
 from ugh.core.ideal import Ideal
 from ugh.intent import prompts as intent_prompts
 from ugh.lens import authored, reconcile
@@ -41,10 +41,6 @@ class Resolution:
     # Authored features merged field-by-field (U6/R3): OR-Set membership + witness-topo LWW label +
     # carried af- id -- first-class merged state, never rebuilt from the op store like the tree.
     unioned_authored: dict[str, AuthoredFeature] = field(default_factory=dict)
-    # Shared exclusion OR-Sets (Phase 1.2 §E): the per-ref-key union of both clones' revert records,
-    # persisted by `flush_reconciled_metadata` so the merged exclusion becomes authoritative on both
-    # sides (never re-minted by `record_ideal`, which runs with `record_exclusions=False` here).
-    exclusions: dict[str, lens.ExclusionORSet] = field(default_factory=dict)
 
 
 def resolve(repo: Path, ing: Ingested) -> Resolution:
@@ -71,17 +67,6 @@ def resolve(repo: Path, ing: Ingested) -> Resolution:
     removed_seed = set(base - ours)
     if ing.theirs_recovery == "trailers":
         removed_seed |= base - theirs
-
-    # Shared exclusion CRDT (Phase 1.2 §E): union both clones' per-ref revert records by tag, then
-    # seed the subtraction with this ref's *live* exclusions. Unlike the base-diff above -- which only
-    # sees a revert the recovered base still records -- the exclusion is the durable positive record
-    # that survives a git history rewrite and a fresh clone's cold mine (F20), so a teammate's revert
-    # subtracts here even when the base degraded to ∅ or the op rode in as a BOTTOM op via the union.
-    # A *restored* op is a tombstoned tag, so `live()` already drops it -- no separate protection.
-    merged_exclusions = lens.merge_exclusions(ing.ours_exclusions, ing.theirs_exclusions)
-    ref_key = lens.current_ref_key(repo)
-    live_excl = merged_exclusions.get(ref_key, lens.ExclusionORSet()).live() if ref_key else set()
-    removed_seed |= set(live_excl)
 
     removals = set(order.upset_in_many(removed_seed, union_ids, ing.all_ops))
 
@@ -136,5 +121,4 @@ def resolve(repo: Path, ing: Ingested) -> Resolution:
         tree_result=tree_result,
         prompts=prompts,
         unioned_authored=unioned_authored,
-        exclusions=merged_exclusions,
     )

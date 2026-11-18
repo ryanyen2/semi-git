@@ -522,9 +522,8 @@ def history_view(repo, *, full: bool = False, limit: int = 200, offset: int = 0)
     op_leaf = tree_result["op_leaf"] if tree_result else {}
 
     # The shared time-axis rule (`opindex.earliest_commit_sha`): an op's earliest in-history
-    # provenance, falling back to the earliest committed `Sgt-Op:` trailer for a *pending* op (just-
-    # saved work a `record_ideal` witness-advance left provenance-less). `feature_runs`/`group.atoms`
-    # read the same helper so all three time-aware projections agree on when an op happened.
+    # provenance, falling back to the earliest committed `Sgt-Op:` trailer. `feature_runs`/
+    # `group.atoms` read the same helper so all three time-aware projections agree.
     ops = list(opindex.index_ops(repo))
     from ugh.lens.tree import filed_op_leaf
 
@@ -744,14 +743,14 @@ def grid_view(repo) -> dict:
 
 
 def _reverted_unaccounted(repo, shown: set[str]) -> dict:
-    """Code a revert took away that no lane and no chapter draws: the steps the planner's `out`
-    table lists, outside `shown`, whose symbols are gone from the code."""
+    """Code a revert took away that no lane and no chapter draws: the steps that are out
+    (`planner.out_table`), outside `shown`, whose symbols are gone from the code."""
     from ugh.core import opindex
     from ugh.core.lens import current_ideal
     from ugh.core.op import is_bottom
-    from ugh.core.planner import load_out
+    from ugh.core.planner import out_table
 
-    out = load_out(repo)
+    out = out_table(repo)
     if not out:
         return {"op_count": 0, "symbols": []}
     ideal = current_ideal(repo)
@@ -1281,17 +1280,16 @@ def verb_result_out_view(repo, plan, out_dir) -> dict:
     overlay rules: the current fold with the plan's files changed (a planned edit writes nothing
     else)."""
     from ugh.core.fold import code
-    from ugh.core.ideal import Ideal
-    from ugh.core.lens import ops_with_frontier_images
+    from ugh.core.lens import current_ideal, ops_with_frontier_images
 
-    ideal = Ideal(op_ids=frozenset(plan.before_ids))
+    ideal = current_ideal(repo)
     tree = code(ideal, ops_with_frontier_images(repo, ideal))
     for path, (_before, after) in plan.files.items():
         if after is None:
             tree.pop(path, None)
         else:
             tree[path] = after
-    return _sync_fold_dir(out_dir, tree, len(plan.after_ids))
+    return _sync_fold_dir(out_dir, tree, len(ideal.op_ids))
 
 
 def show_at_view(repo, at: str, path: str | None = None) -> dict:
@@ -1660,8 +1658,8 @@ def _segments_out(repo, op_leaf, tree_result) -> list[dict]:
     files_with_entities = _files_with_entities(idx_ops)
     op_commit = {oid: run.commit_index
                  for runs in runs_by_feature.values() for run in runs for oid in run.op_ids}
-    from ugh.core.planner import load_out
-    out_table = load_out(repo)
+    from ugh.core.planner import out_table as _out_table
+    out_table = _out_table(repo)
     tips = ideal.frontier(idx_ops) if head_op_ids else {}
 
     out: list[dict] = []
@@ -2144,8 +2142,8 @@ def _show_consequences(repo, found, symbol_limit: int = 12) -> dict:
     already, and the size of its removal set."""
     from ugh.core import planner
 
-    p = planner.plan(repo, frozenset(found.op_ids), target=found.target)
-    out = planner.load_out(repo)
+    p = planner.plan(repo, frozenset(found.op_ids), target=found.target, removal_set=True)
+    out = planner.out_table(repo)
     held = sorted({hd["step"].symbol for hd in p.held})
     return {
         "ok": p.ok,

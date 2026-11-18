@@ -6,9 +6,9 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from ugh.core.lens import _load_backfill_state, _load_witnesses, _ref_key, get
+from ugh.core.lens import get, sync_status
 from ugh.intent import group, theme
-from ugh.store.gitbind import GitBinding, init_store
+from ugh.store.gitbind import init_store
 
 
 class _FakeResponses:
@@ -155,16 +155,10 @@ def test_scopeless_atom_with_no_client_becomes_a_singleton_theme(tmp_path, monke
 
 
 def _sync_fully(tmp_path) -> None:
-    """`get()` now mines a fresh ref in deadline-bounded chunks (U1-U4) rather than genesis-to-HEAD
-    in one call -- poll it the way a real bounded-timeout client would, until the ref's witness
-    reaches HEAD and any backward genesis-backfill has finished."""
-    gb = GitBinding(tmp_path)
+    """Mine the whole history the way a bounded-timeout client would: one chunk per `get()`."""
     for _ in range(50):
         get(tmp_path)
-        key = _ref_key(gb) or gb.head()
-        witness = _load_witnesses(tmp_path).get(key)
-        backfill = _load_backfill_state(tmp_path).get(key)
-        if witness == gb.head() and (backfill is None or backfill.get("reached_genesis")):
+        if sync_status(tmp_path)["complete"]:
             return
     raise AssertionError("ref did not reach full sync within 50 get() calls")
 

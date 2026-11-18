@@ -143,12 +143,12 @@ def capture_cli_surface(root: str) -> dict:
         seq[0] += 1
         repo = corpus.CORPUS["linear_history"].build(root / f"f{seq[0]}")
         get(repo)
-        _capture(repo, ["revert", "c.py::qux", "--yes"])  # journal one ideal edit to undo
+        _capture(repo, ["revert", "c.py::qux", "--yes"])  # log one take-out commit to undo
         return repo
 
     views["undo"] = {
-        "text": _redact_witness_sha(_capture(_undoable_repo(), ["undo"])),
-        "json": _redact_witness_sha(_capture(_undoable_repo(), ["undo", "--json"])),
+        "text": _redact_bookkeeping_sha(_capture(_undoable_repo(), ["undo"])),
+        "json": _redact_bookkeeping_sha(_capture(_undoable_repo(), ["undo", "--json"])),
     }
     views["undo_nothing_to_undo"] = _both(fresh(), ["undo"])
 

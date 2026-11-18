@@ -47,18 +47,14 @@ class StateRefError(Exception):
 # The JSON tables that move off the branch tree onto `refs/ugh/state`. This is every committed
 # artifact in `state._ARTIFACTS` EXCEPT the two that must stay tracked in the branch tree:
 # `oracle_config` (genuinely team-editable config) and `tiers`
-# (correctness-critical -- read as-of each mined commit, LAW-0). `exclusions` is promoted from
-# local to shared here (Phase 1.2 Step 7): it travels on the ref and merges per-ref-key as an
-# OR-Set in `resolve`, so a revert survives a teammate's sync and a fresh clone's cold bootstrap
-# (F20). `ideal` still travels here during the transition; Step 4 stops writing it (the in-tree
-# C5 recovery record is deleted) and it then simply stops being on disk to carry.
+# (correctness-critical -- read as-of each mined commit, LAW-0). `ideal` still travels here during
+# the transition; Step 4 stops writing it and it then simply stops being on disk to carry.
 _TRAVELING_TABLES: tuple[str, ...] = (
     "pins",
     "tree",
     "ideal",
     "forks",
     "authored_features",
-    "exclusions",
     "intent_prompts",
     "intent_themes",
     "intent_segments",
@@ -142,8 +138,7 @@ def _reconcile_remote_into_ref(gb: GitBinding, repo: Path, local_tip: str | None
     our local `STATE_REF` (False = a concurrent local publisher moved it; the caller re-loops).
 
     This is deliberately not a field-level table merge: the derived tables self-heal on the next
-    sync/mine, and the one table that genuinely needs a field-level CRDT -- the shared exclusion
-    OR-Set -- lands in Step 7."""
+    sync/mine."""
     ours = _local_blobs(repo)
     theirs = read_tree(gb, remote_sha)
 

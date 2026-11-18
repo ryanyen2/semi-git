@@ -55,21 +55,15 @@ _CHAINS_CACHE: "OrderedDict[frozenset, dict[str, list[str]]]" = OrderedDict()
 _CHAINS_CACHE_MAX = 4
 
 
-def link(version: str | None) -> str | None:
-    """The version a chain links on. A minted op salts its after-version with `#<salt>` so two
-    edits that land on the same bytes stay distinct ops; the salt is identity, not content."""
-    return version.split("#", 1)[0] if version is not None and "#" in version else version
-
-
 def chain_edges(ops: list[Op]) -> frozenset[Edge]:
     """(A, B): some symbol's after_version in A equals its before_version in B."""
     producer_after: dict[tuple[str, str], str] = {}
     consumer_before: dict[tuple[str, str], list[str]] = {}
     for op in ops:
         for sym, (before, after) in op.footprint.items():
-            producer_after[(sym, link(after))] = op.id
+            producer_after[(sym, after)] = op.id
             if before is not None:
-                consumer_before.setdefault((sym, link(before)), []).append(op.id)
+                consumer_before.setdefault((sym, before), []).append(op.id)
 
     edges: set[Edge] = set()
     for (sym, version), producer_id in producer_after.items():
@@ -84,12 +78,12 @@ def reference_edges(ops: list[Op]) -> frozenset[Edge]:
     producer_after: dict[tuple[str, str], str] = {}
     for op in ops:
         for sym, (_before, after) in op.footprint.items():
-            producer_after[(sym, link(after))] = op.id
+            producer_after[(sym, after)] = op.id
 
     edges: set[Edge] = set()
     for op in ops:
         for req_sym, req_ver in op.requires:
-            producer_id = producer_after.get((req_sym, link(req_ver)))
+            producer_id = producer_after.get((req_sym, req_ver))
             if producer_id is not None and producer_id != op.id:
                 edges.add((producer_id, op.id))
     return frozenset(edges)
@@ -170,26 +164,14 @@ def components_in(op_ids, ops: list[Op]) -> list[frozenset[str]]:
 
 
 def upset(op_id: str, ops: list[Op]) -> frozenset[str]:
-    """`op_id` and everything that builds on it, over the *whole* op universe -- `↑X` in the
-    ADR's set language.
-
-    VALUE-COLLISION CAVEAT: this resolves chain edges via `_adjacency`'s bare
-    `(symbol, after_version)` producer map, which picks *one* producer on a collision (e.g. a
-    revert landing back on an earlier version's exact bytes) rather than checking existentially.
-    U8's `revert` verb therefore does NOT use this; they use the collision-safe,
-    ideal-relative `upset_in` below (which reasons existentially, the way `is_valid_ideal` and
-    `frontier` were hardened in U7.5). This universe-level form is kept for `tests/core/test_order.py`
-    and any future caller whose input is known collision-free; harden it the same way before
-    using it on inputs that can revert to an earlier version's exact bytes."""
+    """`op_id` and everything that builds on it, over the whole op universe -- `↑X`. Every version
+    has one producer, so the edges are exact."""
     _, successors = _adjacency(ops)
     return _reachable(op_id, successors)
 
 
 def downset(op_id: str, ops: list[Op]) -> frozenset[str]:
-    """`op_id` and everything it builds on, over the whole op universe -- `↓X`.
-
-    Same value-collision caveat as `upset` above; U8's `restore` verb uses the collision-safe,
-    ideal-relative `downset_in` below instead."""
+    """`op_id` and everything it builds on, over the whole op universe -- `↓X`."""
     predecessors, _ = _adjacency(ops)
     return _reachable(op_id, predecessors)
 
@@ -200,24 +182,17 @@ def is_fork_free(ops: list[Op], ideal_ids) -> bool:
 
 
 def forks(ops: list[Op], ideal_ids) -> list[tuple[str, str, str]]:
-    """Every `(symbol, op_a, op_b)` where two in-ideal ops claim a chain step there is room for
-    only one of. A version may recur on a chain (an edit taken out lands on the bytes it replaced,
-    and later work edits on from there), so a step is over-claimed when more ops start from a
-    version than ops produce it (one start from `None`): then the ops cannot be walked as one
-    chain. Deterministic: claimants are sorted and reported pairwise."""
+    """Every `(symbol, op_a, op_b)` where two in-ideal ops claim the same `(symbol, before)`:
+    versions never recur, so a chain is a simple path and that is the only conflict.
+    Deterministic: claimants are sorted and reported pairwise."""
     by_id = {op.id: op for op in ops}
     claims: dict[tuple[str, str | None], list[str]] = {}
-    produced: dict[tuple[str, str], int] = {}
     for op_id in sorted(ideal_ids):
-        for sym, (before, after) in by_id[op_id].footprint.items():
-            claims.setdefault((sym, link(before)), []).append(op_id)
-            key = (sym, link(after))
-            produced[key] = produced.get(key, 0) + 1
+        for sym, (before, _after) in by_id[op_id].footprint.items():
+            claims.setdefault((sym, before), []).append(op_id)
     found: list[tuple[str, str, str]] = []
-    for (sym, before), claimants in sorted(claims.items(), key=lambda kv: (kv[0][0], str(kv[0][1]))):
-        room = 1 if before is None else produced.get((sym, before), 0)
-        if len(claimants) > max(room, 1):
-            found.extend((sym, a, b) for a, b in zip(claimants, claimants[1:]))
+    for (sym, _before), claimants in sorted(claims.items(), key=lambda kv: (kv[0][0], str(kv[0][1]))):
+        found.extend((sym, a, b) for a, b in zip(claimants, claimants[1:]))
     return found
 
 
@@ -245,55 +220,52 @@ def resolvable_forks(
         if op_a is None or op_b is None:
             continue
         fa, fb = op_a.footprint.get(sym), op_b.footprint.get(sym)
-        if fa is None or fb is None or link(fa[1]) == link(fb[1]):
+        if fa is None or fb is None or fa[1] == fb[1]:
             continue
         out.append((sym, a, b))
     return out
 
 
-def parked_forks(ideal_ids, ops: list[Op]) -> list[tuple[str, str, str]]:
-    """The `(symbol, op_a, op_b)` fork triples `reduce_to_ideal` silently drops: `fork_free` grounds
-    `ideal_ids` first, then removes both tips of every same-`(symbol, before)` collision among the
-    *grounded* ops. Reporting forks on the grounded set (not the raw `ideal_ids`) is the point --
-    it keeps a mere reduction-drop (an ungrounded op that only *looks* like it collides with a live
-    one) from surfacing as an open fork; only a divergence both of whose tips are grounded is real.
-    The collecting counterpart of the drop `fork_free` performs, so `lens._sync`'s rebuild can record
-    what it parked in the shared fork store (1.4) instead of excluding it in silence.
-
-    Filtered to *resolvable* forks (`resolvable_forks`): synthetic-symbol and same-after pseudo-forks
-    are neutralized by `fork_free` and carry no user-facing remedy, so recording them only inflates
-    the open-fork count with work that doesn't exist."""
+def _settle(ops: list[Op], ids) -> tuple[set[str], list[tuple[str, str, str]]]:
+    """The claimants to drop, and the forks still open. A fork whose two claimants an in-ideal op
+    `resolves` is settled: the claimant that op does not descend from is dropped. Every other fork
+    drops both claimants."""
     by_id = {op.id: op for op in ops}
-    return resolvable_forks(forks(ops, _grounded(ideal_ids, ops)), by_id)
+    producer = {(sym, after): op_id for op_id in ids for sym, (_b, after) in by_id[op_id].footprint.items()}
+    resolvers = [by_id[o] for o in sorted(ids) if by_id[o].resolves]
+    drop: set[str] = set()
+    open_forks = []
+    for sym, a, b in forks(ops, ids):
+        side = None
+        for r in resolvers:
+            if {a, b} <= r.resolves and sym in r.footprint:
+                v = r.footprint[sym][0]
+                while v is not None and (sym, v) in producer and producer[(sym, v)] not in (a, b):
+                    v = by_id[producer[(sym, v)]].footprint[sym][0]
+                side = producer.get((sym, v)) if v is not None else None
+        if side in (a, b):
+            drop.add(b if side == a else a)
+        else:
+            drop |= {a, b}
+            open_forks.append((sym, a, b))
+    return drop, open_forks
+
+
+def parked_forks(ideal_ids, ops: list[Op]) -> list[tuple[str, str, str]]:
+    """The open `(symbol, op_a, op_b)` forks `reduce_to_ideal` drops, among the grounded ops of
+    `ideal_ids`, filtered to the ones a user can act on (`resolvable_forks`)."""
+    by_id = {op.id: op for op in ops}
+    return resolvable_forks(_settle(ops, _grounded(ideal_ids, ops))[1], by_id)
 
 
 def fork_free(ideal_ids, ops: list[Op]) -> frozenset[str]:
-    """The largest fork-free subset of `ideal_ids`: drop every forked symbol's *two* tips together
-    with their up-sets. Neither tip can be included without deciding which side wins, so nothing
-    transitively built on either can be either. A downward-closed `ideal_ids` minus these
-    upward-closed up-sets stays downward-closed, and having removed both claimants of every forked
-    step it is now fork-free -- a valid ideal by construction (divergence-as-state, U20/C4). Used by
-    `ugh sync`'s resolve to advance a branch by only the fork-free part, and by `lens.ideal_for_ref`
-    so a ref whose committed history contains both tips of a fork still projects a valid ideal (the
-    forked tip never surfaces in `ugh state`/`ugh map`; only the common ancestor does).
-
-    The tip up-sets are removed by *re-grounding* the remainder (`_grounded(ideal_ids - tips)`), the
-    same collision-safe way `upset_in_many` computes what stops being grounded once a set is taken
-    out -- NOT by `_adjacency`/`_reachable` graph-edge reachability. Those bare
-    `(symbol, after_version)` edges pick one producer on an after-value collision (a revert landing
-    on an earlier version's exact bytes, or an add/delete/re-add rebirth), so a graph-edge up-set can
-    leave behind an op that actually lost its footing when a tip was removed -- yielding a set that
-    is fork-free but no longer downward-closed, which `Ideal.from_ops` then rejects. Grounding reasons
-    about which `(symbol, version)` pairs survive rather than following a single mis-resolved edge, so
-    the result is downward-closed and fork-free (removing ops never creates a new `(symbol, before)`
-    collision). Repeated until no fork is left: a version may be produced more than once (`forks`),
-    so dropping a producer can leave fewer starts room there than before."""
+    """The largest fork-free subset of `ideal_ids`: drop both claimants of every open fork (and the
+    claimant a resolving op does not descend from), then re-ground the rest, so everything built
+    on a dropped claimant goes too. A downward-closed set minus what loses its footing stays
+    downward-closed, and removing ops never creates a new claim."""
     ids = frozenset(ideal_ids)
-    while True:
-        tips = {tip for _sym, tip_a, tip_b in forks(ops, ids) for tip in (tip_a, tip_b)}
-        if not tips:
-            return ids
-        ids = _grounded(set(ids) - tips, ops)
+    drop, _open = _settle(ops, ids)
+    return _grounded(set(ids) - drop, ops) if drop else ids
 
 
 def reduce_to_ideal(ideal_ids, ops: list[Op]) -> frozenset[str]:
@@ -373,13 +345,13 @@ def _grounded(ideal_ids, ops: list[Op]) -> frozenset[str]:
     producer_of: dict[tuple, set[str]] = {}
     for op_id, op in by_id.items():
         for sym, (_before, after) in op.footprint.items():
-            producer_of.setdefault((sym, link(after)), set()).add(op_id)
+            producer_of.setdefault((sym, after), set()).add(op_id)
 
     needed: dict[str, set[tuple]] = {}
     for op_id, op in by_id.items():
-        keys = {(sym, link(before)) for sym, (before, _after) in op.footprint.items()
+        keys = {(sym, before) for sym, (before, _after) in op.footprint.items()
                 if before is not None}
-        keys.update((sym, link(ver)) for sym, ver in op.requires)
+        keys.update((sym, ver) for sym, ver in op.requires)
         needed[op_id] = keys
 
     key_dependents: dict[tuple, set[str]] = {}
@@ -431,59 +403,28 @@ def is_valid_ideal(ops: list[Op], ideal_ids) -> bool:
 
 
 def _ordered_chains(ideal_ids, ops: list[Op]) -> dict[str, list[str]]:
-    """Per symbol, the in-ideal op ids in chain order (head -> tip). Each op is a step from its
-    before-version to its after-version (compared by `link`), and the chain is the walk from the
-    head (the op whose before is None) that uses every op once. When each version starts at most
-    one op this is the plain forward walk; when a version recurs (an edit taken out, then work
-    continuing from the restored bytes) the walk is Hierholzer's, which places each return to an
-    earlier version before the step that leaves it for good. Ties go by op id, so the order is
-    deterministic; two orders that tie end on the same version, hence the same bytes.
-
-    The shared spine of `frontier` (tip = last of each chain), `downset_in`'s chain prerequisites,
-    and any verb that needs a symbol's positional order within a valid ideal."""
+    """Per symbol, the in-ideal op ids in chain order (head -> tip): the walk from the op whose
+    before is None (or, in a store slice that starts mid-chain, the earliest version no op in the
+    slice produces) along after -> before. A fork-free ideal's chains are simple paths."""
     by_id = {op.id: op for op in ops}
-
-    starts: dict[str, dict[str | None, list[str]]] = {}
+    starts: dict[str, dict[str | None, str]] = {}
     for op_id in sorted(set(ideal_ids)):
         for sym, (before, _after) in by_id[op_id].footprint.items():
-            starts.setdefault(sym, {}).setdefault(link(before), []).append(op_id)
-
+            starts.setdefault(sym, {}).setdefault(before, op_id)
     chains: dict[str, list[str]] = {}
     for sym, steps in starts.items():
         head = None
         if None not in steps:
-            # A store slice can start mid-chain: start at the earliest version no op in the slice
-            # produces.
-            produced = {link(by_id[o].footprint[sym][1]) for ids in steps.values() for o in ids}
+            produced = {by_id[o].footprint[sym][1] for o in steps.values()}
             roots = sorted(b for b in steps if b not in produced)
             if not roots:
                 continue
             head = roots[0]
-        if all(len(ids) == 1 for ids in steps.values()):
-            op_id = steps[head][0]
-            seq = [op_id]
-            visited = {op_id}
-            after = link(by_id[op_id].footprint[sym][1])
-            while after in steps and steps[after][0] not in visited:
-                op_id = steps[after][0]
-                seq.append(op_id)
-                visited.add(op_id)
-                after = link(by_id[op_id].footprint[sym][1])
-            chains[sym] = seq
-            continue
-        pending = {v: sorted(ids, reverse=True) for v, ids in steps.items()}
-        stack: list[tuple[str | None, str | None]] = [(head, None)]
-        seq = []
-        while stack:
-            version, op_id = stack[-1]
-            if pending.get(version):
-                nxt = pending[version].pop()
-                stack.append((link(by_id[nxt].footprint[sym][1]), nxt))
-            else:
-                stack.pop()
-                if op_id is not None:
-                    seq.append(op_id)
-        seq.reverse()
+        seq: list[str] = []
+        version = head
+        while version in steps and steps[version] not in seq:
+            seq.append(steps[version])
+            version = by_id[steps[version]].footprint[sym][1]
         chains[sym] = seq
     return chains
 
@@ -580,7 +521,7 @@ def downset_in_many(targets, ideal_ids, ops: list[Op]) -> frozenset[str]:
     producers: dict[tuple[str, str], set[str]] = {}
     for oid in set(ideal_ids):
         for sym, (_before, after) in by_id[oid].footprint.items():
-            producers.setdefault((sym, link(after)), set()).add(oid)
+            producers.setdefault((sym, after), set()).add(oid)
 
     result: set[str] = set()
     stack = list(targets)
@@ -595,5 +536,5 @@ def downset_in_many(targets, ideal_ids, ops: list[Op]) -> frozenset[str]:
             if i is not None:
                 stack.extend(chains[sym][:i])
         for req_sym, req_ver in op.requires:  # reference prerequisites
-            stack.extend(producers.get((req_sym, link(req_ver)), ()))
+            stack.extend(producers.get((req_sym, req_ver), ()))
     return frozenset(result)

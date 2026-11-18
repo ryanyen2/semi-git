@@ -56,9 +56,11 @@ def test_hub_symbol_stripped_from_cochange_but_not_structural(tmp_path):
     assert "a.py::foo" not in hubs
     assert "b.py::bar" not in hubs
 
-    # One op per definition: no op pairs foo with shared (or with its import).
+    # One op per definition (with its own gap): no op pairs foo with shared (or with its import).
+    from ugh.core.op import unit_of
+
     assert ("a.py::foo", "hub.py::shared") not in cochange
-    assert not cochange
+    assert all(unit_of(a) == unit_of(b) for a, b in cochange)
 
     # Hub-stripping only affects the co-change signal; the structural (uses) edge survives.
     assert ("a.py::foo", "hub.py::shared") in structural
@@ -134,11 +136,7 @@ def test_signals_bind_work_that_was_saved_through_ugh(tmp_path):
     ideal = get(repo)
     put(repo, ideal, "feat(queue): add beta and gamma together")
 
-    # No re-mine after the save: `put` advanced the witness past its own commit, so this is where a
-    # saved repo *stays* -- the study repos sat at 366 unattributed ops through 26 commits and a
-    # later `get()` never healed them.
     ops = Store(repo).all_ops()
-    assert [o for o in ops if not o.provenance], "fixture must contain pending (saved) ops"
 
     _nodes, fused, _hubs = tree.fused_graph_with_hubs(repo, ops, ideal)
 

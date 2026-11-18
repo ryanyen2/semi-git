@@ -56,16 +56,16 @@ def _vocab(repo: Path, verb: str):
     reduces to a confinement set -- factored out so both read the exact same vocabulary rather
     than risking the two lists drifting apart. `revert` takes out something in the code, so its
     vocabulary is the ops in the current ideal that are not out and did not take anything out.
-    `restore` brings back what is out, so its vocabulary is the steps the out table lists.
+    `restore` brings back what is out, so its vocabulary is the steps that are out.
     Synthetic anchor/residue symbols are filtered from both (`_user_symbols`)."""
     from ugh.api import map_view, oplog_view
     from ugh.core.lens import current_ideal
-    from ugh.core.planner import load_out
+    from ugh.core.planner import out_table
 
     tree = map_view(repo)
     features = [n for n in tree["nodes"] if n["kind"] == "feature"]
 
-    out = load_out(repo)
+    out = out_table(repo)
     ideal_ids = current_ideal(repo).op_ids - set(out) - {t for v in out.values() for t in v}
     all_ops = oplog_view(repo, full=True)["ops"]  # needs each op's footprint (`_user_symbols`)
     if verb == "restore":

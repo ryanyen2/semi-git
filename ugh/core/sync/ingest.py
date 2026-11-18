@@ -68,12 +68,6 @@ class Ingested:
     # other post-U15 additions so a direct `Ingested(...)` construction (tests) needn't supply them.
     ours_authored: dict[str, AuthoredFeature] = field(default_factory=dict)
     theirs_authored: dict[str, AuthoredFeature] = field(default_factory=dict)
-    # Shared exclusion OR-Sets (Phase 1.2 §E): the per-ref-key {adds, tombstones} record of the ops an
-    # explicit revert/pin removed, unioned by tag in `resolve` so a teammate's revert survives our sync
-    # (F20). Defaulted like the other post-U15 additions so a direct `Ingested(...)` (tests) needn't
-    # supply them.
-    ours_exclusions: dict[str, lens.ExclusionORSet] = field(default_factory=dict)
-    theirs_exclusions: dict[str, lens.ExclusionORSet] = field(default_factory=dict)
 
 
 def _pins_at(gb: GitBinding, sha: str) -> Pins:
@@ -148,8 +142,6 @@ def ingest(
         theirs_prompts=intent_prompts.prompts_at(gb, state_sha),
         ours_authored=authored.load_authored(repo),
         theirs_authored=authored.authored_at(gb, state_sha),
-        ours_exclusions=lens.load_exclusions(repo),
-        theirs_exclusions=lens.exclusions_at(gb, state_sha),
         ours_tree=tree.load(repo),
         ours_ideal=lens.current_ideal(repo),
         theirs_ideal_ids=theirs_ideal_ids,

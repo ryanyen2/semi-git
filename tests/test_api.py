@@ -449,36 +449,6 @@ def test_grid_view_names_reverted_work_no_lane_can_show(tmp_path):
     assert any(_is_code_symbol(s) for s in gap["symbols"]), gap["symbols"]
 
 
-def test_a_stale_ideal_table_is_not_read_as_a_revert(tmp_path):
-    """The false alarm this closes. The note was derived from `ideal_for_ref(HEAD) - current_ideal`,
-    but those two disagree for reasons that are nobody's edit: `current_ideal` trusts the persisted
-    table while `ideal_for_ref` rescans provenance, so a table written by an earlier derivation reads
-    as 1500-odd "reverted edits" on a repo where nothing was ever reverted -- measured on this repo's
-    own history. A warning that fires when nothing happened teaches a reader to ignore the warning,
-    which costs more than the case it was built for. The claim is only ever about work a revert
-    took out, so the ops come from the planner's `out` table."""
-    from ugh import api
-    from ugh.api import grid_view
-    from ugh.core import lens
-    from ugh.lens.map import build_map
-    from ugh.store.gitbind import GitBinding
-
-    repo = _mined(tmp_path, "linear_history")
-    build_map(repo)
-    ideal = lens.current_ideal(repo)
-    victim = sorted(op.id for op in Store(repo).all_ops() if op.id in ideal.op_ids)[-1]
-    # A table narrower than a fresh provenance scan, with nothing journaled -- exactly the shape a
-    # derivation leaves, and the shape the old formula mistook for a revert.
-    lens.record_ideal(repo, lens.Ideal(frozenset(ideal.op_ids - {victim})),
-                      GitBinding(repo).head(), journal=False)
-    build_map(repo)
-
-    # `shown=set()` on purpose: the question is whether the *source* of the claim is a user edit, so
-    # no cell may be left to absorb the disagreement. With the old formula this returns the victim.
-    assert api._reverted_unaccounted(repo, set())["op_count"] == 0
-    assert grid_view(repo)["reverted_unaccounted"]["op_count"] == 0
-
-
 def test_grid_view_marks_partial_commits_over_a_fork(tmp_path):
     """U2/R6 end to end: once `_record_fidelity` records a fork's dropped commits, `grid_view`
     reports them in `partial_commits` and marks every cell at those commit-indices "partial" --
@@ -718,7 +688,7 @@ def test_plan_view_reports_matched_step_spans_and_drift_view_reports_the_unpredi
     # mining also mints residue/anchor pseudo-symbol ops for the same two commits (their own,
     # unpredicted drift) -- assert on `bar`'s own entry specifically, not the total count.
     drift = drift_view(repo, full=True)
-    bar_entries = [e for e in drift["entries"] if e["footprint"] == ["a.py::bar"]]
+    bar_entries = [e for e in drift["entries"] if "a.py::bar" in e["footprint"]]
     assert len(bar_entries) == 1
 
 
@@ -728,8 +698,7 @@ def _seed_repo(root):
     (root / "main.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
     gb.commit_all("init")
     ideal = get(root)
-    put_sha = lens.put(root, ideal, message="ugh: init")
-    lens.record_ideal(root, ideal, put_sha)
+    lens.put(root, ideal, message="ugh: init")
     return gb
 
 
@@ -776,7 +745,7 @@ def test_sync_status_reports_complete_from_both_views_on_a_fresh_fully_synced_fi
     `map_view` and `status_view`, per the plan's own scenario (1)."""
     repo = _mined(tmp_path, "mixed_coverage")
 
-    synced = {"complete": True, "reached_genesis": True, "history_rewritten": False}
+    synced = {"complete": True}
     assert map_view(repo)["sync_status"] == synced
     assert status_view(repo)["sync_status"] == synced
 
@@ -787,12 +756,12 @@ def test_sync_status_reports_incomplete_from_both_views_and_neither_view_mines(t
     either view alone triggers no additional mining."""
     import ugh.core.lens as lens_mod
 
-    repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")  # a chunk mines one commit
     monkeypatch.setattr(lens_mod, "_CHUNK_BUDGET_SECONDS", -1.0)
     get(repo)
 
     op_count_before = len(Store(repo).all_ops())
-    behind = {"complete": False, "reached_genesis": False, "history_rewritten": False}
+    behind = {"complete": False}
     assert map_view(repo)["sync_status"] == behind
     assert status_view(repo)["sync_status"] == behind
     assert len(Store(repo).all_ops()) == op_count_before

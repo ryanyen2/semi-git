@@ -84,7 +84,7 @@ def _verb(repo_path: str, verb: str, ref: str, emit: bool, whole: bool = False) 
         return {"ok": False, "verb": verb, "target": ref,
                 "message": f"{ref!r} names no feature, checkpoint, save, op or symbol here"}
     op_ids, label = resolved
-    p = planner.plan(repo_path, op_ids, verb=verb, target=label, whole=whole)
+    p = planner.plan(repo_path, op_ids, verb=verb, target=label, whole=whole, removal_set=emit)
     if emit or not p.ok or not p.files:
         return planner.to_json(p)
     try:

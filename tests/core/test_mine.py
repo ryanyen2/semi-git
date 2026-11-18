@@ -6,6 +6,7 @@ import time
 
 from ugh.core import order
 from ugh.core.mine import mine
+from ugh.core.op import is_bottom
 from ugh.store.gitbind import GitBinding, init_store
 from tests.laws import corpus
 
@@ -17,12 +18,13 @@ def _ops_for_commit(ops, sha):
 _BOOKKEEPING_MARKERS = ("::__residue__", "::__anchor__::")
 
 
+def _entities(op):
+    return sorted(s for s in op.footprint if not any(m in s for m in _BOOKKEEPING_MARKERS))
+
+
 def _entity_ops(ops):
-    """Ops that touch real code entities, excluding anchor/residue file-level bookkeeping."""
-    return [
-        op for op in ops
-        if not any(marker in sym for sym in op.footprint for marker in _BOOKKEEPING_MARKERS)
-    ]
+    """Ops that touch a definition (a definition's op also carries its gap and anchor)."""
+    return [op for op in ops if _entities(op)]
 
 
 def test_tangled_commit_untangles_into_two_ops(tmp_path):
@@ -34,7 +36,7 @@ def test_tangled_commit_untangles_into_two_ops(tmp_path):
     ops, _last_sha = mine(repo)
     entity_ops = _entity_ops(_ops_for_commit(ops, tangled_sha))
     assert len(entity_ops) == 2, [op.footprint for op in entity_ops]
-    touched = {sym for op in entity_ops for sym in op.footprint}
+    touched = {sym for op in entity_ops for sym in _entities(op)}
     assert touched == {"b.py::baz", "c.py::qux"}
 
 
@@ -50,19 +52,17 @@ def test_yaml_edit_yields_one_whole_file_op(tmp_path):
     assert yaml_ops[0].images["config.yaml"] == b"setting: changed\nextra: true\n"
 
 
-def test_binary_change_yields_blob_oid_version(tmp_path):
-    """A binary path's version is the git blob OID, not a re-derived content hash (R7)."""
+def test_binary_add_is_versioned_by_its_bytes(tmp_path):
+    """A binary path is one whole-file symbol, versioned like every other symbol."""
+    from ugh.core.op import version
+
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     first_sha = corpus.commit_shas(repo)[0]
-    gb = GitBinding(repo)
-    expected_oid = gb.blob_oid(first_sha, "logo.bin")
-    assert expected_oid is not None
-
     ops, _last_sha = mine(repo)
     binary_ops = [op for op in _ops_for_commit(ops, first_sha) if "logo.bin" in op.footprint]
     assert len(binary_ops) == 1
-    _before, after_version = binary_ops[0].footprint["logo.bin"]
-    assert after_version == expected_oid
+    raw = GitBinding(repo).blob_bytes(first_sha, "logo.bin")
+    assert binary_ops[0].footprint["logo.bin"] == (None, version("logo.bin", None, raw))
 
 
 def test_unparseable_midedit_degrades_to_whole_file(tmp_path):
@@ -124,7 +124,8 @@ def test_rename_with_reformat_links_as_one_move(tmp_path):
     ops, _last_sha = mine(tmp_path)
     moved = [op for op in _ops_for_commit(ops, sha2) if op.kind == "move"]
     assert len(moved) == 1
-    assert set(moved[0].footprint) == {"a.py::foo"}  # canonical id anchors to the older side
+    assert _entities(moved[0]) == ["a.py::bar", "a.py::foo"]  # one op: the old id goes, the new comes
+    assert is_bottom(moved[0].footprint["a.py::foo"][1])
 
 
 def test_cross_scope_move_is_delete_add_not_silent_weld(tmp_path):
@@ -223,103 +224,72 @@ def test_mine_skips_symlink_delete(tmp_path):
     assert order.is_valid_ideal(ops, ids)
 
 
-# -- U9: rebirth chaining and representation-flip bridging (R13/R14) --------------------------
-
-
-def _readd_bottom(sha: str) -> str:
-    from ugh.core.op import salted_bottom
-    return salted_bottom(sha)
+# -- rebirth: a symbol absent at the parent continues from the removal that closed it ------------
 
 
 def test_add_delete_readd_is_one_chain(tmp_path):
-    """R13: a symbol added, deleted, then re-added mines as ONE chain of three ops
-    (add None->v1, prune v1->salted-bottom, re-add salted-bottom->v2) -- never two births of
-    `(symbol, None)` that `fork_free` would drop. The re-add's before_version is the *deleting*
-    commit's salted bottom, so it grounds and the file materializes completely in `code(I)`."""
+    """A symbol added, deleted, then re-added is one chain of three ops: the re-add continues from
+    the removal's version, so nothing forks and the file materializes."""
     from ugh.core.fold import code
     from ugh.core.ideal import Ideal
-    from ugh.core.op import is_bottom
 
     gb, _ = init_store(tmp_path)
     (tmp_path / "notes.txt").write_text("alpha\n", encoding="utf-8")
     gb.commit_all("add notes")
     (tmp_path / "notes.txt").unlink()
-    del_sha = gb.commit_all("delete notes")
+    gb.commit_all("delete notes")
     (tmp_path / "notes.txt").write_text("beta\n", encoding="utf-8")
     gb.commit_all("re-add notes")
 
     mined, _last_sha = mine(tmp_path)
-    ops = [op for op in mined if "notes.txt" in op.footprint]
-    assert len(ops) == 3
-    kinds = sorted(op.kind for op in ops)
-    assert kinds == ["add", "prune", "rework"]  # add, prune (salted), re-add chained off the prune
-
-    prune = next(op for op in ops if op.kind == "prune")
-    readd = next(op for op in ops if op.kind == "rework")
-    assert prune.footprint["notes.txt"][1] == _readd_bottom(del_sha)   # salted by the deleting commit
-    assert readd.footprint["notes.txt"][0] == _readd_bottom(del_sha)   # re-add chains off THAT bottom
+    add, prune, readd = [op for op in mined if "notes.txt" in op.footprint]
+    assert (add.kind, prune.kind, readd.kind) == ("add", "prune", "add")
     assert is_bottom(prune.footprint["notes.txt"][1])
+    assert readd.footprint["notes.txt"][0] == prune.footprint["notes.txt"][1]
 
-    ids = frozenset(op.id for op in ops)
-    assert order.is_valid_ideal(ops, ids)  # grounded + fork-free: one clean chain
-    materialized = code(Ideal.from_ops(order.reduce_to_ideal(ids, ops), ops), ops)
-    assert materialized["notes.txt"] == b"beta\n"
+    ids = frozenset(op.id for op in (add, prune, readd))
+    assert order.is_valid_ideal(mined, ids)
+    assert code(Ideal.from_ops(ids, mined), mined)["notes.txt"] == b"beta\n"
 
 
-def test_readd_cycle_produces_distinct_chained_ops(tmp_path):
-    """R13: an add->del->A->del->A cycle must NOT collapse two deletions into one bottom -- each
-    delete salts its own bottom (a distinct one per deletion), so each re-add chains onto its own
-    specific delete and the current bytes materialize.
-
-    Note the two flavours: with *distinct* content per rebirth (A->B->C below) the whole cycle
-    linearizes into one valid fork-free chain. With *identical* content each rebirth (the trailing
-    A->A case) the prune-side `before` is the content version, which is necessarily equal across
-    rebirths (content-addressing: identical bytes == identical version) -- so `reduce_to_ideal`
-    collapses that value-collision, but the bytes still materialize correctly. The salt's job (a
-    distinct bottom per deletion, so re-adds don't re-collide on `(symbol, None)`) holds in both."""
-    from ugh.core.fold import code
-    from ugh.core.ideal import Ideal
-
+def test_content_that_recurs_is_a_new_version(tmp_path):
+    """A -> deleted -> A -> deleted -> A: every step is its own version, so the five ops are one
+    simple chain and none collapses into an earlier one."""
     gb, _ = init_store(tmp_path)
-    (tmp_path / "n.txt").write_text("A\n", encoding="utf-8")
-    gb.commit_all("add A")
-    (tmp_path / "n.txt").unlink()
-    del1 = gb.commit_all("del 1")
-    (tmp_path / "n.txt").write_text("B\n", encoding="utf-8")
-    gb.commit_all("re-add B")
-    (tmp_path / "n.txt").unlink()
-    del2 = gb.commit_all("del 2")
-    (tmp_path / "n.txt").write_text("C\n", encoding="utf-8")
-    gb.commit_all("re-add C")
+    for text in ("A\n", None, "A\n", None, "A\n"):
+        if text is None:
+            (tmp_path / "n.txt").unlink()
+        else:
+            (tmp_path / "n.txt").write_text(text, encoding="utf-8")
+        gb.commit_all("step")
 
     mined, _last_sha = mine(tmp_path)
     ops = [op for op in mined if "n.txt" in op.footprint]
-    bottoms = {op.footprint["n.txt"][1] for op in ops if op.kind == "prune"}
-    assert bottoms == {_readd_bottom(del1), _readd_bottom(del2)}  # two DISTINCT salted bottoms
-
-    ids = frozenset(op.id for op in ops)
-    assert order.is_valid_ideal(ops, ids)  # distinct content -> one clean, fork-free chain
-    materialized = code(Ideal.from_ops(order.reduce_to_ideal(ids, ops), ops), ops)
-    assert materialized["n.txt"] == b"C\n"
+    assert len({op.id for op in ops}) == 5
+    chain = order.ordered_chains({op.id for op in ops}, ops)["n.txt"]
+    assert chain == [op.id for op in ops]
 
 
-def test_incremental_mine_chains_readd_when_deletion_predates_since(tmp_path):
-    """R13 / LAW-0: the rebirth lookback is history-derived, not range-derived. When the deletion
-    predates a `since`-restricted incremental mine, the re-add still chains onto the deleting
-    commit's salted bottom (the prune op minted by the earlier mine already sits in the store)."""
+def test_an_incremental_mine_reads_earlier_versions_from_the_store(tmp_path):
+    """The re-add mined in a later call continues from the removal an earlier call stored."""
+    from ugh.core.lens import get
+
     gb, _ = init_store(tmp_path)
     (tmp_path / "n.txt").write_text("A\n", encoding="utf-8")
     gb.commit_all("add")
     (tmp_path / "n.txt").unlink()
-    del_sha = gb.commit_all("delete")
-    (tmp_path / "other.txt").write_text("x\n", encoding="utf-8")
-    since = gb.commit_all("unrelated (start of incremental range)")
+    gb.commit_all("delete")
+    since = gb.commit_all("unrelated")
+    get(tmp_path)
     (tmp_path / "n.txt").write_text("B\n", encoding="utf-8")
     readd_sha = gb.commit_all("re-add long after the delete")
 
-    inc, _last_sha = mine(tmp_path, since=since)  # deletion at del_sha is BEFORE `since`
-    readd = next(op for op in inc if readd_sha in op.provenance and "n.txt" in op.footprint)
-    assert readd.footprint["n.txt"][0] == _readd_bottom(del_sha)  # chained past the range boundary
+    full, _ = mine(tmp_path)
+    inc, _ = mine(tmp_path, since=since)
+    readd = next(op for op in inc if readd_sha in op.provenance)
+    assert readd.id in {op.id for op in full}
+    prune = next(op for op in full if op.kind == "prune")
+    assert readd.footprint["n.txt"][0] == prune.footprint["n.txt"][1]
 
 
 def test_extension_flip_bridges_without_scheme_mix(tmp_path):
@@ -388,15 +358,14 @@ def test_deadline_far_in_the_future_matches_unbounded_mine(tmp_path):
     assert bounded_last_sha == unbounded_last_sha == corpus.commit_shas(repo)[-1]
 
 
-def test_deadline_already_expired_mines_nothing(tmp_path):
-    """A `deadline` already in the past when `mine()` is called must not process even the first
-    commit -- zero ops, `last_sha` stays `None`."""
+def test_a_deadline_already_expired_still_mines_one_commit(tmp_path):
+    """Every chunk makes progress: an expired deadline mines the oldest commit and stops."""
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
 
     ops, last_sha = mine(repo, deadline=time.monotonic() - 1.0)
 
-    assert ops == []
-    assert last_sha is None
+    assert last_sha == corpus.commit_shas(repo)[0]
+    assert ops and all(op.provenance == (last_sha,) for op in ops)
 
 
 def test_deadline_mid_history_stops_after_the_in_flight_commit(tmp_path, monkeypatch):
@@ -417,7 +386,7 @@ def test_deadline_mid_history_stops_after_the_in_flight_commit(tmp_path, monkeyp
 
     monkeypatch.setattr(time, "monotonic", fake_monotonic)
 
-    ops, last_sha = mine(repo, deadline=float(k))
+    ops, last_sha = mine(repo, deadline=float(k - 1))  # the clock is read once per mined commit
     assert last_sha == shas[k - 1]
 
     monkeypatch.undo()  # restore the real clock for the unbounded reference mine below
@@ -449,55 +418,15 @@ def test_deadline_hit_before_target_skips_dirty_pass(tmp_path, monkeypatch):
 
     monkeypatch.setattr(time, "monotonic", fake_monotonic)
 
-    ops, last_sha = mine(tmp_path, deadline=1.0, include_dirty=True)
+    ops, last_sha = mine(tmp_path, deadline=0.0, include_dirty=True)
 
     assert last_sha == gb.commit_shas()[-1]  # commit_shas() is newest-first; only the first (oldest) commit was processed
     assert not any(op.provenance == () for op in ops), "dirty pass ran despite hitting the deadline"
 
 
-def test_rebirth_lookback_walks_each_path_alone_across_merges(tmp_path):
-    """The closing-commit lookback must walk each fresh path's OWN history. At a merge that is
-    TREESAME to more than one parent for a single path, git follows the first TREESAME parent --
-    but a union pathspec can make a different parent the only TREESAME one and prune the side
-    branch holding the closing commit, so the union walk is NOT a superset of per-path walks."""
-    gb, _ = init_store(tmp_path)
-    (tmp_path / "a.txt").write_text("alpha\n", encoding="utf-8")
-    (tmp_path / "b.txt").write_text("b0\n", encoding="utf-8")
-    gb.commit_all("c0")
-    trunk = gb.symbolic_ref().rsplit("/", 1)[-1]
-
-    gb._git("checkout", "-q", "-b", "side")
-    (tmp_path / "a.txt").unlink()
-    del_sha = gb.commit_all("delete a on side")
-    (tmp_path / "a.txt").write_text("alpha\n", encoding="utf-8")
-    gb.commit_all("restore a on side")  # side's net effect on a.txt is nil
-
-    gb._git("checkout", "-q", trunk)
-    (tmp_path / "b.txt").write_text("b1\n", encoding="utf-8")
-    gb.commit_all("modify b on trunk")
-
-    gb._git("checkout", "-q", "side")
-    gb._git("merge", "--no-ff", trunk, "-m", "merge trunk into side")
-    merge_sha = gb.head()
-
-    single = [sha for sha, _ in gb.commits_touching(merge_sha, "a.txt")]
-    # The union walk the miner deliberately avoids -- built inline (production has no such helper,
-    # by design: it's the anti-pattern `commits_touching`'s docstring warns against) to show why.
-    union = gb._git("log", "--format=%H", merge_sha, "--", "a.txt", "b.txt").stdout.split()
-    # Per-path: the merge is TREESAME to both parents for a.txt alone; git's first-parent
-    # tie-break descends the side branch and surfaces the deleting commit.
-    assert del_sha in single
-    # Union: b.txt makes the trunk parent the ONLY TREESAME one, so the whole side branch --
-    # deleting commit included -- is pruned. This is why the miner walks per path; if this
-    # assertion ever fails, git's history simplification changed and the union walk may have
-    # become safe to reconsider.
-    assert del_sha not in union
-
-
 def test_readd_after_merge_chains_across_the_merge(tmp_path):
-    """Re-adding two files in one commit right after a merge chains each fresh symbol onto its
-    own deleting commit -- one on each side of the merge -- exercising the per-path lookback on
-    a merge topology with more than one fresh path in the mined commit."""
+    """Re-adding two files right after a merge continues each from its own removal, one on each
+    side of the merge: the merge took a.txt's absence from the side branch."""
     gb, _ = init_store(tmp_path)
     (tmp_path / "a.txt").write_text("alpha\n", encoding="utf-8")
     (tmp_path / "z.txt").write_text("zeta\n", encoding="utf-8")
@@ -518,8 +447,10 @@ def test_readd_after_merge_chains_across_the_merge(tmp_path):
     gb.commit_all("re-add both")
 
     mined, _last = mine(tmp_path)
-    readd_a = [op for op in mined if op.footprint.get("a.txt", (None, None))[0] == _readd_bottom(del_a)]
-    readd_z = [op for op in mined if op.footprint.get("z.txt", (None, None))[0] == _readd_bottom(del_z)]
+    after = {(sym, del_sha): op.footprint[sym][1] for op in mined for del_sha in op.provenance
+             for sym in op.footprint}
+    readd_a = [op for op in mined if op.footprint.get("a.txt", (None, None))[0] == after[("a.txt", del_a)]]
+    readd_z = [op for op in mined if op.footprint.get("z.txt", (None, None))[0] == after[("z.txt", del_z)]]
     assert readd_a, "a.txt re-add did not chain onto its side-branch deleting commit"
     assert readd_z, "z.txt re-add did not chain onto its trunk deleting commit"
 
@@ -550,7 +481,7 @@ def test_mutually_recursive_functions_in_one_save_are_two_grounded_ops(tmp_path)
 
     ops, _ = mine(tmp_path)
     entity_ops = _entity_ops(_ops_for_commit(ops, sha))
-    assert sorted(sym for op in entity_ops for sym in op.footprint) == ["a.py::even", "a.py::odd"]
+    assert sorted(sym for op in entity_ops for sym in _entities(op)) == ["a.py::even", "a.py::odd"]
     assert len(entity_ops) == 2 and not any(op.requires for op in entity_ops)
     assert order.reduce_to_ideal({op.id for op in ops}, ops) == {op.id for op in ops}
     assert _materialized(tmp_path)["a.py"] == src.encode()

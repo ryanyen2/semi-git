@@ -8,20 +8,14 @@ clobbering it (U7.5, closing the two gaps FINDINGS.md flagged under its 2026-07-
 
 from __future__ import annotations
 
-import time
-
 import pytest
 
 from ugh.core.fold import code
-from ugh.core.ideal import Ideal
 import ugh.core.lens as lens_mod
 from ugh.core.lens import (
     DirtyWorkingTreeError,
-    _load_backfill_state,
     _load_ideal_table,
     _ref_key,
-    _save_backfill_state,
-    _save_ideal_table,
     get,
     init,
     ops_with_frontier_images,
@@ -283,15 +277,10 @@ def _git(repo, *args):
     ).stdout.strip()
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "a take-out is a minted op; a rebase re-mines its commit as a prune of the same version, the two "
-    "fork, both drop, and the definition is back in the record (the tree is untouched)"))
 def test_revert_survives_a_history_rewrite(tmp_path):
-    """1.1 (F11/F20): after reverting an op, rewriting git history so the reverted op's content is
-    re-mined under a *new* commit sha (a rebase) must not silently resurrect it. Before 1.1, `_sync`
-    trusted the persisted table as a base and only *unioned* freshly-mined provenance onto it, so
-    the re-mined op came back. Now the ideal is derived as `reduce(provenance-in-ancestry −
-    exclusions)`, and the revert is a positive exclusion that survives the sha rewrite."""
+    """After a take-out, a rebase that replays every commit under a new sha keeps each symbol's
+    content sequence, so it re-mines to the same ops and the take-out commit's `Ugh-Out:` trailer
+    travels with it: the definition stays out."""
     import json
 
     repo = tmp_path / "repo"
@@ -360,13 +349,10 @@ def test_resync_completes_whatever_the_machine_is_doing(tmp_path, monkeypatch):
         "the re-derived record depends on how fast the machine was")
 
 
-def test_resync_re_derives_the_ideal_after_a_backward_history_rewrite(tmp_path):
-    """P0-B (launch): a *backward* rewrite (`git reset --hard` to an earlier commit, `branch -f`)
-    drops commits from HEAD's ancestry, but the persisted `.sgt/local/ideal.json` still names the
-    ops those commits witnessed -- so `get()` keeps returning the vanished symbols (`log`/`--map`
-    show ghosts, a later `save` can dead-end). `get()` alone does NOT self-heal here (it unions
-    freshly-mined provenance onto the persisted base). `resync` drops just this ref's derived local
-    state and re-mines, so the ideal re-derives from what HEAD actually reaches now."""
+def test_a_backward_history_rewrite_drops_the_lost_commits_ops_on_next_contact(tmp_path):
+    """The ideal is every op mined from the ref's history, so after `git reset --hard` to an
+    earlier commit the next `get()` no longer holds what the dropped commit introduced; `resync`
+    re-derives the same answer from scratch."""
     repo = tmp_path / "repo"
     gb, _ = init_store(repo)
     (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
@@ -376,32 +362,15 @@ def test_resync_re_derives_the_ideal_after_a_backward_history_rewrite(tmp_path):
         "def foo():\n    return 1\n\n\ndef bar():\n    return 2\n", encoding="utf-8"
     )
     gb.commit_all("c2: bar")
-
-    seeded = get(repo)  # ideal knows both foo and bar
-    key = _ref_key(gb) or gb.head()
+    seeded = get(repo)
     assert any("a.py::bar" in o.footprint and o.id in seeded.op_ids for o in Store(repo).all_ops())
-    before_count = len(_load_ideal_table(repo)[key])
 
-    # backward rewrite: drop c2 entirely, so bar's introducing commit leaves HEAD's ancestry
     _git(repo, "reset", "--hard", c1)
-
-    # get() does not self-heal a backward desync -- the dropped op is still in the ideal
-    stale = get(repo)
-    assert any(
-        "a.py::bar" in o.footprint and o.id in stale.op_ids for o in Store(repo).all_ops()
-    ), "expected the pre-fix desync: bar still present before resync"
-
-    res = lens_mod.resync(repo)
-    assert res["key"] == key
-    assert res["after"] < res["before"]  # ops shrank: the dropped commit's ops fell out
-
     healed = get(repo)
-    assert not any(
-        "a.py::bar" in o.footprint and o.id in healed.op_ids for o in Store(repo).all_ops()
-    ), "resync must re-derive the ideal from current HEAD -- bar's commit is gone"
+    assert not any("a.py::bar" in o.footprint and o.id in healed.op_ids for o in Store(repo).all_ops())
     assert any("a.py::foo" in o.footprint and o.id in healed.op_ids for o in Store(repo).all_ops())
-    assert len(_load_ideal_table(repo)[key]) < before_count
-    assert b"def bar" not in (repo / "a.py").read_bytes()
+    res = lens_mod.resync(repo)
+    assert res["after"] == len(healed.op_ids)
 
 
 def test_mine_on_contact_never_ingests_conflict_marker_bytes(tmp_path):
@@ -440,77 +409,23 @@ def test_mine_on_contact_never_ingests_conflict_marker_bytes(tmp_path):
     ), "conflict-marker bytes were mined into a persistent op"
 
 
-def test_backfill_state_round_trips(tmp_path):
-    """`_save_backfill_state`/`_load_backfill_state` are pure passthrough plumbing over
-    `.sgt/local/backfill.json` -- a later unit reads/writes the genesis-backfill frontier through
-    them, but this unit only wires the persistence, not any mining behavior."""
-    repo = tmp_path / "repo"
-    table = {"refs/heads/main": {"genesis_frontier": "abc123", "reached_genesis": False}}
-    _save_backfill_state(repo, table)
-    assert _load_backfill_state(repo) == table
-
-
-def test_backfill_state_missing_file_returns_empty_dict(tmp_path):
-    """Symmetric with `_load_witnesses`'s missing-file behavior: a fresh repo where
-    `_save_backfill_state` was never called loads as `{}`, not an error."""
-    repo = tmp_path / "repo"
-    assert _load_backfill_state(repo) == {}
-
-
 def test_sync_status_reports_complete_on_a_fully_synced_ref(tmp_path):
-    """A freshly-mined ref with nothing left to backfill: `sync_status` (U6, a pure read -- no
-    mining) reports both `complete` and `reached_genesis` true."""
+    """A freshly-mined ref: `sync_status` (a pure read -- no mining) reports `complete`."""
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     get(repo)
-    assert sync_status(repo) == {"complete": True, "reached_genesis": True,
-                                "history_rewritten": False}
+    assert sync_status(repo) == {"complete": True}
 
 
-def test_sync_status_reports_incomplete_while_a_first_contact_chunk_is_still_backfilling(tmp_path, monkeypatch):
-    """A ref whose very first `get()` chunk gets deadline-cut short (U1/U4's chunking) has its
-    witness bootstrapped to head immediately but its genesis backfill still open -- `sync_status`
-    must report `complete=False` even though the ref is already forward-current."""
+def test_a_first_contact_cut_short_by_its_deadline_is_incomplete_and_resumes(tmp_path, monkeypatch):
+    """History is mined oldest first; a first contact whose deadline has passed mines nothing and
+    the ref reports incomplete until a later contact finishes it."""
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
-    monkeypatch.setattr(lens_mod, "_CHUNK_BUDGET_SECONDS", -1.0)  # deadline already past every check
-
+    monkeypatch.setattr(lens_mod, "_CHUNK_BUDGET_SECONDS", -1.0)
     get(repo)
-
-    status = sync_status(repo)
-    assert status["reached_genesis"] is False
-    assert status["complete"] is False
-
-
-def test_sync_survives_a_witness_planted_without_backfill_state(tmp_path):
-    """A witness can land at a ref-key that never went through `_sync`'s own backward walk: every
-    materializing verb (`put()` + `record_ideal`, mirrored here) advances `witness[key]` straight
-    to the commit `put()` just made, and `record_ideal` never touches `backfill.json`. The next
-    ordinary `get()` on that same key then finds `prev_head == head` with a *missing* backfill
-    entry -- defaulted to `{"genesis_frontier": None, "reached_genesis": False}`. This key shape is
-    a detached-HEAD/throwaway-key artifact (every commit under a detached HEAD mints its own
-    never-reused `_ref_key`, e.g. `land`'s per-session worktrees): nothing ever queries
-    `sync_status` for a discarded commit sha, so `_sync` deliberately leaves it alone rather than
-    paying for a backward walk that would also have to survive `land`'s R7 rollback (which restores
-    the git-tracked worktree but never touches gitignored `.sgt/local/*.json`, see
-    `test_cas_exhaustion_restores_and_persists_nothing`). The one hard requirement is that this
-    shape must not crash `_sync` (no `gb.parent_of(None)` TypeError from mistaking a missing
-    backfill record for one that needs a fresh genesis walk)."""
-    from ugh.core.lens import record_ideal
-
-    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
-    gb = GitBinding(repo)
-    gb._git("checkout", "-q", "--detach")
-
-    ideal = get(repo)  # bootstraps *this* detached head's own witness + backfill state
-    put_sha = put(repo, ideal, message="materialize")  # a new commit; HEAD moves past it
-    record_ideal(repo, ideal, put_sha)  # plants witness[put_sha] = put_sha directly (no ref_key)
-
-    key = _ref_key(gb)
-    assert key == put_sha
-    assert key not in _load_backfill_state(repo), "record_ideal should not seed backfill state"
-
-    get(repo)  # must not raise TypeError from gb.parent_of(None)
-
-    assert key not in _load_backfill_state(repo), "a throwaway detached key stays a no-op, not a walk"
+    assert sync_status(repo)["complete"] is False
+    monkeypatch.setattr(lens_mod, "_CHUNK_BUDGET_SECONDS", 10.0)
+    get(repo)
+    assert sync_status(repo)["complete"] is True
 
 
 def _count_snapshot_calls(monkeypatch):
@@ -662,47 +577,6 @@ def test_a_dirty_ignored_tier_file_does_not_block_a_materializing_edit(tmp_path)
     assert (repo / "a.py").is_file()
 
 
-def test_put_refuses_to_roll_back_committed_drift_outside_the_edit_delta(tmp_path):
-    """Phase-0 0.1 (F7/F9): a one-symbol edit's fold rewrites *every* covered path, so a file whose
-    committed on-disk bytes drifted from ugh's recorded ideal (a merge/cherry-pick the miner
-    mis-attributed) is silently rolled back to the stale ideal's content. The delta-scoped guard
-    refuses when a path OUTSIDE the `before Δ after` op-delta would be rewritten, and names it. The
-    drift here is committed (on-disk == HEAD), so `_dirty_conflicts` structurally cannot catch it --
-    only the delta guard does."""
-    repo = tmp_path / "repo"
-    gb, _ = init_store(repo)
-    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    (repo / "b.py").write_text("def bar():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("add foo and bar")
-    (repo / "b.py").write_text("def bar():\n    return 2\n", encoding="utf-8")  # bar gains a modify op
-    gb.commit_all("modify bar")
-    full = get(repo)
-    store = Store(repo)
-
-    # Pin the recorded ideal to EXCLUDE bar's modify op: now `code(current_ideal)` for b.py is the
-    # stale `return 1`, while b.py on disk (and at HEAD) is the committed `return 2`. This is the
-    # committed drift F7 leaves after a mis-mined merge -- reconstructed here at the unit boundary.
-    def _is_bar_modify(op):
-        fp = op.footprint.get("b.py::bar")
-        return fp is not None and fp[0] is not None
-
-    bar_modify = next(oid for oid in full.op_ids if _is_bar_modify(store.get(oid)))
-    foo_add = next(oid for oid in full.op_ids if "a.py::foo" in store.get(oid).footprint)
-    pinned = full.op_ids - {bar_modify}
-    table = _load_ideal_table(repo)
-    table[_ref_key(gb)] = sorted(pinned)
-    _save_ideal_table(repo, table)
-
-    # Now edit only a.py's scope (drop foo). b.py is OUTSIDE this delta, and its on-disk bytes
-    # differ from what the (pinned, stale) ideal materializes -> put must refuse rather than roll
-    # b.py back to `return 1`.
-    edited = Ideal.from_ops(pinned - {foo_add}, store.all_ops())
-    with pytest.raises(DirtyWorkingTreeError) as exc:
-        put(repo, edited)
-    assert "b.py" in str(exc.value)
-    assert (repo / "b.py").read_bytes() == b"def bar():\n    return 2\n"  # never rolled back
-
-
 def test_clean_merge_does_not_fork_a_twice_edited_branch_symbol(tmp_path):
     """1.3 (F7 root cause): mining a merge commit against its FIRST PARENT ONLY re-attributes the
     second parent's whole cumulative delta as one op whose before_version is the merge-base version.
@@ -753,41 +627,6 @@ def test_put_does_not_false_refuse_an_in_sync_unrelated_file(tmp_path):
     _revert(repo, "a.py::foo")  # a one-file edit; must not refuse over the in-sync b.py
 
     assert (repo / "b.py").read_bytes() == b"def bar():\n    return 1\n"  # unrelated file untouched
-
-
-def test_persisted_ideal_survives_re_get_without_resurrecting_excluded_ops(tmp_path):
-    """Gap 1 (U7.5): once `.sgt/local/ideal.json` holds an explicit (smaller) ideal for a ref, a
-    re-`get()` with no new commits returns exactly that set -- an intentionally excluded op is
-    not re-derived back in by a provenance scan of git history (the durability U8's revert/pin
-    verbs will depend on)."""
-    repo = tmp_path / "repo"
-    gb, _ = init_store(repo)
-    (repo / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
-    gb.commit_all("add foo")
-    (repo / "a.py").write_text("def foo():\n    return 2\n", encoding="utf-8")
-    gb.commit_all("modify foo")
-    full = get(repo)
-    store = Store(repo)
-
-    # The modify op (a chain tip, so dropping it keeps a valid ideal) is what we exclude.
-    def _is_foo_modify(op):
-        fp = op.footprint.get("a.py::foo")
-        return fp is not None and fp[0] is not None
-
-    modify_id = next(oid for oid in full.op_ids if _is_foo_modify(store.get(oid)))
-    subset = full.op_ids - {modify_id}
-
-    table = _load_ideal_table(repo)
-    table[_ref_key(gb)] = sorted(subset)
-    _save_ideal_table(repo, table)
-
-    reideal = get(repo)  # no new commits since the witness
-    assert reideal.op_ids == subset  # exactly the persisted subset, not the full history
-    assert modify_id not in reideal.op_ids
-
-    materialized = code(reideal, store.all_ops())
-    assert b"return 1" in materialized["a.py"]  # the excluded modify really is gone from the fold
-    assert b"return 2" not in materialized["a.py"]
 
 
 def test_init_on_large_corpus_repo_within_budgets(tmp_path):
@@ -1056,7 +895,7 @@ def test_fsck_tree_rebirth_file_reproduced_not_drift_or_backstop(tmp_path):
 def test_fsck_tree_reports_real_drift_for_a_foreign_edit(tmp_path):
     """R2: a committed edit ugh never absorbed (bytes at HEAD differ from `code(current_ideal)`)
     is real drift -- surfaced with a remedy direction, not hidden."""
-    from ugh.core.lens import fsck_tree, current_ideal, record_ideal
+    from ugh.core.lens import fsck_tree
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     ideal = get(repo)
     put(repo, ideal)
@@ -1077,67 +916,22 @@ def _tracked_after(repo):
     return [l for l in out.splitlines() if l and not l.startswith(".sgt/")]
 
 
-def test_a_chunked_backfill_admits_every_op_the_finished_store_can_ground(tmp_path, monkeypatch):
-    """A history mined in several deadline-cut chunks must end at the same ideal as one mined whole.
-
-    Backward backfill reduces after every chunk, and an op whose producer is older than the chunk
-    boundary is legitimately ungrounded *at that moment* -- so reduction drops it. The drop has to be
-    reconsidered once the producer lands, and it was not: `base_ids` is the previous reduced answer, so
-    the dropped op is in neither `base_ids` nor `new_committed_ids` on the next chunk and never comes
-    back (F68 layer 2). Worse, once `reached_genesis` flips, the no-op gate's fingerprint covers HEAD,
-    the working tree, and the ideal entry but *not* the op store -- so no later read recomputes either
-    (F68 layer 1). Measured on a real corpus repo this cost ~17 points of byte-exact reconstruction at
-    the median.
-
-    The invariant is chunk-invariance of the *result*, so this asserts against `reduce_to_ideal` over
-    the finished store rather than a hardcoded count: whatever the store can ground, the persisted
-    ideal must admit.
-    """
-    from ugh.core import order
+def test_a_history_mined_in_chunks_gives_the_ops_of_one_whole_mine(tmp_path, monkeypatch):
+    """History is mined oldest first and every version is read from history, so mining it one
+    commit per contact gives exactly the ops and the ideal of mining it in one go."""
     from ugh.core.lens import current_ideal
 
-    # Self-calibrate the chunk budget instead of hardcoding one: a fixed number starves the walk on a
-    # slow machine (below one commit's cost, no chunk ever mines anything and the frontier never moves)
-    # and lets a fast one finish in a single chunk, which would make this test pass while testing
-    # nothing. Time one whole mine on a throwaway copy, then give each chunk a third of it.
-    warmup = corpus.CORPUS["linear_history"].build(tmp_path / "warmup")
-    started = time.monotonic()
-    get(warmup)
-    monkeypatch.setattr(lens_mod, "_CHUNK_BUDGET_SECONDS", (time.monotonic() - started) / 3)
-
-    # Shrink the budget until the walk actually takes more than one chunk, rather than calibrating
-    # once and asserting. The warm-up mine leaves the page cache hot, so the timed run is routinely
-    # faster than the run it was timing, and a third of it can still swallow the whole history in
-    # one go. That is not a failure of the invariant under test, it is the fixture failing to set
-    # itself up, and it was failing CI on whichever Python version happened to get the fastest
-    # runner while the other two passed.
-    budget = lens_mod._CHUNK_BUDGET_SECONDS
-    for attempt in range(6):
-        monkeypatch.setattr(lens_mod, "_CHUNK_BUDGET_SECONDS", budget / (4 ** attempt))
-        repo = corpus.CORPUS["linear_history"].build(tmp_path / f"repo{attempt}")
-        chunks = 0
-        for _ in range(60):
-            get(repo)
-            chunks += 1
-            if sync_status(repo)["reached_genesis"]:
-                break
-        if sync_status(repo)["reached_genesis"] and chunks > 1:
-            break
-    else:
-        pytest.skip("could not force a multi-chunk mine on this machine; the invariant is untested "
-                    "here rather than violated")
-
-    assert sync_status(repo)["reached_genesis"], "chunked walk never finished; test cannot conclude"
-    assert chunks > 1, "history mined in one chunk; test cannot conclude"
-
-    ops = Store(repo).all_ops()
-    groundable = set(order.reduce_to_ideal(frozenset(o.id for o in ops), ops))
-    assert groundable, "no groundable ops; fixture mined nothing"
-    admitted = set(current_ideal(repo).op_ids)
-    assert admitted == groundable, (
-        f"chunked mining left {len(groundable - admitted)} groundable ops out of the ideal "
-        f"(admitted {len(admitted)} of {len(groundable)})"
-    )
+    whole = corpus.CORPUS["linear_history"].build(tmp_path / "whole")
+    get(whole, unbounded=True)
+    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
+    monkeypatch.setattr(lens_mod, "_CHUNK_BUDGET_SECONDS", 0.0)
+    chunks = 0
+    while not sync_status(repo)["complete"]:
+        get(repo)
+        chunks += 1
+    assert chunks > 1
+    assert {o.id for o in Store(repo).all_ops()} == {o.id for o in Store(whole).all_ops()}
+    assert current_ideal(repo).op_ids == current_ideal(whole).op_ids
 
 
 def test_fsck_tree_classifies_a_tracked_path_with_a_non_ascii_name(tmp_path):

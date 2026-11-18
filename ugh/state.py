@@ -118,19 +118,9 @@ _ARTIFACTS: dict[str, _Artifact] = {
     # local, gitignored -- per-clone, never travels, never read from a blob.
     "verdicts": _Artifact(("local", "oracle.json"), committed=False),
     "witness": _Artifact(("local", "witness.json"), committed=False),
+    # local: the miner version that wrote `witness` and `ideal_table`; another version's are stale.
+    "mined_by": _Artifact(("local", "mined_by.json"), committed=False),
     "ideal_table": _Artifact(("local", "ideal.json"), committed=False),
-    # local: step op id -> the ids of the ops that took it out (`ugh.core.planner`).
-    "out": _Artifact(("local", "out.json"), committed=False),
-    # committed, ref-carried per-ref exclusion OR-Set (1.1, promoted to shared in 1.2 §E):
-    # {ref_key: {"adds": [[op_id, tag], ...], "tombstones": [tag, ...]}}. The *positive* record of
-    # the ops an explicit edit (revert/pin, U8) removed -- the source of truth
-    # `ideal(ref) = reduce(provenance-in-ancestry − exclusions)` derives from. Demotes `ideal_table`
-    # to a cache: a reverted op stays gone across a git history rewrite (rebase/cherry-pick re-mines
-    # the same content under a new sha) because the exclusion, not the mere absence from a trusted
-    # table, is what subtracts it (F11/F20). Shared so the revert survives a *fresh clone's* cold
-    # bootstrap (F20): the op is still in git history, so the clone's mine re-adds it by provenance
-    # unless the exclusion travels on `refs/ugh/state`. Merges per-ref-key as an OR-Set on sync.
-    "exclusions": _Artifact(("exclusions.json",), committed=True),
     # local, gitignored clustering/merge suggestion queue (U7): {id: record}, add-only until a
     # suggestion is accepted (via `ugh feature merge`/`split`/`move`) or dismissed. Local, not a
     # committed G-Set: suggestions are advisory and *dismissable* (a committed G-Set would need
@@ -142,28 +132,13 @@ _ARTIFACTS: dict[str, _Artifact] = {
     # ungrounded op). `grid_view` reads it to mark those commits "partial" instead of silently
     # omitting the loss (R6). Derived from *this* clone's own reduction pass -- never travels.
     "fidelity": _Artifact(("local", "fidelity.json"), committed=False),
-    # local, gitignored per-ref genesis-backfill frontier: how far backward a backfill of
-    # pre-horizon history has progressed for a given ref. Never travels -- like `witness` and
-    # `ideal_table`, it's derived from *this* clone's own mining progress.
-    "backfill": _Artifact(("local", "backfill.json"), committed=False),
     # local, gitignored per-ref no-op gate: {ref_key: {fp, ids}} recording the last `_sync`'s
     # fingerprint (HEAD + dirty source content + persisted ideal) and the ideal it produced, so an
     # unchanged tree short-circuits the O(files) dirty mining pass. Derived from this clone's own
-    # working state -- never travels, like `witness`/`backfill`.
+    # working state -- never travels, like `witness`.
     "sync_cache": _Artifact(("local", "sync_cache.json"), committed=False),
-    # local, gitignored: the HEAD a `resync` was last run at, so `status` stops advising a resync
-    # that has already happened. The ops a resync cannot drop are ones whose content is live in the
-    # working tree, and a second run changes nothing -- but without this the advice repeated
-    # forever, which is the "remedy that reports success without fixing anything" this module's
-    # `_history_rewritten` warns about.
-    "resynced_at": _Artifact(("local", "resynced_at.json"), committed=False),
-    # local, gitignored per-ref UNIFIED operation-event log (`ugh.core.oplog`, U8/KTD6): the single
-    # store `ugh undo` walks. It began (U26) as the ideal-edit journal -- `record_ideal` still
-    # pushes the outgoing ideal (+ witness) as one `ideal_edit` event before each overwrite -- and
-    # U8 *subsumed* it into this one log so every mutating verb's inverse is here (feature-reorg
-    # snapshots), one pop per undo. Kept at the same slot/path so
-    # historical local journals still load; an entry with no `kind` is read as `ideal_edit`. Never
-    # travels.
+    # local, gitignored per-ref operation log (`ugh.core.oplog`): the commits ugh made and the
+    # feature-reorg snapshots, which `ugh undo` pops one at a time. Never travels.
     "ideal_journal": _Artifact(("local", "ideal_journal.json"), committed=False),
     "label_cache": _Artifact(("local", "label_cache.json"), committed=False, sort_keys=False, newline=False),
     "intent_cache": _Artifact(("local", "intent_cache.json"), committed=False, sort_keys=False, newline=False),

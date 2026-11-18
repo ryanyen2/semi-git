@@ -68,7 +68,6 @@ authored/
 intent/
 ideal.json
 forks.json
-exclusions.json
 """
 
 
@@ -263,8 +262,8 @@ class Store:
 
     def add(self, op: Op) -> Op:
         """Append ``op``. Rejects anything whose id doesn't match its own content. If an op
-        with the same id already exists, its provenance *and* structured attribution are unioned
-        (both appendable, R8/D7) rather than the file being duplicated or overwritten -- every
+        with the same id already exists, its provenance, structured attribution and `resolves` are
+        unioned (all appendable, R8/D7) rather than the file being duplicated or overwritten -- every
         other field is identical by construction (same content address). The file is rewritten
         only when either side actually changed."""
         self._validate(op)
@@ -274,11 +273,14 @@ class Store:
                 existing = _deserialize(path.read_bytes())
                 merged_provenance = tuple(sorted(set(existing.provenance) | set(op.provenance)))
                 merged_attribution = merge_attribution(existing.attribution, op.attribution)
+                merged_resolves = existing.resolves | op.resolves
                 if (merged_provenance == existing.provenance
-                        and merged_attribution == existing.attribution):
+                        and merged_attribution == existing.attribution
+                        and merged_resolves == existing.resolves):
                     return existing
                 merged = replace(
-                    existing, provenance=merged_provenance, attribution=merged_attribution
+                    existing, provenance=merged_provenance, attribution=merged_attribution,
+                    resolves=merged_resolves,
                 )
                 _write_atomic(path, _serialize(merged))
                 return merged
@@ -399,19 +401,13 @@ class FsckReport:
     op_index_stale: bool = False  # the `ugh.core.opindex` sidecar is out of date. Advisory, like
     # `mixed_versions` -- the next read self-heals via a rebuild, so this only surfaces that the
     # *next* read view pays that rebuild cost rather than the cheap incremental path.
-    pending_chain_gaps: tuple[str, ...] = ()  # `chain_gaps` entries that sit exactly at a ref's
-    # in-progress genesis-backfill frontier (U5) -- expected, self-healing once the backfill
-    # finishes, so these are split out of `chain_gaps` and never flip `ok`.
 
 
 def _chain_gaps(ops: list[Op]) -> dict[str, set[str]]:
     """Every `symbol@before_version` step whose predecessor version is produced by no op in the
     store -- the R11 linearity check -- mapped to the provenance shas of the op(s) that reference
     it. Advisory: a squashed/rebased-away branch legitimately leaves an off-ref predecessor gap
-    (FINDINGS U22.5), so a gap is reported, never treated as corruption. The provenance is returned
-    so callers (U5) can tell a genuine gap apart from one that sits at an in-progress backfill's
-    frontier -- the oldest op mined by a chunked backward walk carries the frontier sha as its own
-    provenance."""
+    (FINDINGS U22.5), so a gap is reported, never treated as corruption."""
     produced: set[tuple[str, str]] = set()
     for op in ops:
         for sym, (_before, after) in op.footprint.items():
@@ -472,28 +468,14 @@ def fsck(repo: str | Path) -> FsckReport:
 
     mixed = tuple(sorted(versions)) if len(versions) > 1 else ()
 
-    # Split chain gaps that sit exactly at an in-progress genesis-backfill's frontier (U5) out of
-    # the confirmed set: a ref whose chunked backward walk (U3/U4) hasn't reached genesis yet
-    # leaves its oldest-mined op referencing a predecessor version one chunk further back, which is
-    # indistinguishable from a genuine gap by footprint alone -- provenance is what tells them apart.
-    open_frontiers = {
-        entry["genesis_frontier"]
-        for entry in state.load_json(repo, "backfill", default={}).values()
-        if entry.get("genesis_frontier") and not entry.get("reached_genesis", False)
-    }
-    gap_provenance = _chain_gaps(ops)
-    pending_chain_gaps = sorted(g for g, prov in gap_provenance.items() if prov & open_frontiers)
-    confirmed_chain_gaps = sorted(g for g, prov in gap_provenance.items() if not (prov & open_frontiers))
-
     return FsckReport(
         ok=not (bad_hash or corrupt or invalid_ideals or unreachable or mixed),
         checked=len(names),
         bad_hash=tuple(bad_hash),
         corrupt=tuple(corrupt),
-        chain_gaps=tuple(confirmed_chain_gaps),
+        chain_gaps=tuple(sorted(_chain_gaps(ops))),
         invalid_ideals=tuple(sorted(invalid_ideals)),
         unreachable_witnesses=tuple(sorted(unreachable)),
         mixed_versions=mixed,
         op_index_stale=opindex.is_stale(repo),
-        pending_chain_gaps=tuple(pending_chain_gaps),
     )

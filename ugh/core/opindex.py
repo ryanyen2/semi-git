@@ -244,11 +244,8 @@ def earliest_commit_sha(gb, rows, ops) -> dict[str, str]:
     projections agree on *when* an op happened.
 
     An op's own in-history provenance wins (the earliest of its witnessing commits present in
-    `rows`). A *pending* op -- one materialized by a `put`/`commit_materialized` witness commit that
-    a later `record_ideal` advanced the ref's witness past, so `_sync` never re-mined its diff to
-    stamp provenance -- carries an empty `provenance` and would otherwise be dropped, hiding
-    just-saved work from every time-aware view. It falls back to the earliest commit whose committed
-    ``Sgt-Op:`` trailers name it (the tree-witnessed record of which ops that commit embodies).
+    `rows`). An op with no provenance in `rows` falls back to the earliest commit whose committed
+    ``Sgt-Op:`` trailers name it.
 
     Read-time only: no store write, so a save leaves the working tree clean. (Stamping the witness
     sha into the store instead would rewrite tracked ``.sgt/ops`` files *after* the commit, leaving

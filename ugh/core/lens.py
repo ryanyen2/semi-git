@@ -1,32 +1,15 @@
-"""The lens: get/put integration with git (ADR S6; plan R8, R9, R10, R20).
+"""The lens: get/put integration with git.
 
-`get` mines any commits new to the current ref since that ref's last witness, persists them
-into the store (whose provenance-merge on a content-address collision *is* the identification
-law, R8), then reconstructs the ref's current ideal as every stored op whose provenance
-intersects the ref's own commit ancestry. A squash merge or rebase lands its result as a new
-witness commit on ops that already exist (same content, same id), so it's absorbed into the
-ref's ideal rather than forking (AE1) -- no special-casing, this falls out of content-addressing
-plus ref-ancestry membership. A `git checkout` to a ref this lens has never tracked mines that
-ref's own history cold; that's slower, never wrong, since re-mining already-known content just
-re-derives the same op ids and merges witnesses.
+`get` mines the commits new to the current ref since its witness, oldest first, persists them into
+the store (whose provenance merge on a content-address collision is the identification law), and
+returns the ref's ideal: every op mined from the ref's history, reduced to a valid ideal, plus the
+working tree's uncommitted edits. Every op comes from mining a commit, ugh's own commits included,
+so the ideal only grows and `code(I)` is the ref's tree. A first contact mines the history oldest
+first in deadline-bounded chunks; the witness records how far it got.
 
-`put` runs `code(I)` and writes the result to the working tree (deleting any git-tracked path
-the ideal no longer covers), then commits with `Sgt-Op:` trailers naming every op the tree now
-embodies. Mine-before-materialize (R9) is why every mutating verb should call `get` before
-computing its edit: a dirty working tree or a foreign commit made outside ugh is absorbed first,
-so the verb's own change lands on top of *current* reality, not stale state.
-
-`init(repo, horizon=...)` is the genesis-horizon mechanism (R10): pre-horizon history is never
-mined at all -- everything at the horizon commit becomes one add-op per symbol (via `mine`'s
-`treat_as_root`), and mining continues normally from there to HEAD. Lazy background mining of
-pre-horizon history is deliberately out of scope here (plan Scope Boundaries).
-
-A ref with no horizon that `get()` meets for the first time does not mine its full history in one
-shot: `_sync` bootstraps its witness to HEAD immediately, then walks the rest of that history
-backward one deadline-bounded chunk per call, checkpointing its genesis-backfill frontier after
-every chunk (see `_sync`'s own comments). So a client with a bounded per-call timeout makes
-durable forward progress on a never-before-synced ref instead of restarting from scratch on every
-retry.
+`put` writes `code(I)` to the working tree and commits it with `Sgt-Op:` trailers; `commit` mines
+that commit like any other. `init(repo, horizon=...)` mines the horizon commit against the empty
+tree and never mines deeper history.
 """
 
 from __future__ import annotations
@@ -36,8 +19,6 @@ import json
 import os
 import subprocess
 import time
-import uuid
-from dataclasses import dataclass
 from pathlib import Path
 
 from ugh import state
@@ -74,8 +55,15 @@ def merge_in_progress(gb: GitBinding) -> str | None:
     return None
 
 
+def _mined_by_this_miner(repo: Path) -> bool:
+    """Whether the local witness and ideal tables were written by this miner version. Another
+    version's ops are not this version's, so its tables are empty to this one and history is mined
+    again from the start."""
+    return state.load_json(repo, "mined_by", default=None) == MINER_VERSION
+
+
 def _load_witnesses(repo: Path) -> dict[str, str]:
-    return state.load_json(repo, "witness", default={})
+    return state.load_json(repo, "witness", default={}) if _mined_by_this_miner(repo) else {}
 
 
 def _save_witnesses(repo: Path, table: dict[str, str]) -> None:
@@ -83,102 +71,13 @@ def _save_witnesses(repo: Path, table: dict[str, str]) -> None:
 
 
 def _load_ideal_table(repo: Path) -> dict[str, list[str]]:
-    """The persisted per-ref ideal: `{ref_key: [sorted op_ids]}`. This is the durable committed
-    ideal (never the dirty overlay) that lets an explicit ideal edit (revert/pin, U8) survive a
-    re-`get()` -- provenance alone can't represent "excluded though still in git history"."""
-    return state.load_json(repo, "ideal_table", default={})
+    """The per-ref ideal cached from history: `{ref_key: [sorted op_ids]}`, never the dirty
+    overlay."""
+    return state.load_json(repo, "ideal_table", default={}) if _mined_by_this_miner(repo) else {}
 
 
 def _save_ideal_table(repo: Path, table: dict[str, list[str]]) -> None:
     state.save_json(repo, "ideal_table", table)
-
-
-@dataclass(frozen=True)
-class ExclusionORSet:
-    """The ops an explicit edit (revert/pin, U8) removed from a ref's ideal, as an OR-Set (1.1):
-    each exclusion `add` carries a globally-unique tag, a re-include (restore/cherry-pick, or the
-    undo of a revert) tombstones the tags it locally observes, and the *live* exclusion set is every
-    op-id with at least one non-tombstoned tag. This is the *positive* record that makes a revert
-    durable: `ideal(ref) = reduce(provenance-in-ancestry − exclusions.live())`, so a later git
-    history rewrite that re-mines the same content under a new sha (rebase/cherry-pick) can no
-    longer resurrect a reverted op through provenance -- the exclusion subtracts it regardless
-    (F11/F20)."""
-
-    adds: frozenset[tuple[str, str]] = frozenset()  # (op_id, tag)
-    tombstones: frozenset[str] = frozenset()  # tombstoned tags
-
-    def live(self) -> frozenset[str]:
-        """Every op-id that still has an un-tombstoned exclusion tag -- what the ideal subtracts."""
-        dead = self.tombstones
-        return frozenset(oid for (oid, tag) in self.adds if tag not in dead)
-
-    def head(self) -> str:
-        """A stable content fingerprint of the live exclusion set, for change detection."""
-        return hashlib.sha256(",".join(sorted(self.live())).encode()).hexdigest()[:16]
-
-    def union(self, other: ExclusionORSet) -> ExclusionORSet:
-        """Merge two clones' OR-Sets by tag (Phase 1.2 §E): a
-        concurrent revert (an add carrying a tag the other side never saw) survives, and a restore
-        (a tombstone) travels. Never merges by bare op-id -- that is what makes the shared exclusion
-        log a CRDT rather than a lossy last-writer-wins set."""
-        return ExclusionORSet(self.adds | other.adds, self.tombstones | other.tombstones)
-
-
-def _exclusion_from_body(body: dict | None) -> ExclusionORSet:
-    if body is None:
-        return ExclusionORSet()
-    return ExclusionORSet(
-        adds=frozenset((oid, tag) for oid, tag in body.get("adds", [])),
-        tombstones=frozenset(body.get("tombstones", [])),
-    )
-
-
-def load_exclusions(repo: Path) -> dict[str, ExclusionORSet]:
-    """The per-ref exclusion OR-Sets: `{ref_key: ExclusionORSet}`. Absent file loads as `{}`."""
-    raw = state.load_json(repo, "exclusions", default={})
-    return {key: _exclusion_from_body(body) for key, body in raw.items()}
-
-
-def exclusions_at(gb: GitBinding, sha: str) -> dict[str, ExclusionORSet]:
-    """A teammate's per-ref exclusion OR-Sets as committed on `refs/ugh/state` at `sha` -- the
-    historical-blob read `resolve` unions by tag (Phase 1.2 §E). Absent blob yields `{}`."""
-    raw = state.load_blob_json(gb, sha, "exclusions")
-    if raw is None:
-        return {}
-    return {key: _exclusion_from_body(body) for key, body in raw.items()}
-
-
-def save_exclusions(repo: Path, table: dict[str, ExclusionORSet]) -> None:
-    state.save_json(repo, "exclusions", {
-        key: {
-            "adds": sorted([oid, tag] for oid, tag in orset.adds),
-            "tombstones": sorted(orset.tombstones),
-        }
-        for key, orset in table.items()
-    })
-
-
-def merge_exclusions(
-    ours: dict[str, ExclusionORSet], theirs: dict[str, ExclusionORSet]
-) -> dict[str, ExclusionORSet]:
-    """Per-ref-key union of two exclusion tables (Phase 1.2 §E): each key's OR-Set unions by tag, so
-    a key only one side carries is kept verbatim. Detached-HEAD sha-keys union as harmless clone-local
-    noise -- there is nothing to reconcile between two clones' distinct detached shas."""
-    merged = dict(ours)
-    for key, orset in theirs.items():
-        merged[key] = merged[key].union(orset) if key in merged else orset
-    return merged
-
-
-def _load_backfill_state(repo: Path) -> dict[str, dict]:
-    """The persisted per-ref genesis-backfill frontier: `{ref_key: {"genesis_frontier": ...,
-    "reached_genesis": ...}}`. Local, never travels -- like `_load_witnesses`, an absent file
-    loads as `{}`."""
-    return state.load_json(repo, "backfill", default={})
-
-
-def _save_backfill_state(repo: Path, table: dict[str, dict]) -> None:
-    state.save_json(repo, "backfill", table)
 
 
 def _load_sync_cache(repo: Path) -> dict[str, dict]:
@@ -199,11 +98,8 @@ def _store_digest(ops) -> str:
 
     The gate needs this separately because the ideal is a function of the *whole store*, not only of
     the ids it happened to cache, and `_sync_fingerprint` cannot see the store: it covers HEAD, the
-    dirty working tree, and the persisted ideal entry. Backward backfill appends ops while moving none
-    of those three, so before this, store growth could not invalidate the memo -- once `reached_genesis`
-    flipped, the ideal was frozen for good, even though later chunks had landed the very producer ops
-    that would ground what an earlier chunk had to drop (F68 layer 1). Costs one pass over ids the
-    callers have already loaded."""
+    dirty working tree, and the persisted ideal entry. Costs one pass over ids the callers have
+    already loaded."""
     h = hashlib.sha256()
     for oid in sorted(op.id for op in ops):
         h.update(oid.encode())
@@ -259,8 +155,8 @@ def cached_map_is_current(repo: str | Path) -> bool:
     log` without `--refresh`) already reflects reality and there is nothing for `--refresh` to pick
     up. Mirrors the gate below (the `prev_head == head` + fingerprint + cached-ids check) but never
     mines: it only runs the same O(files) dirty digest the gate itself compares. Any real change --
-    a new commit, an edited/added source file, or an explicit ideal edit -- moves the fingerprint
-    and returns False. Conservative on any ambiguity (git can't digest, mid-backfill, cached ids no
+    a new commit or an edited/added source file -- moves the fingerprint and returns False.
+    Conservative on any ambiguity (git can't digest, mid-chunk, cached ids no
     longer in the store): returns False, so we err toward a spurious refresh hint over falsely
     claiming freshness."""
     repo = Path(repo)
@@ -269,9 +165,6 @@ def cached_map_is_current(repo: str | Path) -> bool:
         head = gb.head()
         key = _ref_key(gb) or head
         if _load_witnesses(repo).get(key) != head:
-            return False
-        backfill = _load_backfill_state(repo).get(key)
-        if backfill is not None and not backfill.get("reached_genesis", False):
             return False
         fp = _sync_fingerprint(gb, head, _load_ideal_table(repo).get(key))
         cached = _load_sync_cache(repo).get(key)
@@ -283,16 +176,6 @@ def cached_map_is_current(repo: str | Path) -> bool:
         return frozenset(cached.get("ids", [])) <= {op.id for op in index_ops}
     except Exception:
         return False
-
-
-def _load_ideal_journal(repo: Path) -> dict[str, list[dict]]:
-    """The per-ref undo stack: `{ref_key: [{ideal: [op_ids], witness: sha}, ...]}` -- the prior
-    ideals `record_ideal` pushed before each overwrite (U26). Local, never travels."""
-    return state.load_json(repo, "ideal_journal", default={})
-
-
-def _save_ideal_journal(repo: Path, journal: dict[str, list[dict]]) -> None:
-    state.save_json(repo, "ideal_journal", journal)
 
 
 def _ref_key(gb: GitBinding) -> str | None:
@@ -402,22 +285,10 @@ def _reduced_ideal_ids(repo: Path, raw_ids, ops: list) -> frozenset[str]:
 
 
 def _committed_ids_by_provenance(gb: GitBinding, store: Store) -> set[str]:
-    """Every stored op whose provenance intersects this ref's own commit ancestry -- the ref's
-    ideal derived fresh from content-addressed history. Used only to *seed* the persisted
-    `.sgt/local/ideal.json` entry on a ref's first tracked `get()`; once that entry exists it is
-    authoritative, so an explicit ideal edit (revert/pin, U8) is never silently re-derived away
-    by a later provenance scan that has no way to represent "excluded though still in history".
-
-    Reduced to a valid ideal (U20/U22.5): once a sync surfaces a fork, *both* forked tips ride the
-    ref's ancestry (theirs' side is the merge's second parent), and real single-clone history alone
-    already produces forks (add/delete/re-add rebirths `(symbol, None)` twice) and ungrounded ops (a
-    predecessor squashed away), so a raw provenance scan is not directly a valid ideal --
-    `order.reduce_to_ideal` grounds it and drops forked up-sets; forked tips live only in
-    `.sgt/forks.json`, never a verb-visible ideal (D5)."""
-    ref_commits = set(gb.commit_shas())
+    """This ref's ideal derived from history: every op mined from its ancestry, reduced to a valid
+    ideal (forked tips and what stands on them dropped; forks live in `.sgt/forks.json`)."""
     all_ops = opindex.index_ops(store.repo)
-    included = {op.id for op in all_ops if set(op.provenance) & ref_commits}
-    return set(_reduced_ideal_ids(store.repo, included, all_ops))
+    return set(_reduced_ideal_ids(store.repo, _provenance_ids_at(gb, "HEAD", all_ops), all_ops))
 
 
 def _record_parked_forks(repo: Path, parked: list[tuple[str, str, str]]) -> None:
@@ -545,7 +416,7 @@ def _recorded_ideal_at(gb: GitBinding, ref: str) -> frozenset[str] | None:
     none (pre-ugh history, a plain `git commit`, a rewrite that stripped them).
 
     The tip alone is enough, and is better than walking: ugh writes the whole ideal into every
-    commit it makes (`record_ideal` -> `format_op_trailers(sorted(ideal.op_ids))`), so the trailers
+    commit `put` makes (`format_op_trailers(sorted(ideal.op_ids))`), so the trailers
     are cumulative and each commit's set is already complete. Measured on a 13-commit React repo,
     every commit's trailers are a valid ideal on their own, growing 31 -> 151 ops and folding
     14 -> 30 files. That also settles the merge case without needing a walk policy: a two-parent
@@ -615,9 +486,10 @@ def ideal_for_ref(repo: str | Path, ref: str = "HEAD", store: Store | None = Non
 
 
 def _provenance_ids_at(gb: GitBinding, ref: str, all_ops: list) -> set[str]:
-    """The ops whose `provenance` intersects `ref`'s commit ancestry."""
+    """This miner version's ops whose `provenance` intersects `ref`'s commit ancestry."""
     ref_commits = set(gb.commit_shas(ref))
-    return {op.id for op in all_ops if set(op.provenance) & ref_commits}
+    return {op.id for op in all_ops
+            if op.miner_version == MINER_VERSION and not ref_commits.isdisjoint(op.provenance)}
 
 
 def provenance_ideal_for_ref(repo: str | Path, ref: str = "HEAD", store: Store | None = None) -> Ideal:
@@ -677,309 +549,71 @@ def _sync(repo: Path, treat_as_root: str | None = None, *, unbounded: bool = Fal
 
     key = _ref_key(gb) or head
     prev_head = _load_witnesses(repo).get(key)
-    backfill_table = _load_backfill_state(repo)
-    has_backfill_record = key in backfill_table
-    backfill_state = backfill_table.get(key, {"genesis_frontier": None, "reached_genesis": False})
-    new_witness = prev_head
-    new_backfill_state = dict(backfill_state)
 
-    # No-op gate (KTD-perf): mine-on-contact (R9) exists so a read reflects reality, but re-mining a
-    # tree that hasn't changed since the last `_sync` reproduces the same ops -- and the dirty pass
-    # is O(files), the bulk of a warm `get()`. So when we're forward-current (`prev_head == head`),
-    # not mid-backfill, and the fingerprint (HEAD + dirty source content + persisted ideal) matches
-    # the last sync, return the cached ideal without touching git history, the entity graph, or the
-    # store. Any real change -- a new commit, an edited/added source file, or an explicit ideal edit
-    # (revert/pin) -- moves the fingerprint and falls through to a full sync, so R9's guarantee holds
-    # exactly where it matters.
-    backfill_in_progress = has_backfill_record and not backfill_state.get("reached_genesis", False)
-    if treat_as_root is None and prev_head is not None and prev_head == head and not backfill_in_progress:
+    # No-op gate: HEAD, the dirty source, the persisted ideal and the store are all unchanged since
+    # the last sync, so it would return the same ideal.
+    if treat_as_root is None and prev_head == head:
         ideal_entry = _load_ideal_table(repo).get(key)
         fp = _sync_fingerprint(gb, head, ideal_entry)
         cached = _load_sync_cache(repo).get(key)
         if fp is not None and cached is not None and cached.get("fp") == fp:
-            # Fidelity (U2): the warm no-op path skips the whole sync body, so refresh the marks
-            # here too -- keyed on the cached ideal's fingerprint, so this is a cheap no-op unless
-            # the ideal actually moved since the marks were last computed (e.g. a `sync` that
-            # surfaced a fork updated the ideal but not through this function). No re-mining.
             cached_ids = frozenset(cached.get("ids", []))
             index_ops = opindex.index_ops(repo)
-            # The fingerprint covers HEAD, the working tree, and the persisted ideal entry -- but NOT
-            # the `.sgt/ops` store, which moves underneath us in *both* directions, so the store's own
-            # id set has to be part of the gate.
-            #
-            # Ops can vanish: a `git switch` removes ops committed on one branch and absent on another,
-            # while the gitignored ideal table (and this cache) survive the checkout and keep pointing
-            # at ids that are no longer materialized -- `Ideal.from_ops` then rejects them.
-            #
-            # And ops can appear, which is the direction this gate originally missed (F68 layer 1).
-            # Backward backfill appends ops without touching HEAD, the tree, or the ideal entry, so the
-            # fingerprint stayed put while the store grew. The old subset test asked whether the cached
-            # answer was still *constructible*, which growth can never falsify -- but the question the
-            # gate has to answer is whether it is still *best*, and a chunk that dropped an ungrounded
-            # op becomes wrong the moment a later chunk lands that op's producer. Once `reached_genesis`
-            # flipped, nothing recomputed and the ideal was frozen permanently; on the evaluation corpus
-            # that cost ~17 points of byte-exact reconstruction at the median.
-            #
-            # Requiring the digest to be *equal* covers both directions at once, and subsumes the subset
-            # test (an unchanged store still contains everything cached from it) -- the subset check is
-            # kept anyway because it is the cheaper of the two failure reports. A cache entry written
-            # before this field existed has no `"store"` key, compares unequal, and takes the miss: one
-            # extra sync, no migration.
             if (cached_ids <= {op.id for op in index_ops}
                     and cached.get("store") == _store_digest(index_ops)):
                 _ensure_fidelity(repo, gb, key, cached_ids, index_ops)
                 return _validated_from_ops(repo, cached_ids, index_ops)
 
-    # The dirty pass mines a virtual pending commit -- a full working-tree snapshot + whole-tree
-    # entity graph -- so it costs O(files) even when nothing changed. Skip it unless some non-
-    # `.sgt/` path actually differs from HEAD (R16); on a tree whose only churn is `.sgt/` state
-    # it would rebuild the whole graph only to produce no source ops. `mine()` additionally skips
-    # it whenever a chunk's own deadline cuts the history loop short (U1), so passing the caller's
-    # true intent here -- even on a backward chunk -- is safe: it only actually runs once some
-    # chunk finishes its historical work inside budget.
-    # An in-progress git merge/cherry-pick/revert is the one case we refuse to mine the working tree
-    # (F26): its conflict-marker bytes would become a permanent op. Skip the dirty pass entirely
-    # while one is live -- reads still return the committed ideal, and the resolved tree is mined on
-    # the next contact once the operation finishes. `save` refuses outright with a fix-it message.
-    #
-    # Sample the tree digest *first*, and key this sync's cache entry to it below rather than to a
-    # second reading taken when the entry is written (F130). The two readings are a whole sync apart
-    # -- seconds on a real repo -- and an edit landing in that window was cached as "this dirty tree
-    # mines to <the committed-only ids>", which the gate then served on every later contact: `status`
-    # reported drift, `save` answered "nothing to save", and only a *further* edit could move the
-    # fingerprint and break the loop. Taking the digest before `has_dirty_source` makes every
-    # interleaving fail safe: the entry can only ever describe a tree at or before the one that was
-    # mined, so a tree that moved mid-sync misses the gate next time and is mined, never skipped.
+    # The tree digest is sampled before mining and keys this sync's cache entry (F130), so an edit
+    # landing mid-sync misses the gate next time. An in-progress git merge is never mined (F26).
     dirty_digest_at_mine = gb.dirty_source_digest()
     include_dirty = gb.has_dirty_source() and merge_in_progress(gb) is None
 
-    # (1, 2) Decide this call's one chunk (KTD-1/KTD-2). Each branch below mines a single,
-    # deadline-bounded piece of history; which piece depends on where this ref's witness and
-    # genesis-backfill frontier currently stand.
+    # History is mined oldest first, so every commit's parent is mined before it: versions are read
+    # from history. A deadline cuts one call to a chunk; the witness records how far it got.
+    deadline = None if unbounded or treat_as_root is not None else time.monotonic() + _CHUNK_BUDGET_SECONDS
     if treat_as_root is not None:
-        # R10 genesis-horizon (`init(horizon=...)`): unbounded and unchunked, exactly as before --
-        # a horizon seals its boundary permanently at `init` time, so this ref never backfills.
-        since = gb.parent_of(treat_as_root)
-        mined_ops, _last_sha = mine(repo, since=since, treat_as_root=treat_as_root, include_dirty=include_dirty)
-        new_witness = head
-        new_backfill_state = {"genesis_frontier": None, "reached_genesis": True}
+        rows = gb.history(gb.parent_of(treat_as_root), head)
     elif prev_head is None:
-        # True first contact: there is no earlier witness to catch up from, so this chunk walks
-        # backward from `head` instead (U2). Bootstraps `witness=head` at this same checkpoint --
-        # never via a separate forward mine -- so the ref is immediately "forward current" and
-        # every later call on it is pure backward backfill until `reached_genesis`.
-        deadline = None if unbounded else time.monotonic() + _CHUNK_BUDGET_SECONDS
-        window = gb.history_backward(head)
-        mined_ops, last_sha = mine(repo, history_override=window, deadline=deadline, include_dirty=include_dirty)
-        new_witness = head
-        new_backfill_state = {
-            "genesis_frontier": last_sha,
-            "reached_genesis": last_sha is not None and gb.parent_of(last_sha) is None,
-        }
-    elif prev_head == head and has_backfill_record and not backfill_state.get("reached_genesis", False):
-        # Already forward-current, and a backward walk is actually in progress for *this* key:
-        # continue it one deadline-bounded window past where the last chunk stopped. Gated on
-        # `has_backfill_record` (not just `reached_genesis`) so a witness planted by `record_ideal`
-        # (as `put()` does for its own materialize commit, or as a detached HEAD's per-commit
-        # `_ref_key` fallback does on every new commit, KTD-3 follow-up) -- which never seeds a
-        # backfill entry for its key -- falls through to the ordinary catch-up branch below instead
-        # of mistaking "no entry" for "needs a fresh genesis walk" and re-mining history that was
-        # already fully accounted for under the ref's previous key.
-        deadline = None if unbounded else time.monotonic() + _CHUNK_BUDGET_SECONDS
-        frontier = backfill_state.get("genesis_frontier")
-        start = head if frontier is None else gb.parent_of(frontier)
-        window = gb.history_backward(start) if start is not None else []
-        mined_ops, last_sha = mine(repo, history_override=window, deadline=deadline, include_dirty=include_dirty)
-        if last_sha is not None:
-            new_backfill_state = {"genesis_frontier": last_sha, "reached_genesis": gb.parent_of(last_sha) is None}
+        known = {sha for op in opindex.index_ops(repo) if op.miner_version == MINER_VERSION
+                 for sha in op.provenance}
+        rows = [row for row in gb.history(None, head) if row[0] not in known]
     else:
-        # Ordinary forward catch-up: mine whatever landed on `head` since the last witness.
-        # Prioritized over backward backfill whenever the two compete (a ref mid-backfill that
-        # also gains new commits catches up forward first). Also the terminal steady state
-        # (`prev_head == head`, `reached_genesis` already `True`) -- an empty range that still
-        # carries the dirty pass, so `get()` keeps absorbing working-tree edits (R9) forever, not
-        # just until backfill finishes.
-        deadline = None if unbounded else time.monotonic() + _CHUNK_BUDGET_SECONDS
-        mined_ops, _last_sha = mine(repo, since=prev_head, target=head, deadline=deadline, include_dirty=include_dirty)
-        new_witness = head
+        rows = gb.history(prev_head, head)
+    mined_ops, last_sha = mine(repo, treat_as_root=treat_as_root, include_dirty=include_dirty,
+                               deadline=deadline, history_override=rows)
+    new_witness = head if not rows or last_sha == rows[-1][0] else last_sha or prev_head
 
-    # (3) Persist each mined op. Partition by the *returned* (post-merge) op's provenance, not the
-    # mined op's: a dirty edit whose content is byte-identical to something already committed
-    # comes back from `store.add` as the existing op with its real provenance intact, so it
-    # rightly counts as committed, not pending.
-    # Staleness must be judged *before* our own `store.add` writes below: those writes always
-    # make the snapshot look stale (new dirents / bumped mtimes), which used to force the full
-    # `rebuild` -- an every-op-file re-read -- on every mining sync, leaving `apply_delta`
-    # unreachable. Checked here, "stale" means someone *else* wrote ops the snapshot missed
-    # (rebuild is right); "fresh" means the snapshot covers the pre-mine store exactly, so
-    # upserting just the ops this sync touched reproduces a complete snapshot. `store.add` takes
-    # its own lock per op, so these adds cannot move inside the `locked_section` below (that would
-    # nest the store lock, violating the U23 contract) -- hence the check is unavoidably outside
-    # it. Residual (accepted, same class as `opindex._ops_dir_stat`'s same-tick note): if a
-    # concurrent writer's provenance-merge rewrites an existing op file (count-neutral mtime bump)
-    # after this check and then crashes before its own `apply_delta`, our `apply_delta` stamps a
-    # newer `built_mtime_ns` that masks the rewrite until the next unrelated op-store write. Needs
-    # a concurrent writer plus a crash in that window; closing it would cost a per-op-file mtime
-    # re-scan on this hot path for no steady-state benefit.
+    # Staleness is judged before our own `store.add` writes, which always make the snapshot look
+    # stale; stale here means someone else wrote ops the snapshot missed.
     index_stale_before_add = opindex.is_stale(repo)
-
-    # Re-include on re-authoring: an op mined from the *dirty tree* (no provenance at mine time)
-    # whose id sits in this ref's live exclusion set is content the user just wrote back by hand
-    # after an undo/revert -- a new statement of intent, so the exclusion's tags are tombstoned
-    # here. Without it the redo wedges permanently: `store.add` dedups the redo into the op's
-    # committed self, provenance classifies it as committed, and the exclusion subtracts it right
-    # back out, so every save refuses on put()'s byte drift (2026-08-09). Ops re-mined from
-    # *history* keep their provenance and are never lifted -- that asymmetry is what preserves a
-    # revert's durability across rebase/cherry-pick (F11/F20).
-    pre_exclusions = load_exclusions(repo)
-    live_excluded = pre_exclusions.get(key, ExclusionORSet()).live()
-    # The redo rarely carries the excluded op's *id*: rebirth chaining re-points a re-authored
-    # birth onto the undo commit's salted bottom, so the redo op is a different id with the same
-    # (symbol, after-version) content -- and the excluded original, still subtracted, leaves that
-    # whole chain ungrounded. Match by content, not id.
-    excluded_by_content: dict[tuple[str, str], str] = {}
-    if live_excluded:
-        for ex_op in opindex.index_ops(repo):
-            if ex_op.id in live_excluded:
-                for ex_sym, (_before, ex_after) in ex_op.footprint.items():
-                    excluded_by_content[(ex_sym, ex_after)] = ex_op.id
-    reincluded: set[str] = set()
-
     new_committed_ids: set[str] = set()
     pending_ids: set[str] = set()
     stored_ops = []
     for op in mined_ops:
         stored = store.add(op)
         stored_ops.append(stored)
-        if not op.provenance and excluded_by_content:
-            if stored.id in live_excluded:
-                reincluded.add(stored.id)
-            for sym, (_before, after) in op.footprint.items():
-                hit = excluded_by_content.get((sym, after))
-                if hit is not None:
-                    reincluded.add(hit)
         (new_committed_ids if stored.provenance else pending_ids).add(stored.id)
-
-    if reincluded:
-        excl = pre_exclusions.get(key, ExclusionORSet())
-        dead_tags = frozenset(tag for (oid, tag) in excl.adds if oid in reincluded)
-        pre_exclusions[key] = ExclusionORSet(excl.adds, excl.tombstones | dead_tags)
-        save_exclusions(repo, pre_exclusions)
-
-    # Keep the footprint-only opindex sidecar current: a full rebuild pays the images decode once
-    # (cheaper than letting every read view re-derive staleness against a snapshot already known
-    # stale), otherwise an incremental upsert of just the ops this sync touched. Locked (R5/R6):
-    # apply_delta's read-modify-write would otherwise lose a concurrent _sync's own update --
-    # self-healing on the next read via is_stale's dirent-count check, but the lock avoids the
-    # transient loss entirely. Ops were added above, before this section, so `Store.add`'s own
-    # lock never nests inside this one (U23 / locked_section contract).
     with locked_section(repo):
         if index_stale_before_add:
             opindex.rebuild(repo, store)
         else:
             opindex.apply_delta(repo, stored_ops)
 
-    # Seed the persisted ideal from a provenance scan the first time this ref is tracked; thereafter
-    # the stored set is the base the sync builds on -- it carries committed ops that carry no
-    # provenance yet (`put` commits via `Sgt-Op:` trailers and advances the witness without re-mining
-    # them, so their provenance stays empty until a later cold mine), which a raw provenance scan
-    # would drop.
+    # The ideal is every op mined from this ref's history, reduced to a valid ideal; the table is
+    # its cache.
     all_ops = opindex.index_ops(repo)
     ideal_table = _load_ideal_table(repo)
     already_seeded = key in ideal_table
-    base_ids = set(ideal_table[key]) if already_seeded else _committed_ids_by_provenance(gb, store)
+    base_ids = set(ideal_table.get(key, ()))
+    seed = _provenance_ids_at(gb, "HEAD", all_ops)
+    committed_ids = set(_reduced_ideal_ids(repo, seed, all_ops))
 
-    # `exclusions` is the per-ref, append-only OR-Set of ops an explicit edit (revert/pin, U8)
-    # removed -- a *positive* record subtracted from the ideal (1.1). It is what makes a revert
-    # durable across a git history rewrite: a rebase/cherry-pick that re-mines the same content under
-    # a new sha re-adds the op via `new_committed_ids`, but the exclusion subtracts it right back out,
-    # so it can no longer silently resurrect (F11/F20). Before, the union-only reconciliation had no
-    # way to represent "excluded though back in history" and the op came back.
-    # Whether this ref's backward walk is finished, as of *after* this chunk's work. Hoisted above the
-    # migration below, which must not run mid-backfill, and reused by the gate refresh at the end.
-    reached_genesis = new_backfill_state.get("reached_genesis", False) or not (
-        has_backfill_record or new_backfill_state.get("genesis_frontier") is not None
-    )
-
-    exclusions_table = load_exclusions(repo)
-    # F70. The migration below reads `reduce(provenance) − base_ids` as evidence of a revert. That
-    # inference is only sound when `base_ids` is this ref's *complete* ideal minus its reverts, and
-    # under chunked mining it usually is not: mid-walk `base_ids` is only "the ideal so far", so
-    # everything older than the chunk boundary is unmined, not reverted. Turning that into exclusions
-    # is unrecoverable -- they are append-only, so those ops are subtracted from every future ideal
-    # forever, which is precisely the drop F68's seed widening exists to repair.
-    # Two conditions make the premise true, and both are needed. `reached_genesis`: the walk is done,
-    # so history is fully mined. `not new_committed_ids`: this call added no committed op *under*
-    # `base_ids`, so the two sides of the difference were computed over the same store. Gating on
-    # `reached_genesis` alone is not just insufficient, it is worse than no gate: the migration then
-    # lands on the chunk that finishes the walk, where the store is complete but `base_ids` is still
-    # the previous chunk's short answer, making `implied` maximal (measured: 26 of 30 groundable ops
-    # admitted, against 28 ungated). With both, the migration waits for the next warm sync, by which
-    # point the seed widening has already restored `base_ids` and the difference is empty.
-    # This still converges for the case the migration is actually for -- a pre-exclusion-era store,
-    # whose reverts survive only as absences. Such a store has no backfill record, so it mines nothing
-    # on the first call after upgrade and migrates immediately; one that does backfill migrates on the
-    # first quiet sync after. The check is re-evaluated every sync until it fires, so deferring only
-    # costs calls. The one ref it never reaches is one whose backfill is permanently capped -- that
-    # leaves a pre-existing revert un-migrated, which is strictly better than minting reverts nobody
-    # asked for.
-    if already_seeded and key not in exclusions_table and reached_genesis and not new_committed_ids:
-        # Migrate an existing repo whose reverts were recorded only as *absences* in the base set
-        # into explicit exclusions, so the switch to exclusion-subtracted ideals does not resurrect a
-        # pre-existing revert on the first history rewrite. A genuine revert is an op that would
-        # *survive* reduction from pure history (`_committed_ids_by_provenance`) yet is absent from
-        # the base set -- so `reduce(provenance) − base` isolates reverts from reduction-drops (fork
-        # tips, ungrounded ops), which must stay out of the exclusion set or excluding one fork tip
-        # would silently un-fork the other. `new_committed_ids` (ops legitimately mined *into* the
-        # ideal this sync, e.g. a foreign hotfix) are excluded from the seed too. Runs once per ref.
-        implied = _committed_ids_by_provenance(gb, store) - base_ids - new_committed_ids
-        if implied:
-            exclusions_table[key] = ExclusionORSet(
-                adds=frozenset((oid, uuid.uuid4().hex) for oid in implied)
-            )
-            save_exclusions(repo, exclusions_table)
-    exclusions = exclusions_table.get(key, ExclusionORSet())
-
-    # The durable ideal gains newly-committed ops and loses excluded ones; the dirty overlay is never
-    # persisted, so a discarded working-tree edit (e.g. `git checkout -- .`) simply stops appearing
-    # on the next `get()`. Reduce to a valid ideal *before* persisting (U22.5): real history mined
-    # cold contains add/delete/re-add forks and predecessors squashed out of this ref, so the raw
-    # union is not directly constructible -- persisting it unreduced would leave an invalid
-    # `.sgt/local/ideal.json` on disk and then raise, corrupting the table.
-    # F68 layer 2: `base_ids` is the *previous reduced answer*, so a drop it made is invisible here.
-    # During a chunked backward walk an op whose producer is older than the chunk boundary is genuinely
-    # ungrounded at that moment and reduction drops it -- correctly. But the next chunk sees it in
-    # neither `base_ids` nor `new_committed_ids`, so the drop is carried forward even once the producer
-    # lands, and the ideal converges to something strictly smaller than the finished store can ground.
-    # Re-offering history's own reduced ideal repairs it. This cannot resurrect a revert: exclusions are
-    # subtracted right below, which is exactly the case they exist for, and `_committed_ids_by_provenance`
-    # is already reduced, so it contributes no fork tips or ungrounded ops of its own.
-    # Gated rather than unconditional because it costs a second reduction: a past drop can only have
-    # become groundable if ops arrived, so a warm sync that mined nothing skips it (and the no-op gate
-    # above usually skips the sync entirely).
-    regroundable = already_seeded and (backfill_in_progress or bool(new_committed_ids))
-    seed = (base_ids | new_committed_ids
-            | (_committed_ids_by_provenance(gb, store) if regroundable else set())) - exclusions.live()
-    committed_ids = set(order.reduce_to_ideal(seed, all_ops))
-
-    # (4) Checkpoint: the witness, the ideal table, and the backfill state must each land
-    # atomically whenever any of them changed (R5, widened to a triple by this unit) -- a crash
-    # that moved one without the others would make the next call trust stale state. One locked
-    # section; only the tables that actually changed get rewritten, so a no-op read still never
-    # touches a `.sgt/**/*.json` mtime a client's file watcher would react to. A backward-only
-    # chunk can advance `genesis_frontier` while leaving the witness and the reduced ideal set
-    # untouched, and that alone must still persist here -- otherwise backfill progress silently
-    # fails to checkpoint. Ops were added above, before this section, so `Store.add`'s own lock
-    # never nests inside this one (U23 / locked_section contract).
     ideal_changed = not already_seeded or committed_ids != base_ids
     witness_changed = new_witness != prev_head
-    # A true-first-contact chunk (prev_head is None) that hits its deadline before mining even one
-    # commit computes a `new_backfill_state` that coincidentally equals the never-seen-this-key
-    # default -- persist it anyway, or `has_backfill_record` stays False forever and the next call
-    # falls through to the no-op forward-catchup branch instead of resuming the backward walk.
-    backfill_changed = new_backfill_state != backfill_state or (prev_head is None and not has_backfill_record)
-    if ideal_changed or witness_changed or backfill_changed:
+    if ideal_changed or witness_changed:
         with locked_section(repo):
+            state.save_json(repo, "mined_by", MINER_VERSION)
             if ideal_changed:
                 ideal_table[key] = sorted(committed_ids)
                 _save_ideal_table(repo, ideal_table)
@@ -987,38 +621,18 @@ def _sync(repo: Path, treat_as_root: str | None = None, *, unbounded: bool = Fal
                 table = _load_witnesses(repo)
                 table[key] = new_witness
                 _save_witnesses(repo, table)
-            if backfill_changed:
-                backfill_table[key] = new_backfill_state
-                _save_backfill_state(repo, backfill_table)
 
-    # Fidelity marks (U2/R6): refresh the ref's marks against the current committed ideal. A cheap
-    # fingerprint no-op unless the ideal moved. Outside the section above -- `_ensure_fidelity`
-    # takes its own lock and `locked_section` is non-reentrant (U23).
     _ensure_fidelity(repo, gb, key, committed_ids, all_ops)
-
-    # 1.4 (F7/F8): `reduce_to_ideal` parked every genuine same-symbol fork at its common ancestor by
-    # dropping both tips -- `fork_free` did so *silently*, so `ugh forks`/`resolve` saw nothing to
-    # reconcile. Surface them in the one shared fork store, exactly as sync/land do -- never silently
-    # exclude. A fork can appear (a conflicting merge) while the *ideal set* stays put (the symbol
-    # parks back at a version already in the ideal), so this hangs off the witness-moved full-run
-    # path, not `ideal_changed`. `_record_parked_forks` no-ops the write unless the store's union
-    # actually gains something, so a re-`get()` over the same fork touches no mtime.
     _record_parked_forks(repo, order.parked_forks(seed, all_ops))
 
-    # (5) The in-memory ideal carries the dirty overlay on top of the durable committed set; a
-    # dirty edit that forks committed state is dropped by the same reduction rather than crashing.
+    # The in-memory ideal carries the dirty overlay on top of the durable committed set.
     result = Ideal.from_ops(order.reduce_to_ideal(committed_ids | pending_ids, all_ops), all_ops)
 
-    # (6) Refresh the no-op gate's cache so the next `get()` on an unchanged tree short-circuits.
-    # Only when we're in the stable state the gate checks for (forward-current, backfill complete):
-    # caching mid-backfill would let the gate skip the remaining backward chunks. Recompute the
-    # fingerprint against the *new* ideal entry (this sync may have changed it).
-    if treat_as_root is None and new_witness == head and reached_genesis:
+    if treat_as_root is None and new_witness == head:
         fp = _sync_fingerprint(gb, head, sorted(committed_ids), digest=dirty_digest_at_mine)
         if fp is not None:
             table = _load_sync_cache(repo)
-            table[key] = {"fp": fp, "ids": sorted(result.op_ids),
-                          "store": _store_digest(all_ops)}
+            table[key] = {"fp": fp, "ids": sorted(result.op_ids), "store": _store_digest(all_ops)}
             _save_sync_cache(repo, table)
     return result
 
@@ -1032,10 +646,8 @@ def get(repo: str | Path, *, unbounded: bool = False) -> Ideal:
 
 
 def sync_status(repo: str | Path, ref: str | None = None) -> dict:
-    """A pure read (no mining) of how far `ref`'s sync has progressed: whether its witness has
-    caught up to its head, and whether an in-progress genesis backfill (if any) has finished.
-    `ref=None` reports on the currently checked-out ref, using the same key `_sync` would use for
-    it. `complete` is `True` iff the witness equals head and any backfill has `reached_genesis`."""
+    """A pure read (no mining): `complete` is True iff `ref`'s witness (the last commit mined for
+    it) is its head. `ref=None` reports on the currently checked-out ref."""
     repo = Path(repo)
     gb = GitBinding(repo)
     if ref is None:
@@ -1045,166 +657,32 @@ def sync_status(repo: str | Path, ref: str | None = None) -> dict:
         head = gb.rev_parse(ref)
         key = ref if ref.startswith("refs/") else f"refs/heads/{ref}"
     witness = _load_witnesses(repo).get(key)
-    backfill = _load_backfill_state(repo).get(key)
-    reached_genesis = backfill is None or bool(backfill.get("reached_genesis"))
-    complete = witness is not None and witness == head and reached_genesis
-    return {"complete": complete, "reached_genesis": reached_genesis,
-            "history_rewritten": _history_rewritten(gb, witness, head)}
+    return {"complete": witness is not None and witness == head}
 
 
-def dropped_ideal_ops(repo: str | Path, ref: str | None = None) -> list[str]:
-    """Ops in this ref's *persisted* ideal whose witnessing commits are all gone from git history --
-    the residue of a backward/sideways move (`git reset --hard`, `commit --amend`, `branch -f`).
-
-    This is the P0-1 desync made observable. `_sync` seeds `base_ids` from `ideal_table[key]` and
-    treats it as authoritative from then on (deliberately: that is what keeps an explicit revert
-    durable, F11/F20), but it never intersects it with the ref's *current* ancestry. So after a
-    backward move the ideal still names ops from dropped commits: `ugh status` counts files that
-    no longer exist, `ugh log` shows vanished symbols, and a later `save` can dead-end.
-
-    Comparing the recorded *witness* to HEAD does not detect this -- mine-on-contact advances the
-    witness to the new head while leaving the ideal untouched, so by the time any surface reads,
-    witness == head and the ideal is still stale. The reliable signal is per-op reachability.
-
-    Ops with *empty* provenance are never counted: `put` commits via `Sgt-Op:` trailers and advances
-    the witness without re-mining, so a legitimately-live op can carry no provenance until a later
-    cold mine. Only an op that names commits, none of which git can still reach, is definitively
-    dropped -- which is also exactly the set a future auto-intersect on the catch-up branch may
-    subtract, so the two agree by construction.
-
-    A pure read: decodes the footprint-only index and one `git log`. Returns sorted op-ids."""
-    repo = Path(repo)
-    gb = GitBinding(repo)
-    if ref is None:
-        key = _ref_key(gb) or gb.head()
-    else:
-        key = ref if ref.startswith("refs/") else f"refs/heads/{ref}"
-    recorded = _load_ideal_table(repo).get(key)
-    if not recorded:
-        return []
-    reachable = set(gb.commit_shas())
-    if not reachable:
-        return []
-    # F131: an op re-authored by hand and then saved dedups, in `store.add`, into the *existing* op
-    # with the same content -- inheriting that op's provenance, which after a backward checkout can
-    # name only unreachable commits. Its real witness is the commit `put` just wrote, and `put`
-    # records that by trailer rather than by provenance (provenance can never live inside its own
-    # witnessing commit: writing it would change that commit's tree, hence its sha). So a live,
-    # just-saved op looks exactly like a dropped one here.
-    #
-    # The tip's `Sgt-Op:` trailers are the tree-witnessed record of which ops the tip embodies, and
-    # ugh writes the *whole* ideal into every commit it makes, so membership there is proof of life.
-    # Same fallback `opindex.earliest_commit_sha` already uses for the empty-provenance case, and
-    # the same rung `_ideal_from_ref`'s recovery ladder trusts first. This does not blunt the check:
-    # after a genuine backward move the tip is an older commit whose trailers name the older ideal,
-    # so ops beyond it are still uncovered and still reported.
-    witnessed_by_tip = _recorded_ideal_at(gb, key) or frozenset()
-    by_id = {op.id: op for op in opindex.index_ops(repo)}
-    dropped = []
-    for op_id in recorded:
-        op = by_id.get(op_id)
-        if op is None or not op.provenance:
-            continue  # unknown, or committed-by-trailer with no provenance yet -- not evidence
-        if op_id in witnessed_by_tip:
-            continue  # a reachable commit records embodying it -- live, whatever provenance says
-        if not set(op.provenance) & reachable:
-            dropped.append(op_id)
-    return sorted(dropped)
-
-
-def _history_rewritten(gb: GitBinding, witness: str | None, head: str | None) -> bool:
-    """True iff this ref's recorded ideal still names ops from commits git can no longer reach --
-    i.e. git history moved backward/sideways and `ugh check --repair` is the remedy.
-
-    Before this, the desync presented as ordinary working-tree drift, so every surface suggested
-    `ugh save` -- which finds nothing new, prints "nothing to save", exits 0, and leaves the
-    discrepancy in place. A remedy that reports success without fixing anything is worse than none,
-    because it also removes the user's reason to keep looking."""
-    if head is None:
-        return False
-    try:
-        # A resync already run at this exact HEAD settles it. The ops it could
-        # not drop are ones whose content is still live in the working tree, so
-        # there is nothing left for the user to do and nothing a second resync
-        # would change.
-        done = state.load_json(gb.repo, "resynced_at", default=None) or {}
-        if done.get("head") == head:
-            return False
-        return bool(dropped_ideal_ops(gb.repo))
-    except Exception:  # noqa: BLE001 -- a pure read feeding orientation; never fail a status call
-        return False
-
-
-def resync(repo: str | Path, *, reseed: bool = False) -> dict:
-    """`ugh check --repair`: recover the current ref's ideal after a git history rewrite (`git reset --hard`,
-    `commit --amend`, `branch -f`) desynced it. A backward/divergent move leaves the persisted
-    `.sgt/local/ideal.json` still naming ops from now-dropped commits: `log`/`--map` show vanished
-    symbols and a later `save` can dead-end. The old workaround was a manual `rm .sgt/local/ideal.json`
-    (which blows away *every* ref). This drops just the current ref's derived local state -- witness,
-    ideal, backfill frontier, sync cache -- then re-mines, so the ideal is re-derived from what is
-    actually reachable from HEAD now. Explicit reverts (the exclusion set) are preserved so they stay
-    durable across the rewrite (F11/F20); `--reseed` additionally clears them for a total reset to
-    whatever git history says. The op store itself is append-only and never touched."""
+def resync(repo: str | Path) -> dict:
+    """`ugh check --repair`: drop the current ref's witness, ideal and sync cache and re-derive them
+    from what HEAD reaches now, unbounded (the caller treats the return as "the record matches
+    HEAD"). The op store is never touched."""
     repo = Path(repo)
     gb = GitBinding(repo)
     key = _ref_key(gb) or gb.head()
     if key is None:
-        return {"key": None, "before": 0, "after": 0, "reseed": reseed}
+        return {"key": None, "before": 0, "after": 0}
 
     before = len(_load_ideal_table(repo).get(key, []))
     with locked_section(repo):
         for load, save in (
             (_load_witnesses, _save_witnesses),
             (_load_ideal_table, _save_ideal_table),
-            (_load_backfill_state, _save_backfill_state),
             (_load_sync_cache, _save_sync_cache),
         ):
             table = load(repo)
             if key in table:
                 del table[key]
                 save(repo, table)
-        if reseed:
-            excl = load_exclusions(repo)
-            if key in excl:
-                del excl[key]
-                save_exclusions(repo, excl)
-
-    # Unbounded, not chunked. A first contact is normally CHUNKED against a wall clock, and every
-    # consumer of resync (the study's stage resets above all) treats the return as "the record now
-    # matches HEAD" -- so the one thing this must not do is let machine load decide how much of
-    # that is true. It did: the same `./stage 3` on the same bundle derived 206 live ops idle and
-    # 189 under eight busy cores, and a record that short can no longer reproduce the committed
-    # tree, so the next `ugh revert` refused with `put() would roll back files outside this edit's
-    # scope` naming eight files nobody had touched.
-    #
-    # Looping on `get()` did not save it. `mine` resolves a frontier sha only when a chunk runs to
-    # completion, so a chunk that hits its deadline records NO progress: `genesis_frontier` stays
-    # None and the next call restarts the backward walk from head. Under sustained load that is a
-    # treadmill -- 64 iterations, no advance, and a short ideal returned as success.
     ideal = get(repo, unbounded=True)
-    # The loop stays as the stuck-walk guard for the rest (a forward catch-up that keeps finding
-    # new commits), but each pass is now unbounded, so each one either finishes the walk or there
-    # is genuinely more history than the last pass could see.
-    for _ in range(64):
-        if sync_status(repo)["complete"]:
-            break
-        ideal = get(repo, unbounded=True)
-    # Remember that this HEAD has been re-derived, so `_history_rewritten` stops
-    # advising a resync that has already run. Without it, a repo whose working
-    # tree still holds content from commits the history no longer reaches -- the
-    # ordinary result of moving back and keeping your changes -- reports the
-    # rewrite on every `status` forever, and the remedy it names does nothing
-    # the second time. That is the failure this module warns about a few lines
-    # up: a remedy that reports success without fixing anything is worse than
-    # none, because it also removes the reason to keep looking.
-    head = GitBinding(repo).head()
-    if head is not None:
-        state.save_json(repo, "resynced_at", {"key": key, "head": head})
-    # Whether the walk actually finished, so the caller is not left reading a partial re-derivation
-    # as a whole one. A remedy that reports success without having worked is worse than none: it
-    # also removes the reason to keep looking (the same argument the note above makes about
-    # `resynced_at`).
-    return {"key": key, "before": before, "after": len(ideal.op_ids), "reseed": reseed,
+    return {"key": key, "before": before, "after": len(ideal.op_ids),
             "complete": sync_status(repo)["complete"]}
 
 
@@ -1233,10 +711,8 @@ def put(repo: str | Path, ideal: Ideal, message: str = "ugh: materialize ideal",
     foreign commit is absorbed into the store, then the fold is refused (rather than silently
     clobbering) if it would overwrite an uncommitted change with different bytes.
 
-    `bookkeeping=True` marks the commit as ugh's own mechanics (the forward commit behind a revert,
-    restore, or undo) rather than the developer's work, so human-facing lists can fold it. It
-    changes nothing semantic: the commit still carries its full `Sgt-Op:` trailers and is mined,
-    reduced, and materialized exactly as before."""
+    The commit is then mined like any other (`commit`). `bookkeeping=True` marks it as ugh's own
+    mechanics so human-facing lists can fold it."""
     repo = Path(repo)
     gb = GitBinding(repo)
     get(repo)  # absorb any dirty tree / foreign commit first (R9)
@@ -1264,163 +740,22 @@ def put(repo: str | Path, ideal: Ideal, message: str = "ugh: materialize ideal",
             f"differs from ugh's recorded ideal: {sorted(drift)}"
         )
     _write_working_tree(repo, materialized, all_ops, prior_ideal=before_ideal)
-    # Phase 1.2: the op store and its tables no longer live in the branch tree, so the in-tree
-    # `.sgt/ideal.json` recovery record (C5) is gone -- `sync`'s recovery ladder is log -> trailers
-    # -> mine (the witness SHA still carries `Sgt-Op:` trailers, and a squash ugh never ran on
-    # re-mines, coarser but LAW-0 reproducible). The local per-ref `ideal_table` cache stays
-    # authoritative for the current ref.
     trailers = format_op_trailers(sorted(ideal.op_ids))
     if bookkeeping:
         from ugh.store.gitbind import format_bookkeeping_trailer
         trailers = f"{trailers}\n{format_bookkeeping_trailer()}" if trailers else format_bookkeeping_trailer()
-    sha = gb.commit_all(message, trailers=trailers)
-    # Publish the committed state (ops + tables) onto `refs/ugh/state` at `put`'s transaction
-    # boundary, off the branch tree. Lazy import: the sync package pulls in lens, so a module-level
-    # import would cycle; by call time every module is loaded.
-    from ugh.core.sync import state_ref as _state_ref
-    _state_ref.publish_from_local(gb, repo)
-    return sha
+    return commit(repo, message, trailers)
 
 
-def commit_materialized(repo: str | Path, ideal: Ideal, message: str, *,
-                        bookkeeping: bool = False) -> str:
-    """Commit an `ideal` whose `code(I)` bytes are *already* on the working tree (`ugh resolve`,
-    a judged take-out). Unlike `put`, this neither re-mines the tree nor re-materializes: it just
-    commits with the op trailers."""
+def commit(repo: str | Path, message: str, trailers: str | None = None) -> str:
+    """Commit the working tree, mine the commit like any other, and publish the state ref."""
     repo = Path(repo)
     gb = GitBinding(repo)
-    trailers = format_op_trailers(sorted(ideal.op_ids))
-    if bookkeeping:
-        from ugh.store.gitbind import format_bookkeeping_trailer
-        trailers = f"{trailers}\n{format_bookkeeping_trailer()}" if trailers else format_bookkeeping_trailer()
     sha = gb.commit_all(message, trailers=trailers)
+    get(repo, unbounded=True)
     from ugh.core.sync import state_ref as _state_ref  # lazy: avoid the sync<->lens import cycle
     _state_ref.publish_from_local(gb, repo)
     return sha
-
-
-def record_ideal(
-    repo: str | Path, ideal: Ideal, witness_sha: str, *, journal: bool = True,
-    ref_key: str | None = None, record_exclusions: bool = True,
-    meta: dict | None = None, before: frozenset[str] | None = None,
-) -> None:
-    """Persist an explicitly-edited `ideal` as the current ref's authoritative committed set and
-    advance the ref's witness to `witness_sha` -- the durability an ideal-edit verb (U8's
-    revert/pin/restore/cherry-pick) needs after `put()` commits. Without it, the next `get()`
-    would re-mine the materializing commit's diff as a fresh op and union it back onto a stale
-    base, undoing a reducing edit. Called *after* `put()` so `witness_sha` is the post-commit
-    HEAD: the next `get()` then mines nothing new (`since == witness_sha`) and trusts this set.
-
-    Before overwriting an existing entry it pushes the *outgoing* ideal (and its witness) onto the
-    ref's undo stack, so `ugh undo` (U26) can restore exactly the ideal this edit replaced -- the
-    edit history that lets undo be exact set arithmetic. `journal=False` suppresses that push (undo
-    itself records with it off, so a second undo reaches the edge before the one just undone rather
-    than toggling).
-
-    `meta` is merged into that journal entry -- which verb wrote it, the handle it was given, and
-    the op-set the user actually named. The entry used to carry only the before/after op-sets, so
-    nothing durable said *which* revert had produced it and `restore` could not resolve itself
-    against the one edit it is supposed to reverse. Reserved keys (`kind`, `ideal`, `witness`,
-    `result`, `applied`) are not overridable: they are the undo contract.
-
-    `before` is the op-set the edit was planned against. Without it the prior ideal is whatever the
-    table holds *now* -- and between `put()`'s commit and this call a concurrent reader (the editor
-    polls every few seconds) can sync HEAD, mine the materializing commit as ordinary edits, and
-    advance the table. The journal then said the edit removed those mined ops too, `restore`
-    reversed that entry exactly, and re-admitted ops holding the removed bytes: 39 ops, no file
-    changed (F146). The journal describes the edit that was planned, not the table it landed on."""
-    repo = Path(repo)
-    # `ref_key` lets `land` (U5) record under the *target* branch's key rather than the checked-out
-    # ref -- landing a non-checked-out branch must advance that branch's table/witness, not HEAD's.
-    key = ref_key if ref_key is not None else (_ref_key(GitBinding(repo)) or witness_sha)
-    # The journal push, the table overwrite, and the witness advance are one read-modify-write:
-    # holding the lock across all three closes the double-journal-entry window (a concurrent
-    # `record_ideal` reading the same journal and both appending) and keeps table+witness
-    # consistent (R5/R6). No `Store.add` runs inside, so the lock never nests.
-    with locked_section(repo):
-        itable = _load_ideal_table(repo)
-        entry = None
-        if journal and key in itable:
-            # The journal is the unified operation log (U8/KTD6): this push is one `ideal_edit`
-            # event carrying the prior ideal (+ witness). Tagged `kind` so `oplog.undo` dispatches
-            # it. Kept inline (not `oplog.append`) because we already hold `locked_section` and
-            # the flock is non-reentrant -- the same read-modify-write that closes the
-            # double-journal-entry window (R5/R6). `applied` stays False until the table+witness
-            # advance below lands: a crash in between leaves the entry unapplied, which `oplog.undo`
-            # discards rather than executing as a phantom edit (0.2a/F6). `result` is the post-edit
-            # op-set, so `undo` can tell work mined *after* this entry -- which its snapshot restore
-            # would silently drop -- from the ops this edit itself produced (0.2c/F3).
-            jtable = _load_ideal_journal(repo)
-            prev_witness = _load_witnesses(repo).get(key)
-            entry = {
-                "kind": "ideal_edit",
-                "ideal": sorted(before if before is not None else itable[key]),
-                "witness": prev_witness,
-                "result": sorted(ideal.op_ids),
-                "applied": False,
-            }
-            if meta:
-                entry.update({k: v for k, v in meta.items() if k not in entry})
-            jtable.setdefault(key, []).append(entry)
-            _save_ideal_journal(repo, jtable)
-        # Translate this edit's delta into the exclusion OR-Set (1.1) -- the positive record the
-        # provenance-derived ideal subtracts. An op this edit *removed* (revert/pin, or the undo of a
-        # restore) is excluded with a fresh tag; an op it *re-included* (restore/cherry-pick, or the
-        # undo of a revert) has its observed exclusion tags tombstoned so it re-enters. Reads the
-        # pre-overwrite `itable[key]` as the prior ideal, so the first edit on an un-seeded ref (no
-        # prior entry) records nothing -- it *is* the seed, and has removed nothing.
-        prior = set(before) if before is not None else set(itable.get(key, []))
-        after = set(ideal.op_ids)
-        removed, added = prior - after, after - prior
-        # `record_exclusions=False` suppresses this translation for sync/land (Phase 1.2 §E): there,
-        # the authoritative exclusion OR-Set is the per-key union `resolve` already computed from both
-        # clones and `flush_reconciled_metadata` persisted. Re-deriving adds/tombstones from the merged
-        # ideal's delta here would mint *fresh* tags for the same removals, so the two sides' OR-Sets
-        # would never converge (each carries its own tag for the same reverted op). Local edit verbs
-        # (revert/restore/undo) keep it on -- they *are* the source of the exclusion record.
-        if record_exclusions and (removed or added):
-            extable = load_exclusions(repo)
-            orset = extable.get(key, ExclusionORSet())
-            new_adds = frozenset((oid, uuid.uuid4().hex) for oid in removed)
-            tomb = frozenset(tag for (oid, tag) in orset.adds if oid in added)
-            extable[key] = ExclusionORSet(orset.adds | new_adds, orset.tombstones | tomb)
-            save_exclusions(repo, extable)
-        itable[key] = sorted(ideal.op_ids)
-        _save_ideal_table(repo, itable)
-        wtable = _load_witnesses(repo)
-        wtable[key] = witness_sha
-        _save_witnesses(repo, wtable)
-        if entry is not None:
-            entry["applied"] = True  # the edit landed -- the entry is now trustworthy for undo
-            _save_ideal_journal(repo, jtable)
-
-
-@dataclass(frozen=True)
-class UndoResult:
-    """What an ideal-edit undo restored: the prior `ideal`, the fresh `witness_sha` that
-    re-materialized it, and the op-set delta versus the state undone (for the verb's report)."""
-
-    ideal: Ideal
-    witness_sha: str
-    removed: frozenset[str]
-    added: frozenset[str]
-
-
-def _apply_ideal_edit_inverse(repo: str | Path, event: dict) -> UndoResult:
-    """Restore the prior ideal an `ideal_edit` event carries (U8/KTD6): re-materialize it as a
-    *fresh* witness commit and re-record it without journaling. History is an append-only op DAG,
-    so undo is a forward edit re-establishing prior content, never a ref rewind; the stored
-    `witness` is provenance only (the restore re-`put`s and uses the new sha). This is the ideal-edit
-    restore that `oplog.apply_inverse` dispatches to for an `ideal_edit` event."""
-    repo = Path(repo)
-    all_ops = Store(repo).all_ops()
-    current = current_ideal(repo)
-    prev = Ideal.from_ops(frozenset(event["ideal"]), all_ops)
-    sha = put(repo, prev, message="ugh undo: restore prior ideal", bookkeeping=True)
-    record_ideal(repo, prev, sha, journal=False)
-    if "out" in event:
-        state.save_json(repo, "out", event["out"])
-    return UndoResult(prev, sha, removed=current.op_ids - prev.op_ids, added=prev.op_ids - current.op_ids)
 
 
 def _dirty_conflicts(repo: Path, gb: GitBinding, materialized: dict[str, bytes]) -> set[str]:
@@ -1563,9 +898,7 @@ def materialization_skips(
     The split exists because the two need opposite things said about them. A path ugh never mined
     -- `.gitignore` in every repo built by these tools -- cannot be materialized by any repair, so
     reporting it as damage and pointing at `ugh check --tree` sends a user to run a command
-    that answers "0 drifted path(s)" and leaves the same warning on the next `status`. That is the
-    failure `_history_rewritten` documents for resync: a remedy that reports success without
-    fixing anything is worse than none, because it also removes the reason to keep looking.
+    that answers "0 drifted path(s)" and leaves the same warning on the next `status`.
 
     `prior_ideal` mirrors `_write_working_tree`'s parameter of the same name, and every caller
     predicting a *specific* edit must pass it (`status`, which asks about no particular edit,
@@ -1674,8 +1007,7 @@ def _write_working_tree(
     edit's own prunes included. The one ideal the backstop consults is therefore the one ideal that
     can no longer produce the bytes being deleted, so a revert that empties a file whose entity was
     forward-pruned rather than excluded refused its own delete, committed nothing, and reported
-    success. Bytes the prior ideal folds are recoverable by construction: `record_ideal` journals
-    that exact op-set, so `ugh undo` restores them."""
+    success."""
     tracked = _tracked_paths(repo)
 
     unmanaged: list[str] = []

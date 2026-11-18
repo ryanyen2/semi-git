@@ -71,15 +71,10 @@ working-tree drift, a git history rewrite.
 Check for a `.sgt/` directory before you rely on any of it. If there is no `.sgt/`, use plain git
 and stop reading here.
 
-Two states mean **stop and tell the human** rather than working around them:
-
-- a paused git merge/cherry-pick/revert — the tree holds conflict markers, `ugh save` refuses
-  outright, and anything you record now is recorded against a half-merged tree.
-- git history moved backward — someone ran `reset --hard`, `amend`, or `branch -f`, so ugh's
-  recorded state names commits that no longer exist. Every count you read is inflated until
-  `ugh check --repair` runs.
-
-Neither is yours to fix silently. Say what you found and what fixes it.
+One state means **stop and tell the human** rather than working around it: a paused git
+merge/cherry-pick/revert — the tree holds conflict markers, `ugh save` refuses outright, and
+anything you record now is recorded against a half-merged tree. It is not yours to fix silently.
+Say what you found and what fixes it.
 
 ## Which read answers which question
 

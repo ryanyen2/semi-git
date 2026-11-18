@@ -110,7 +110,7 @@ def project(name: str, episodes: list[dict], scratch: Path) -> list[str]:
     op_ids = frozenset().union(*(_save(repo, e["sha"]).op_ids for e in events))
     from ugh.core import planner
 
-    p = planner.plan(repo, op_ids, target="events")
+    p = planner.plan(repo, op_ids, target="events", removal_set=True)
     shas = sorted(s["sha"] for s in p.removal_set["saves"])
     out = take_out(repo, op_ids, "events")
     passed = "pass" if checks(repo) else "FAIL"

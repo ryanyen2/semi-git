@@ -76,44 +76,6 @@ def test_commit_times_empty_on_unborn_ref(tmp_path):
     assert gb.commit_times() == {}
 
 
-def test_history_backward_mirrors_history_reversed(tmp_path):
-    gb, _ = init_store(tmp_path)
-    shas = []
-    for i in range(5):
-        (tmp_path / "f.txt").write_text(f"v{i}", encoding="utf-8")
-        shas.append(gb.commit_all(f"feat: v{i}"))
-
-    forward = gb.history(since=None, target=shas[-1])
-    backward = gb.history_backward(tip=shas[-1])
-    assert backward == list(reversed(forward))
-
-
-def test_history_backward_root_commit_has_no_parent(tmp_path):
-    gb, _ = init_store(tmp_path)
-    (tmp_path / "f.txt").write_text("v1", encoding="utf-8")
-    sha1 = gb.commit_all("feat: v1")
-    (tmp_path / "f.txt").write_text("v2", encoding="utf-8")
-    gb.commit_all("feat: v2")
-
-    rows = gb.history_backward(tip=sha1)
-    assert len(rows) == 1
-    assert rows[0][0] == sha1
-    assert rows[0][1] is None
-
-
-def test_history_backward_limit_caps_walk_to_newest_rows(tmp_path):
-    gb, _ = init_store(tmp_path)
-    shas = []
-    for i in range(5):
-        (tmp_path / "f.txt").write_text(f"v{i}", encoding="utf-8")
-        shas.append(gb.commit_all(f"feat: v{i}"))
-
-    full = gb.history_backward(tip=shas[-1])
-    limited = gb.history_backward(tip=shas[-1], limit=2)
-    assert limited == full[:2]
-    assert len(limited) == 2
-
-
 def test_blob_bytes_batch_and_argv_paths_agree(tmp_path):
     """The persistent `cat-file --batch` fast path and the one-shot `git show` argv fallback must
     return byte-identical content for the same blob, including binary with NULs and high bytes --
@@ -203,34 +165,26 @@ def test_cat_file_batch_restarts_after_its_process_dies(tmp_path):
     batch.close()
 
 
-def test_commits_touching_follows_a_side_branch_deletion_across_a_merge(tmp_path):
-    """`commits_touching` is scoped to a single path deliberately: a union pathspec over several
-    paths is NOT a sound superset of each path's own walk, because git's history simplification
-    follows only one TREESAME parent at a merge and a wider pathspec can flip which parent that is
-    -- rerouting the walk away from the side branch that closed a symbol (the miner's rebirth
-    lookback, U9, would then mis-mint a fresh birth instead of chaining). This pins the property
-    the per-path walk guarantees: the side-branch commit that emptied `a.py` is reachable from the
-    post-merge tip's own-path history."""
+def test_first_parent_path_log_lists_a_merge_that_changed_the_path(tmp_path):
+    """The miner reads a symbol's version by walking first parents through the commits that changed
+    its path; a merge that took the path from its second parent is on that walk, so the walk can
+    continue on that parent."""
     gb, _ = init_store(tmp_path)
     (tmp_path / "a.py").write_text("def foo():\n    return 1\n", encoding="utf-8")
     c0 = gb.commit_all("feat: add foo")
     main = gb._git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
-
     gb._git("checkout", "-q", "-b", "side")
-    (tmp_path / "a.py").write_text("", encoding="utf-8")  # close foo on the side branch
+    (tmp_path / "a.py").write_text("", encoding="utf-8")
     closing = gb.commit_all("chore: empty a.py")
-
     gb._git("checkout", "-q", main)
     (tmp_path / "b.py").write_text("def bar():\n    return 2\n", encoding="utf-8")
     gb.commit_all("feat: add bar (unrelated, on main)")
-
     gb._git("merge", "-q", "--no-ff", "-m", "merge side", "side")
     tip = gb.head()
-    assert tip is not None
 
-    shas = [sha for sha, _parent in gb.commits_touching(tip, "a.py")]
-    assert closing in shas  # the side-branch deletion is on a.py's own-path history
-    assert c0 in shas  # as is the original add
+    rows = gb.first_parent_path_log(tip, "a.py")
+    assert [sha for sha, _p in rows] == [tip, c0]
+    assert rows[0][1][1] == closing
 
 
 def test_batch_reads_do_not_alias_across_chdir_with_relative_repo(tmp_path, monkeypatch):

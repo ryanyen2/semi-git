@@ -65,8 +65,7 @@ def _edit_and_commit(repo: Path, path: str, content: str, message: str) -> str:
     (repo / path).write_text(content, encoding="utf-8")
     content_sha = GitBinding(repo).commit_all(message)
     ideal = lens.get(repo)
-    put_sha = lens.put(repo, ideal, message=f"ugh: mine {message}")
-    lens.record_ideal(repo, ideal, put_sha)
+    lens.put(repo, ideal, message=f"ugh: mine {message}")
     return content_sha
 
 
@@ -390,6 +389,10 @@ def test_u8_a_revert_travels_to_every_replica(tmp_path):
     _push(r0)
 
     _sync_and_push(r1)  # ...and the revert travels on r1's next sync
-    assert {op.id for op in taken.new_ops} <= lens.current_ideal(r1).op_ids
+    from ugh.core import oplog
+
+    sha = oplog.tail(r0)["sha"]
+    mined = {op.id for op in Store(r0).all_ops() if sha in op.provenance}
+    assert taken.undone and mined and mined <= lens.current_ideal(r1).op_ids
     assert "def baz" not in (r1 / "main.py").read_text(encoding="utf-8")
     assert _sync_and_push(r1).message == "already up to date"  # idempotent with a removal in play

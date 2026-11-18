@@ -1,28 +1,10 @@
-"""The unified operation-event log + universal undo (plan U8, R7/KTD6).
+"""The operation log and `ugh undo`.
 
-One append-only, per-ref event log that every mutating verb appends to; `undo` pops the tail event
-and applies its inverse uniformly, walking arbitrarily far back. "Arbitrarily far back" means the
-*depth of sequential undo* -- repeated `undo` pops one tail event at a time, reverse-chronologically
--- NOT random-access undo of a non-tail op (undoing an op later ops built on would need a rebase
-story, which is explicitly out of scope).
-
-**Subsumes `ideal_journal` (KTD6).** This is a single store: it reuses the existing
-`.sgt/local/ideal_journal.json` slot, now holding a list of typed events per ref-key rather than
-only `{ideal, witness}` dicts. Every event carries an explicit `kind`: `record_ideal` pushes the
-outgoing ideal tagged `kind="ideal_edit"`, and that restore is folded in as one event kind here.
-There is one pop per undo, so an ideal-edit event and a journal entry can never be popped by two
-mechanisms.
-
-**Inverse-descriptor = a snapshot of the affected artifact(s) captured at append time**, restored
-on undo -- the simplest robust inverse:
-  * `ideal_edit`    -- the prior ideal (+ its witness); restored by re-materializing it
-                       (`lens._apply_ideal_edit_inverse`), the ideal-edit restore.
-  * `feature_reorg` -- a snapshot of `tree`/`pins`/`authored_features` before the reorg
-                       (merge/split/rename/move are byte-neutral for `code(I)`, so restoring the
-                       three metadata artifacts is the whole inverse).
-
-This is distinct from `ugh.api.oplog_view`, which projects the *content* op-DAG (the mined ops),
-not this user-action history.
+One per-ref log every mutating verb appends to: `{"kind": "commit", "sha", "verb", "target"}` for a
+commit ugh made (a save, a take-out, a bring-back, a resolve), and `feature_reorg` snapshots of the
+feature metadata. `undo` pops the newest event and reverses it: a commit is reversed by taking out
+the ops mined from it (`ugh.core.planner`), which is itself a commit and is not logged, so repeated
+undos walk back; a reorg restores its snapshot.
 """
 
 from __future__ import annotations
@@ -40,8 +22,7 @@ _SLOT = "ideal_journal"  # the unified log reuses (repurposes) the ideal_journal
 
 
 def load(repo: str | Path) -> dict[str, list[dict]]:
-    """The unified log: `{ref_key: [event, ...]}`, empty when absent. Lock-free (callers that must
-    stay consistent with a table+witness write hold the lock themselves, like `record_ideal`)."""
+    """The log: `{ref_key: [event, ...]}`, empty when absent."""
     return state.load_json(repo, _SLOT, default={})
 
 
@@ -58,9 +39,8 @@ def _ref_key(repo: Path) -> str | None:
 
 def append(repo: str | Path, event: dict, *, ref_key: str | None = None) -> None:
     """Append `event` to the log for `ref_key` (the current ref by default). One locked
-    read-modify-write, so a concurrent append never loses an entry (R5/R6). Callers must not
-    already hold `locked_section` -- the flock is non-reentrant (see `record_ideal`, which does its
-    own inline push under the lock it already holds)."""
+    read-modify-write, so a concurrent append never loses an entry. Callers must not already hold
+    `locked_section` (the flock is non-reentrant)."""
     repo = Path(repo)
     with locked_section(repo):
         table = load(repo)
@@ -79,13 +59,8 @@ def tail(repo: str | Path, *, ref_key: str | None = None) -> dict | None:
 
 def _drop_event(repo: str | Path, key: str | None, event: dict) -> bool:
     """Remove the newest occurrence of `event` from `key`'s stack under the lock, and persist.
-    Returns True if an entry was removed. The reload happens *inside* the lock so that a concurrent
-    `append`/`record_ideal` which landed after `undo` read the tail is preserved rather than
-    clobbered (R5/R6): `undo` cannot hold the lock across `apply_inverse` (its ideal_edit path
-    re-enters `record_ideal`, and the flock is non-reentrant), so it drops the event it just
-    inverted in this separate, lock-held read-modify-write. Normally `event` is the tail; if a
-    concurrent append pushed a newer event during the apply window, `event` sits below the tail and
-    is removed from there, leaving the concurrent event intact."""
+    Returns True if an entry was removed. The reload happens inside the lock, so an append that
+    landed while `undo` applied is preserved."""
     repo = Path(repo)
     with locked_section(repo):
         table = load(repo)
@@ -120,166 +95,69 @@ def _restore(repo: str | Path, snap: dict) -> None:
             state.save_json(repo, name, body)
 
 
-# -- undo (reverse-chronological, one kind at a time) ---------------------------------------------
-
-
-def _casualty_symbols(repo: str | Path, op_ids: frozenset[str]) -> str:
-    """The symbols an `undo` snapshot restore would drop, for the F3 refusal message (0.2c). Shares
-    `_symbols_for`'s mapping -- one op-ids-to-symbols derivation in this module, over the
-    footprint-only index rather than `Store.all_ops()`, which decodes every op's images for names
-    it never reads. Falls back to short op ids if an op is no longer in the store."""
-    symbols = _symbols_for(repo, op_ids)
-    return ", ".join(symbols) if symbols else ", ".join(sorted(o[:8] for o in op_ids))
+# -- undo -------------------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
 class UndoOutcome:
-    """What one `undo` did. `status` selects the report: `empty` (nothing to undo), `ideal_edit`
-    (an ideal was restored -- `ideal` carries the `lens.UndoResult`), `reorg` (a metadata snapshot
-    was restored), or `refused` (undo would drop work committed after the edit)."""
+    """What one `undo` did: `empty` (nothing to undo), `commit` (`plan` is the applied take-out of
+    that commit's ops), `refused` (the take-out applied nothing; `plan` says why), or `reorg` (a
+    metadata snapshot was restored)."""
 
     status: str
     message: str
-    ideal: object | None = None  # lens.UndoResult, populated for kind="ideal_edit"
+    plan: object | None = None
     kind: str | None = None
 
 
-def preview(repo: str | Path, *, force: bool = False) -> dict:
-    """What the next `undo` would do, computed without doing it.
+def _commit_plan(repo: Path, event: dict):
+    from ugh.core import opindex, planner
 
-    `undo` is what a developer reaches for when something has gone wrong, which is the worst moment
-    to make them run it blind and find out afterward. Everything shown here is already known before
-    the fact: the tail event says what kind of operation is being reversed, an `ideal_edit` carries
-    the exact prior op-set (so the symbols coming back and going away are a set difference), and the
-    F3 guard's refusal is decided from the same comparison. Returns
-    `{kind, ok, message, restored, dropped, symbols}` -- `ok` False means `undo` would refuse.
-    """
-    from ugh.core import lens
+    ops = {op.id for op in opindex.index_ops(repo) if event["sha"] in op.provenance}
+    return planner.plan(repo, ops, target=f"{event['verb']} {event['target']}".strip())
 
+
+def _what(event: dict) -> str:
+    return f"the {event['verb']} {event['target']}".strip()
+
+
+def preview(repo: str | Path) -> dict:
+    """What the next `undo` would do, computed without doing it: `{kind, ok, message, undone,
+    held, symbols}`."""
     repo = Path(repo)
-    # A crashed verb's unapplied entry is discarded by `undo` rather than executed, so the preview
-    # skips it too -- otherwise it would describe an operation that will never run. One read, one
-    # pass: re-reading the stack per skip could never advance past the first such entry.
-    stack = load(repo).get(_ref_key(repo), [])
-    event = next((e for e in reversed(stack)
-                  if not (e.get("kind") == "ideal_edit" and e.get("applied") is False)), None)
-
+    event = tail(repo)
     if event is None:
-        return _preview(None, True, "nothing to undo")
-
-    kind = event.get("kind", "ideal_edit")
-    if kind == "feature_reorg":
-        verb = event.get("verb", "reorg")
-        return _preview(kind, True, f"restores the feature grouping from before the {verb} "
-                                    f"(no code changes)")
-
-    # `ideal` is the state this event restores; `result` is what the edit left behind. They are
-    # different sets and only `ideal` answers "what will I get back".
-    prior = frozenset(event.get("ideal") or ())
-    current = lens.current_ideal(repo).op_ids
-    restored = sorted(prior - current)
-    removed = sorted(current - prior)
-    # The same comparison the F3 guard makes, reported *before* the user commits to it: work
-    # committed after this edit was recorded is not part of the edit, so restoring an absolute
-    # snapshot would silently take it away.
-    intervening = sorted(current - frozenset(event.get("result") or ()))
-    ok, message = True, "re-materializes the ideal from before the last edit"
-    if not force and intervening:
-        ok = False
-        message = (f"would drop work committed after that edit: "
-                   f"{_casualty_symbols(repo, frozenset(intervening))} -- `--force` to drop it anyway")
-    return _preview(kind, ok, message, restored=restored, dropped=removed,
-                    symbols=_symbols_for(repo, frozenset(restored) | frozenset(removed))[:12])
+        return {"kind": None, "ok": True, "message": "nothing to undo", "undone": 0, "held": 0,
+                "symbols": []}
+    if event["kind"] == "feature_reorg":
+        return {"kind": "feature_reorg", "ok": True, "undone": 0, "held": 0, "symbols": [],
+                "message": f"restores the feature grouping from before the {event.get('verb', 'reorg')} "
+                           f"(no code changes)"}
+    p = _commit_plan(repo, event)
+    return {"kind": "commit", "ok": p.ok and bool(p.files),
+            "message": f"takes out {_what(event)}" + (f" -- {p.message}" if p.message else ""),
+            "undone": len(p.undone), "held": len(p.held),
+            "symbols": sorted({st.symbol for st in p.undone})[:12]}
 
 
-def _preview(kind: str | None, ok: bool, message: str, *, restored=(), dropped=(),
-             symbols=()) -> dict:
-    """One shape for every `preview` return, so its single consumer (`porcelain._undo`) can index
-    every key unconditionally instead of the four branches each spelling the same six-key literal."""
-    return {"kind": kind, "ok": ok, "message": message, "restored": list(restored),
-            "dropped": list(dropped), "symbols": list(symbols)}
-
-
-def _symbols_for(repo: str | Path, op_ids: frozenset[str]) -> list[str]:
-    """The symbols an op-set touches, for naming a change in terms a developer recognizes: a list
-    of op ids says nothing, and the file-and-symbol names are what they were actually editing.
-    Filtered by `is_behavioral` -- the repo's one predicate for "a unit a person edits" -- so ugh's
-    positional residue and plan sentinels stay out of a line whose whole job is recognizability."""
-    if not op_ids:
-        return []
-    from ugh.core import opindex
-    from ugh.core.op import is_behavioral
-
-    names: set[str] = set()
-    for op in opindex.index_ops(Path(repo)):
-        if op.id in op_ids:
-            names.update(op.footprint)
-    return sorted(n for n in names if is_behavioral(n))
-
-
-def undo(repo: str | Path, force: bool = False) -> UndoOutcome:
-    """Pop the current ref's tail event and apply its inverse (KTD6). Reverse-chronological: each
-    call reverses exactly one event. Absorbs current reality first (R9).
-
-    Two Phase-0 guards protect against the snapshot inverse destroying work (0.2):
-      * an `ideal_edit` entry a crashed verb left unapplied (`applied=False`, F6) is *discarded*
-        (its edit never landed, so re-materializing its phantom prior ideal would clobber protected
-        state) and the real edit beneath it is inverted instead;
-      * re-materializing a prior ideal silently drops any op mined into the tree *after* the entry
-        was recorded -- a raw commit between the edit and this undo (F3). Undo detects that casualty
-        and *refuses* rather than destroy it, unless `force=True`."""
-    from ugh.core import lens
+def undo(repo: str | Path) -> UndoOutcome:
+    """Pop the current ref's newest event and reverse it."""
+    from ugh.core import lens, planner
 
     repo = Path(repo)
-    lens.get(repo)  # mine-on-contact: absorb any dirty tree / foreign commit first (R9)
+    lens.get(repo)
     key = _ref_key(repo)
-
-    # Discard any unapplied `ideal_edit` entries a crashed verb left on top (0.2a/F6) before
-    # reaching the newest genuine event to reverse.
-    while True:
-        event = tail(repo, ref_key=key)
-        if event is None:
-            return UndoOutcome("empty", "nothing to undo -- no recorded ideal edits")
-        if event.get("kind") == "ideal_edit" and event.get("applied") is False:
-            _drop_event(repo, key, event)
-            continue
-        break
-
-    kind = event["kind"]
-
-    # F3 guard (0.2c): the ideal_edit inverse re-materializes an absolute snapshot of the prior
-    # ideal, dropping any op present now but absent from the edit's own `result` -- i.e. work mined
-    # after this entry was recorded. Name it and refuse rather than clobber it, unless forced.
-    if kind == "ideal_edit" and not force and "result" in event:
-        current = lens.current_ideal(repo)
-        intervening = current.op_ids - set(event["result"])
-        if intervening:
-            return UndoOutcome(
-                "refused",
-                f"undo would drop work committed after this edit was recorded: "
-                f"{_casualty_symbols(repo, intervening)} -- re-run with force to drop it anyway",
-                kind=kind,
-            )
-
-    outcome = apply_inverse(repo, event)
-    # Applied cleanly -- now drop exactly the event we inverted, in a separate lock-held
-    # read-modify-write (`apply_inverse`'s ideal_edit path re-enters `record_ideal`, whose flock is
-    # non-reentrant, so we cannot hold the lock across the apply). `_drop_event` reloads inside the
-    # lock, so a concurrent append during the apply window is preserved, not clobbered (R5/R6).
-    _drop_event(repo, key, event)
-    return outcome
-
-
-def apply_inverse(repo: str | Path, event: dict) -> UndoOutcome:
-    """Apply one event's inverse, dispatching on `kind`. A snapshot kind restores its artifacts; an
-    ideal_edit re-materializes its prior ideal."""
-    from ugh.core import lens
-
-    kind = event["kind"]
-    if kind == "ideal_edit":
-        res = lens._apply_ideal_edit_inverse(repo, event)
-        return UndoOutcome("ideal_edit", f"restored {len(res.ideal.op_ids)} op(s)", ideal=res, kind=kind)
-    if kind == "feature_reorg":
+    event = tail(repo, ref_key=key)
+    if event is None:
+        return UndoOutcome("empty", "nothing to undo")
+    if event["kind"] == "feature_reorg":
         _restore(repo, event.get("snapshot", {}))
-        return UndoOutcome("reorg", f"reverted feature {event.get('verb', 'reorg')}", kind=kind)
-    raise ValueError(f"unknown oplog event kind {kind!r}")
+        _drop_event(repo, key, event)
+        return UndoOutcome("reorg", f"reverted feature {event.get('verb', 'reorg')}", kind="feature_reorg")
+    p = _commit_plan(repo, event)
+    done = planner.apply(repo, p, message=f"ugh undo {event['verb']} {event['target']}".strip(), log=False)
+    if done.check != "not_run" and done.check["passed"] and done.files:
+        _drop_event(repo, key, event)
+        return UndoOutcome("commit", f"took out {_what(event)}", plan=done, kind="commit")
+    return UndoOutcome("refused", done.message or f"could not take out {_what(event)}", plan=done,
+                       kind="commit")

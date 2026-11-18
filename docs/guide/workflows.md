@@ -24,8 +24,9 @@ ugh status                  # files, symbols, features, coverage, and any open f
 ugh undo                    # step back: undo your last save, revert, or restore
 ```
 
-`ugh undo` only moves forward. Instead of rewinding history, it records a new change that undoes
-the last one, so you never lose the record of what actually happened.
+`ugh undo` only moves forward. Instead of rewinding history, it takes out what your last save,
+revert or restore did as a new change, so you never lose the record of what actually happened and
+work you committed since stays.
 
 A save also answers "where did that work go": it prints the feature(s) the new edits landed in,
 by name, with a typeable handle. That moment is when you remember what the work was, so it is
@@ -70,18 +71,21 @@ $ ugh restore cache.py::get_cached --yes
   ✓ restore applied — 1 step(s) undone, 0 held, the parser passes. (`ugh undo` reverses this.)
 ```
 
-Taking a step out is a new edit: the step's change un-applied onto the definition as it is now.
-Bringing it back is taking out the edit that took it out, so edits you made in between combine
-with it. Where they rewrote the same lines, nothing is written for that step and both versions are
-shown.
+A step is one save's change to one unit: a top-level definition with the comments that follow it,
+the head of a file, or a whole file. Taking a step out is a new edit: the step's change un-applied
+onto the unit as it is now. That edit is a commit whose `Ugh-Out:` trailer names the steps it took
+out, so what is out lives in git history and a clone or a rebase knows it. Bringing a step back is
+taking out the edit that took it out, so edits you made in between combine with it. Where they
+rewrote the same lines, nothing is written for that step and both versions are shown.
 
 A step is held when other remaining work stands on it, and the preview says why: other code uses
 the definition it created (`uses`), a later save changed that definition (`changed_later`), or a
 later save rewrote the same lines (`same_lines`). The preview also names the removal set: the work
 plus everything that stands on it, never cutting another save in two. `ugh revert <target> --whole`
-takes that whole set out. Before anything is committed the project's check runs on the result (the
-tiers in `.sgt/oracle.json`; with none configured, every file that parsed must still parse), and a
-step the check points at is held too.
+takes that whole set out. The project's check (the tiers in `.sgt/oracle.json`) must pass on the
+tree before anything is written. Then it runs on the result, together with the parser (every file
+that parsed must still parse): a failure at a line inside a definition the take-out changed holds
+that step, and a failure anywhere else applies nothing and shows the output.
 
 The target here was a `file::symbol` name. It can also be an op id, a save's commit sha, a feature,
 or one of a feature's checkpoints:
@@ -180,7 +184,8 @@ ugh resolve main.py::foo --apply
 
 `resolve --apply` runs your build and test checks against the reconciled version first and refuses
 to commit it unless those checks pass, or you record a human override with a reason (`--override`). A fork cannot be
-closed by a version nobody verified. Once it lands, `main.py::foo` is one continuous chain again,
+closed by a version nobody verified. The commit carries an `Ugh-Resolves:` trailer naming both
+tips; once it lands, `main.py::foo` is one continuous chain again on the side you resolved onto,
 and the fork record closes.
 
 When nothing forks, which is the common case because most syncs touch separate files, `ugh sync`
@@ -205,15 +210,22 @@ depends on. These are fixed now.
 
 - A file or symbol that was deleted and then re-added no longer disappears from your working tree.
   The case that used to cause a silent delete now keeps the file and reports it in `ugh status`
-  and `ugh check --tree`. Re-adding a symbol now chains onto its earlier history, which recovered most of
-  the ops the old version dropped. One edge case remains: if a symbol is deleted and re-added with
-  the exact same content, the two versions still register as a fork.
+  and `ugh check --tree`. A symbol's version is a hash of its content and the version it came
+  from, so a re-added symbol continues its earlier chain and content that comes back (a comment
+  changed and changed back, a change retyped after it was taken out) is a new version, never a
+  fork.
 - Symlinks are now left alone. `ugh` never writes or deletes through a symlink, whether the
   symlink is the file itself or one of its parent directories.
-- `ugh sync` now does a proper three-way merge against the common ancestor, so a teammate's
-  deliberate revert stays reverted instead of coming back.
+- `ugh sync` now does a proper three-way merge against the common ancestor, and a teammate's
+  revert is a commit like any other, so it stays reverted instead of coming back.
 
 These limits remain, either by design or because they are not built yet:
+
+- Op ids are a function of each symbol's content sequence since the horizon `ugh init` mined
+  from, so the same commits mined from two different horizons give different ids. A rebase that
+  keeps each symbol's content sequence keeps its ids.
+- A rename is one op that removes the old name and creates the new one; the renamed definition
+  starts a new chain.
 
 - `ugh` reads Python, TypeScript, and TSX into real symbols using tree-sitter. Any other language
   is tracked as exact, faithful whole-file content. Nothing is misread, but you cannot revert one

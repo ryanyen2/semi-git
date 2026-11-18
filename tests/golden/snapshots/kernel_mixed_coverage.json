@@ -5,14 +5,14 @@
     "identity_events": [
       {
         "event": "birth",
-        "feature_id": "f-0996bb612e40f05451f1c908c1b9178e4254a93495eb08609725b6adf3a6a581"
+        "feature_id": "f-1c0e33a256b2bae188f148b90b838fbec3560b07ca898db84de46bffa6455e37"
       }
     ],
     "nodes": [
       {
         "children": [],
         "dir": "pkg.py",
-        "id": "f-0996bb612e40f05451f1c908c1b9178e4254a93495eb08609725b6adf3a6a581",
+        "id": "f-1c0e33a256b2bae188f148b90b838fbec3560b07ca898db84de46bffa6455e37",
         "kind": "feature",
         "label": "compute helper",
         "members": [
@@ -25,7 +25,7 @@
           "util.py::__residue__::helper",
           "util.py::helper"
         ],
-        "op_count": 10,
+        "op_count": 6,
         "own_symbols": [
           "config.yaml",
           "notes.md",
@@ -40,70 +40,28 @@
       }
     ],
     "roots": [
-      "f-0996bb612e40f05451f1c908c1b9178e4254a93495eb08609725b6adf3a6a581"
+      "f-1c0e33a256b2bae188f148b90b838fbec3560b07ca898db84de46bffa6455e37"
     ],
     "sync_status": {
-      "complete": true,
-      "history_rewritten": false,
-      "reached_genesis": true
+      "complete": true
     }
   },
   "oplog_view": {
-    "count": 10,
+    "count": 6,
     "kinds": {
-      "add": 10
+      "add": 6
     },
     "ops": [
       {
-        "id": "0996bb612e40f05451f1c908c1b9178e4254a93495eb08609725b6adf3a6a581",
+        "id": "1c0e33a256b2bae188f148b90b838fbec3560b07ca898db84de46bffa6455e37",
         "intent": null,
         "kind": "add",
         "symbols": [
-          "pkg.py::__anchor__::compute"
+          "util.py::__residue__::\u0000HEAD\u0000"
         ]
       },
       {
-        "id": "351a510be5b64d958be6bf8e1d47be7458764bc07d877c524d861e1b02791584",
-        "intent": null,
-        "kind": "add",
-        "symbols": [
-          "config.yaml"
-        ]
-      },
-      {
-        "id": "353fa6ceed44be209795ffa7f2474acdd92c8f856fd760bf5175cb18c4f87cb1",
-        "intent": null,
-        "kind": "add",
-        "symbols": [
-          "pkg.py::__residue__::\u0000HEAD\u0000"
-        ]
-      },
-      {
-        "id": "439bd228b4ec3c08fce8c8751a16876494b0550c1b5237591f67c1f83ed3f91b",
-        "intent": null,
-        "kind": "add",
-        "symbols": [
-          "util.py::__residue__::helper"
-        ]
-      },
-      {
-        "id": "4f87b6488cc24c93545dedbfda727889913d33cdfdce5a9da6d59b3e20ba9ff4",
-        "intent": null,
-        "kind": "add",
-        "symbols": [
-          "pkg.py::compute"
-        ]
-      },
-      {
-        "id": "6695472bd8703405e241732ba62bf02947d7be2bfcf176fbd88538bc87d54b99",
-        "intent": null,
-        "kind": "add",
-        "symbols": [
-          "util.py::__anchor__::helper"
-        ]
-      },
-      {
-        "id": "690dfb464d215ba624683ab3888cfe945b07c13e5cbccc6cc8017dfa8b6fd091",
+        "id": "20a4f402e281b25356ef2f6626594a1dc3379e9a32dc7ce2c50c3209c7e87cb6",
         "intent": null,
         "kind": "add",
         "symbols": [
@@ -111,27 +69,39 @@
         ]
       },
       {
-        "id": "76e6284fb7d71090cf461cd04ae58f2ebf8bdf60fb8bc14061a72a5c68ca76e2",
+        "id": "36981ae4257f6e934350d274e1496a15066ce623974c189563e35921a485a89a",
         "intent": null,
         "kind": "add",
         "symbols": [
+          "pkg.py::__residue__::\u0000HEAD\u0000"
+        ]
+      },
+      {
+        "id": "3d477b98827466bacf7dabd8e7781b534b35ad9892881c00bcb553e5ca96c7a6",
+        "intent": null,
+        "kind": "add",
+        "symbols": [
+          "config.yaml"
+        ]
+      },
+      {
+        "id": "4ce63baedb88d801aca95c73783c93ff28f4a8fc63cfb18846f987cf7dd17bd0",
+        "intent": null,
+        "kind": "add",
+        "symbols": [
+          "pkg.py::__anchor__::compute",
+          "pkg.py::__residue__::compute",
+          "pkg.py::compute"
+        ]
+      },
+      {
+        "id": "a89d2cbef5d1118c1a50d005bad9acf9914f0fc44df0c51d597e648d93970447",
+        "intent": null,
+        "kind": "add",
+        "symbols": [
+          "util.py::__anchor__::helper",
+          "util.py::__residue__::helper",
           "util.py::helper"
-        ]
-      },
-      {
-        "id": "a7fe54a854f713a9f4c98e5c259411b2a509ac366a4cc074716254e20bc1aa4d",
-        "intent": null,
-        "kind": "add",
-        "symbols": [
-          "pkg.py::__residue__::compute"
-        ]
-      },
-      {
-        "id": "dc33947e9268dd2e07640f1105965ca269acae8d929ddac435ef3b5104ed7474",
-        "intent": null,
-        "kind": "add",
-        "symbols": [
-          "util.py::__residue__::\u0000HEAD\u0000"
         ]
       }
     ],
@@ -171,9 +141,7 @@
     },
     "symbols": 10,
     "sync_status": {
-      "complete": true,
-      "history_rewritten": false,
-      "reached_genesis": true
+      "complete": true
     },
     "unmanaged": []
   }

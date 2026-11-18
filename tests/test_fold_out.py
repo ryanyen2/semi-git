@@ -30,7 +30,7 @@ def _forward_subtracting_target(repo):
 
     for op_id in sorted(current_ideal(repo).op_ids):
         p = planner.plan(repo, {op_id}, target=op_id)
-        if p.ok and p.files and p.new_ops:
+        if p.ok and p.files:
             return op_id
     raise AssertionError("fixture has no revert that changes a file")
 
@@ -93,32 +93,17 @@ def test_fold_at_now_resolves_the_current_ideal_never_a_ref(tmp_path):
     assert fold_view(repo, ref="HEAD")["files"] == now["files"]
 
 
-def test_ideal_for_ref_reads_trailers_so_save_authored_history_is_not_lost(tmp_path):
-    """The seedbank defect, at corpus scale.
-
-    `op.provenance` is stamped only by *mining* pre-existing git history. Ops minted by `ugh save`
-    and by `verbs.apply` carry none, so provenance projection cannot select them and
-    `ideal_for_ref` returned whatever fraction of the store happened to be mined. On a React app
-    authored the way ugh asks people to author -- one scaffold commit mined, twelve `ugh save`
-    commits on top -- that was **10 of 151 ops, 7 of 30 files, and 0 of its 23 source files**. The
-    repo rendered as if it had no source code. bikecount hid it at 111 of 189, because its history
-    was authored as real git commits and then mined, which is the one shape that looks healthy.
-
-    Reading the ref tip's own `Sgt-Op:` trailers fixes it, because `record_ideal` writes the whole
-    ideal into every commit ugh makes. Here that is asserted the strict way: the ref fold must equal
-    the current ideal exactly, so a re-mine that happens to restore provenance cannot mask a
-    regression in the trailer path."""
+def test_ideal_for_ref_agrees_with_the_current_ideal_after_a_take_out(tmp_path):
+    """Every op comes from mining a commit, the take-out's included, so the ideal a ref's history
+    implies is the current ideal."""
     repo = _mined(tmp_path, "linear_history")
     target = _forward_subtracting_target(repo)
-    assert _in(repo, ["revert", target, "--json"]) == 0  # mints ops with no provenance
+    assert _in(repo, ["revert", target, "--json"]) == 0
 
     from ugh.core import opindex
 
-    ops = opindex.index_ops(repo)
-    provenanced = {o.id for o in ops if o.provenance}
     live = current_ideal(repo).op_ids
-    assert live - provenanced, "fixture must contain ops no ref could select by provenance"
-
+    assert all(o.provenance for o in opindex.index_ops(repo) if o.id in live)
     assert set(ideal_for_ref(repo, "HEAD").op_ids) == set(live)
 
 

@@ -24,8 +24,7 @@ def _edit_and_commit(repo: Path, path: str, content: str, message: str) -> str:
     (repo / path).write_text(content, encoding="utf-8")
     content_sha = GitBinding(repo).commit_all(message)
     ideal = lens.get(repo)
-    put_sha = lens.put(repo, ideal, message=f"ugh: mine {message}")
-    lens.record_ideal(repo, ideal, put_sha)
+    lens.put(repo, ideal, message=f"ugh: mine {message}")
     return content_sha
 
 

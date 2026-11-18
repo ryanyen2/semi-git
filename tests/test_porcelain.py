@@ -1,8 +1,8 @@
 """Tests for ugh.cli.porcelain -- the D3 daily-loop verbs `save`/`undo` (plan U26).
 
 The D2 refusal table itself (`ugh git <tree-mutating-sub>`) is covered end-to-end in
-tests/test_cli_git_passthrough.py. This file covers the other half: the ideal-edit journal that
-makes `undo` possible (`lens.record_ideal` -> `oplog.undo`), and `save`/`undo`
+tests/test_cli_git_passthrough.py. This file covers the other half: `undo` over the operation log
+(`oplog.undo` takes out the ops of the last commit ugh made), and `save`/`undo`
 exercised through `cli.main` on real repos -- ending with the plan's named scenario, the full
 daily loop running git-free.
 """
@@ -52,8 +52,12 @@ def _two_branches(repo_path):
 
 
 # ---------------------------------------------------------------------------
-# The ideal-edit undo (lens.record_ideal -> unified oplog.undo)
+# undo takes out the ops of the last commit ugh made
 # ---------------------------------------------------------------------------
+
+
+def _tree(repo):
+    return {p: (repo / p).read_bytes() for p in ("a.py", "b.py", "c.py") if (repo / p).exists()}
 
 
 def test_undo_reports_empty_when_nothing_has_been_recorded(tmp_path):
@@ -62,52 +66,38 @@ def test_undo_reports_empty_when_nothing_has_been_recorded(tmp_path):
     assert oplog.undo(repo).status == "empty"
 
 
-def test_undo_restores_the_ideal_from_before_the_last_apply(tmp_path):
-    """A revert's apply calls `lens.record_ideal`, which appends the outgoing ideal as an
-    `ideal_edit` event; `oplog.undo` pops that event and restores it exactly (set arithmetic),
-    reporting the delta via its `UndoResult`."""
+def test_undo_brings_back_what_the_last_take_out_took(tmp_path):
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
     original_ids = get(repo).op_ids
-    ops = Store(repo).all_ops()
-    baz = next(o for o in ops if "b.py::baz" in o.footprint)
+    original = _tree(repo)
+    baz = next(o for o in Store(repo).all_ops() if "b.py::baz" in o.footprint)
 
     _revert(repo, baz.id)
-    reverted_ids = get(repo).op_ids
-    assert reverted_ids > original_ids  # a take-out only adds ops
-
+    assert get(repo).op_ids > original_ids  # a take-out only adds ops
     outcome = oplog.undo(repo)
-    assert outcome.status == "ideal_edit"
-    result = outcome.ideal
-    assert result.ideal.op_ids == original_ids
-    assert get(repo).op_ids == original_ids
-    assert result.removed == reverted_ids - original_ids  # the take-out's ops left
-    assert result.added == set()
+    assert outcome.status == "commit" and outcome.plan.undone
+    assert _tree(repo) == original
 
 
 def test_repeated_undo_walks_back_through_two_independent_edits(tmp_path):
-    """Two applied edits push two events; undo pops them one at a time, oldest last."""
+    """Two take-outs log two commits; undo takes them out one at a time, newest first."""
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
-    original_ids = get(repo).op_ids
+    get(repo)
+    original = _tree(repo)
     ops = Store(repo).all_ops()
     baz = next(o for o in ops if "b.py::baz" in o.footprint)
-    qux_ops = [o for o in ops if "c.py::qux" in o.footprint]
-    qux_tip = max(qux_ops, key=lambda o: len(o.footprint["c.py::qux"]))
+    qux = [o for o in ops if "c.py::qux" in o.footprint][-1]
 
     _revert(repo, baz.id)
-    after_first = get(repo).op_ids
-    _revert(repo, qux_tip.id)
-    after_second = get(repo).op_ids
-    assert after_second != after_first
+    after_first = _tree(repo)
+    _revert(repo, qux.id)
+    assert _tree(repo) != after_first
 
-    first_undo = oplog.undo(repo)
-    assert get(repo).op_ids == after_first  # back to just the baz revert
-
-    second_undo = oplog.undo(repo)
-    assert get(repo).op_ids == original_ids  # both edits inverted
-
-    assert oplog.undo(repo).status == "empty"  # log exhausted
-    assert first_undo.ideal.ideal.op_ids == after_first
-    assert second_undo.ideal.ideal.op_ids == original_ids
+    assert oplog.undo(repo).status == "commit"
+    assert _tree(repo) == after_first
+    assert oplog.undo(repo).status == "commit"
+    assert _tree(repo) == original
+    assert oplog.undo(repo).status == "empty"
 
 
 # ---------------------------------------------------------------------------
@@ -476,17 +466,17 @@ def test_save_assigns_a_new_symbol_a_durable_lane(tmp_path):
 
 def test_undo_inverts_a_save_and_then_reports_nothing_to_undo(tmp_path, capsys):
     repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
-    before_ids = get(repo).op_ids
+    get(repo)
     (repo / "d.py").write_text("def quux():\n    return 42\n", encoding="utf-8")
     with _in(repo):
         cli.main(["save"])
-        assert get(repo).op_ids != before_ids
+        assert (repo / "d.py").exists()
 
         rc = cli.main(["undo"])
         assert rc == 0
         out = capsys.readouterr().out
         assert "undo" in out
-        assert get(repo).op_ids == before_ids
+        assert not (repo / "d.py").exists()
 
         rc = cli.main(["undo"])
         assert rc == 0
@@ -499,13 +489,13 @@ def test_full_daily_loop_runs_git_free(tmp_path, capsys):
     repo = tmp_path / "repo"
     gb, _base = _two_branches(repo)
     with _in(repo):
-        before_ids = get(repo).op_ids
+        get(repo)
         (repo / "e.py").write_text("def new_thing():\n    return 1\n", encoding="utf-8")
         assert cli.main(["save"]) == 0
-        assert get(repo).op_ids != before_ids
+        assert (repo / "e.py").exists()
 
         assert cli.main(["undo"]) == 0
-        assert get(repo).op_ids == before_ids
+        assert not (repo / "e.py").exists()
         capsys.readouterr()
 
         head = gb.head()

@@ -87,6 +87,16 @@ def is_bookkeeping_message(commit_message: str) -> bool:
     return subject.startswith(_LEGACY_BOOKKEEPING_PREFIXES)
 
 
+def parse_trailer_ids(commit_message: str, key: str) -> list[str]:
+    """Every whitespace-separated value on a commit's `key:` trailer lines, in message order."""
+    return [
+        value
+        for line in commit_message.splitlines()
+        if (stripped := line.strip()).startswith(f"{key}:")
+        for value in stripped.split(":", 1)[1].split()
+    ]
+
+
 def parse_op_ids(commit_message: str) -> list[str]:
     """Every op id a commit's `Sgt-Op:` trailers witness, in message order."""
     return [
@@ -711,7 +721,8 @@ class GitBinding:
         def compute() -> list[tuple[str, str | None, str, int | None, bool]]:
             rev_range = f"{since}..{target}" if since is not None else target
             fmt = "%H%x1f%P%x1f%s%x1f%ct%x1f%(trailers:key=" + BOOKKEEPING_KEY + ",valueonly)"
-            proc = self._git("log", "--reverse", f"--format={fmt}", rev_range, check=False)
+            proc = self._git("log", "--reverse", "--topo-order", f"--format={fmt}", rev_range,
+                             check=False)
             if proc.returncode != 0:
                 return []
             rows: list[tuple[str, str | None, str, int | None, bool]] = []
@@ -777,37 +788,10 @@ class GitBinding:
             return {"mainline": set(cached["mainline"]), "merges": set(cached["merges"])}
         return compute()
 
-    def history_backward(self, tip: str, limit: int | None = None) -> list[tuple[str, str | None, str]]:
-        """``(sha, first_parent, subject)`` newest-first from ``tip`` back toward the root --
-        the mirror image of :meth:`history`, which walks the same shape oldest-first via
-        ``--reverse``. ``limit``, if given, caps the underlying ``git log`` walk itself (``-n``)
-        so a bounded backward chunk never pays for walking history it doesn't need (e.g. very
-        deep repos during chunked genesis-backfill). First-parent only, matching ``history``'s
-        merge-commit convention."""
-        args = ["log", "--format=%H%x1f%P%x1f%s"]
-        if limit is not None:
-            args.extend(["-n", str(limit)])
-        args.append(tip)
-        proc = self._git(*args, check=False)
-        if proc.returncode != 0:
-            return []
-        rows: list[tuple[str, str | None, str]] = []
-        for line in proc.stdout.splitlines():
-            if not line:
-                continue
-            sha, parents, subject = line.split("\x1f", 2)
-            first_parent = parents.split()[0] if parents.strip() else None
-            rows.append((sha, first_parent, subject))
-        return rows
-
     def op_ids_by_commit(self, target: str = "HEAD") -> dict[str, set[str]]:
         """``sha -> {op id, ...}`` from each commit's ``Sgt-Op:`` trailers, over ``target``'s
         first-parent history. One ``git log`` call rather than a ``commit_message`` per commit --
-        the committed, tree-witnessed record of which ops each commit's tree embodies. Used to
-        place ops whose *store* provenance is empty (work materialized by a witness commit that a
-        later `record_ideal` advanced the witness past, so `_sync` never re-mined it to stamp
-        provenance) at the commit that actually introduced them, so just-saved work is not dropped
-        from the time-aware views."""
+        the committed, tree-witnessed record of which ops each commit's tree embodies."""
         def compute() -> dict[str, set[str]]:
             # %B is the raw body (trailers live there); \x1e separates commits, \x1f splits
             # sha/body.
@@ -827,29 +811,14 @@ class GitBinding:
             return dict(self._memo_head(("op_ids_by_commit", target), compute))
         return compute()
 
-    def commits_touching(self, ref: str, path: str) -> list[tuple[str, str | None]]:
-        """``(sha, first_parent)`` for every commit reachable from ``ref`` that changed ``path``,
-        newest-first. Powers the miner's rebirth/flip lookback (U9): the ancestor commit that last
-        *closed* a symbol is found by walking the path's own history -- a pure function of git
-        (LAW-0), never the local op store, so it holds across clones and even when the closing
-        commit predates a ``since``-restricted incremental mine. First-parent of each row matches
-        the parent ``mine`` diffs that commit against.
-
-        Scoped to a single path deliberately: a union pathspec over several paths is NOT a superset
-        of each path's own walk, because git's history simplification follows only one TREESAME
-        parent at a merge and a wider pathspec can flip which parent that is (see the caller in
-        `mine._apply_rebirth_chaining`)."""
-        proc = self._git("log", "--format=%H%x1f%P", ref, "--", path, check=False)
+    def first_parent_path_log(self, ref: str, path: str) -> list[tuple[str, list[str]]]:
+        """``(sha, parents)`` newest-first for every commit on ``ref``'s first-parent line whose
+        ``path`` differs from its first parent's."""
+        proc = self._git("log", "--first-parent", "--format=%H%x1f%P", ref, "--", path, check=False)
         if proc.returncode != 0:
             return []
-        rows: list[tuple[str, str | None]] = []
-        for line in proc.stdout.splitlines():
-            if not line:
-                continue
-            sha, parents = line.split("\x1f", 1)
-            first_parent = parents.split()[0] if parents.strip() else None
-            rows.append((sha, first_parent))
-        return rows
+        return [(sha, parents.split()) for sha, _, parents in
+                (line.partition("\x1f") for line in proc.stdout.splitlines() if line)]
 
     def tree_at(self, sha: str) -> dict[str, str]:
         """Every readable text file in the tree at ``sha`` -> its contents (the past snapshot).

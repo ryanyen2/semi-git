@@ -30,11 +30,7 @@ def register(subs, parent) -> None:
     pc.add_argument("--tree", action="store_true",
                     help="compare code(current_ideal) against the HEAD tree (R2)")
     pc.add_argument("--repair", action="store_true",
-                    help="re-derive this ref's record from current git history, after a reset, "
-                         "amend or branch -f dropped commits it names")
-    pc.add_argument("--reseed", action="store_true",
-                    help="with --repair: also discard explicit reverts (a total reset to current "
-                         "git history)")
+                    help="re-derive this ref's record from current git history")
     pc.set_defaults(func=_cmd_check)
 
 
@@ -61,7 +57,7 @@ def _cmd_status(args) -> int:
 
 def _cmd_check(args) -> int:
     if args.repair:
-        return _resync(".", args.reseed, args.as_json)
+        return _resync(".", args.as_json)
     if args.tree:
         return _fsck_tree(".", args.as_json)
     return _fsck(".", args.as_json)
@@ -98,7 +94,7 @@ def _fsck(repo: str, as_json: bool = False) -> int:
               f"re-mine the ref (`ugh log --refresh`) to rebuild it")
     for key in report.unreachable_witnesses:
         print(f"    unreachable witness for {key!r}: its SHA no longer resolves -- "
-              f"`ugh check --repair --reseed` re-seeds it from current history")
+              f"`ugh check --repair` re-seeds it from current history")
     if report.mixed_versions:
         print(f"    mixed miner versions {', '.join(report.mixed_versions)}")
     if report.op_index_stale:
@@ -132,14 +128,12 @@ def _fsck_tree(repo: str, as_json: bool = False) -> int:
     return 0 if not drift else 1
 
 
-def _resync(repo: str, reseed: bool, as_json: bool = False) -> int:
-    """`ugh check --repair [--reseed]`: recover after a git history rewrite (reset --hard / amend /
-    branch -f) left the current ref's ideal naming ops from dropped commits. Drops just this ref's
-    derived local state and re-mines from what HEAD reaches now; `--reseed` also clears explicit
-    reverts. The append-only op store is never touched."""
+def _resync(repo: str, as_json: bool = False) -> int:
+    """`ugh check --repair`: drop this ref's derived local state and re-mine from what HEAD reaches
+    now. The append-only op store is never touched."""
     from ugh.core.lens import resync
 
-    res = resync(repo, reseed=bool(reseed))
+    res = resync(repo)
     if as_json:
         return _emit_json({"ok": True, **res})
     if res["key"] is None:
@@ -336,9 +330,7 @@ def _status(repo: str, as_json: bool = False, full: bool = False) -> int:
           f"{plural(view['features'], 'feature')} · {view['coverage_fraction'] * 100:.0f}% coverage"
           f" · oracle {view['oracle']['status']}")
     lines = fork_lines(view["forks"]["records"])
-    if view["sync_status"].get("history_rewritten"):
-        lines.append("⚠ git history moved backward — `ugh check --repair`")
-    elif view["drift"]["any"]:
+    if view["drift"]["any"]:
         n = len(view["drift"]["paths"])
         lines += [f"⚠ {plural(n, 'file')} {'differs' if n == 1 else 'differ'} from the recorded "
                   "state — `ugh save`", paths(view["drift"]["paths"])]

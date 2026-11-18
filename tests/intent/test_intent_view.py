@@ -146,7 +146,7 @@ def test_segments_say_what_stands_on_them_and_which_revert_is_clean(tmp_path):
 
 def test_a_save_and_a_revert_after_the_last_map_build_are_on_their_lanes(tmp_path):
     """The persisted map files ops only when it is rebuilt, so a save after the build, and the ops
-    a revert minted, sat on no lane until a refresh. Both are filed at read time by the lane that
+    mined from a revert's commit, sat on no lane until a refresh. Both are filed at read time by the lane that
     owns what they touch, and nothing is written back."""
     from ugh import state
     from ugh.api import _named_symbols, history_view
@@ -172,12 +172,16 @@ def test_a_save_and_a_revert_after_the_last_map_build_are_on_their_lanes(tmp_pat
     foo_change = next(o.id for o in opindex.index_ops(tmp_path)
                       if sha in o.provenance and "a.py::foo" in o.footprint)
     done = planner.apply(tmp_path, planner.plan(tmp_path, {foo_change}, target="foo"))
-    assert done.new_ops
+    assert done.undone
+    from ugh.core import oplog
+
+    taken = oplog.tail(tmp_path)["sha"]
+    minted = [o for o in opindex.index_ops(tmp_path) if taken in o.provenance]
 
     by_id = {o.id: o for o in opindex.index_ops(tmp_path)}
     late = [o for o in history_view(tmp_path, full=True)["ops"]
             if o["commit_index"] >= 1 and _named_symbols(by_id[o["id"]])]
-    assert {o["id"] for o in late} >= {op.id for op in done.new_ops if _named_symbols(op)}
+    assert {o["id"] for o in late} >= {op.id for op in minted if _named_symbols(op)}
     for o in late:
         owner = "F-A" if "a.py::foo" in by_id[o["id"]].footprint else "F-B"
         assert o["feature_id"] == owner, o

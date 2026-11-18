@@ -15,35 +15,31 @@ import hashlib
 import json
 from dataclasses import dataclass
 
-BOTTOM = "⊥"  # the ADR's "removed" version/image sentinel: a symbol's after_version at the
-# tip of its chain, meaning the symbol no longer exists in code(I).
+BOTTOM = "⊥"  # prefix of a removal version: the symbol no longer exists in code(I).
 
 
-def salted_bottom(sha: str) -> str:
-    """A removal sentinel salted by the *deleting/flipping commit* (U9): ``⊥@<sha>``. A prune's
-    after_version is salted so a later re-add of the same symbol can chain onto its *specific*
-    deletion (before_version == this salt) instead of both births claiming ``(symbol, None)`` and
-    pseudo-forking. Each deletion mints a distinct salt, so an identical-content rebirth *cycle*
-    (add->del->A->del->A) forms one long chain rather than collapsing two deletions into one."""
-    return f"{BOTTOM}@{sha}"
+def version(symbol: str, previous: str | None, content: bytes | None) -> str:
+    """A symbol's version: a hash of the symbol, the version it came from, and its content. Content
+    that recurs is a new version, so the ops on one symbol form a simple path. `content=None` is a
+    removal, marked with `BOTTOM`."""
+    h = hashlib.sha1(f"{symbol}\0{previous or ''}\0".encode())
+    if content is None:
+        return BOTTOM + h.hexdigest()
+    h.update(content)
+    return h.hexdigest()
 
 
 def is_bottom(version: str | None) -> bool:
-    """True iff ``version`` marks a removed chain tip -- the bare ``BOTTOM`` sentinel or any salted
-    bottom ``⊥@<sha>`` (U9). Every liveness test (`fold`, `ideal.covered_paths`, mine's prune-kind
-    detection, status/cluster surfaces) routes through this rather than an exact ``== BOTTOM`` so a
-    salted tip still reads dead; `order.py` treats versions as opaque strings so salted bottoms
-    chain and ground with no special-casing there."""
-    return version is not None and (version == BOTTOM or version.startswith(BOTTOM + "@"))
+    """True iff `version` is a removal."""
+    return version is not None and version.startswith(BOTTOM)
 
 
-MINER_VERSION = "9"  # Part of every op's content address: bump on any change to what mining
+MINER_VERSION = "10"  # Part of every op's content address: bump on any change to what mining
 # produces, so ops minted under different rules never collide.
 
 # symbol id -> (before_version, after_version); before_version is None for a fresh add.
-# A "version" is a content-addressed string (the symbol's content hash, or a git blob OID for
-# whole-file binary symbols) -- never a commit SHA, so the identification law (R8) can compare
-# footprints across mining runs that saw different commits but identical bytes.
+# A version is `version(symbol, previous, content)`: never a commit SHA, so the same content
+# sequence mined from different commits (a rebase) gives the same ops.
 Footprint = dict[str, tuple[str | None, str]]
 
 # symbol id -> verbatim after-bytes, or None for a removal (the ADR's "bottom" image).
@@ -82,6 +78,21 @@ def _symbol_kind(sym: str) -> str:
     if rest.startswith("__import__::"):
         return "import"
     return "nested" if "." in rest else "entity"
+
+
+def unit_of(sym: str) -> str:
+    """The unit a symbol belongs to: its top-level definition (members, the trailing gap and the
+    anchor fact belong to the definition), the file head, or the whole file."""
+    path, sep, rest = sym.partition("::")
+    if not sep:
+        return sym
+    for marker in ("__residue__::", "__anchor__::"):
+        if rest.startswith(marker):
+            name = rest[len(marker):]
+            return sym if name == "\x00HEAD\x00" else unit_of(f"{path}::{name}")
+    if rest.startswith("__import__::"):
+        return sym
+    return f"{path}::{rest.split('.', 1)[0]}"
 
 
 # The symbol kinds `fold._fold_file` splices bytes for on their own: a whole-file image, a
@@ -133,9 +144,8 @@ class Attribution:
 
 @dataclass(frozen=True)
 class Op:
-    """Frozen and hashable; nothing about a mined Op is mutable after minting. Correcting a
-    wrong result happens by minting a new op (revert/rework) or, for a wrong identity weld,
-    ``identity split``/``identity join`` (U11) -- never by editing one in place."""
+    """Frozen and hashable; nothing about a mined Op is mutable after mining. Correcting a wrong
+    result happens by a new commit (a take-out is one), never by editing an op in place."""
 
     id: str
     footprint: Footprint
@@ -152,9 +162,9 @@ class Op:
     derived: bool = False  # S4/U27: touches a generated/vendored file (e.g. a lockfile) --
     # advisory only, like intent/provenance/attribution, so review surfaces can collapse it;
     # excluded from the id since re-tagging a path derived/not-derived is not a content change.
-    resolves: frozenset[str] = frozenset()  # D5: op id(s) of the fork tip(s) this op reconciles
-    # (`ugh resolve`) -- advisory only, like intent/attribution; excluded from the id since which
-    # fork an op resolves is not itself part of its content.
+    resolves: frozenset[str] = frozenset()  # the fork tips this op reconciles, from its commit's
+    # `Ugh-Resolves:` trailer; `order.fork_free` drops the tip it does not descend from. Excluded
+    # from the id, like provenance.
 
 
 def compute_id(

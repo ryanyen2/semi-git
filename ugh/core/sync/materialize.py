@@ -93,14 +93,9 @@ def materialize(
             _surface_dual_claims(repo, ing, res)  # U6 overlap check: a cross-clone dual-claim
             # `merge_feature` can't reconcile surfaces as a conflict, never a silent resolve
         tree.save(repo, res.tree_result)
-        if res.exclusions:  # merged exclusion OR-Set (§E) -- guarded so a no-exclusion merge stays
-            lens.save_exclusions(repo, res.exclusions)  # byte-identical to pre-1.2 on that table
         state.save_json(repo, "intent_prompts", res.prompts)  # union-by-key sidecar (U5/KTD5)
         save_fork_records(repo, res.forks)  # durable, shared fork state (C4)
     trailers = format_op_trailers(sorted(res.merged_ideal.op_ids))
     merge_sha = gb.complete_merge(f"ugh sync: merge {remote}/{branch}", theirs_sha, trailers=trailers)
-    # `record_exclusions=False` (§E): the merged exclusion OR-Set persisted above is authoritative;
-    # re-deriving it from this merged ideal's delta would mint fresh tags and break cross-clone
-    # OR-Set convergence.
-    lens.record_ideal(repo, res.merged_ideal, merge_sha, record_exclusions=False)
+    lens.get(repo, unbounded=True)  # the merge commit is mined like any other
     return merge_sha

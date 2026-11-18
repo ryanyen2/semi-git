@@ -11,9 +11,8 @@ Two things live here, both small and both *data*:
    posture; the routing table is one data table, not conditionals scattered through the passthrough.
 
 2. **The daily-loop verbs (D3): `save`, `undo`.** Each composed from existing lens machinery (no
-   new kernel call): `save` is the put-path sugar (`get` + witness commit + `record_ideal`); `undo`
-   inverts the last mutating operation by popping the unified operation log (`oplog.undo`), whatever
-   its kind. Everything git does that ugh does not wrap stays one keystroke away behind
+   new kernel call): `save` is the put-path sugar (`get` + a commit that is mined like any other);
+   `undo` reverses the last mutating operation by popping the operation log (`oplog.undo`). Everything git does that ugh does not wrap stays one keystroke away behind
    `ugh git …`; a verb is only wrapped where the ugh-native version is *semantically different*,
    never merely renamed (design doc §1 non-goal).
 """
@@ -77,9 +76,6 @@ def register(subs, parent) -> None:
     # and apply nothing. A tty gets this report for free as `undo`'s confirm step; before this flag
     # a non-tty caller (the extension, MCP) had no way to ask the question, only to take the action.
     uv.add_argument("--emit", action="store_true", help=argparse.SUPPRESS)
-    uv.add_argument("--force", action="store_true",
-                    help="drop work committed after the edit being undone (0.2c) -- undo normally "
-                         "refuses when its snapshot restore would clobber an intervening raw commit")
     uv.set_defaults(func=_cmd_undo)
 
 
@@ -90,7 +86,7 @@ def _cmd_save(args) -> int:
 
 
 def _cmd_undo(args) -> int:
-    return _undo(".", args.as_json, force=args.force, emit=args.emit)
+    return _undo(".", args.as_json, emit=args.emit)
 
 
 def _snapshot_cascade_tables(repo: str) -> dict[str, bytes | None]:
@@ -142,8 +138,7 @@ def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool =
     (the old `ugh drift`) surface in this output; the working-tree sense of "drift" keeps its name
     in `status`/`fsck --tree`."""
     from ugh.core.lens import (
-        DirtyWorkingTreeError, current_ideal, get, merge_in_progress, put, record_ideal,
-        sync_status,
+        DirtyWorkingTreeError, current_ideal, get, merge_in_progress, put, sync_status,
     )
     from ugh.store.gitbind import GitBinding, GitError
 
@@ -201,7 +196,8 @@ def _save(repo: str, message: str | None, as_json: bool, *, resolve_plan: bool =
                 # not dirty -- the same F1 invariant, on the error path.
                 _restore_cascade_tables(repo, pre)
                 return _fail_json(str(e), as_json)
-            record_ideal(repo, ideal, sha)
+            from ugh.core import oplog
+            oplog.append(repo, {"kind": "commit", "sha": sha, "verb": "save", "target": message or ""})
         saved = True
         # Zero-burden intent capture (intent-ledger M1): the `-m` message is the user's own words
         # about what this work was -- harvested as a turn keyed by the witness commit sha (a key
@@ -653,44 +649,27 @@ def _render_save(as_json: bool, saved: bool, sha: str | None, n: int,
 
 
 def _undo_preview_lines(pv: dict) -> list[str]:
-    """One undo preview rendered for a human: what is being reversed, what comes back, what goes,
-    and the symbols by name. One place, because `undo`'s tty confirm and `--emit`'s plain text are
-    the same question asked by different callers, and two copies of it would drift."""
+    """One undo preview rendered for a human: what is being reversed and the symbols by name."""
     lines = [f"undo: {pv['message']}"]
-    if pv["restored"]:
-        lines.append(f"  brings back {len(pv['restored'])} edit(s)")
-    if pv["dropped"]:
-        lines.append(f"  drops {len(pv['dropped'])} edit(s) made since")
+    if pv["undone"] or pv["held"]:
+        lines.append(f"  {pv['undone']} step(s) go" + (f", {pv['held']} held" if pv["held"] else ""))
     if pv["symbols"]:
-        lines.append(f"  touches {', '.join(pv['symbols'][:6])}"
-                     + (" …" if len(pv["symbols"]) > 6 else ""))
+        lines.append(f"  touches {', '.join(pv['symbols'][:6])}" + (" …" if len(pv["symbols"]) > 6 else ""))
     return lines
 
 
-def _undo(repo: str, as_json: bool, *, force: bool = False, emit: bool = False) -> int:
-    """`ugh undo` (D3, R7): invert the last mutating operation. Walks the *unified* operation log
-    (U8/KTD6) reverse-chronologically -- popping the tail event and applying its inverse, whatever
-    its kind: an ideal edit re-materializes its prior ideal, a feature reorg restores its snapshot,
-    a shared-out `land`/`propose` is refused. History is append-only, so an undo is a forward edit,
-    never a ref rewind. `force` overrides the F3 guard that refuses an undo whose snapshot restore
-    would clobber work committed after the edit (0.2c)."""
+def _undo(repo: str, as_json: bool, *, emit: bool = False) -> int:
+    """`ugh undo`: reverse the last mutating operation. A commit ugh made (a save, a take-out, a
+    bring-back) is reversed by taking out the ops mined from it, which is a new commit; a feature
+    reorg restores its snapshot. A tty sees the preview and confirms first."""
     from ugh.core import oplog
     from ugh.core.lens import DirtyWorkingTreeError
-    from ugh.api import plural
     from ugh.store.gitbind import GitError
 
-    # Show what it will do before doing it. `undo` is what a developer reaches for when something
-    # has gone wrong, and it used to apply on contact -- so the one command whose whole job is
-    # recovering from a surprise was itself a surprise. The gate is tty-only and matches `revert`'s
-    # (`--json` and non-interactive callers apply immediately, the machine contract).
     import sys as _sys
 
     if emit:
-        # `applied: False` for the same reason the ideal-edit verbs stamp it (F124): the dry run and
-        # the mutation both answer `ok`, so without it a machine caller cannot tell the report it
-        # asked for from the change it caused. An `ok: False` here is a *successful* report of a
-        # refusal, so the exit status stays 0 -- nothing failed, and nothing was touched.
-        pv = oplog.preview(repo, force=force)
+        pv = oplog.preview(repo)
         if as_json:
             return _emit_json({"applied": False, **pv})
         for line in _undo_preview_lines(pv):
@@ -698,10 +677,10 @@ def _undo(repo: str, as_json: bool, *, force: bool = False, emit: bool = False) 
         return 0
 
     if not as_json and _sys.stdin.isatty() and _sys.stdout.isatty():
-        pv = oplog.preview(repo, force=force)
+        pv = oplog.preview(repo)
         if pv["kind"] is not None:
             if not pv["ok"]:
-                return _fail(pv["message"])  # the refusal IS the message; don't say it twice
+                return _fail(pv["message"])
             for line in _undo_preview_lines(pv):
                 print(line)
             try:
@@ -713,51 +692,27 @@ def _undo(repo: str, as_json: bool, *, force: bool = False, emit: bool = False) 
                 return 1
 
     try:
-        outcome = oplog.undo(repo, force=force)
+        outcome = oplog.undo(repo)
     except (DirtyWorkingTreeError, GitError, ValueError) as e:
         return _fail_json(str(e), as_json)
 
     if outcome.status == "empty":
-        # Byte-identical to the pre-U8 message (a golden CLI snapshot pins it).
         msg = "nothing to undo -- no recorded ideal edits"
         if as_json:
             return _emit_json({"ok": True, "undone": False, "message": msg})
         print(f"✓ {msg}")
         return 0
 
-    if outcome.status == "refused":
-        return _fail_json(outcome.message, as_json)
+    if outcome.status in ("commit", "refused"):
+        from ugh.core import planner
 
-    if outcome.status == "ideal_edit":
-        result = outcome.ideal
         if as_json:
-            return _emit_json({
-                "ok": True, "undone": True, "commit": result.witness_sha,
-                "restored_ops": len(result.ideal.op_ids),
-                "removed": sorted(result.removed), "added": sorted(result.added),
-            })
-        parts = []
-        if result.removed:
-            parts.append(f"{len(result.removed)} op(s) taken out of the record")
-        if result.added:
-            parts.append(f"{plural(len(result.added), 'op')} restored")
-        detail = f" — {', '.join(parts)}" if parts else ""
-        print(f"✓ undo {result.witness_sha[:7]}: the record is back to how it was before{detail}")
-        # Undo materializes the prior ideal, so the undone work leaves the *working copy* as well as
-        # the record. "N op(s) back to pending" said the opposite -- pending means on disk and
-        # re-minable -- and after undoing a save the content is gone from disk and a following `save`
-        # finds nothing. Undoing the one save a stage asks for and watching the files empty, under a
-        # message that says the work is pending, is the shape this project treats as its worst bug
-        # class. There is no flag that keeps the tree (`--force` only widens what undo will clobber),
-        # so the honest fix is to say what it did.
-        #
-        # Gated on nothing having come back. Undoing a *revert* also has a non-empty `removed` -- the
-        # prunes the revert minted leave the record -- but its whole effect is that the work returns
-        # to the working copy, so saying "those edits are off the working copy too" there would be
-        # the same kind of false statement this line exists to replace.
-        if result.removed and not result.added:
-            print("  those edits are off the working copy too — they are in this commit's parent "
-                  "if you want them back")
+            view = planner.to_json(outcome.plan, applied=outcome.status == "commit")
+            return _emit_json({**view, "ok": outcome.status == "commit", "message": outcome.message})
+        if outcome.status == "refused":
+            return _fail(outcome.message)
+        print(f"✓ undo: {outcome.message} — {len(outcome.plan.undone)} step(s) undone"
+              + (f", {len(outcome.plan.held)} held" if outcome.plan.held else ""))
         return 0
 
     # A metadata-snapshot kind (feature reorg).

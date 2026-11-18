@@ -6,14 +6,18 @@ page explains how that works. If you read one page in this guide, read this one.
 
 ## Ops
 
-`ugh` reads each git commit and breaks it into ops. An op is one change to one symbol, for example
-adding a function, editing its body, or removing it. Each op records which symbol it touched, the
-version it started from, the version it produced, and any other ops it depends on. `ugh` follows a
-symbol as it moves between files or gets renamed, so edits to the same function stay on one chain
-even after the text and the file location change.
+`ugh` reads each git commit, its own commits included, and breaks it into ops. An op is one change
+to one definition (with the comments that follow it), the head of a file, or a whole file, for
+example adding a function, editing its body, or removing it. Each op records which symbols it
+touched, the version it started from, the version it produced, and any other ops it depends on. A
+version is a hash of the symbol, the version it came from, and its content, so the ops on one
+symbol form a simple chain: content that comes back later is a new version on the same chain. A
+rename or a move to another file is one op that removes the old name and creates the new one.
 
-Every op gets an id based on its content, so the same edit always gets the same id, and two
-different edits never collide. The full set of ops lives in `.sgt/ops/` and is committed to git
+Every op gets an id based on its content, so the same edit from the same starting point always
+gets the same id: mining the history again gives the ids the store already holds, and a rebase that
+keeps each symbol's sequence of contents keeps its ids. The ids depend on where mining started, so
+the same commits mined from two different `ugh init --horizon` points give different ids. The full set of ops lives in `.sgt/ops/` and is committed to git
 along with your code.
 
 ## The ideal
@@ -25,9 +29,9 @@ ideal. To be valid, it has to follow two rules:
 - For any one symbol, at most one version can be included at a time. Two competing versions of the
   same function is called a fork, and a valid ideal never contains one.
 
-These two rules are what make removal clean. When you remove an op, `ugh` also removes everything
-that was built on it, so what is left is still a valid ideal, and it still turns back into real
-files without any gaps.
+A branch's ideal is every op mined from its history. Nothing is ever subtracted from it: taking work
+out (`ugh revert`) is a new commit whose ops un-apply that work, and its `Ugh-Out:` trailer records
+which steps it took out, so what is out is read from git history like everything else.
 
 ## The fold
 

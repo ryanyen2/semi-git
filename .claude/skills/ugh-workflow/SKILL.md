@@ -27,10 +27,13 @@ before running an ambiguous verb, don't guess from the name alone.
 | Take one checkpoint of a feature out | `ugh revert <feature>@<n>` | the ops of that chapter, as `ugh log` numbers them |
 | Take work that ran across several features out | `ugh revert "<theme label>"` | the ◆ rows `ugh log` draws, resolved by label or `theme-` id |
 | Take the work and everything standing on it out | `ugh revert <ref> --whole` | the removal set the preview names; never cuts another save in two |
-| Bring back what a revert took out | `ugh restore <ref>` | takes out the edit that took it out; edits made since combine, same-line conflicts are shown as two versions and nothing is written |
+| Bring back what a revert took out | `ugh restore <ref>` | takes out the edit that took it out; edits made since combine, same-line conflicts are held with both versions and nothing is written for them |
 
-Every revert and restore runs the project's check (`.sgt/oracle.json`, or the parser when none is
-configured) on the result before committing, and holds the steps a failure points at.
+Every revert and restore is a commit whose `Ugh-Out:` trailer names the steps it took out, so what
+is out travels with git history (a clone or a rebase knows). The project's check
+(`.sgt/oracle.json`, or the parser when none is configured) must pass before anything is written;
+a failure inside a definition being changed holds that step, and a failure anywhere else applies
+nothing.
 
 Every ideal-edit verb (`revert`, `restore`) also accepts a natural-language target once no
 op-id/symbol/feature-label matches exactly (`ugh revert "the caching layer"`) — it proposes
@@ -39,8 +42,9 @@ Prefer an exact ref when you have one; the NL fallback needs `OPENAI_API_KEY` an
 genuinely don't know the ref. `ugh find "<words>"` is the read-only way to turn a description
 into a ref first.
 
-`ugh undo` is not a revert: it inverts the last mutating operation (a save, a revert, a restore, a
-rename) exactly, from the operation log.
+`ugh undo` reverses the last thing you did, from the operation log: a save, a revert or a restore
+is undone by taking out the ops mined from its commit (so work committed since stays), a feature
+rename by restoring its snapshot.
 
 ## Moving work: sync vs push
 
@@ -70,8 +74,8 @@ This is the agentic loop for turning a stated intent into recorded, attributed w
 
 - `ugh show <sel>` and `ugh find "<words>"` are read-only: one explains an id you hold, the other
   ranks features, saves and symbols against a description.
-- `ugh check` verifies the op store; `ugh check --repair` re-derives the current ref after a
-  `reset --hard`, `amend` or `branch -f` dropped commits the record still names.
+- `ugh check` verifies the op store; `ugh check --repair` re-derives the current ref's record from
+  git history.
 
 ## Related
 

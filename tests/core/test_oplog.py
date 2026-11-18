@@ -1,11 +1,5 @@
-"""Tests for ugh.core.oplog -- the unified operation-event log + universal undo (plan U8, R7/KTD6).
-
-The log **subsumes** the old per-ref `ideal_journal` (single store, one pop per undo): every
-mutating verb appends a typed event, and `undo` pops the tail and applies its inverse uniformly.
-The ideal-edit undo behavior itself (save/revert/restore/rewrite) is proven byte-for-byte in
-`tests/test_porcelain.py`; this file covers the *unified* mechanism -- the append/tail store,
-the per-kind inverse dispatch, and feature-reorg undo (the previously-un-journaled gap).
-"""
+"""Tests for ugh.core.oplog -- the operation log and `ugh undo`: a commit ugh made is undone by
+taking out the ops mined from it; a feature reorg by restoring its snapshot."""
 
 from __future__ import annotations
 
@@ -77,45 +71,8 @@ def test_drop_event_removes_the_target_and_never_clobbers_a_concurrent_append(tm
     assert oplog._drop_event(repo, key, a) is False
 
 
-# ---------------------------------------------------------------------------
-# ideal-edit kind (subsumes the old ideal_journal)
-# ---------------------------------------------------------------------------
-
-
-def test_record_ideal_appends_an_ideal_edit_event_that_undo_inverts(tmp_path):
-    """A revert flows through `record_ideal`, which now appends an `ideal_edit` event to the unified
-    log; `oplog.undo` restores the prior ideal exactly -- the same restore `undo_ideal` did."""
-
-    repo = corpus.CORPUS["linear_history"].build(tmp_path / "repo")
-    original = get(repo).op_ids
-    baz = next(o for o in Store(repo).all_ops() if "b.py::baz" in o.footprint)
-
-    _revert(repo, baz.id)
-    assert get(repo).op_ids > original  # a take-out only adds ops
-
-    tail = oplog.tail(repo)
-    assert tail.get("kind", "ideal_edit") == "ideal_edit"  # a revert is one ideal_edit event
-
-    outcome = oplog.undo(repo)
-    assert outcome.status == "ideal_edit"
-    assert get(repo).op_ids == original  # the reverted op is back
-
-
-# ---------------------------------------------------------------------------
-# undo hardening (Phase 0, 0.2): applied-flag (F6) + F3 snapshot-drop guard
-# ---------------------------------------------------------------------------
-
-
-def gb_head(repo) -> str:
-    from ugh.store.gitbind import GitBinding
-
-    return GitBinding(Path(repo)).head()
-
-
 def _seed_two_symbols(repo):
-    """A repo with foo+bar committed and mined -- the baseline for the undo-hardening cases. `get`
-    mines the commit and persists the ref's ideal table; no explicit `record_ideal` (that would add
-    a spurious no-op journal entry over the ideal `get` just recorded)."""
+    """A repo with foo+bar committed and mined."""
     from ugh.core import lens
 
     gb, _ = init_store(repo)
@@ -125,111 +82,41 @@ def _seed_two_symbols(repo):
     return gb
 
 
-def test_undo_refuses_to_drop_work_committed_after_the_journal_entry(tmp_path):
-    """F3 (0.2c): `revert` -> raw `git commit` -> `undo`. The undo's absolute-snapshot restore of the
-    pre-revert ideal would silently clobber the intervening manual commit (an op mined *after* the
-    journal entry). Undo must detect that casualty and refuse rather than destroy it -- the manual
-    commit's content stays on disk, the reverted op is NOT re-added, and the entry is left in place
-    for a later `undo(force=True)`."""
-    from ugh.core import lens
+def _bar(repo):
+    return next(o.id for o in Store(repo).all_ops() if "a.py::bar" in o.footprint)
 
+
+# ---------------------------------------------------------------------------
+# commit kind: undo takes out the ops mined from the commit
+# ---------------------------------------------------------------------------
+
+
+def test_undo_of_a_take_out_brings_it_back_and_walks_back(tmp_path):
     repo = tmp_path / "repo"
-    gb = _seed_two_symbols(repo)
-    bar = next(o for o in Store(repo).all_ops() if "a.py::bar" in o.footprint)
-    _revert(repo, bar.id)  # journals the pre-revert ideal
+    _seed_two_symbols(repo)
+    before = (repo / "a.py").read_bytes()
+    _revert(repo, _bar(repo))
     assert b"def bar" not in (repo / "a.py").read_bytes()
-
-    # a raw manual commit between the revert and the undo -- work ugh only mines on next contact.
-    (repo / "a.py").write_text(
-        (repo / "a.py").read_text(encoding="utf-8") + "\n\ndef baz():\n    return 3\n", encoding="utf-8"
-    )
-    gb.commit_all("RAW: add baz (no ugh)")
-    lens.get(repo)  # absorb the manual commit into the current ideal
+    assert oplog.tail(repo)["kind"] == "commit"
 
     outcome = oplog.undo(repo)
-    assert outcome.status == "refused"
-    assert "baz" in outcome.message  # names the work it would have destroyed
-    assert b"def baz" in (repo / "a.py").read_bytes()   # the intervening work was NOT clobbered
-    assert b"def bar" not in (repo / "a.py").read_bytes()  # and the revert was NOT undone
-    assert oplog.tail(repo) is not None  # refused, not popped -- survives for `undo(force=True)`
+    assert outcome.status == "commit"
+    assert (repo / "a.py").read_bytes() == before
+    assert oplog.undo(repo).status == "empty"  # the undo itself is not logged
 
 
-def test_undo_force_drops_intervening_work_deliberately(tmp_path):
-    """The escape hatch for 0.2(c): `undo(force=True)` proceeds despite the F3 casualty -- the user
-    has been told and chose to drop the intervening commit. This is what `ugh undo --force` wires
-    to."""
-    from ugh.core import lens
-
+def test_undo_keeps_work_committed_after_the_take_out(tmp_path):
+    """Undoing a take-out un-applies only that take-out, so a raw commit made since stays."""
     repo = tmp_path / "repo"
     gb = _seed_two_symbols(repo)
-    original = lens.get(repo).op_ids
-    bar = next(o for o in Store(repo).all_ops() if "a.py::bar" in o.footprint)
-    _revert(repo, bar.id)
-    (repo / "a.py").write_text(
-        (repo / "a.py").read_text(encoding="utf-8") + "\n\ndef baz():\n    return 3\n", encoding="utf-8"
-    )
+    _revert(repo, _bar(repo))
+    (repo / "b.py").write_text("def baz():\n    return 3\n", encoding="utf-8")
     gb.commit_all("RAW: add baz")
-    lens.get(repo)
+    get(repo)
 
-    outcome = oplog.undo(repo, force=True)
-    assert outcome.status == "ideal_edit"
-    assert b"def bar" in (repo / "a.py").read_bytes()  # the revert was undone (bar restored)
-    assert b"def baz" not in (repo / "a.py").read_bytes()  # baz dropped as opted in
-    assert original <= get(repo).op_ids  # the pre-revert ops are all back
-
-
-def test_undo_skips_an_unapplied_journal_entry(tmp_path):
-    """F6/0.2a: a journal entry from an edit that never landed (`applied=False`) is bogus -- undo
-    must discard it and reverse the real edit beneath it, not execute the crashed one."""
-
-    repo = tmp_path / "repo"
-    _seed_two_symbols(repo)
-    original = get(repo).op_ids
-    bar = next(o for o in Store(repo).all_ops() if "a.py::bar" in o.footprint)
-    _revert(repo, bar.id)  # a genuine, applied ideal_edit entry
-
-    # a bogus unapplied entry pushed on top, as a crashed verb would leave behind.
-    key = oplog._ref_key(Path(repo))
-    table = oplog.load(repo)
-    table[key].append({"kind": "ideal_edit", "ideal": [], "witness": None, "applied": False})
-    oplog.save(repo, table)
-
-    outcome = oplog.undo(repo)
-    assert outcome.status == "ideal_edit"  # the bogus entry was skipped, the revert undone
-    assert get(repo).op_ids == original    # bar is back -- the real edit was reversed
-    assert not oplog.load(repo).get(key)   # both the bogus and the consumed real entry are gone
-
-
-def test_record_ideal_marks_its_journal_entry_applied_only_after_the_edit_lands(tmp_path):
-    """0.2a/F6: `record_ideal` writes its `ideal_edit` entry `applied=False`, then flips it to True
-    only after the ideal-table + witness advance succeed. A clean revert leaves an `applied=True`
-    tail; a crash between the journal push and the table write leaves `applied=False`, which
-    `oplog.undo` discards."""
-    from ugh.core import lens
-
-    repo = tmp_path / "repo"
-    _seed_two_symbols(repo)
-    bar = next(o for o in Store(repo).all_ops() if "a.py::bar" in o.footprint)
-    _revert(repo, bar.id)
-    assert oplog.tail(repo).get("applied") is True  # a completed edit is marked applied
-
-    # simulate a crash during the next record_ideal, after the journal push but before the table
-    # write: the entry must be left unapplied.
-    ideal = lens.current_ideal(repo)
-    real_save = lens._save_ideal_table
-
-    def explode(r, t):
-        raise RuntimeError("simulated crash mid record_ideal")
-
-    lens._save_ideal_table = explode
-    try:
-        lens.record_ideal(repo, ideal, gb_head(repo))
-    except RuntimeError:
-        pass
-    finally:
-        lens._save_ideal_table = real_save
-
-    assert oplog.tail(repo).get("applied") is False  # the crashed entry is not trusted
+    assert oplog.undo(repo).status == "commit"
+    assert b"def bar" in (repo / "a.py").read_bytes()
+    assert (repo / "b.py").read_text() == "def baz():\n    return 3\n"
 
 
 # ---------------------------------------------------------------------------
@@ -261,78 +148,33 @@ def test_feature_reorg_undo_restores_prior_label_and_membership(tmp_path):
 # preview: what undo will do, before it does it
 # ---------------------------------------------------------------------------
 
-def test_preview_names_the_edits_undo_would_bring_back(tmp_path):
-    """`undo` is what a developer reaches for when something has gone wrong, which is the worst
-    moment to make them run it blind and find out afterward. Everything shown is already known
-    before the fact."""
-
-    from ugh.core import opindex
-    from ugh.core.op import is_behavioral
-
+def test_preview_names_what_undo_would_take_out(tmp_path):
     repo = tmp_path / "repo"
     _seed_two_symbols(repo)
-    # Pick an op that carries a symbol a developer would recognize, rather than whichever op sorts
-    # first: most of a file's ops are positional residue, and `_symbols_for` filters those out by
-    # design, so a blind `sorted(...)[0]` asserted about a line that is *correctly* empty. It went red
-    # when a miner-version bump reshuffled the id order, which is a false alarm about hashing.
-    live = current_ideal(repo).op_ids
-    op_id = next(o.id for o in sorted(opindex.index_ops(repo), key=lambda o: o.id)
-                 if o.id in live and any(is_behavioral(s) for s in o.footprint))
-    _revert(repo, op_id)
-
+    _revert(repo, _bar(repo))
     pv = oplog.preview(repo)
-
-    assert pv["kind"] == "ideal_edit"
-    assert pv["ok"] is True
-    assert pv["dropped"]  # the take-out's own ops go
-    assert any("a.py::" in s for s in pv["symbols"])  # named in terms the developer recognizes
-
-
-def test_preview_reports_a_refusal_before_the_user_commits_to_it(tmp_path):
-    """The F3 guard already refuses an undo that would drop work committed after the edit. Learning
-    that *after* asking for the undo is the same information arriving too late to be useful."""
-    from ugh.core import lens
-
-    repo = tmp_path / "repo"
-    gb = _seed_two_symbols(repo)
-    from ugh.core import opindex
-    from ugh.core.op import is_behavioral
-
-    live = current_ideal(repo).op_ids
-    op_id = next(o.id for o in sorted(opindex.index_ops(repo), key=lambda o: o.id)
-                 if o.id in live and any(is_behavioral(s) for s in o.footprint))
-    _revert(repo, op_id)
-    # Work lands after the edit was recorded -- the casualty the guard exists to protect.
-    (repo / "b.py").write_text("def baz():\n    return 3\n", encoding="utf-8")
-    gb.commit_all("add baz")
-    lens.get(repo)
-
-    pv = oplog.preview(repo)
-
-    assert pv["ok"] is False
-    assert "drop work committed after" in pv["message"]
-    assert oplog.preview(repo, force=True)["ok"] is True  # --force is the documented override
+    assert pv["kind"] == "commit" and pv["ok"] is True
+    assert pv["undone"] and "a.py::bar" in pv["symbols"]
 
 
 def test_preview_of_an_empty_log_says_so_without_raising(tmp_path):
     repo = tmp_path / "repo"
     _seed_two_symbols(repo)
-
     pv = oplog.preview(repo)
-
-    assert pv["kind"] is None and pv["ok"] is True and pv["restored"] == []
+    assert pv["kind"] is None and pv["ok"] is True and pv["undone"] == 0
 
 
 def test_preview_writes_nothing(tmp_path):
     """A preview that mutates is not a preview."""
-
     repo = tmp_path / "repo"
     _seed_two_symbols(repo)
-    _revert(repo, sorted(current_ideal(repo).op_ids)[0])
+    _revert(repo, _bar(repo))
     before_log = oplog.load(repo)
     before_ideal = current_ideal(repo).op_ids
+    before_tree = (repo / "a.py").read_bytes()
 
     oplog.preview(repo)
 
     assert oplog.load(repo) == before_log
     assert current_ideal(repo).op_ids == before_ideal
+    assert (repo / "a.py").read_bytes() == before_tree

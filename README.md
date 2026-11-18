@@ -109,7 +109,8 @@ $ ugh revert cache.py::get_cached --yes
 `get_cached` is gone from `cache.py`. The other function in that file, `set_cached`, is untouched,
 and every symbol in `rate_limit.py` and `retry.py` is byte for byte what it was before. The take-out
 is a new commit, and the project's check (or, with none configured, the parser) ran on the result
-before it was made. `ugh restore cache.py::get_cached` puts it back.
+before it was made. The commit's `Ugh-Out:` trailer names the steps it took out, so a clone or a
+rebase still knows they are out. `ugh restore cache.py::get_cached` puts it back.
 
 A step that other remaining work stands on is held, with the reason (other code uses it, a later
 save changed it, a later save rewrote the same lines) and the saves that hold it. `--whole` takes

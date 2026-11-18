@@ -52,34 +52,30 @@ def _seed(repo):
         json.dumps({"tiers": [{"name": "c", "command": "python -m py_compile a.py m.py"}]}),
         encoding="utf-8",
     )
-    ideal = lens.get(repo)
-    # `journal=False`: `get` already seeded the ideal table, so a plain `record_ideal` here would
-    # journal the seed as an undoable event -- we want the log to start empty so the four verbs
-    # below are exactly the four events undo walks back through.
-    lens.record_ideal(repo, ideal, lens.put(repo, ideal, message="seed"), journal=False)
+    lens.get(repo)
     return gb
+
+
+def _files(repo):
+    return {p: (repo / p).read_bytes() for p in ("a.py", "m.py")}
 
 
 def test_three_undos_walk_back_through_save_revert_rename(tmp_path, capsys):
     repo = tmp_path / "repo"
     _seed(repo)
-    ideal_after_seed = lens.get(repo).op_ids
+    after_seed = _files(repo)
 
-    # 1) save: add an independent symbol, commit it as ops (one ideal_edit event).
     (repo / "a.py").write_text(
         (repo / "a.py").read_text(encoding="utf-8") + "\n\ndef baz():\n    return 3\n", encoding="utf-8"
     )
     assert _in(repo, ["save"]) == 0
-    ideal_after_save = lens.get(repo).op_ids
-    assert ideal_after_save != ideal_after_seed
+    after_save = _files(repo)
 
-    # 2) revert: drop an independent seed symbol (one ideal_edit event).
     bar = next(o for o in Store(repo).all_ops() if "a.py::bar" in o.footprint)
     _revert(repo, bar.id)
-    ideal_after_revert = lens.get(repo).op_ids
-    assert ideal_after_revert != ideal_after_save
+    after_revert = _files(repo)
+    assert after_revert != after_save
 
-    # 3) feature rename: authored-feature reorg -- byte-neutral for the ideal (one reorg event).
     result = lensmap.build_map(repo)
     fid = next(iter(result["nodes"]))
     original_label = result["nodes"][fid].get("label", fid)
@@ -87,78 +83,23 @@ def test_three_undos_walk_back_through_save_revert_rename(tmp_path, capsys):
     assert tree.load(repo)["nodes"][fid]["label"] == "renamed-feature"
     capsys.readouterr()
 
-    # Three undos, reverse-chronological, each restoring the prior state.
     assert _in(repo, ["undo"]) == 0                             # undo the rename (feature reorg)
     assert tree.load(repo)["nodes"][fid]["label"] == original_label
-    assert lens.get(repo).op_ids == ideal_after_revert          # reorg is byte-neutral for the ideal
+    assert _files(repo) == after_revert
 
     assert _in(repo, ["undo"]) == 0                             # undo the revert
-    assert lens.get(repo).op_ids == ideal_after_save
+    assert _files(repo) == after_save
 
     assert _in(repo, ["undo"]) == 0                             # undo the save
-    assert lens.get(repo).op_ids == ideal_after_seed
+    assert _files(repo) == after_seed
 
-    # Log exhausted.
     capsys.readouterr()
     assert _in(repo, ["undo"]) == 0
     assert "nothing to undo" in capsys.readouterr().out
 
 
-def test_undo_refuses_when_it_would_clobber_a_raw_commit_and_force_overrides(tmp_path, capsys):
-    """0.2c/F3 through the CLI: after a revert, a raw `git commit` lands work ugh mines on next
-    contact. Plain `ugh undo` would restore the pre-revert snapshot and silently drop that work, so
-    it refuses (nonzero, naming the casualty); `ugh undo --force` is the opt-in that proceeds."""
-    repo = tmp_path / "repo"
-    gb = _seed(repo)
-    bar = next(o for o in Store(repo).all_ops() if "a.py::bar" in o.footprint)
-    _revert(repo, bar.id)  # one applied ideal_edit event to undo
-
-    # a raw commit between the revert and the undo -- intervening work absent from the edit's result
-    (repo / "a.py").write_text(
-        (repo / "a.py").read_text(encoding="utf-8") + "\n\ndef baz():\n    return 3\n", encoding="utf-8"
-    )
-    gb.commit_all("RAW: add baz (no ugh)")
-    lens.get(repo)  # absorb it into the current ideal
-
-    capsys.readouterr()
-    assert _in(repo, ["undo"]) != 0  # refused
-    assert "baz" in capsys.readouterr().out  # names the work it would have destroyed
-    assert b"def baz" in (repo / "a.py").read_bytes()  # not clobbered
-    assert b"def bar" not in (repo / "a.py").read_bytes()  # revert not undone
-
-    assert _in(repo, ["undo", "--force"]) == 0  # opt in to dropping baz
-    assert b"def bar" in (repo / "a.py").read_bytes()  # revert undone
-    assert b"def baz" not in (repo / "a.py").read_bytes()  # baz dropped as forced
-
-
-def test_emit_says_what_undo_would_reverse_without_reversing_it(tmp_path, capsys):
-    """`ugh undo --emit`: the dry run every other ideal-edit verb already has.
-
-    `oplog.preview` has always known what the next undo would do, but the only thing that read it
-    was `undo`'s own tty confirm -- so a non-tty caller (the VS Code extension, MCP) could not ask
-    the question at all, only take the action. `--emit` is the same hidden machine dry-run
-    `revert`/`restore` expose, so the caller that has to draw a confirm dialog can name what will
-    happen in it."""
-    repo = tmp_path / "repo"
-    _seed(repo)
-    bar = next(o for o in Store(repo).all_ops() if "a.py::bar" in o.footprint)
-    _revert(repo, bar.id)
-    assert b"def bar" not in (repo / "a.py").read_bytes()
-
-    capsys.readouterr()
-    assert _in(repo, ["undo", "--emit", "--json"]) == 0
-    view = json.loads(capsys.readouterr().out)
-    assert view["ok"] is True
-    assert view["kind"] == "ideal_edit"
-    assert view["dropped"], "the take-out's ops go -- the preview has to say so"
-    assert any("bar" in s for s in view["symbols"])
-    # A dry run that mutates is not a dry run.
-    assert b"def bar" not in (repo / "a.py").read_bytes()
-
-
-def test_emit_reports_the_refusal_before_the_undo_is_attempted(tmp_path, capsys):
-    """The F3 casualty (0.2c) is decided from state that is already known, so `--emit` reports it as
-    `ok: false` up front rather than leaving the caller to discover it from a failed mutation."""
+def test_undo_of_a_take_out_keeps_a_raw_commit_made_since(tmp_path, capsys):
+    """Undo un-applies only the take-out, so work committed after it survives."""
     repo = tmp_path / "repo"
     gb = _seed(repo)
     bar = next(o for o in Store(repo).all_ops() if "a.py::bar" in o.footprint)
@@ -169,10 +110,23 @@ def test_emit_reports_the_refusal_before_the_undo_is_attempted(tmp_path, capsys)
     gb.commit_all("RAW: add baz (no ugh)")
     lens.get(repo)
 
-    capsys.readouterr()
-    assert _in(repo, ["undo", "--emit", "--json"]) == 0  # the report succeeded; the undo would not
-    view = json.loads(capsys.readouterr().out)
-    assert view["ok"] is False
-    assert "baz" in view["message"]
+    assert _in(repo, ["undo"]) == 0
+    assert b"def bar" in (repo / "a.py").read_bytes()
     assert b"def baz" in (repo / "a.py").read_bytes()
+
+
+def test_emit_says_what_undo_would_reverse_without_reversing_it(tmp_path, capsys):
+    """`ugh undo --emit`: the dry run, for a caller that has to draw a confirm dialog."""
+    repo = tmp_path / "repo"
+    _seed(repo)
+    bar = next(o for o in Store(repo).all_ops() if "a.py::bar" in o.footprint)
+    _revert(repo, bar.id)
+    assert b"def bar" not in (repo / "a.py").read_bytes()
+
+    capsys.readouterr()
+    assert _in(repo, ["undo", "--emit", "--json"]) == 0
+    view = json.loads(capsys.readouterr().out)
+    assert view["ok"] is True and view["applied"] is False
+    assert view["kind"] == "commit" and view["undone"]
+    assert any("bar" in s for s in view["symbols"])
     assert b"def bar" not in (repo / "a.py").read_bytes()

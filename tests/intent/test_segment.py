@@ -17,22 +17,14 @@ def _leaf(members: list[str], label: str) -> dict:
 
 
 def _mine_fully(repo) -> None:
-    """`get()` mines at most one deadline-bounded backfill chunk per call (KTD-3): on a fresh repo
-    with enough history that walking backward to genesis doesn't finish inside that wall-clock
-    budget, a single call can silently leave the earliest commits (and their ops) unmined --
-    entirely a test-machine-speed artifact, not anything about the fixture's content. Loop until
-    the backward walk actually reaches genesis so a fixture's commit count is never gated by how
-    fast this happens to run."""
-    from ugh.core.lens import _load_backfill_state, _ref_key
-    from ugh.store.gitbind import GitBinding
+    """Mine the whole history: `get()` mines one deadline-bounded chunk per call."""
+    from ugh.core.lens import sync_status
 
-    gb = GitBinding(repo)
-    key = _ref_key(gb) or gb.head()
     for _ in range(10):
         get(repo)
-        if _load_backfill_state(repo).get(key, {}).get("reached_genesis"):
+        if sync_status(repo)["complete"]:
             return
-    raise AssertionError(f"{repo}: backfill did not reach genesis after 10 get() chunks")
+    raise AssertionError(f"{repo}: history not mined after 10 get() chunks")
 
 
 def _segments(repo, op_leaf: dict[str, str]) -> dict:

@@ -6,14 +6,14 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"checked\": 31,\n  \"bad_hash\": [],\n  \"corrupt\": [],\n  \"chain_gaps\": [],\n  \"invalid_ideals\": [],\n  \"unreachable_witnesses\": [],\n  \"mixed_versions\": [],\n  \"op_index_stale\": false\n}\n"
+      "out": "{\n  \"ok\": true,\n  \"checked\": 18,\n  \"bad_hash\": [],\n  \"corrupt\": [],\n  \"chain_gaps\": [],\n  \"invalid_ideals\": [],\n  \"unreachable_witnesses\": [],\n  \"mixed_versions\": [],\n  \"op_index_stale\": false\n}\n"
     },
     "text": {
       "argv": [
         "check"
       ],
       "exit": 0,
-      "out": "\u2713 check \u2014 31 op(s) checked\n"
+      "out": "\u2713 check \u2014 18 op(s) checked\n"
     }
   },
   "help": {
@@ -38,14 +38,14 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"commits\": [\n    {\n      \"sha\": \"75b001519c47d0dada850719e9349ae7dd734a7e\",\n      \"subject\": \"add foo, qux, config, binary\",\n      \"index\": 0,\n      \"ts\": 1700000000,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"665bf8bc9bb0877d5ebe6d9e7ebe7a782abe6bca\",\n      \"subject\": \"modify foo\",\n      \"index\": 1,\n      \"ts\": 1700003600,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"56a3e016908411503095283493d6e18c694f759c\",\n      \"subject\": \"rename foo -> bar within a.py\",\n      \"index\": 2,\n      \"ts\": 1700007200,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"26075c526c82f7724d1dd22ff3a5c0e2036842be\",\n      \"subject\": \"move bar from a.py to b.py\",\n      \"index\": 3,\n      \"ts\": 1700010800,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"4bcd22ea86cfbd402fa637b9b8095f5dc5bd4405\",\n      \"subject\": \"tangled: add baz to b.py and edit unrelated qux in c.py\",\n      \"index\": 4,\n      \"ts\": 1700014400,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"bf7218c6a895c6c0303352bb213b36c7adb66f0f\",\n      \"subject\": \"delete bar\",\n      \"index\": 5,\n      \"ts\": 1700018000,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"7c2b1320a1c101f4aa3703ab02821df60d539233\",\n      \"subject\": \"edit non-parseable config\",\n      \"index\": 6,\n      \"ts\": 1700021600,\n      \"bookkeeping\": false\n    }\n  ],\n  \"cells\": [\n    {\n      \"feature_id\": \"f-0ba3f5bf475359b8fb9033b92ec037327f8bfc9c41a656ab8c16f9639afa810a\",\n      \"commit_index\": 0,\n      \"op_ids\": [\n        \"0ba3f5bf475359b8fb9033b92ec037327f8bfc9c41a656ab8c16f9639afa810a\",\n        \"15020e0400232a4f00c658da53d4c47f82d1171681d2a443a4ffaa34ccba6729\",\n        \"3babbc554dd4fbb08a07565dfb41c966311aea53df1daae8e156208200a9a4bb\",\n        \"5c4be71523920758e041503bb711051e1c936a0f3878e328c2b6ee99e094e92f\",\n        \"84e692a38f43ff665107b1f2c64120bc29f4d433f099e4f16411cc798666b704\",\n        \"d63751ce99e9bd44b8d9966c8998128274cfa2c1924296a743f46d946a56d784\",\n        \"dff1d07010c6d03528f5efb04b0a979e7e8ff6506c00d88b5e6179d3de06a80d\",\n        \"e340e0344317f1b76a4a61567f534a048c153a614fa19c255089d485cf5ba1aa\"\n      ],\n      \"op_count\": 8,\n      \"kinds\": {\n        \"add\": 8\n      },\n      \"fidelity\": \"full\"\n    },\n    {\n      \"feature_id\": \"f-0ba3f5bf475359b8fb9033b92ec037327f8bfc9c41a656ab8c16f9639afa810a\",\n      \"commit_index\": 3,\n      \"op_ids\": [\n        \"f9fa3eb520768adb297e078b5ccecb9e90b7e93ddc9a5d0a606896a183500d55\"\n      ],\n      \"op_count\": 1,\n      \"kinds\": {\n        \"add\": 1\n      },\n      \"fidelity\": \"full\"\n    },\n    {\n      \"feature_id\": \"f-0ba3f5bf475359b8fb9033b92ec037327f8bfc9c41a656ab8c16f9639afa810a\",\n      \"commit_index\": 4,\n      \"op_ids\": [\n        \"722ed6c4248eba2bd53623f05b921fd0983864b7b01288f38ea53d0cd47a1318\",\n        \"86ed914281555bf8691adae2f9d551ac27dd4638433d6462e364d63e55085bb6\",\n        \"92e0e0f2c53654b204e638bd5bfb646333a65b9a40b492a5b4bc9fb7a8a4989b\",\n        \"d24d9c86571c9b77678e97cb50583d7cb8202156751efbe750fd425135d93beb\"\n      ],\n      \"op_count\": 4,\n      \"kinds\": {\n        \"add\": 3,\n        \"rework\": 1\n      },\n      \"fidelity\": \"full\"\n    },\n    {\n      \"feature_id\": \"f-0ba3f5bf475359b8fb9033b92ec037327f8bfc9c41a656ab8c16f9639afa810a\",\n      \"commit_index\": 5,\n      \"op_ids\": [\n        \"3493e26dcef58089e147bcc05fdd28374d60bacb9beb20f2d7662a7827c36292\"\n      ],\n      \"op_count\": 1,\n      \"kinds\": {\n        \"rework\": 1\n      },\n      \"fidelity\": \"full\"\n    },\n    {\n      \"feature_id\": \"f-0ba3f5bf475359b8fb9033b92ec037327f8bfc9c41a656ab8c16f9639afa810a\",\n      \"commit_index\": 6,\n      \"op_ids\": [\n        \"21a020f228c794fc0f8dba68644059c6013e8a319e2fc3a05dee00bae67cee0c\"\n      ],\n      \"op_count\": 1,\n      \"kinds\": {\n        \"rework\": 1\n      },\n      \"fidelity\": \"full\"\n    }\n  ],\n  \"features\": {\n    \"f-0ba3f5bf475359b8fb9033b92ec037327f8bfc9c41a656ab8c16f9639afa810a\": {\n      \"label\": \"baz qux\",\n      \"op_count\": 15\n    }\n  },\n  \"ghosts\": [],\n  \"partial_commits\": [],\n  \"reverted_unaccounted\": {\n    \"op_count\": 0,\n    \"symbols\": []\n  },\n  \"commit_count\": 7,\n  \"save_count\": 7,\n  \"bookkeeping_count\": 0,\n  \"op_count\": 15,\n  \"feature_count\": 1\n}\n"
+      "out": "{\n  \"commits\": [\n    {\n      \"sha\": \"75b001519c47d0dada850719e9349ae7dd734a7e\",\n      \"subject\": \"add foo, qux, config, binary\",\n      \"index\": 0,\n      \"ts\": 1700000000,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"665bf8bc9bb0877d5ebe6d9e7ebe7a782abe6bca\",\n      \"subject\": \"modify foo\",\n      \"index\": 1,\n      \"ts\": 1700003600,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"56a3e016908411503095283493d6e18c694f759c\",\n      \"subject\": \"rename foo -> bar within a.py\",\n      \"index\": 2,\n      \"ts\": 1700007200,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"26075c526c82f7724d1dd22ff3a5c0e2036842be\",\n      \"subject\": \"move bar from a.py to b.py\",\n      \"index\": 3,\n      \"ts\": 1700010800,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"4bcd22ea86cfbd402fa637b9b8095f5dc5bd4405\",\n      \"subject\": \"tangled: add baz to b.py and edit unrelated qux in c.py\",\n      \"index\": 4,\n      \"ts\": 1700014400,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"bf7218c6a895c6c0303352bb213b36c7adb66f0f\",\n      \"subject\": \"delete bar\",\n      \"index\": 5,\n      \"ts\": 1700018000,\n      \"bookkeeping\": false\n    },\n    {\n      \"sha\": \"7c2b1320a1c101f4aa3703ab02821df60d539233\",\n      \"subject\": \"edit non-parseable config\",\n      \"index\": 6,\n      \"ts\": 1700021600,\n      \"bookkeeping\": false\n    }\n  ],\n  \"cells\": [\n    {\n      \"feature_id\": \"f-284a8a93699bee5ff4fe23048d285ae9e2fd32126724b72e857c77ac345c284c\",\n      \"commit_index\": 0,\n      \"op_ids\": [\n        \"71c69aa2512c4ea645d427e4b6bbf192a3e88bb22045a327dd056cd427b15133\",\n        \"8e59677ad5a51f9262f082698e379eb5582827217a0f7c6af57b20ab0992cf10\",\n        \"a010191011e4e73587274f1e37ffc7ff68275d269f7c8eff882bf18c66b648ca\",\n        \"a3581304ba09bac63852a36a1e93ed2f87a603bdb696ad4dab3ba7ab97740b82\",\n        \"a89df6df7dbfb17b01fc833671bb2faf8e1dabc36554f78d1f40cc9f3e0bf2c7\",\n        \"d0f828c335b39a85c933197d986efe8e0457eb3844fbcb6485de0ea62f5bf40f\"\n      ],\n      \"op_count\": 6,\n      \"kinds\": {\n        \"add\": 6\n      },\n      \"fidelity\": \"full\"\n    },\n    {\n      \"feature_id\": \"f-284a8a93699bee5ff4fe23048d285ae9e2fd32126724b72e857c77ac345c284c\",\n      \"commit_index\": 3,\n      \"op_ids\": [\n        \"284a8a93699bee5ff4fe23048d285ae9e2fd32126724b72e857c77ac345c284c\"\n      ],\n      \"op_count\": 1,\n      \"kinds\": {\n        \"add\": 1\n      },\n      \"fidelity\": \"full\"\n    },\n    {\n      \"feature_id\": \"f-284a8a93699bee5ff4fe23048d285ae9e2fd32126724b72e857c77ac345c284c\",\n      \"commit_index\": 4,\n      \"op_ids\": [\n        \"987650ac1c2813e16e8b209b670dc7be0f46822f3620e165b5bfb3d3e436a57e\",\n        \"b549ebc8aafedec02394502dbaa0e3b9bb6dcd1c2a839cd7fe79b419db076532\"\n      ],\n      \"op_count\": 2,\n      \"kinds\": {\n        \"add\": 1,\n        \"rework\": 1\n      },\n      \"fidelity\": \"full\"\n    },\n    {\n      \"feature_id\": \"f-284a8a93699bee5ff4fe23048d285ae9e2fd32126724b72e857c77ac345c284c\",\n      \"commit_index\": 5,\n      \"op_ids\": [\n        \"5f65e81096e24ef684765d93678388fe2c22c3187715bf801113a9337795cfac\"\n      ],\n      \"op_count\": 1,\n      \"kinds\": {\n        \"rework\": 1\n      },\n      \"fidelity\": \"full\"\n    },\n    {\n      \"feature_id\": \"f-284a8a93699bee5ff4fe23048d285ae9e2fd32126724b72e857c77ac345c284c\",\n      \"commit_index\": 6,\n      \"op_ids\": [\n        \"2d09b816af27855be09ac0f5e34a307fd41de97cc3849d62b2be7fd4cf55e204\"\n      ],\n      \"op_count\": 1,\n      \"kinds\": {\n        \"rework\": 1\n      },\n      \"fidelity\": \"full\"\n    }\n  ],\n  \"features\": {\n    \"f-284a8a93699bee5ff4fe23048d285ae9e2fd32126724b72e857c77ac345c284c\": {\n      \"label\": \"baz qux\",\n      \"op_count\": 11\n    }\n  },\n  \"ghosts\": [],\n  \"partial_commits\": [],\n  \"reverted_unaccounted\": {\n    \"op_count\": 0,\n    \"symbols\": []\n  },\n  \"commit_count\": 7,\n  \"save_count\": 7,\n  \"bookkeeping_count\": 0,\n  \"op_count\": 11,\n  \"feature_count\": 1\n}\n"
     },
     "text": {
       "argv": [
         "log"
       ],
       "exit": 0,
-      "out": "id        feature                          75b0015 665bf8b 56a3e01 26075c5 4bcd22e bf7218c 7c2b132\n0ba3f5bf  baz qux                                4       .       .       .       2       .       1\n          (no feature)                           1       1       2       1       .       1       .\n"
+      "out": "id        feature                          75b0015 665bf8b 56a3e01 26075c5 4bcd22e bf7218c 7c2b132\n284a8a93  baz qux                                4       .       .       .       2       .       1\n          (no feature)                           1       1       2       1       .       1       .\n"
     }
   },
   "map": {
@@ -56,7 +56,7 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"nodes\": [\n    {\n      \"id\": \"f-0ba3f5bf475359b8fb9033b92ec037327f8bfc9c41a656ab8c16f9639afa810a\",\n      \"label\": \"baz qux\",\n      \"kind\": \"feature\",\n      \"parent\": null,\n      \"children\": [],\n      \"size\": 10,\n      \"members\": [\n        \"README.md\",\n        \"a.py::__residue__::\\u0000HEAD\\u0000\",\n        \"b.py::__residue__::\\u0000HEAD\\u0000\",\n        \"b.py::__residue__::baz\",\n        \"b.py::baz\",\n        \"c.py::__residue__::\\u0000HEAD\\u0000\",\n        \"c.py::__residue__::qux\",\n        \"c.py::qux\",\n        \"config.yaml\",\n        \"logo.bin\"\n      ],\n      \"own_symbols\": [\n        \"README.md\",\n        \"b.py::baz\",\n        \"c.py::qux\",\n        \"config.yaml\",\n        \"logo.bin\"\n      ],\n      \"op_count\": 15,\n      \"dir\": \"b.py\",\n      \"why\": \"Auto-derived from b.py (no LLM label available).\",\n      \"split_reason\": \"max_leaf\",\n      \"sessions\": []\n    }\n  ],\n  \"roots\": [\n    \"f-0ba3f5bf475359b8fb9033b92ec037327f8bfc9c41a656ab8c16f9639afa810a\"\n  ],\n  \"identity_events\": [\n    {\n      \"event\": \"birth\",\n      \"feature_id\": \"f-0ba3f5bf475359b8fb9033b92ec037327f8bfc9c41a656ab8c16f9639afa810a\"\n    }\n  ],\n  \"feature_count\": 1,\n  \"edges\": [],\n  \"sync_status\": {\n    \"complete\": true,\n    \"reached_genesis\": true,\n    \"history_rewritten\": false\n  }\n}\n"
+      "out": "{\n  \"nodes\": [\n    {\n      \"id\": \"f-284a8a93699bee5ff4fe23048d285ae9e2fd32126724b72e857c77ac345c284c\",\n      \"label\": \"baz qux\",\n      \"kind\": \"feature\",\n      \"parent\": null,\n      \"children\": [],\n      \"size\": 10,\n      \"members\": [\n        \"README.md\",\n        \"a.py::__residue__::\\u0000HEAD\\u0000\",\n        \"b.py::__residue__::\\u0000HEAD\\u0000\",\n        \"b.py::__residue__::baz\",\n        \"b.py::baz\",\n        \"c.py::__residue__::\\u0000HEAD\\u0000\",\n        \"c.py::__residue__::qux\",\n        \"c.py::qux\",\n        \"config.yaml\",\n        \"logo.bin\"\n      ],\n      \"own_symbols\": [\n        \"README.md\",\n        \"b.py::baz\",\n        \"c.py::qux\",\n        \"config.yaml\",\n        \"logo.bin\"\n      ],\n      \"op_count\": 11,\n      \"dir\": \"b.py\",\n      \"why\": \"Auto-derived from b.py (no LLM label available).\",\n      \"split_reason\": \"max_leaf\",\n      \"sessions\": []\n    }\n  ],\n  \"roots\": [\n    \"f-284a8a93699bee5ff4fe23048d285ae9e2fd32126724b72e857c77ac345c284c\"\n  ],\n  \"identity_events\": [\n    {\n      \"event\": \"birth\",\n      \"feature_id\": \"f-284a8a93699bee5ff4fe23048d285ae9e2fd32126724b72e857c77ac345c284c\"\n    }\n  ],\n  \"feature_count\": 1,\n  \"edges\": [],\n  \"sync_status\": {\n    \"complete\": true\n  }\n}\n"
     }
   },
   "plan_status": {
@@ -83,22 +83,22 @@
       "argv": [
         "feature",
         "rename",
-        "f-0ba3f5bf475359b8fb9033b92ec037327f8bfc9c41a656ab8c16f9639afa810a",
+        "f-284a8a93699bee5ff4fe23048d285ae9e2fd32126724b72e857c77ac345c284c",
         "Renamed Feature",
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"feature\": \"f-0ba3f5bf475359b8fb9033b92ec037327f8bfc9c41a656ab8c16f9639afa810a\",\n  \"old_label\": \"baz qux\",\n  \"new_label\": \"Renamed Feature\"\n}\n"
+      "out": "{\n  \"ok\": true,\n  \"feature\": \"f-284a8a93699bee5ff4fe23048d285ae9e2fd32126724b72e857c77ac345c284c\",\n  \"old_label\": \"baz qux\",\n  \"new_label\": \"Renamed Feature\"\n}\n"
     },
     "text": {
       "argv": [
         "feature",
         "rename",
-        "f-0ba3f5bf475359b8fb9033b92ec037327f8bfc9c41a656ab8c16f9639afa810a",
+        "f-284a8a93699bee5ff4fe23048d285ae9e2fd32126724b72e857c77ac345c284c",
         "Renamed Feature"
       ],
       "exit": 0,
-      "out": "\u2713 renamed f-0ba3f5bf475359b8fb9033b92ec037327f8bfc9c41a656ab8c16f9639afa810a: 'baz qux' \u2192 'Renamed Feature'\n"
+      "out": "\u2713 renamed f-284a8a93699bee5ff4fe23048d285ae9e2fd32126724b72e857c77ac345c284c: 'baz qux' \u2192 'Renamed Feature'\n"
     }
   },
   "restore": {
@@ -110,7 +110,7 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"applied\": true,\n  \"verb\": \"restore\",\n  \"target\": \"c.py::qux\",\n  \"message\": \"\",\n  \"undone\": [\n    {\n      \"op\": \"0512430f013892bbcaa525886658521c2e4d09b3e6e4bbbc3cdd9874ccce18bd\",\n      \"save\": \"<witness-sha>\",\n      \"subject\": \"ugh revert c.py::qux\",\n      \"symbol\": \"c.py::qux\"\n    }\n  ],\n  \"held\": [],\n  \"removal_set\": null,\n  \"files\": {\n    \"c.py\": {\n      \"before\": \"def qux():\\n    return 'unrelated'\\n\",\n      \"after\": \"def qux():\\n    return 'changed independently'\\n\"\n    }\n  },\n  \"check\": {\n    \"judge\": \"parser\",\n    \"passed\": true,\n    \"rounds\": 1,\n    \"output\": \"\"\n  }\n}\n"
+      "out": "{\n  \"ok\": true,\n  \"applied\": true,\n  \"verb\": \"restore\",\n  \"target\": \"c.py::qux\",\n  \"message\": \"\",\n  \"undone\": [\n    {\n      \"op\": \"9c426d81f91d49fe1d453b66fd0ddef5d3a63bb9f917da20305a0c4051b11715\",\n      \"save\": \"<witness-sha>\",\n      \"subject\": \"ugh revert c.py::qux\",\n      \"symbol\": \"c.py::qux\"\n    }\n  ],\n  \"held\": [],\n  \"removal_set\": null,\n  \"files\": {\n    \"c.py\": {\n      \"before\": \"def qux():\\n    return 'unrelated'\\n\",\n      \"after\": \"def qux():\\n    return 'changed independently'\\n\"\n    }\n  },\n  \"check\": {\n    \"judge\": \"parser\",\n    \"passed\": true,\n    \"rounds\": 1,\n    \"output\": \"\"\n  }\n}\n"
     },
     "text": {
       "argv": [
@@ -131,7 +131,7 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"applied\": true,\n  \"verb\": \"revert\",\n  \"target\": \"c.py::qux\",\n  \"message\": \"\",\n  \"undone\": [\n    {\n      \"op\": \"d24d9c86571c9b77678e97cb50583d7cb8202156751efbe750fd425135d93beb\",\n      \"save\": \"4bcd22e\",\n      \"subject\": \"tangled: add baz to b.py and edit unrelated qux in c.py\",\n      \"symbol\": \"c.py::qux\"\n    }\n  ],\n  \"held\": [],\n  \"removal_set\": {\n    \"saves\": [\n      {\n        \"sha\": \"4bcd22e\",\n        \"subject\": \"tangled: add baz to b.py and edit unrelated qux in c.py\",\n        \"steps\": 1\n      }\n    ],\n    \"steps\": 1\n  },\n  \"files\": {\n    \"c.py\": {\n      \"before\": \"def qux():\\n    return 'changed independently'\\n\",\n      \"after\": \"def qux():\\n    return 'unrelated'\\n\"\n    }\n  },\n  \"check\": {\n    \"judge\": \"parser\",\n    \"passed\": true,\n    \"rounds\": 1,\n    \"output\": \"\"\n  }\n}\n"
+      "out": "{\n  \"ok\": true,\n  \"applied\": true,\n  \"verb\": \"revert\",\n  \"target\": \"c.py::qux\",\n  \"message\": \"\",\n  \"undone\": [\n    {\n      \"op\": \"b549ebc8aafedec02394502dbaa0e3b9bb6dcd1c2a839cd7fe79b419db076532\",\n      \"save\": \"4bcd22e\",\n      \"subject\": \"tangled: add baz to b.py and edit unrelated qux in c.py\",\n      \"symbol\": \"c.py::qux\"\n    }\n  ],\n  \"held\": [],\n  \"removal_set\": null,\n  \"files\": {\n    \"c.py\": {\n      \"before\": \"def qux():\\n    return 'changed independently'\\n\",\n      \"after\": \"def qux():\\n    return 'unrelated'\\n\"\n    }\n  },\n  \"check\": {\n    \"judge\": \"parser\",\n    \"passed\": true,\n    \"rounds\": 1,\n    \"output\": \"\"\n  }\n}\n"
     },
     "text": {
       "argv": [
@@ -152,7 +152,7 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"applied\": false,\n  \"verb\": \"revert\",\n  \"target\": \"c.py::qux\",\n  \"message\": \"\",\n  \"undone\": [\n    {\n      \"op\": \"d24d9c86571c9b77678e97cb50583d7cb8202156751efbe750fd425135d93beb\",\n      \"save\": \"4bcd22e\",\n      \"subject\": \"tangled: add baz to b.py and edit unrelated qux in c.py\",\n      \"symbol\": \"c.py::qux\"\n    }\n  ],\n  \"held\": [],\n  \"removal_set\": {\n    \"saves\": [\n      {\n        \"sha\": \"4bcd22e\",\n        \"subject\": \"tangled: add baz to b.py and edit unrelated qux in c.py\",\n        \"steps\": 1\n      }\n    ],\n    \"steps\": 1\n  },\n  \"files\": {\n    \"c.py\": {\n      \"before\": \"def qux():\\n    return 'changed independently'\\n\",\n      \"after\": \"def qux():\\n    return 'unrelated'\\n\"\n    }\n  },\n  \"check\": \"not_run\"\n}\n"
+      "out": "{\n  \"ok\": true,\n  \"applied\": false,\n  \"verb\": \"revert\",\n  \"target\": \"c.py::qux\",\n  \"message\": \"\",\n  \"undone\": [\n    {\n      \"op\": \"b549ebc8aafedec02394502dbaa0e3b9bb6dcd1c2a839cd7fe79b419db076532\",\n      \"save\": \"4bcd22e\",\n      \"subject\": \"tangled: add baz to b.py and edit unrelated qux in c.py\",\n      \"symbol\": \"c.py::qux\"\n    }\n  ],\n  \"held\": [],\n  \"removal_set\": {\n    \"saves\": [\n      {\n        \"sha\": \"4bcd22e\",\n        \"subject\": \"tangled: add baz to b.py and edit unrelated qux in c.py\",\n        \"steps\": 1\n      }\n    ],\n    \"steps\": 1\n  },\n  \"files\": {\n    \"c.py\": {\n      \"before\": \"def qux():\\n    return 'changed independently'\\n\",\n      \"after\": \"def qux():\\n    return 'unrelated'\\n\"\n    }\n  },\n  \"check\": \"not_run\"\n}\n"
     },
     "text": {
       "argv": [
@@ -192,7 +192,7 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"saved\": true,\n  \"open_fork_count\": 0,\n  \"commit\": \"<witness-sha>\",\n  \"ops\": 35,\n  \"words\": \"add new_file\"\n}\n"
+      "out": "{\n  \"ok\": true,\n  \"saved\": true,\n  \"open_fork_count\": 0,\n  \"commit\": \"<witness-sha>\",\n  \"ops\": 20,\n  \"words\": \"add new_file\"\n}\n"
     },
     "text": {
       "argv": [
@@ -228,7 +228,7 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"files\": 6,\n  \"symbols\": 15,\n  \"features\": 1,\n  \"coverage_fraction\": 0.3333333333333333,\n  \"oracle\": {\n    \"configured\": false,\n    \"status\": \"unconfigured\"\n  },\n  \"drift\": {\n    \"any\": false,\n    \"paths\": []\n  },\n  \"unmanaged\": [],\n  \"backstop_kept\": [],\n  \"never_recorded\": [],\n  \"forks\": {\n    \"open\": 0,\n    \"records\": []\n  },\n  \"sync_status\": {\n    \"complete\": true,\n    \"reached_genesis\": true,\n    \"history_rewritten\": false\n  }\n}\n"
+      "out": "{\n  \"files\": 6,\n  \"symbols\": 15,\n  \"features\": 1,\n  \"coverage_fraction\": 0.3333333333333333,\n  \"oracle\": {\n    \"configured\": false,\n    \"status\": \"unconfigured\"\n  },\n  \"drift\": {\n    \"any\": false,\n    \"paths\": []\n  },\n  \"unmanaged\": [],\n  \"backstop_kept\": [],\n  \"never_recorded\": [],\n  \"forks\": {\n    \"open\": 0,\n    \"records\": []\n  },\n  \"sync_status\": {\n    \"complete\": true\n  }\n}\n"
     },
     "text": {
       "argv": [
@@ -262,14 +262,14 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"ok\": true,\n  \"undone\": true,\n  \"commit\": \"<witness-sha>\",\n  \"restored_ops\": 31,\n  \"removed\": [\n    \"0512430f013892bbcaa525886658521c2e4d09b3e6e4bbbc3cdd9874ccce18bd\"\n  ],\n  \"added\": []\n}\n"
+      "out": "{\n  \"ok\": true,\n  \"applied\": true,\n  \"verb\": \"revert\",\n  \"target\": \"revert c.py::qux\",\n  \"message\": \"took out the revert c.py::qux\",\n  \"undone\": [\n    {\n      \"op\": \"9c426d81f91d49fe1d453b66fd0ddef5d3a63bb9f917da20305a0c4051b11715\",\n      \"save\": \"<witness-sha>\",\n      \"subject\": \"ugh revert c.py::qux\",\n      \"symbol\": \"c.py::qux\"\n    }\n  ],\n  \"held\": [],\n  \"removal_set\": null,\n  \"files\": {\n    \"c.py\": {\n      \"before\": \"def qux():\\n    return 'unrelated'\\n\",\n      \"after\": \"def qux():\\n    return 'changed independently'\\n\"\n    }\n  },\n  \"check\": {\n    \"judge\": \"parser\",\n    \"passed\": true,\n    \"rounds\": 1,\n    \"output\": \"\"\n  }\n}\n"
     },
     "text": {
       "argv": [
         "undo"
       ],
       "exit": 0,
-      "out": "\u2713 undo <witness-sha>: the record is back to how it was before \u2014 1 op(s) taken out of the record\n  those edits are off the working copy too \u2014 they are in this commit's parent if you want them back\n"
+      "out": "\u2713 undo: took out the revert c.py::qux \u2014 1 step(s) undone\n"
     }
   },
   "undo_nothing_to_undo": {

@@ -39,8 +39,7 @@ def _edit_and_commit(repo: Path, path: str, content: str, message: str) -> str:
     (repo / path).write_text(content, encoding="utf-8")
     content_sha = GitBinding(repo).commit_all(message)
     ideal = lens.get(repo)
-    put_sha = lens.put(repo, ideal, message=f"ugh: mine {message}")
-    lens.record_ideal(repo, ideal, put_sha)
+    lens.put(repo, ideal, message=f"ugh: mine {message}")
     return content_sha  # the commit that actually witnesses the diff -- ops' provenance points here
 
 
@@ -255,7 +254,12 @@ def test_sync_revert_travels_and_removes_the_bytes(tmp_path):
 
     sync.sync(b, remote="origin", branch="main")
     assert "def baz" not in (b / "main.py").read_text(encoding="utf-8")  # the revert traveled
-    assert {op.id for op in taken.new_ops} <= lens.current_ideal(b).op_ids  # ...as the edit it is
+    from ugh.core import oplog
+
+    sha = oplog.tail(a)["sha"]
+    assert taken.undone and sha in GitBinding(b).commit_shas()
+    mined = {op.id for op in Store(a).all_ops() if sha in op.provenance}
+    assert mined and mined <= lens.current_ideal(b).op_ids  # ...as the commit it is
 
 
 def test_sync_of_a_revert_against_a_concurrent_extension_surfaces_a_fork(tmp_path):
@@ -278,13 +282,8 @@ def test_sync_of_a_revert_against_a_concurrent_extension_surfaces_a_fork(tmp_pat
 
 
 def test_revert_travels_to_a_fresh_clone_and_does_not_resurrect(tmp_path):
-    """Phase 1.2 §E (shared exclusion CRDT): a revert must survive a *fresh clone's* cold bootstrap.
-    A adds baz then reverts it and pushes; a brand-new clone C then bootstraps from the shared state
-    ref + branch history. The reverted op is still in git history, so C's cold mine re-adds it via
-    provenance -- the exclusion OR-Set is the only record that it was reverted, and it must travel on
-    `refs/ugh/state` for C to subtract it. Before exclusions travelled, C's exclusion table was empty
-    and baz silently resurrected in C's ideal (F20), diverging from A -- a later fold would even
-    write its bytes back."""
+    """A revert survives a fresh clone's cold bootstrap: the take-out is a commit in the branch's
+    history, so the clone mines it like any other and baz stays out."""
     remote = _init_bare(tmp_path)
     a = _clone(remote, tmp_path / "a")
     lens.init(a)

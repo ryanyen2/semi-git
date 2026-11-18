@@ -107,7 +107,7 @@ def _restorable_on(repo: str, symbol: str) -> frozenset[str] | None:
     """For `restore file::name`: the out steps on that symbol."""
     from ugh.core import opindex, planner
 
-    out = planner.load_out(repo)
+    out = planner.out_table(repo)
     ops = [o for o in opindex.index_ops(repo) if o.id in out and symbol in o.footprint]
     return frozenset(o.id for o in ops) or None
 
@@ -206,7 +206,8 @@ def _answer(repo: str, cmd: str, op_ids, label: str, emit: bool, as_json: bool, 
     from ugh.core import planner
     from ugh.core.lens import DirtyWorkingTreeError
 
-    p = planner.plan(repo, op_ids, verb=cmd, target=label, whole=whole)
+    p = planner.plan(repo, op_ids, verb=cmd, target=label, whole=whole,
+                     removal_set=cmd == "revert" and not (yes or as_json and not emit))
     if emit:
         view = planner.to_json(p)
         if out is not None and p.ok:

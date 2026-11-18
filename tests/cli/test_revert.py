@@ -10,7 +10,7 @@ import pytest
 
 from ugh.cli import main
 from ugh.core.lens import get
-from ugh.core.planner import load_out
+from ugh.core.planner import out_table as load_out
 from ugh.lens import map as lensmap
 from tests.laws import corpus
 
@@ -222,8 +222,10 @@ def test_revert_by_prose_resolves_via_the_intent_ledger_without_the_llm(linear, 
     from ugh.intent import rationale
 
     _no_llm(monkeypatch)
-    op_id = next(o for o in sorted(current_ideal(linear).op_ids)
-                 if any(s.endswith("::qux") for s in _footprint(linear, o)))
+    from ugh.core.opindex import index_ops
+
+    ideal = current_ideal(linear)
+    op_id = ideal.frontier(index_ops(linear))["c.py::qux"]  # the newest edit: nothing stands on it
     rationale.record_rationale(linear, subject=rationale._subject_for(linear, [op_id]),
                                reason="added the retry backoff loop", actor="human", evidence=[])
     rc, view = _json(linear, ["revert", "drop the retry backoff", "--json"], capsys)
@@ -260,7 +262,9 @@ def test_reverting_a_files_only_definition_removes_the_file_and_undo_brings_it_b
     assert not (repo / "solo.py").exists()
     assert _in(repo, ["undo"]) == 0
     assert (repo / "solo.py").read_bytes() == b"def only():\n    return 2\n"
-    assert not load_out(repo)
+    from ugh.core.opindex import index_ops
+
+    assert not set(load_out(repo)) & {o.id for o in index_ops(repo) if sha in o.provenance}
 
 
 @pytest.mark.parametrize("verb", ["revert", "restore"])
