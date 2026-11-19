@@ -17,7 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from ugh.core.op import Attribution, Images, Op, compute_id, merge_attribution
+from ugh.core.op import Images, Op, compute_id
 
 # `Store.all_ops` memo: ops-dir realpath -> ((dir mtime_ns, dirent count), ops, scan-start time).
 # A scan that started well after the dir's mtime stays current while that mtime is unchanged.
@@ -44,20 +44,9 @@ class StoreError(Exception):
     """The store detected corruption or an attempt to write something that isn't a valid Op."""
 
 
-_ATTR_FIELDS = ("session", "agent", "plan")
-
-
 def _payload(op: Op) -> dict:
-    """`op`'s on-disk payload, images included. Provenance is a list of `{sha, session?, agent?,
-    plan?}`, one per witnessing SHA; `_deserialize` also reads the older list of bare SHAs."""
-    attr_by_sha = {a.sha: a for a in op.attribution}
-    provenance = []
-    for sha in sorted(op.provenance):
-        entry = {"sha": sha}
-        a = attr_by_sha.get(sha)
-        if a is not None:
-            entry.update({f: getattr(a, f) for f in _ATTR_FIELDS if getattr(a, f) is not None})
-        provenance.append(entry)
+    """`op`'s on-disk payload, images included. Provenance is a list of `{sha}`, one per witnessing
+    SHA; `_deserialize` also reads the older list of bare SHAs."""
     return {
         "id": op.id,
         "footprint": {k: list(v) for k, v in sorted(op.footprint.items())},
@@ -66,8 +55,7 @@ def _payload(op: Op) -> dict:
         },
         "requires": [list(r) for r in sorted(op.requires)],
         "kind": op.kind,
-        "provenance": provenance,
-        "intent": op.intent,
+        "provenance": [{"sha": sha} for sha in sorted(op.provenance)],
         "miner_version": op.miner_version,
         "derived": op.derived,
     }
@@ -81,26 +69,10 @@ def _op_from_payload(payload: dict, images: Images) -> Op:
     """An `Op` from a decoded payload and its already-decoded `images` (`{}` from the op index)."""
     footprint = {k: tuple(v) for k, v in payload["footprint"].items()}
     prov = payload["provenance"]
-    if prov and isinstance(prov[0], dict):  # v1: a list of `{sha, session?, ...}` dicts
-        # almost every entry is a bare `{sha}`, so only the longer ones are checked for attribution
-        shas = []
-        attr_entries = []
-        for e in prov:
-            shas.append(e["sha"])
-            if len(e) > 1:
-                attr_entries.append(e)
-        provenance = tuple(sorted(shas))
-        attribution = tuple(sorted(
-            (
-                Attribution(sha=e["sha"], **{f: e.get(f) for f in _ATTR_FIELDS})
-                for e in attr_entries
-                if any(e.get(f) is not None for f in _ATTR_FIELDS)
-            ),
-            key=lambda a: a.sha,
-        )) if attr_entries else ()
+    if prov and isinstance(prov[0], dict):  # v1: a list of `{sha}` dicts
+        provenance = tuple(sorted(e["sha"] for e in prov))
     else:  # v0: a list of bare SHA strings
         provenance = tuple(prov)
-        attribution = ()
     # Filling `__dict__` skips the frozen dataclass's per-field `object.__setattr__`, which
     # dominates loading the index; it raises if `Op` ever gains `__slots__`.
     reqs = payload["requires"]
@@ -112,8 +84,6 @@ def _op_from_payload(payload: dict, images: Images) -> Op:
         requires=frozenset(map(tuple, reqs)) if reqs else frozenset(),
         kind=payload["kind"],
         provenance=provenance,
-        attribution=attribution,
-        intent=payload.get("intent"),
         miner_version=payload["miner_version"],
         derived=payload.get("derived", False),
     )
@@ -203,38 +173,21 @@ class Store:
 
     def add(self, op: Op) -> Op:
         """Append ``op`` and return the stored op. Raises `StoreError` when the id does not match
-        the content. An op already stored gets the union of both provenances and attributions,
-        rewritten only when that changes it."""
+        the content. An op already stored gets the union of both provenances, rewritten only when
+        that changes it."""
         self._validate(op)
         with self._locked():
             path = self._path(op.id)
             if path.exists():
                 existing = _deserialize(path.read_bytes())
                 merged_provenance = tuple(sorted(set(existing.provenance) | set(op.provenance)))
-                merged_attribution = merge_attribution(existing.attribution, op.attribution)
-                if (merged_provenance == existing.provenance
-                        and merged_attribution == existing.attribution):
+                if merged_provenance == existing.provenance:
                     return existing
-                merged = replace(existing, provenance=merged_provenance, attribution=merged_attribution)
+                merged = replace(existing, provenance=merged_provenance)
                 _write_atomic(path, _serialize(merged))
                 return merged
             _write_atomic(path, _serialize(op))
             return op
-
-    def attribute(self, op_id: str, entries: tuple[Attribution, ...]) -> Op | None:
-        """Merge attribution `entries` into a stored op, rewriting its file only when that changes
-        it. Returns the updated op, or ``None`` when no op has that id."""
-        with self._locked():
-            path = self._path(op_id)
-            if not path.is_file():
-                return None
-            existing = _deserialize(path.read_bytes())
-            merged = merge_attribution(existing.attribution, entries)
-            if merged == existing.attribution:
-                return existing
-            updated = replace(existing, attribution=merged)
-            _write_atomic(path, _serialize(updated))
-            return updated
 
     def get(self, op_id: str) -> Op | None:
         path = self._path(op_id)

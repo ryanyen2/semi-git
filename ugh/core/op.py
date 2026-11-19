@@ -97,17 +97,6 @@ def is_content_bearing(sym: str) -> bool:
 
 
 @dataclass(frozen=True)
-class Attribution:
-    """Who produced one witnessing commit, beyond its SHA in ``Op.provenance``. An op carries an
-    entry only for a SHA with a non-None field. Excluded from ``compute_id``."""
-
-    sha: str
-    session: str | None = None
-    agent: str | None = None
-    plan: str | None = None
-
-
-@dataclass(frozen=True)
 class Op:
     """Frozen and hashable; nothing about a mined Op is mutable after mining. Correcting a wrong
     result happens by a new commit (a take-out is one), never by editing an op in place."""
@@ -118,8 +107,6 @@ class Op:
     requires: Requires = frozenset()
     kind: str = "touched"  # add | extend | rework | prune | move | merge -- derived, not authored
     provenance: tuple[str, ...] = ()  # witnessing commit SHAs; appendable; excluded from the id
-    attribution: tuple[Attribution, ...] = ()  # sorted by sha; appendable; excluded from the id
-    intent: str | None = None  # advisory label/rationale only; excluded from the id
     miner_version: str = MINER_VERSION
     derived: bool = False  # touches a generated or vendored file; advisory; excluded from the id
 
@@ -131,8 +118,8 @@ def compute_id(
     kind: str,
     miner_version: str = MINER_VERSION,
 ) -> str:
-    """The content address over the payload and miner version. Provenance, attribution, intent and
-    `derived` are excluded, so the same change mined from another commit has the same id."""
+    """The content address over the payload and miner version. Provenance and `derived` are
+    excluded, so the same change mined from another commit has the same id."""
     payload = {
         "footprint": {sym: list(ver) for sym, ver in sorted(footprint.items())},
         "images": {
@@ -153,14 +140,12 @@ def make_op(
     requires: Requires = frozenset(),
     kind: str = "touched",
     provenance: tuple[str, ...] = (),
-    attribution: tuple[Attribution, ...] = (),
-    intent: str | None = None,
     miner_version: str = MINER_VERSION,
     derived: bool = False,
 ) -> Op:
     """Construct an Op with its id computed from its content -- the only supported way to make
-    one (never hand-assign ``.id``). ``attribution`` (like ``provenance``/``intent``/``derived``)
-    rides along but does not enter the id."""
+    one (never hand-assign ``.id``). ``provenance`` and ``derived`` ride along but do not enter the
+    id."""
     op_id = compute_id(footprint, images, requires, kind, miner_version)
     return Op(
         id=op_id,
@@ -169,28 +154,6 @@ def make_op(
         requires=requires,
         kind=kind,
         provenance=provenance,
-        attribution=attribution,
-        intent=intent,
         miner_version=miner_version,
         derived=derived,
     )
-
-
-def merge_attribution(
-    a: tuple[Attribution, ...], b: tuple[Attribution, ...]
-) -> tuple[Attribution, ...]:
-    """The union of two attribution sets by SHA, field by field: a None takes the other side, and
-    two different values keep the smaller, so any merge order converges. Sorted by SHA."""
-    by_sha: dict[str, list[Attribution]] = {}
-    for entry in (*a, *b):
-        by_sha.setdefault(entry.sha, []).append(entry)
-    merged: list[Attribution] = []
-    for sha in sorted(by_sha):
-        entries = by_sha[sha]
-        fields: dict[str, str | None] = {}
-        for field in ("session", "agent", "plan"):
-            vals = [getattr(e, field) for e in entries if getattr(e, field) is not None]
-            fields[field] = min(vals) if vals else None
-        if any(v is not None for v in fields.values()):
-            merged.append(Attribution(sha=sha, **fields))
-    return tuple(merged)

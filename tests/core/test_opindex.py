@@ -7,7 +7,7 @@ import time
 
 from ugh import state
 from ugh.core import opindex
-from ugh.core.op import Attribution, make_op
+from ugh.core.op import make_op
 from ugh.core.store import Store
 
 
@@ -31,9 +31,7 @@ def test_index_ops_matches_all_ops_modulo_images(tmp_path):
         assert idx_op.footprint == op.footprint
         assert idx_op.requires == op.requires
         assert idx_op.provenance == op.provenance
-        assert idx_op.attribution == op.attribution
         assert idx_op.kind == op.kind
-        assert idx_op.intent == op.intent
         assert idx_op.miner_version == op.miner_version
         assert idx_op.derived == op.derived
         assert idx_op.images == {}  # never carried by the sidecar
@@ -85,8 +83,9 @@ def test_is_stale_true_on_miner_version_mismatch(tmp_path):
 
 
 def test_is_stale_true_when_op_file_rewritten_without_count_change(tmp_path):
-    """`Store.attribute`'s rewrite bumps an op file's mtime without changing the dirent count --
-    the `built_mtime_ns <= max(op-file mtime)` staleness trigger must still catch it."""
+    """Rewriting an op file in place (a provenance merge does) bumps its mtime without changing the
+    dirent count -- the `built_mtime_ns <= max(op-file mtime)` staleness trigger must still catch
+    it."""
     store = Store(tmp_path)
     store.init()
     op = store.add(_op())
@@ -94,7 +93,10 @@ def test_is_stale_true_when_op_file_rewritten_without_count_change(tmp_path):
     assert opindex.is_stale(tmp_path) is False
 
     time.sleep(0.01)  # ensure a distinguishable mtime tick on filesystems with coarse resolution
-    store.attribute(op.id, (Attribution(sha=f"sha0", session="s1"),))
+    path = store.ops_dir / op.id
+    tmp = path.with_name(".tmp-rewrite")  # the store's own write: a temp file renamed over the op
+    tmp.write_bytes(path.read_bytes())
+    tmp.replace(path)
     assert opindex.is_stale(tmp_path) is True
 
 
@@ -168,4 +170,3 @@ def test_rebuild_and_index_ops_over_a_real_corpus(tmp_path):
         assert indexed[op_id].footprint == op.footprint
         assert indexed[op_id].requires == op.requires
         assert indexed[op_id].provenance == op.provenance
-        assert indexed[op_id].intent == op.intent

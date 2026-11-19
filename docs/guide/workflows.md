@@ -20,7 +20,7 @@ This is git's daily loop, with `ugh` reading along.
 ugh init                    # once per repo: read your existing history into the op store
 # edit files with your editor or agent, the same as always
 ugh save -m "add input validation"   # commit your edits as git would, and read them into steps
-ugh status                  # files, symbols, coverage, two-version choices, unsaved edits, the plan
+ugh status                  # counts, coverage, the check on HEAD, two-version choices, unsaved edits, the plan
 ugh undo                    # step back: undo your last save, revert, or restore
 ```
 

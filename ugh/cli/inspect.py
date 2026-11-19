@@ -149,9 +149,20 @@ def _resync(repo: str, as_json: bool = False) -> int:
     return 0
 
 
+def _check_text(observed: dict | None) -> str:
+    """What the check observed on HEAD (`status_view`'s `observed`), in words."""
+    if observed is None:
+        return "no check configured"
+    head = observed["head"]
+    if head is None:
+        return "check not observed on HEAD"
+    return (f"check {'passes' if head['verdict'] == 'pass' else 'fails'} on HEAD, "
+            f"lines {'recorded' if head['lines_recorded'] else 'not recorded'}")
+
+
 def _status(repo: str, as_json: bool = False, full: bool = False) -> int:
-    """`ugh status`: file/symbol counts, coverage, oracle status, then what needs you: two-version
-    choices, unsaved edits, and the plan. Path lists show four (`--full` for all)."""
+    """`ugh status`: file/symbol counts, coverage, what the check observed on HEAD, then what needs
+    you: two-version choices, unsaved edits, and the plan. Path lists show four (`--full` for all)."""
     from ugh.api import plural, status_view
     from ugh.core.lens import get
 
@@ -166,7 +177,7 @@ def _status(repo: str, as_json: bool = False, full: bool = False) -> int:
                                               else f"  +{len(items) - len(shown)} more (--full)")
 
     print(f"{plural(view['files'], 'file')} · {plural(view['symbols'], 'symbol')} · "
-          f"{view['coverage_fraction'] * 100:.0f}% coverage · oracle {view['oracle']['status']}")
+          f"{view['coverage_fraction'] * 100:.0f}% coverage · {_check_text(view['observed'])}")
     lines = choice_lines(view["choices"])
     if view["drift"]["any"]:
         n = len(view["drift"]["paths"])

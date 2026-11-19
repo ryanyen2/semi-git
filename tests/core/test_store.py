@@ -8,7 +8,7 @@ import threading
 
 import pytest
 
-from ugh.core.op import MINER_VERSION, Attribution, make_op
+from ugh.core.op import MINER_VERSION, make_op
 from ugh.core.store import FsckReport, Store, StoreError, fsck
 
 
@@ -213,32 +213,13 @@ def _v0_bytes(op, provenance: list[str]) -> bytes:
         "requires": [list(r) for r in sorted(op.requires)],
         "kind": op.kind,
         "provenance": provenance,
-        "intent": op.intent,
         "miner_version": op.miner_version,
     }
     return json.dumps(payload, indent=2, sort_keys=True).encode("utf-8") + b"\n"
 
 
-def test_v1_attribution_roundtrips_through_the_store(tmp_path):
-    """An op with structured attribution serializes to the v1 shape and deserializes back equal."""
-    store = Store(tmp_path)
-    store.init()
-    op = make_op(
-        {"a.py::foo": (None, "v0")}, {"a.py::foo": b"body"},
-        provenance=("shaA", "shaB"),
-        attribution=(Attribution(sha="shaA", session="s1", agent="claude"),),
-    )
-    store.add(op)
-
-    fetched = store.get(op.id)
-    assert fetched == op
-    assert fetched.provenance == ("shaA", "shaB")
-    assert fetched.attribution == (Attribution(sha="shaA", session="s1", agent="claude"),)
-
-
-def test_v0_file_deserializes_with_empty_attribution(tmp_path):
-    """A committed v0 op file (list-of-strings provenance) reads back with `attribution == ()` and
-    its provenance intact -- old shapes live in history forever (D3)."""
+def test_v0_file_deserializes_with_its_provenance(tmp_path):
+    """A v0 op file (list-of-strings provenance) reads back with its provenance intact."""
     store = Store(tmp_path)
     store.init()
     op = _op()
@@ -246,48 +227,6 @@ def test_v0_file_deserializes_with_empty_attribution(tmp_path):
 
     fetched = store.get(op.id)
     assert fetched.provenance == ("sha0", "sha1")
-    assert fetched.attribution == ()
-
-
-def test_attribute_stamps_a_committed_op_without_moving_its_id(tmp_path):
-    store = Store(tmp_path)
-    store.init()
-    op = store.add(_op())  # provenance ("sha0",), no attribution
-
-    updated = store.attribute(op.id, (Attribution(sha="sha0", session="s1"),))
-
-    assert updated.id == op.id  # id is content-addressed; attribution is not part of it
-    assert updated.attribution == (Attribution(sha="sha0", session="s1"),)
-    assert store.get(op.id).attribution == (Attribution(sha="sha0", session="s1"),)
-    assert fsck(tmp_path).ok  # the rewritten file still hashes to its filename
-
-
-def test_attribute_returns_none_for_an_unknown_op(tmp_path):
-    store = Store(tmp_path)
-    store.init()
-    assert store.attribute("does-not-exist", (Attribution(sha="x", session="s1"),)) is None
-
-
-def test_provenance_roundtrip_preserves_op_ids_across_a_corpus(tmp_path):
-    """The U22 verification (D7 proven end to end): mine a real corpus repo, then enrich every op's
-    structured provenance. No op id moves -- provenance/attribution are outside the content address
-    -- and the store stays fsck-clean."""
-    from ugh.core.lens import get
-    from tests.laws import corpus
-
-    repo = corpus.CORPUS["mixed_coverage"].build(tmp_path / "repo")
-    get(repo)  # mine-on-contact populates .sgt/ops/
-    store = Store(repo)
-    before = sorted(op.id for op in store.all_ops())
-    assert before  # the fixture actually produced ops
-
-    for op in store.all_ops():
-        for sha in op.provenance:
-            store.attribute(op.id, (Attribution(sha=sha, session="s1"),))
-
-    after = sorted(op.id for op in store.all_ops())
-    assert after == before
-    assert fsck(repo).ok
 
 
 # -- U2: fsck completion (R11 contract) + read-side corruption tolerance ----------------------

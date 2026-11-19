@@ -55,9 +55,11 @@ Before your first edit, run this. It works in any harness that has a shell:
 ugh status --json
 ```
 
-It reports the counts, whether there is unsaved work, and what needs a human decision: two-version
-choices a sync left (`ugh save` refuses until each is resolved), a git history rewrite, and the
-plan if one is declared.
+It reports the counts, what the check observed on HEAD (`observed`: null when no check is
+configured, else `{head}`, which is null until a save observes HEAD and otherwise its verdict and
+whether lines were recorded, as in a plan), whether there is unsaved work,
+and what needs a human decision: two-version choices a sync left (`ugh save` refuses until each is
+resolved), a git history rewrite, and the plan if one is declared.
 
 Check for a `.sgt/` directory before you rely on any of it. If there is no `.sgt/`, use plain git
 and stop reading here.

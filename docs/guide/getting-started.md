@@ -47,7 +47,7 @@ Here are the commands you'll use to see where you are.
 
 ```bash
 ugh log                      # the saves, newest first, with the names on their steps
-ugh status                   # files, symbols, coverage, drift, untracked files, the plan
+ugh status                   # files, symbols, coverage, the check on HEAD, drift, untracked files, the plan
 ugh show signup              # the steps named signup and what taking them out would take
 ugh find email               # addresses whose names, subjects or definitions mention email
 ```

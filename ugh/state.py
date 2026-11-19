@@ -61,7 +61,6 @@ _ARTIFACTS: dict[str, _Artifact] = {
     # committed: {key: prompt text}, write-once per key (`ugh.intent.prompts`)
     "intent_prompts": _Artifact(("intent", "prompts.json"), committed=True, sort_keys=False),
     # local, per clone, never read from a blob
-    "verdicts": _Artifact(("local", "oracle.json"), committed=False),
     "witness": _Artifact(("local", "witness.json"), committed=False),
     # the miner version that wrote `witness` and `ideal_table`; another version's are stale
     "mined_by": _Artifact(("local", "mined_by.json"), committed=False),

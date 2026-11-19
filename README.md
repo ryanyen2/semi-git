@@ -41,7 +41,8 @@ when the check runs Python 3.12 or later, which lines of your files it executed.
 long as the check, and in return the observation comes from your real environment. The save prints
 one line with the check's verdict, how many lines of its output changed against the parent's
 observation, and how many of the save's steps the check ran. Observations stay on your machine
-(`.sgt/local/observations/`); a clone has them only for the saves it made.
+(`.sgt/local/observations/`); a clone has them only for the saves it made. `ugh status` says what
+the check observed on HEAD.
 
 ## Set up your coding agent and editor
 

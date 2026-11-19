@@ -91,8 +91,8 @@ carry it (or missing) and the steps since the baseline that carry no declared na
 
 - `ugh show <address>` and `ugh find "<words>"` are read-only: one explains an address you hold, the
   other lists addresses matching a description.
-- `ugh status` reports two-version choices a sync left, unsaved edits (files on disk differing from
-  the recorded state) and the plan.
+- `ugh status` reports what the check observed on HEAD, two-version choices a sync left, unsaved
+  edits (files on disk differing from the recorded state) and the plan.
 - `ugh check` verifies the op store; `ugh check --repair` re-derives the current ref's record from
   git history.
 

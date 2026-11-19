@@ -37,9 +37,7 @@ def _commit_all(root, message):
 def test_path_and_rel_agree_on_layout(tmp_path):
     assert state.path(tmp_path, "intent_prompts") == tmp_path / ".sgt" / "intent" / "prompts.json"
     assert state.rel("intent_prompts") == ".sgt/intent/prompts.json"
-    # two distinct "oracle.json"s at different layers -- committed config vs. local verdict cache.
     assert state.path(tmp_path, "oracle_config") == tmp_path / ".sgt" / "oracle.json"
-    assert state.path(tmp_path, "verdicts") == tmp_path / ".sgt" / "local" / "oracle.json"
 
 
 def test_missing_artifact_returns_default(tmp_path):

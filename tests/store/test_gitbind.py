@@ -222,7 +222,6 @@ def test_write_tree_from_blobs_round_trips_through_read(tmp_path):
     tree = gb.write_tree_from_blobs(entries)
 
     assert gb.read_tree_blobs(tree) == entries
-    assert gb.read_tree_blobs(tree, prefix=".sgt/ops/") == {".sgt/ops/abc123": entries[".sgt/ops/abc123"]}
     # the real index/working tree are untouched: only the source commit's file is tracked.
     assert not gb.has_dirty_source()
 

@@ -276,14 +276,14 @@
         "--json"
       ],
       "exit": 0,
-      "out": "{\n  \"files\": 6,\n  \"symbols\": 15,\n  \"coverage_fraction\": 0.3333333333333333,\n  \"oracle\": {\n    \"configured\": false,\n    \"status\": \"unconfigured\"\n  },\n  \"drift\": {\n    \"any\": false,\n    \"paths\": []\n  },\n  \"choices\": [],\n  \"sync_status\": {\n    \"complete\": true\n  },\n  \"plan\": null\n}\n"
+      "out": "{\n  \"files\": 6,\n  \"symbols\": 15,\n  \"coverage_fraction\": 0.3333333333333333,\n  \"observed\": null,\n  \"drift\": {\n    \"any\": false,\n    \"paths\": []\n  },\n  \"choices\": [],\n  \"sync_status\": {\n    \"complete\": true\n  },\n  \"plan\": null\n}\n"
     },
     "text": {
       "argv": [
         "status"
       ],
       "exit": 0,
-      "out": "6 files \u00b7 15 symbols \u00b7 33% coverage \u00b7 oracle unconfigured\n\u2713 in sync\n"
+      "out": "6 files \u00b7 15 symbols \u00b7 33% coverage \u00b7 no check configured\n\u2713 in sync\n"
     }
   },
   "sync_refuses_dirty_tree": {

@@ -7,8 +7,9 @@ store; mining (`ugh.core.lens.get`) is the caller's job. Every step carries its 
 * `find_view`    -- names, subjects, definitions and asks matching some words, as addresses.
 * `plan_view`    -- each declared name with the saves since the baseline carrying it, and the steps
   carrying no declared name.
-* `status_view`  -- counts, coverage, the oracle, drift, the pending two-version choices and the plan.
-* `state_view`   -- the current ref's ideal: frontier, coverage, the oracle's verdict.
+* `status_view`  -- counts, coverage, what the check observed on HEAD, drift, the pending
+  two-version choices and the plan.
+* `state_view`   -- the current ref's ideal: frontier and coverage.
 * `sync_view`    -- what a sync did.
 * `choices_view` -- the pending two-version choices, each with its address.
 """
@@ -87,15 +88,12 @@ def plan_view(repo) -> dict | None:
 
 
 def state_view(repo, *, full: bool = False) -> dict:
-    """HEAD's ideal: the paths `code(I)` covers, the fraction of them with at least one live
-    definition at the frontier (1.0 when nothing is covered), and the stored check verdict for this
-    exact ideal (`None` when none is recorded or no check is configured). `full=True` adds the
-    frontier map and the entity paths in place of their counts."""
-    from ugh.config import load_oracle_config
+    """HEAD's ideal: the paths `code(I)` covers and the fraction of them with at least one live
+    definition at the frontier (1.0 when nothing is covered). `full=True` adds the frontier map and
+    the entity paths in place of their counts."""
     from ugh.core import opindex
     from ugh.core.fold import _symbol_kind
     from ugh.core.lens import ideal_for_ref
-    from ugh.core.oracle import verdict_for
     from ugh.core.op import is_bottom
 
     ops = opindex.index_ops(repo)
@@ -112,13 +110,10 @@ def state_view(repo, *, full: bool = False) -> dict:
 
     from ugh.core import tiers
 
-    oracle_configured = load_oracle_config(repo) is not None
     base = {
         "covered_paths": sorted(covered),
         "coverage_fraction": (len(entity_paths) / len(covered)) if covered else 1.0,
         "derived_paths": sorted(p for p in covered if tiers.is_derived(p)),
-        "oracle_configured": oracle_configured,
-        "oracle_verdict": verdict_for(repo, ideal) if oracle_configured else None,
     }
     if full:
         return {
@@ -276,17 +271,18 @@ def _drift_paths_by_hash(repo, path_hashes: dict[str, str]) -> list[str]:
 
 
 def status_view(repo) -> dict:
-    """File and symbol counts, coverage (`state_view`'s), the check's overall status, drift (paths
+    """File and symbol counts, coverage (`state_view`'s), what the check observed on HEAD
+    (`observed`: None when no check is configured, else `{head}` as in a plan), drift (paths
     whose bytes differ from `code(current_ideal)`, that is unsaved edits), the pending two-version
     choices and the plan."""
     from hashlib import sha256 as _sha256
 
     from ugh import state as state_mod
-    from ugh.core import opindex
+    from ugh.core import observe, opindex
     from ugh.core.fold import code
     from ugh.core.lens import _ids_digest, current_ideal, ops_with_frontier_images, sync_status
     from ugh.core.op import MINER_VERSION, is_bottom
-    from ugh.core.oracle import overall_status
+    from ugh.store.gitbind import GitBinding
 
     st = state_view(repo)
     ideal = current_ideal(repo)
@@ -313,10 +309,8 @@ def status_view(repo) -> dict:
         "files": len(ideal.covered_paths(index)),
         "symbols": symbol_count,
         "coverage_fraction": st["coverage_fraction"],
-        "oracle": {
-            "configured": st["oracle_configured"],
-            "status": overall_status(st["oracle_verdict"]) if st["oracle_configured"] else "unconfigured",
-        },
+        "observed": ({"head": observe.summary(observe.load(repo, GitBinding(repo).head()))}
+                     if observe.configured(repo) else None),
         "drift": {"any": bool(drift), "paths": drift},
         "choices": choices_view(repo),
         "sync_status": sync_status(repo),

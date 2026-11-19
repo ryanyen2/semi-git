@@ -194,3 +194,41 @@ def test_running_the_check_leaves_no_bytecode_in_the_tree(tmp_path):
     (root / ".gitignore").unlink()
     _save(root, {"m.py": HELLO_WORLD}, "say hello world")
     assert not list(root.rglob("__pycache__"))
+
+
+def _status(root, capsys):
+    """`ugh status`'s first line and its `--json` view's `observed`."""
+    rc, out = _cli(root, ["status"], capsys)
+    assert rc == 0
+    rc, js = _cli(root, ["status", "--json"], capsys)
+    assert rc == 0
+    return out.splitlines()[0], json.loads(js)["observed"]
+
+
+def test_status_says_when_no_check_is_configured(tmp_path, capsys):
+    root = _project(tmp_path / "p", check=None)
+    line, check = _status(root, capsys)
+    assert line.endswith(" · no check configured") and check is None
+
+
+def test_status_says_head_is_not_observed_before_a_save_observes_it(tmp_path, capsys):
+    root = tmp_path / "p"
+    gb, _ = init_store(root)
+    (root / ".sgt" / "oracle.json").write_text(json.dumps({"tiers": [{"name": "check", "command": CHECK}]}))
+    (root / "m.py").write_text(HELLO)
+    (root / "check.py").write_text("import m\n\nprint(m.main())\n")
+    gb.commit_all("base")
+    line, check = _status(root, capsys)
+    assert line.endswith(" · check not observed on HEAD") and check == {"head": None}
+
+
+@lines_need_312
+def test_status_reports_heads_observation_after_a_save(tmp_path, capsys):
+    root = _project(tmp_path / "p")
+    line, check = _status(root, capsys)
+    assert line.endswith(" · check passes on HEAD, lines recorded")
+    assert check == {"head": {"verdict": "pass", "lines_recorded": True}}
+    _save(root, {"check.py": "import sys\n\nimport m\n\nprint(m.main())\nsys.exit(1)\n"}, "fail the check")
+    line, check = _status(root, capsys)
+    assert line.endswith(" · check fails on HEAD, lines recorded")
+    assert check == {"head": {"verdict": "fail", "lines_recorded": True}}

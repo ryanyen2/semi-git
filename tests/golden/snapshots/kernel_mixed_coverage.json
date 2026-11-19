@@ -189,9 +189,7 @@
     ],
     "derived_paths": [],
     "entity_path_count": 2,
-    "frontier_count": 10,
-    "oracle_configured": false,
-    "oracle_verdict": null
+    "frontier_count": 10
   },
   "status_view": {
     "choices": [],
@@ -201,10 +199,7 @@
       "paths": []
     },
     "files": 4,
-    "oracle": {
-      "configured": false,
-      "status": "unconfigured"
-    },
+    "observed": null,
     "plan": null,
     "symbols": 10,
     "sync_status": {

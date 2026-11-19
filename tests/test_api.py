@@ -6,7 +6,6 @@ import json
 from ugh.api import log_view, state_view, status_view
 from ugh.core.lens import get
 from ugh.core.store import Store
-from ugh.store.gitbind import init_store
 from tests.laws import corpus
 
 
@@ -40,8 +39,6 @@ def test_state_view_coverage_fraction_on_mixed_fixture(tmp_path):
     assert v["covered_paths"] == ["config.yaml", "notes.md", "pkg.py", "util.py"]
     assert v["entity_paths"] == ["pkg.py", "util.py"]
     assert v["coverage_fraction"] == 0.5
-    assert v["oracle_configured"] is False  # no `.sgt/oracle.json` in this fixture
-    assert v["oracle_verdict"] is None
     # the frontier is the per-chain vector: it names entity, residue, anchor, and whole-file syms
     assert "pkg.py::compute" in v["frontier"]
     assert "config.yaml" in v["frontier"]
@@ -101,30 +98,8 @@ def test_state_view_default_is_compact_and_full_restores_frontier(tmp_path):
     assert compact["frontier_count"] == len(full["frontier"])
     assert compact["entity_path_count"] == len(full["entity_paths"])
     # fields status_view depends on stay present at the default
-    for key in ("covered_paths", "coverage_fraction", "derived_paths", "oracle_configured", "oracle_verdict"):
+    for key in ("covered_paths", "coverage_fraction", "derived_paths"):
         assert compact[key] == full[key]
-
-
-def _seed_plan_session(repo, gb, *, session_id, last_activity_ts, claude_session_id=None):
-    """Seed one active, single-pending-step plan session directly into `plan_sessions.json` (the
-    same shape `intake` writes) so a test can control `last_activity_ts` deterministically.
-    `baseline_op_ids` is the store's current op set, so no already-mined op is ever a candidate."""
-    store = Store(repo)
-    baseline = sorted(op.id for op in store.all_ops())
-    footprint = {"a.py::foo": (None, plan_mod._PENDING),
-                 f"__plan__::{session_id}::step0": (None, plan_mod._PENDING)}
-    hollow = make_op(footprint, {}, kind="planned", off_chain=True, intent="touch foo")
-    store.add_hollow(hollow)
-    table = plan_mod._load_sessions(repo)
-    table[session_id] = {
-        "plan_text": "1. touch foo\n", "created_ts": 0.0, "last_activity_ts": last_activity_ts,
-        "status": "active", "claude_session_id": claude_session_id, "baseline_op_ids": baseline,
-        "steps": [{
-            "hollow_id": hollow.id, "title": "touch foo", "predicted_footprint": ["a.py::foo"],
-            "predicted_feature": None, "rationale": "", "status": "pending", "matched_op_ids": [],
-        }],
-    }
-    plan_mod._save_sessions(repo, table)
 
 
 # -- bookkeeping folding: ugh's own commits are not the developer's work ---------------------------

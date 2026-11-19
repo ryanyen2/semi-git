@@ -281,14 +281,14 @@ def _mine_one(
             if seg:
                 emit(f"{path}::__residue__::{anchor}", None)
 
-    diffs = gb.diff_name_and_text(parent, sha)
+    diffs = gb.diff_paths(parent, sha)
     other_parents = [p for p in gb.parents(sha) if p != parent] if not is_pending and parent else []
     settled = _settled(gb, versions, sha, [parent, *other_parents], excluded_paths) if other_parents else {}
     if other_parents:
         # A merge mints only the paths it resolved differently from every parent.
         differs_from_all_sides = {fc.path for fc in diffs}
         for op2 in other_parents:
-            differs_from_all_sides &= {fc.path for fc in gb.diff_name_and_text(op2, sha)}
+            differs_from_all_sides &= {fc.path for fc in gb.diff_paths(op2, sha)}
         diffs = [fc for fc in diffs if fc.path in differs_from_all_sides]
     new_blobs = dict(zip(
         ((sha, fc.path) for fc in diffs),
