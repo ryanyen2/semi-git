@@ -105,3 +105,25 @@ def test_the_asked_line_is_an_excerpt_when_rendered(tmp_path, capsys, monkeypatc
     out = capsys.readouterr().out
     assert "“add teh daily page for teh committee”" in out
     assert prompt not in out
+
+
+def test_show_gives_each_step_its_text_before_and_after_and_its_lines_at_head(tmp_path):
+    """What an editor needs to draw a step's diff and to find it from a line of code."""
+    from ugh.store.gitbind import init_store
+
+    repo = tmp_path / "r"
+    gb, _ = init_store(repo)
+    (repo / "m.py").write_text("def a():\n    return 1\n", encoding="utf-8")
+    gb.commit_all("a")
+    (repo / "m.py").write_text("def a():\n    return 2\n\n\ndef b():\n    return 3\n", encoding="utf-8")
+    sha = gb.commit_all("change a, add b")
+    get(repo)
+    view = api.show_view(repo, "m.py")
+    steps = {s["address"]: s for s in view["steps"]}
+    change = steps[f"m.py::a@{sha[:7]}"]
+    assert change["unit"] == "m.py::a"
+    assert change["before"] == "def a():\n    return 1\n" and change["after"] == "def a():\n    return 2\n"
+    assert change["lines"] == [1, 2]
+    create = steps[f"m.py::b@{sha[:7]}"]
+    assert create["before"] is None and create["after"] == "\n\ndef b():\n    return 3\n"
+    assert create["lines"] == [3, 6]

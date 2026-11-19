@@ -46,7 +46,7 @@ def show_view(repo, token: str) -> dict:
         steps = resolve(repo, token, rec)
     except AddressError as e:
         return {"ok": False, "address": token, "message": str(e), "hits": e.hits}
-    rows = rec.steps(steps)
+    rows = rec.steps(steps, detail=True)
     saves = []
     for sha in sorted({st.sha for st in steps}, key=rec.ctx.index.__getitem__):
         ask = dominant_ask(asks_for_ops(repo, rec.ops(st for st in steps if st.sha == sha), [sha]))

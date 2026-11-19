@@ -143,39 +143,75 @@
     "steps": [
       {
         "address": "config.yaml@7231aa1",
+        "after": "setting: value\n",
+        "before": null,
         "kind": "create",
+        "lines": [
+          1,
+          1
+        ],
         "name": null,
-        "out": false
+        "out": false,
+        "unit": "config.yaml"
       },
       {
         "address": "notes.md@7231aa1",
+        "after": "# notes\n",
+        "before": null,
         "kind": "create",
+        "lines": [
+          1,
+          1
+        ],
         "name": null,
-        "out": false
+        "out": false,
+        "unit": "notes.md"
       },
       {
         "address": "pkg.py::compute@7231aa1",
+        "after": "def compute():\n    return 1\n",
+        "before": null,
         "kind": "create",
+        "lines": [
+          1,
+          2
+        ],
         "name": null,
-        "out": false
+        "out": false,
+        "unit": "pkg.py::compute"
       },
       {
         "address": "pkg.py@7231aa1",
+        "after": "",
+        "before": null,
         "kind": "create",
+        "lines": null,
         "name": null,
-        "out": false
+        "out": false,
+        "unit": "pkg.py::__residue__::\u0000HEAD\u0000"
       },
       {
         "address": "util.py::helper@7231aa1",
+        "after": "def helper():\n    return 2\n",
+        "before": null,
         "kind": "create",
+        "lines": [
+          1,
+          2
+        ],
         "name": null,
-        "out": false
+        "out": false,
+        "unit": "util.py::helper"
       },
       {
         "address": "util.py@7231aa1",
+        "after": "",
+        "before": null,
         "kind": "create",
+        "lines": null,
         "name": null,
-        "out": false
+        "out": false,
+        "unit": "util.py::__residue__::\u0000HEAD\u0000"
       }
     ]
   },

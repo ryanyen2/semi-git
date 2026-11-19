@@ -85,9 +85,16 @@
     "steps": [
       {
         "address": "slugify.py::slugify@2befb60",
+        "after": "def slugify(s):\n    return s.lower().strip()\n",
+        "before": "def slugify(s):\n    return s.lower()\n",
         "kind": "change",
+        "lines": [
+          1,
+          2
+        ],
         "name": null,
-        "out": false
+        "out": false,
+        "unit": "slugify.py::slugify"
       }
     ]
   },

@@ -62,10 +62,27 @@ class Record:
         return {"address": step_address(st.unit, st.sha), "kind": self.ctx.kind(st),
                 "name": self.name(st), "out": st in self.ctx.out}
 
-    def steps(self, steps) -> list[dict]:
-        """The rows of `steps`, oldest save first."""
-        return [self.step(st) for st in sorted(steps, key=lambda st: (self.ctx.index[st.sha],
-                                                                      step_address(st.unit, st.sha)))]
+    def steps(self, steps, *, detail: bool = False) -> list[dict]:
+        """The rows of `steps`, oldest save first. `detail` adds each step's `unit`, its text
+        `before` and `after` the save, and the `lines` (first, last) its unit spans at HEAD."""
+        ordered = sorted(steps, key=lambda st: (self.ctx.index[st.sha], step_address(st.unit, st.sha)))
+        if not detail:
+            return [self.step(st) for st in ordered]
+        from ugh.core.planner import _spans
+
+        head = self.gb.head()
+
+        def text(data: bytes | None) -> str | None:
+            return None if data is None else data.decode("utf-8", "replace")
+
+        def lines(unit: str) -> list[int] | None:
+            path = unit.split("::", 1)[0]
+            f = self.ctx.file(head, path)
+            span = _spans(path, f).get(unit) if f is not None else None
+            return [span.start, span.stop - 1] if span else None
+
+        return [{**self.step(st), "unit": st.unit, "before": text(self.ctx.before(st)),
+                 "after": text(self.ctx.after(st)), "lines": lines(st.unit)} for st in ordered]
 
     def saves(self) -> list[str]:
         """The saves, newest first: every commit in HEAD's history that is not ugh's own."""
