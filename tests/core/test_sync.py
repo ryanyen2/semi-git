@@ -329,3 +329,32 @@ def test_push_leaves_the_branch_alone_when_the_state_ref_cannot_publish(tmp_path
     monkeypatch.setattr(state_ref, "publish_and_push", boom)
     assert _in(a, ["push"]) != 0
     assert _git(tmp_path / "remote.git", "rev-parse", "main").stdout == before
+
+
+@pytest.mark.parametrize("pick", ["--theirs", "--ours", "--apply"])
+def test_resolve_commits_only_the_choice_and_leaves_other_unsaved_edits(choice, capsys, pick):
+    _a, b = choice
+    (b / "main.py").write_text(_OURS.replace("return 2", "return 7"), encoding="utf-8")
+    (b / "other.py").write_text("x = 1\n", encoding="utf-8")
+
+    rc, out = _json(b, capsys, "resolve", "main.py::foo", pick)
+
+    assert rc == 0, out
+    foo = "return 999" if pick == "--theirs" else "return 42"
+    committed = GitBinding(b).blob_bytes("HEAD", "main.py").decode()
+    assert foo in committed and "return 2" in committed
+    assert (b / "main.py").read_text() == _BASE.replace("return 1", foo).replace("return 2", "return 7")
+    assert GitBinding(b).blob_bytes("HEAD", "other.py") is None and (b / "other.py").is_file()
+    assert _choices(b, capsys) == []
+
+
+@pytest.mark.parametrize("pick", ["--theirs", "--ours"])
+def test_resolve_refuses_to_overwrite_or_relabel_an_edit_inside_the_choice(choice, capsys, pick):
+    _a, b = choice
+    (b / "main.py").write_text(_OURS.replace("return 42", "return 43"), encoding="utf-8")
+    head = GitBinding(b).head()
+
+    rc, out = _json(b, capsys, "resolve", "main.py::foo", pick)
+
+    assert rc != 0 and not out["ok"]
+    assert GitBinding(b).head() == head

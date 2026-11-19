@@ -848,6 +848,38 @@ class GitBinding:
             except OSError:
                 pass
 
+    def commit_paths(self, message: str, files: dict[str, bytes | None],
+                     trailers: str | None = None) -> str:
+        """Commit HEAD with only `files` changed (None removes a path), leaving every other
+        uncommitted edit in the working tree as it is. Returns the new HEAD."""
+        head = self.head()
+        git_dir = Path(self._git("rev-parse", "--absolute-git-dir").stdout.strip())
+        fd, scratch_path = tempfile.mkstemp(dir=str(git_dir), prefix=".sgt-scratch-index-")
+        os.close(fd)
+        os.unlink(scratch_path)
+        env = {"GIT_INDEX_FILE": scratch_path}
+        try:
+            self._git("read-tree", head, env=env)
+            for path, data in sorted(files.items()):
+                if data is None:
+                    self._git("update-index", "--force-remove", "--", path, env=env)
+                    continue
+                oid = self._git_stdin("hash-object", "-w", "--stdin", stdin=data).stdout.decode().strip()
+                listed = self._git("ls-tree", head, "--", path).stdout.split()
+                mode = listed[0] if listed else "100644"
+                self._git("update-index", "--add", "--cacheinfo", f"{mode},{oid},{path}", env=env)
+            tree = self._git("write-tree", env=env).stdout.strip()
+        finally:
+            try:
+                os.unlink(scratch_path)
+            except OSError:
+                pass
+        sha = self.commit_tree(tree, [head], message, trailers)
+        if not self.update_ref_cas("HEAD", sha, head):
+            raise GitError("HEAD moved while committing; nothing was committed")
+        self._git("reset", "-q", "--", *sorted(files))
+        return sha
+
     def read_tree_blobs(self, tree_ish: str) -> dict[str, bytes]:
         """Every path at `tree_ish`, mapped to raw bytes; `{}` when there is none."""
         proc = self._git("ls-tree", "-r", "--name-only", tree_ish, check=False)

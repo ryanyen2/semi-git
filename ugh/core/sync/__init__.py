@@ -217,49 +217,64 @@ def versions(repo, c: Choice) -> tuple[bytes | None, bytes | None]:
             planner._current(planner.split(path, then, tiers.load_tiers_at(gb, theirs)), c.unit))
 
 
-def _write_theirs(repo: Path, gb: GitBinding, c: Choice) -> None:
-    """Put theirs' version of the choice's unit into the working file."""
-    path = c.unit.split("::", 1)[0]
-    _ours, text = versions(repo, c)
-    full = repo / path
+def _with_unit(gb: GitBinding, path: str, f, c: Choice, text: bytes | None) -> bytes | None:
+    """The bytes of file `f` (split) with the choice's unit set to `text`; a unit `f` lacks goes
+    where theirs has it, after the units before it there."""
     if c.unit == path:
-        planner._put_bytes(full, text)
-        return
-    now = planner.split(path, full.read_bytes() if full.is_file() else None, tiers.load_tiers(repo))
-    now = now or planner._File(False)
+        return text
+    f = f or planner._File(False)
+    f = planner._File(f.whole, f.head, list(f.units))
     if c.unit == planner._head_sym(path):
-        now.head = text or b""
+        f.head = text or b""
     elif text is None:
-        now.units = [(u, t) for u, t in now.units if u != c.unit]
-    elif any(u == c.unit for u, _t in now.units):
-        now.units = [(u, text if u == c.unit else t) for u, t in now.units]
+        f.units = [(u, t) for u, t in f.units if u != c.unit]
+    elif any(u == c.unit for u, _t in f.units):
+        f.units = [(u, text if u == c.unit else t) for u, t in f.units]
     else:
         theirs = gb.parents(c.merge)[1]
         then = planner.split(path, gb.blob_bytes(theirs, path), tiers.load_tiers_at(gb, theirs))
         names = [u for u, _t in then.units]
         prev = names[:names.index(c.unit)]
-        here = [u for u, _t in now.units]
+        here = [u for u, _t in f.units]
         at = next((here.index(u) + 1 for u in reversed(prev) if u in here), 0)
-        now.units.insert(at, (c.unit, text))
-    planner._put_bytes(full, now.render() if now.head or now.units else None)
+        f.units.insert(at, (c.unit, text))
+    return f.render() if f.head or f.units else None
 
 
 def resolve(repo, picked: list[Choice], keep: str, target: str) -> str:
-    """Settle the choices `picked`: `keep="theirs"` writes each unit as the merge's second parent
-    has it; `"ours"` and `"apply"` keep the file as it is. Commits with one `Ugh-Resolves:`
-    trailer per unit and returns the commit. Refused when files other than the units' have
-    uncommitted changes."""
+    """Settle the choices `picked` and commit only them, with one `Ugh-Resolves:` trailer per unit:
+    `keep="theirs"` takes the merge's second parent's version (also written into the file),
+    `"ours"` keeps HEAD's, `"apply"` takes the unit as the file now holds it. Every other unsaved
+    edit stays in the working tree, unsaved. Refused when `theirs` or `ours` would overwrite or
+    mislabel an unsaved edit inside a chosen unit; `--apply` is for that."""
     repo = Path(repo)
     gb = GitBinding(repo)
-    paths = {c.unit.split("::", 1)[0] for c in picked}
-    others = sorted(set(planner._dirty(repo)) - paths)
-    if others:
-        raise lens.DirtyWorkingTreeError(
-            f"resolve would commit other uncommitted changes: {others} -- `ugh save` them first")
-    if keep == "theirs":
-        for c in picked:
-            _write_theirs(repo, gb, c)
+    head = gb.head()
+    files: dict[str, bytes | None] = {}
+    for path in sorted({c.unit.split("::", 1)[0] for c in picked}):
+        full = repo / path
+        work_raw = full.read_bytes() if full.is_file() else None
+        base = planner.split(path, gb.blob_bytes(head, path), tiers.load_tiers_at(gb, head))
+        work = planner.split(path, work_raw, tiers.load_tiers(repo))
+        committed, written = gb.blob_bytes(head, path), work_raw
+        for c in (c for c in picked if c.unit.split("::", 1)[0] == path):
+            ours = planner._current(base, c.unit)
+            now = planner._current(work, c.unit)
+            if keep != "apply" and now != ours:
+                raise lens.DirtyWorkingTreeError(
+                    f"{c.unit} has unsaved edits: keep them with --apply, or undo them first")
+            text = versions(repo, c)[1] if keep == "theirs" else now if keep == "apply" else ours
+            committed = _with_unit(gb, path, base, c, text)
+            base = planner.split(path, committed, tiers.load_tiers_at(gb, head))
+            if keep == "theirs":
+                written = _with_unit(gb, path, work, c, text)
+                work = planner.split(path, written, tiers.load_tiers(repo))
+        files[path] = committed
+        if keep == "theirs":
+            planner._put_bytes(full, written)
     trailers = "\n".join(f"{RESOLVES_TRAILER}: {_trailer(c.unit)}" for c in picked)
-    sha = lens.commit(repo, f"ugh resolve {target} ({keep})", trailers)
+    sha = gb.commit_paths(f"ugh resolve {target} ({keep})", files, trailers)
+    lens.get(repo, unbounded=True)
+    state_ref.publish_from_local(gb, repo)
     oplog.append(repo, {"kind": "commit", "sha": sha, "verb": "resolve", "target": target})
     return sha
