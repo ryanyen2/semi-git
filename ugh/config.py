@@ -20,10 +20,8 @@ class OracleConfig:
 
 
 def load_oracle_config(repo_path: str | Path = ".") -> OracleConfig | None:
-    """Read the team-shared, committed `.sgt/oracle.json` (plan U9, R13): tier commands
-    (e.g. parse/build/test), run in declared order. `None` if the file is absent -- the
-    "no oracle configured" case, which degrades to a loud warning rather than a fake pass.
-    Plain JSON, not TOML: this repo's `requires-python = ">=3.10"` predates stdlib `tomllib`."""
+    """The committed `.sgt/oracle.json`: the project's check as tier commands run in declared
+    order, or `None` when the file is absent. JSON because Python 3.10 has no `tomllib`."""
     body = state.load_json(repo_path, "oracle_config")
     if body is None:
         return None

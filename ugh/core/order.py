@@ -3,7 +3,7 @@ footprint's `before`) and each version it `requires`.
 
 A ref's ideal is the ops mined from its history, grounded: every op's prerequisites are produced
 by ops in the set. Two ops can start from one version where two lines of history changed a symbol,
-and the merge that joined those lines joins both into one version again (`ugh.core.mine`, rule 4),
+and the merge that joined those lines joins both into one version again (`ugh.core.mine`),
 so every symbol in a ref's ideal has one tip. There is no other conflict.
 """
 
@@ -48,32 +48,15 @@ def reduce_to_ideal(ideal_ids, ops: list[Op]) -> frozenset[str]:
 
 
 def _grounded(ideal_ids, ops: list[Op]) -> frozenset[str]:
-    """The largest *well-founded* downward-closed subset of `ideal_ids`: ops reachable from chain
-    heads (`before_version` None) by actual production. An op joins once every one of its
-    before_versions is None or already produced by a grounded op, and every `requires` version is
-    produced by a grounded op.
-
-    Grounding -- not mere existence of *some* producer -- is the correct downward-closure. The
-    existential check alone accepts an originless cycle (e.g. `{modify, revert}` lifted out of
-    add->modify->revert: modify's `before` is produced by revert and revert's by modify, but
-    neither bottoms out at the add), which is not a real ideal -- it has no frontier head to fold.
-    Reasoning about *versions* produced (never picking a single canonical producer op) keeps it
-    immune to the after-value collision that the graph-edge form mis-resolves: two ops (e.g. an
-    add and a later revert) can legitimately produce the same `(symbol, version)` pair, so a
-    prerequisite on that pair is satisfied the moment *any one* of its producers grounds -- an
-    OR-group, not a fixed single edge.
-
-    Computed as a single Kahn's-algorithm topological pass, O(ops + edges): each distinct
-    `(symbol, version)` requirement is a *key* shared by every op that needs it, resolved the
-    instant any op in its producer group grounds; an op's indegree is its count of distinct
-    unresolved keys. A key with no producer simply never resolves -- so ops that depend on it
-    (directly or via a cycle) are correctly left ungrounded, same as the fixpoint this replaces. Previously a `while changed:`
-    loop rescanning every remaining op each pass -- O(ops^2) on a long, mostly-linear chain."""
+    """The largest well-founded downward-closed subset of `ideal_ids`: an op joins once each of its
+    `before` versions is None or produced by a grounded op, and so is each version it `requires`.
+    Requiring production, not mere existence of a producer, rejects cycles that never reach a
+    chain head. A `(symbol, version)` key is satisfied by any one of the ops producing it. One
+    Kahn pass, O(ops + edges)."""
     ideal_set = set(ideal_ids)
     by_id = {op.id: op for op in ops if op.id in ideal_set}
 
-    # producer_of[key] = every in-ideal op producing that (symbol, version) pair as its
-    # footprint `after` -- a group, not a single op, per the after-value-collision note above.
+    # several ops can produce one (symbol, version), so each key has a group of producers
     producer_of: dict[tuple, set[str]] = {}
     for op_id, op in by_id.items():
         for sym, (_before, after) in op.footprint.items():
@@ -156,10 +139,8 @@ def _ordered_chains(ideal_ids, ops: list[Op]) -> dict[str, list[str]]:
 
 
 def ordered_chains(ideal_ids, ops: list[Op]) -> dict[str, list[str]]:
-    """`_ordered_chains`, memoised on the id set exactly as `frontier` is (chains read only the
-    in-ideal ops' footprints, which their ids fix). `frontier` and the planner share one walk per
-    ideal. The lists are shared: callers
-    must not mutate them."""
+    """`_ordered_chains`, memoised on the id set, which fixes the footprints it reads. The lists
+    are shared: callers must not mutate them."""
     key = frozenset(ideal_ids)
     hit = _CHAINS_CACHE.get(key)
     if hit is not None:
@@ -173,19 +154,9 @@ def ordered_chains(ideal_ids, ops: list[Op]) -> dict[str, list[str]]:
 
 
 def frontier(ideal_ids, ops: list[Op]) -> dict[str, str]:
-    """Per-symbol frontier (the ADR's per-chain frontier vector): for each symbol touched
-    anywhere in the ideal, the id of the *maximal* in-ideal op for that symbol's chain -- the
-    tip `code(I)` (U5) splices from. A symbol whose tip's `after_version` is `op.BOTTOM` is
-    present in this map but no longer alive; callers that want only live symbols must check
-    that themselves (this module doesn't import mine.py's BOTTOM-producing call sites, only the
-    sentinel value lives in `ugh.core.op`).
-
-    The tip is the last of each symbol's ordered chain (`_ordered_chains`).
-
-    Memoized on the id set alone (same content-addressing argument as `_REDUCE_CACHE`): chains
-    read only in-ideal ops' *footprints*, identical across every ops-list variant that carries
-    the id -- footprint-only index ops and full image-bearing ops agree. One command computes
-    the same ideal's frontier through several views; each distinct id set pays once."""
+    """Symbol -> the id of the last in-ideal op on its chain, the tip `code(I)` splices from. A
+    symbol whose tip removed it (`op.BOTTOM`) is still listed; callers check liveness. Memoized
+    on the id set, so index ops and full ops share an entry."""
     key = frozenset(ideal_ids)
     hit = _FRONTIER_CACHE.get(key)
     if hit is not None:

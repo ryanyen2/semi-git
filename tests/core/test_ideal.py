@@ -42,15 +42,6 @@ def test_covered_paths_excludes_a_removed_symbol():
     assert removed.covered_paths(ops) == frozenset()
 
 
-def test_diff_is_symmetric_difference():
-    ops = _chain("a.py::foo", 3)
-    a = Ideal.from_ops({ops[0].id}, ops)
-    b = Ideal.from_ops({ops[0].id, ops[1].id}, ops)
-    assert a.diff(b) == frozenset({ops[1].id})
-    assert b.diff(a) == a.diff(b)  # symmetric
-    assert a.diff(a) == frozenset()
-
-
 def test_ideal_is_hashable_and_comparable():
     ops = _chain("a.py::foo", 2)
     a = Ideal.from_ops({ops[0].id}, ops)

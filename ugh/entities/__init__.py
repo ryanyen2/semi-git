@@ -1,10 +1,6 @@
-"""Deterministic code-entity layer: the connected spine the time-aware map is built on.
-
-`ugh` versions *features* (effect bundles). This package adds the orthogonal, read-only
-*entity* view: functions/classes/methods parsed straight from the working tree with
-tree-sitter, connected by containment + calls/imports. It never authors code; features paint
-onto these entities as a colored overlay (see ``ugh/api.py``).
-"""
+"""Code entities: functions, classes and methods parsed with tree-sitter, connected by
+containment, calls and imports. Read-only: the miner and the planner use it to split files into
+units and to find what each unit refers to."""
 
 from __future__ import annotations
 

@@ -1,20 +1,8 @@
-"""Porcelain completion (plan 002, U26; design doc §1 / D2, D3).
+"""`save` and `undo`, and the table of git subcommands `ugh git` refuses.
 
-Two things live here, both small and both *data*:
-
-1. **The `ugh git` refusal table (D2).** `REFUSALS` maps each tree-mutating git subcommand to the
-   ugh verb that does the job natively. `ugh git <sub> …` for such a subcommand is refused (never
-   run) with that remedy named, because a raw `git checkout`/`reset`/`merge` rewrites the working
-   tree behind ugh's back and the op store drifts. Appending `--force` overrides the refusal (the
-   token is consumed, git runs the plain command, and the `gitbind` out-of-band detector re-mines
-   on next contact -- the net that catches raw `git` too). This replaces U18's advisory-only
-   posture; the routing table is one data table, not conditionals scattered through the passthrough.
-
-2. **The daily-loop verbs (D3): `save`, `undo`.** `save` is a git commit of the working tree,
-   mined like any other; `undo` reverses the last mutating operation by popping the
-   operation log (`oplog.undo`). Everything git does that ugh does not wrap stays one keystroke away behind
-   `ugh git …`; a verb is only wrapped where the ugh-native version is *semantically different*,
-   never merely renamed (design doc §1 non-goal).
+`save` commits the working tree and mines the commit like any other; `undo` reverses the last
+operation in the operation log (`oplog.undo`). `REFUSALS` maps each tree-mutating git subcommand to
+the ugh verb that does its job; `--force` runs git anyway, and ugh mines the result on next contact.
 """
 
 from __future__ import annotations
@@ -23,27 +11,22 @@ import argparse
 
 from ._common import _emit_json, _fail, _fail_json, observed_text
 
-# D2 routing table (design doc §1): git subcommand -> the ugh verb that owns that job. A subcommand
-# here is refused by `ugh git`; anything absent passes through untouched (read/inspect verbs, and
-# plumbing/config like `remote add`/`config`/`tag`/`bisect`/`fsck`). `pull`/`merge` route to `ugh
-# sync` (a merge unit by unit); `reset` to `ugh undo`; `revert` to `ugh revert`; `stash` dissolves
-# into `ugh save`. `rebase` has no ugh analogue -- history is a mined DAG -- so it routes to `ugh sync`.
 REFUSALS: dict[str, str] = {
     "restore": "ugh restore <ref>",
     "pull": "ugh sync [remote] [branch]",
     "merge": "ugh sync [remote] [branch]",
-    "reset": "ugh undo  (or `ugh revert <ref>` to drop an op)",
+    "reset": "ugh undo  (or `ugh revert <ref>` to take steps out)",
     "rebase": "ugh sync  (history is a mined op DAG; ugh has no rebase)",
     "revert": "ugh revert <ref>",
     "cherry-pick": "ugh restore <ref>",
-    "stash": "ugh save  (a dirty tree is just ops not yet landed)",
+    "stash": "ugh save  (a dirty tree is edits not yet saved)",
     "am": "git apply, then `ugh save` to record the change as ops",
 }
 
 
 def git_remedy(subcommand: str) -> str | None:
     """The ugh remedy for a refused git subcommand, or None if `ugh git <subcommand>` passes
-    through. The single decision point the passthrough consults (D2 as data)."""
+    through."""
     return REFUSALS.get(subcommand)
 
 
@@ -63,9 +46,7 @@ def register(subs, parent) -> None:
     sv.set_defaults(func=_cmd_save)
 
     uv = subs.add_parser("undo", parents=[parent])
-    # The same hidden machine dry-run `revert`/`restore` carry: report what the next undo would do
-    # and apply nothing. A tty gets this report for free as `undo`'s confirm step; before this flag
-    # a non-tty caller (the extension, MCP) had no way to ask the question, only to take the action.
+    # hidden machine dry-run, as on revert and restore: report the next undo, apply nothing
     uv.add_argument("--emit", action="store_true", help=argparse.SUPPRESS)
     uv.set_defaults(func=_cmd_undo)
 
@@ -125,8 +106,7 @@ def save(repo: str, *, message: str | None = None, as_label: str | None = None) 
         from ugh.intent.turns import record_turn
 
         record_turn(repo, key=sha, key_kind="sha", actor="human", channel="cli", text=message)
-    # Close the capture window: the turns and activity since the previous save, with this save's
-    # ops, become one manifest, which `show` reads to give the ask behind the save.
+    # close the capture window: the turns and activity since the previous save become its manifest
     prev_ts = gb.commit_times().get(prev_head) if prev_head and not load_manifests(repo) else None
     record_manifest(repo, sha=sha, ops=[op for op in opindex.index_ops(repo) if sha in op.provenance],
                     end=time.time(), prev_save_ts=prev_ts)
@@ -175,7 +155,6 @@ def _render_save(out: dict, message: str | None, as_label: str | None) -> None:
         print(f"    {st['kind']:<7} {st['address']}" + (f"  [{st['name']}]" if st["name"] else ""))
     if out["observed"] is not None:
         print(f"  {_observed_line(out)}")
-    # Reversing the save takes its edits back off the working copy, not only out of the record.
     print("  ⤺ undo this save, and take its edits back off the working copy:  ugh undo")
 
 

@@ -1,23 +1,7 @@
-"""Append-only, content-addressed operation store (ADR S3.2; plan R1, R11, R12).
-
-One committed file per op under ``.sgt/ops/<id>`` -- append-only makes push conflicts
-structurally impossible for ops: two developers adding different ops never touch the same
-file, and the same op mined twice (by different developers, or by a squash/rebase re-mine,
-R8) is byte-identical and lands on the same path, so a second write is a no-op beyond
-appending a witness. Local, uncommitted state (ref->ideal table, caches, oracle verdicts) lives
-under ``.sgt/local/``, gitignored -- this module only guarantees that directory exists with a
-``.gitignore`` inside.
-
-Concurrency: a single-writer ``flock`` on ``.sgt/local/lock`` serializes mutating store operations
-across processes; every mutable-file write is write-temp-then-rename (``os.replace``, atomic
-on POSIX), so a crash mid-write can never leave a torn file for a reader to trip over.
-
-The ADR describes an op's id as a hash over "(payload, parents, miner-version)". This store
-deliberately does *not* hash an explicit parents list (see ``ugh.core.op.compute_id``): a
-symbol's lineage is already carried by its footprint's ``before_version`` (matched against
-another op's ``after_version`` for the same symbol -- U4's chain edges), and hashing parent
-*op ids* directly would make the identification law (R8) impossible -- two mining runs that
-reach the same content via different provenance paths must still collapse to one id.
+"""The op store: one file per op under ``.sgt/ops/<id>``, append-only and content-addressed. Ops
+are untracked and every clone mines its own; the same op mined twice lands on the same path and
+only its provenance grows. A ``flock`` on ``.sgt/local/lock`` serializes writers, and every write
+is temp-then-rename, so a reader never sees a torn file.
 """
 
 from __future__ import annotations
@@ -35,13 +19,8 @@ from pathlib import Path
 
 from ugh.core.op import Attribution, Images, Op, compute_id, merge_attribution
 
-# `Store.all_ops` process memo: ops-dir realpath -> ((ops-dir mtime_ns, dirent_count), parsed
-# ops, scan-start wall clock). LRU (matches the codebase's OrderedDict cache convention); the
-# dirent count keyed alongside the dir mtime is the same-tick backstop
-# `ugh.core.opindex._ops_dir_stat` documents, and the scan-start wall clock powers the same
-# racy-clean fast path documented there: a memo whose read started comfortably after the dir's
-# mtime is provably current while that mtime is unchanged, so a hit costs one dir stat instead
-# of re-listing and re-sorting ~20k dirents.
+# `Store.all_ops` memo: ops-dir realpath -> ((dir mtime_ns, dirent count), ops, scan-start time).
+# A scan that started well after the dir's mtime stays current while that mtime is unchanged.
 _ALL_OPS_MEMO: "OrderedDict[str, tuple[tuple[int, int], list[Op], int]]" = OrderedDict()
 _RACY_SLACK_NS = 2_000_000_000  # > any real filesystem timestamp granularity (HFS+: 1s)
 
@@ -49,10 +28,7 @@ _OPS_DIR = "ops"
 _LOCAL_DIR = "local"
 _LOCK_FILE = "lock"
 
-# `.sgt/.gitignore` body. Patterns are relative to `.sgt/`. Keeps the op store (mined again on
-# every clone) and the tables that travel on `refs/ugh/state` untracked; `.sgt/local/` ignores
-# itself via its own `.gitignore`. The file lists `.gitignore` itself so it stays untracked too (see
-# `Store._ensure_gitignore` for why that matters for `git checkout`).
+# `.sgt/.gitignore`, relative to `.sgt/`; `.sgt/local/` ignores itself through its own.
 _SGT_GITIGNORE = b"""\
 # Managed by ugh: the op store is mined from history on every clone, and names and prompts
 # travel on refs/ugh/state, off the branch tree. Do not add tiers.json / oracle.json /
@@ -72,12 +48,8 @@ _ATTR_FIELDS = ("session", "agent", "plan")
 
 
 def _payload(op: Op) -> dict:
-    """`op`'s full on-disk payload (including `images`), shared by `_serialize` and
-    `ugh.core.opindex` (which strips `images` back off for its footprint-only sidecar). v1
-    provenance shape (D7): a list of `{sha, session?, agent?, plan?}` dicts, one per witnessing
-    SHA, folding in any structured attribution for that SHA. Provenance is still excluded from the
-    id (`compute_id` untouched), so this is pure on-disk enrichment -- old repos' v0 tuple-of-shas
-    files keep round-tripping via `_deserialize`, and no committed op is bulk-rewritten."""
+    """`op`'s on-disk payload, images included. Provenance is a list of `{sha, session?, agent?,
+    plan?}`, one per witnessing SHA; `_deserialize` also reads the older list of bare SHAs."""
     attr_by_sha = {a.sha: a for a in op.attribution}
     provenance = []
     for sha in sorted(op.provenance):
@@ -106,15 +78,11 @@ def _serialize(op: Op) -> bytes:
 
 
 def _op_from_payload(payload: dict, images: Images) -> Op:
-    """Reconstruct an `Op` from a decoded payload dict plus its already-resolved `images` --
-    shared by `_deserialize` (hex-decodes `payload["images"]`) and `ugh.core.opindex` (passes
-    `{}`, since the sidecar never stores images at all)."""
+    """An `Op` from a decoded payload and its already-decoded `images` (`{}` from the op index)."""
     footprint = {k: tuple(v) for k, v in payload["footprint"].items()}
     prov = payload["provenance"]
     if prov and isinstance(prov[0], dict):  # v1: a list of `{sha, session?, ...}` dicts
-        # One pass, splitting off the (rare) entries that carry more than the sha: almost every
-        # witness is bare, and the per-entry `any(...)` generator this replaces dominated the
-        # 19k-op index load. A `{sha}`-only dict (len 1) provably has no attribution fields.
+        # almost every entry is a bare `{sha}`, so only the longer ones are checked for attribution
         shas = []
         attr_entries = []
         for e in prov:
@@ -130,13 +98,11 @@ def _op_from_payload(payload: dict, images: Images) -> Op:
             ),
             key=lambda a: a.sha,
         )) if attr_entries else ()
-    else:  # v0 (every committed repo today): a list of bare SHA strings, no attribution
+    else:  # v0: a list of bare SHA strings
         provenance = tuple(prov)
         attribution = ()
-    # Direct construction: `Op` is a frozen no-slots dataclass, so its generated `__init__` pays
-    # an `object.__setattr__` per field -- ~230k of them on a 19k-op index load. Filling
-    # `__dict__` in one update is the same object, minus that machinery. (If `Op` ever grows
-    # `__slots__` this raises AttributeError loudly -- switch back to the plain constructor.)
+    # Filling `__dict__` skips the frozen dataclass's per-field `object.__setattr__`, which
+    # dominates loading the index; it raises if `Op` ever gains `__slots__`.
     reqs = payload["requires"]
     op = object.__new__(Op)
     op.__dict__.update(
@@ -164,13 +130,9 @@ def _deserialize(data: bytes) -> Op:
 
 @contextlib.contextmanager
 def locked_section(repo: str | Path):
-    """Hold the store's per-mutation flock across a multi-artifact read-modify-write, so a pair
-    that must stay mutually consistent (ideal table + witness; journal push + table overwrite)
-    is computed and written under one lock, each file landing via
-    atomic rename (R5/R6). Same lock and per-mutation granularity as `Store.add()` -- deliberately
-    NOT verb-wide (U23). MUST NOT nest inside another `locked_section` or a `Store.add()` call:
-    `flock` on a second fd of the same lock file blocks this very process (a self-deadlock), so a
-    caller adds its ops *before* entering the section and writes only metadata inside it."""
+    """Hold the store's flock across a read-modify-write of tables that must stay consistent
+    (the ideal table and the witness). It must not nest inside another `locked_section` or a
+    `Store.add()`: flock on a second fd of the same file deadlocks this process, so add ops first."""
     with Store(repo)._locked():
         yield
 
@@ -183,7 +145,7 @@ def _write_atomic(path: Path, data: bytes) -> None:
             f.write(data)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(tmp_name, path)  # atomic rename on POSIX -- readers see old or new, never torn
+        os.replace(tmp_name, path)  # atomic on POSIX: a reader sees old or new, never torn
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(tmp_name)
@@ -212,16 +174,9 @@ class Store:
             _write_atomic(gitignore, b"*\n")
 
     def _ensure_gitignore(self) -> None:
-        """`.sgt/.gitignore` keeps the op store and the traveling tables *untracked*, so
-        `commit_all`'s `git add -A` never sees them. The file lists `.gitignore` itself, so it too stays
-        UNTRACKED: were it committed on one branch but not another, `git checkout` between them would
-        abort with "untracked working tree file would be overwritten" (the switch bug). Every clone
-        regenerates it locally via `Store.init` before any `.sgt/` content exists, so tracking it
-        buys nothing. The listed set is the op store plus `state_ref._TRAVELING_TABLES`;
-        team-editable / correctness-critical config stays TRACKED and
-        is deliberately absent here: `oracle.json`, `tiers.json`, `.sgtignore` (the last read as-of
-        each mined commit for LAW-0). Rewritten whenever it differs, so a new traveling table is
-        ignored in an existing `.sgt` too."""
+        """Write `.sgt/.gitignore` when it differs, so `git add -A` never sees the op store or the
+        tables on the state ref. It ignores itself too: committed on one branch only, it would make
+        `git checkout` abort over an untracked file. `oracle.json` and `tiers.json` stay tracked."""
         gitignore = self.sgt_dir / ".gitignore"
         if gitignore.is_file() and gitignore.read_bytes() == _SGT_GITIGNORE:
             return
@@ -247,11 +202,9 @@ class Store:
         return self.ops_dir / op_id
 
     def add(self, op: Op) -> Op:
-        """Append ``op``. Rejects anything whose id doesn't match its own content. If an op
-        with the same id already exists, its provenance and structured attribution are
-        unioned (both appendable, R8/D7) rather than the file being duplicated or overwritten -- every
-        other field is identical by construction (same content address). The file is rewritten
-        only when either side actually changed."""
+        """Append ``op`` and return the stored op. Raises `StoreError` when the id does not match
+        the content. An op already stored gets the union of both provenances and attributions,
+        rewritten only when that changes it."""
         self._validate(op)
         with self._locked():
             path = self._path(op.id)
@@ -269,9 +222,8 @@ class Store:
             return op
 
     def attribute(self, op_id: str, entries: tuple[Attribution, ...]) -> Op | None:
-        """Merge structured attribution `entries` into a committed op's provenance shape (D7),
-        rewriting its file only when the merge actually changes something. Returns the updated op,
-        or ``None`` if no committed op with that id exists."""
+        """Merge attribution `entries` into a stored op, rewriting its file only when that changes
+        it. Returns the updated op, or ``None`` when no op has that id."""
         with self._locked():
             path = self._path(op_id)
             if not path.is_file():
@@ -284,15 +236,6 @@ class Store:
             _write_atomic(path, _serialize(updated))
             return updated
 
-    def add_bytes(self, data: bytes) -> Op:
-        """Deserialize a stored op's raw file bytes -- as read from another commit or clone via
-        git, not this store's own filesystem -- and add it. `ugh sync` (U15) uses this to union a
-        teammate's provenance into an op this store already has: `git merge -X ours` picks our
-        bytes on any same-path conflict (the two sides' provenance lists differ though the op's
-        content is identical), silently dropping theirs' witness commits unless this re-applies
-        `add`'s provenance union afterward."""
-        return self.add(_deserialize(data))
-
     def get(self, op_id: str) -> Op | None:
         path = self._path(op_id)
         if not path.is_file():
@@ -300,26 +243,13 @@ class Store:
         return _deserialize(path.read_bytes())
 
     def all_ops(self) -> list[Op]:
-        """Every stored op, in a deterministic (sorted-by-id) order. A corrupt file degrades to a
-        read-side skip (R1) rather than raising, so every verb still runs on a store with one
-        truncated op file; `fsck` is the single place that reports the corruption.
-
-        Process-level memo, keyed by the ops directory's own mtime captured *before* the read
-        (see the staleness note at the check below). One command's views used to re-read and
-        re-decode every op file (images hex included, 85%+ of the bytes) once per view. Ops are
-        frozen dataclasses, so the memoized list's elements are safely shared; the list itself
-        is copied per call. File reads fan out over a thread pool: `read_bytes` releases the
-        GIL, and at ~10k small files the open/read syscalls -- not the JSON decode -- are the
-        bulk of a cold read."""
+        """Every stored op, sorted by id. A corrupt file is skipped here and reported by `fsck`.
+        Memoized per process on the ops directory's mtime and entry count; the list is copied per
+        call, the frozen ops are shared."""
         if not self.ops_dir.is_dir():
             return []
-        # The directory's own mtime is the staleness signal: every writer lands entries via
-        # rename into this directory (`_write_atomic`, git), and rename/add/delete bumps a
-        # directory's mtime -- so an unchanged value proves the listing (and every entry) is what
-        # it was when the memo was built. The dirent count is keyed alongside it as a same-tick
-        # backstop (a write landing in the memoized read's mtime tick leaves the dir mtime
-        # unchanged); the scan that produces `names` gives the count for free, and the memo still
-        # spares the expensive part -- reading and decoding every op file (images hex included).
+        # Every write renames into this directory, which bumps its mtime; the entry count catches
+        # a write landing in the same mtime tick as the memoized read.
         scan_start = time.time_ns()
         sig = self.ops_dir.stat().st_mtime_ns
         memo_key = os.path.realpath(self.ops_dir)
@@ -351,26 +281,22 @@ class Store:
 
 @dataclass(frozen=True)
 class FsckReport:
+    """What `fsck` found. Chain gaps and a stale op index are advisory and leave `ok` true."""
+
     ok: bool
     checked: int
     bad_hash: tuple[str, ...]  # file name (== claimed id) whose content hashes to something else
     corrupt: tuple[str, ...]  # file name that isn't valid JSON, or is missing a required field
-    # R11 completion (U2). All default () so a healthy store reports exactly the two fields above.
-    chain_gaps: tuple[str, ...] = ()          # `sym@version` steps produced by no op (advisory:
-    # real single-clone histories carry benign off-ref-predecessor gaps, so this never flips `ok`)
+    chain_gaps: tuple[str, ...] = ()          # `sym@version` produced by no op; advisory
     invalid_ideals: tuple[str, ...] = ()      # ref keys whose stored ideal isn't a valid ideal
     unreachable_witnesses: tuple[str, ...] = ()  # ref keys whose witness SHA no longer resolves
-    mixed_versions: tuple[str, ...] = ()      # distinct miner_versions present, only when >1 (U10)
-    op_index_stale: bool = False  # the `ugh.core.opindex` sidecar is out of date. Advisory, like
-    # `mixed_versions` -- the next read self-heals via a rebuild, so this only surfaces that the
-    # *next* read view pays that rebuild cost rather than the cheap incremental path.
+    mixed_versions: tuple[str, ...] = ()      # distinct miner_versions present, only when >1
+    op_index_stale: bool = False  # advisory: the next read rebuilds the op index
 
 
 def _chain_gaps(ops: list[Op]) -> dict[str, set[str]]:
-    """Every `symbol@before_version` step whose predecessor version is produced by no op in the
-    store -- the R11 linearity check -- mapped to the provenance shas of the op(s) that reference
-    it. Advisory: a squashed/rebased-away branch legitimately leaves an off-ref predecessor gap
-    (FINDINGS U22.5), so a gap is reported, never treated as corruption."""
+    """Every `symbol@before_version` that no op in the store produces, mapped to the provenance of
+    the ops starting from it. Advisory: a branch rebased away leaves such gaps legitimately."""
     produced: set[tuple[str, str]] = set()
     for op in ops:
         for sym, (_before, after) in op.footprint.items():
@@ -384,10 +310,8 @@ def _chain_gaps(ops: list[Op]) -> dict[str, set[str]]:
 
 
 def fsck(repo: str | Path) -> FsckReport:
-    """The R11 contract (U2): content addresses, chain linearity, ideal validity of every stored
-    ideal-table entry, and witness reachability, plus a mixed-miner-version backstop (U10). A
-    corrupt op file degrades to a reported skip -- no verb crashes on it. Repair (re-mining) is a
-    caller concern; this only reports."""
+    """Report on the store: content addresses, chain gaps, the validity of every cached ideal, the
+    reachability of every witness, and mixed miner versions. It reports and repairs nothing."""
     from ugh import state
     from ugh.core import opindex, order
     from ugh.store.gitbind import GitBinding
@@ -424,8 +348,7 @@ def fsck(repo: str | Path) -> FsckReport:
     unreachable: list[str] = []
     gb = GitBinding(repo)
     for key, sha in state.load_json(repo, "witness", default={}).items():
-        # `rev_parse(sha)` only checks syntax; peel to `^{commit}` so a well-formed but absent
-        # object (a deleted branch's tip) is reported as unreachable rather than silently accepted.
+        # peel to `^{commit}`: a bare `rev_parse(sha)` accepts a well-formed sha of a missing object
         if not sha or gb.rev_parse(f"{sha}^{{commit}}") is None:
             unreachable.append(key)
 

@@ -1,31 +1,8 @@
-"""Local conversation-turn capture (intent-ledger M1, design doc
-`docs/plans/2026-07-31-002-intent-ledger-architecture.md` §4.1): the raw, keep-everything
-*evidence* layer under the committed prompt sidecar (`ugh.intent.prompts`).
-
-Where `intent_prompts` stores one write-once string per provenance key -- the shareable digest a
-teammate reads via `ugh.api._atom_prompt` -- a *turn* is one captured utterance in a conversation:
-the user's plan text, a `--task`, a mid-session correction. Turns are keyed on the same three
-provenance keys `Attribution` carries (a plan-intake session id, a `ugh session` name, or a commit
-sha), so the same fallback join reaches them, but they differ in three deliberate ways:
-
-- **Local, never committed.** Raw conversation is the fact reflection reasons over; it stays on the
-  machine that captured it. Only the derived rationale (a later slice) is ever shared. So there is
-  no `merge` here -- turns never travel, never collide across clones, never need a CRDT join.
-- **Multi-turn and ordered.** A key accumulates many turns; `seq` records capture order within a
-  key so reflection reads them in sequence. `intent_prompts` keeps only the first string per key.
-- **Kept, not pruned.** A weak early reflector's failure to cite a turn must not delete it -- a
-  better later reflector needs exactly the turns the current one missed. Nothing here prunes; a
-  manual GC is a future, opt-in concern.
-
-Content-addressed by (key_kind, key, actor, channel, text): capturing the identical utterance twice
-under the same key is a no-op, so a retried verb or a re-run hook never double-records. `channel`
-distinguishes capture provenance -- `hook` is verbatim human input, `agent` is an agent's *claim*
-of the user's verbatim words relayed over MCP (capture weave P1: trusted below a harness capture,
-above a paraphrase), `note` is an agent's paraphrase of the human, `cli` is a command/tool
-argument -- because downstream weighting must not treat an agent's "per your request..." note as
-the user's own voice. `Op`/`Attribution` stay untouched: turns
-attach to a plan/session, never per-op, and free conversational text has no business in the frozen,
-content-addressed `Op`.
+"""Captured conversation turns, local to this machine and never pruned. A turn is one utterance
+under a key (a chat id or a commit sha; `key_kind` says which), ordered by `seq` within the key and
+content-addressed, so capturing it twice records it once. `channel` says where it came from:
+`hook` is the person's verbatim prompt, `agent` an agent relaying the person's words, `note` an
+agent's paraphrase, `cli` a command argument.
 """
 
 from __future__ import annotations
@@ -45,11 +22,9 @@ _ARTIFACT = "intent_turns"
 
 @contextmanager
 def capture_lock(repo: str | Path):
-    """Serialize a read-modify-write on the local intent stores (turns, rationale) against
-    concurrent capture -- two Claude Code windows prompting the same repo at once must not lose
-    turns to a load/save race. A dedicated lock file, deliberately NOT the store's
-    `.sgt/local/lock`: capture runs inside verbs that may already hold the store flock, and
-    flock is non-reentrant (see `ugh.core.store.locked_section`)."""
+    """Serialize a read-modify-write of the local capture tables against concurrent capture. Its own
+    lock file, not the store's: capture runs inside verbs that may hold the store flock, which is
+    not reentrant."""
     p = Path(repo) / ".sgt" / "local" / "intent.lock"
     p.parent.mkdir(parents=True, exist_ok=True)
     with open(p, "w", encoding="utf-8") as f:
@@ -61,26 +36,21 @@ def capture_lock(repo: str | Path):
 
 
 def load_turns(repo: str | Path) -> dict[str, dict]:
-    """The whole local turn store, `{turn-id: record}` -- empty dict if none captured yet."""
+    """Every captured turn, `{turn id: record}`."""
     return state.load_json(repo, _ARTIFACT, default={})
 
 
 def _turn_id(key_kind: str, key: str, actor: str, channel: str, text: str) -> str:
-    """A content address over a turn's identifying fields. `seq`/`ts` are excluded so that the
-    same utterance captured twice under one key collapses to a single turn (idempotent capture),
-    while two genuinely different utterances -- even identical text via different channels -- stay
-    distinct."""
+    """A content address over a turn's identifying fields, without `seq` and `ts`, so one utterance
+    captured twice is one turn and the same text on another channel is another."""
     payload = json.dumps([key_kind, key, actor, channel, text], ensure_ascii=False)
     return "t-" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def record_turn(repo: str | Path, *, key: str, key_kind: str, actor: str, channel: str,
                 text: str, ts: float | None = None) -> str | None:
-    """Append one captured turn under `key` (a plan-id, session-name, or commit sha; `key_kind`
-    names which). Returns the turn id -- for a fresh capture *or* an identical prior one (capture is
-    idempotent, so a caller always gets the id its text maps to) -- or `None` for an empty
-    `key`/`text`, which is a deliberate no-op. `seq` is assigned as the count of turns already under
-    this key, so it orders captures within a key and stays stable under idempotent re-capture."""
+    """Record one turn under `key` and return its id, also when it was already recorded; None for an
+    empty `key` or `text`. `seq` is the count of turns already under the key."""
     if not key or not text:
         return None
     with capture_lock(repo):
@@ -98,9 +68,8 @@ def record_turn(repo: str | Path, *, key: str, key_kind: str, actor: str, channe
     return tid
 
 
-# `turns_for`'s read index: turn-store path -> ((mtime_ns, size), {key: [records in seq order]}).
-# `_atom_prompt` asks once per commit, 461 times per compose on this repository, and each ask used
-# to re-parse the whole store (~0.46 s). Writers keep reading fresh through `load_turns`.
+# `turns_for`'s index, store path -> ((mtime_ns, size), {key: records in seq order}), so a read per
+# save does not parse the whole store each time. Writers read through `load_turns`.
 _BY_KEY: dict[str, tuple[tuple[int, int], dict[str, list[dict]]]] = {}
 
 
@@ -124,9 +93,6 @@ def _turns_by_key(repo: str | Path) -> dict[str, list[dict]]:
 
 
 def turns_for(repo: str | Path, key: str, key_kind: str | None = None) -> list[dict]:
-    """Every captured turn under `key`, in capture order (`seq`). Pass `key_kind` to disambiguate
-    the rare case of the same string used as both, e.g. a session name and a plan id; omit it to
-    take any kind. Empty list for an unknown key -- never raises. Copies, so a caller can never
-    edit the memoised index."""
+    """Copies of every turn under `key` in `seq` order, of any kind unless `key_kind` is given."""
     return [dict(t) for t in _turns_by_key(repo).get(key, ())
             if key_kind is None or t["key_kind"] == key_kind]

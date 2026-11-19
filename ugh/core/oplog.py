@@ -15,7 +15,7 @@ from pathlib import Path
 from ugh import state
 from ugh.core.store import locked_section
 
-_SLOT = "ideal_journal"  # the unified log reuses (repurposes) the ideal_journal slot -- one store.
+_SLOT = "ideal_journal"  # an older name, kept so existing logs still load
 
 
 # -- store (per-ref list of events) ---------------------------------------------------------------

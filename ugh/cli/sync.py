@@ -28,9 +28,8 @@ def _cmd_push(args) -> int:
 
 
 def _push(repo: str, remote: str | None, branch: str | None, as_json: bool) -> int:
-    """`ugh push [remote] [branch]` (C7): a non-forcing `git push`. On a non-fast-forward rejection
-    (the remote moved), route the user to `ugh sync` rather than ever forcing -- exactly git's own
-    contract, so hosting-platform protection rules keep working."""
+    """`ugh push [remote] [branch]`: publish the state ref, then `git push` without forcing. A
+    rejection because the remote moved names `ugh sync` as the remedy."""
     from ugh.store.gitbind import GitBinding, GitError, PushRejected
 
     gb = GitBinding(repo)

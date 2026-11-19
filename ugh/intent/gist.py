@@ -1,20 +1,8 @@
-"""The ask inside a captured prompt.
-
-`ugh show` and `ugh find` need one short line of captured words to put on screen. The prompt's
-first *line* is the ask only when the prompt was typed like a commit message. The dogfood turn store says they are not: prompts open
-with "so i think we should probably", carry the reasoning after the request, run three asks together
-with commas, and a long one has no line break at all -- so "the first line" is the whole paragraph,
-and a 60-character name built from it is 40 characters of throat-clearing.
-
-So the excerpt starts at the ask. One rule: strip the conversational lead-in from each clause, and
-take the first clause that then begins with a verb someone would actually type at a coding agent.
-Nothing else about the words changes -- typos, casing and grammar are kept exactly as typed, because
-the entire claim a recorded reason makes is that nobody rewrote it. An excerpt may be shorter than
-the prompt; it may never be tidier than the prompt.
-
-Deliberately deterministic and offline, for the same reason `ugh show` is: this runs inside read
-paths a cautious user repeats, and a name that came back different on the second read would be
-worse than a clumsy one. Nothing here is persisted either.
+"""The ask inside a captured prompt: one short line of the person's words for `ugh show` and
+`ugh find`. Prompts open with lead-in ("so i think we should probably") and run several asks
+together, so the excerpt starts at the ask: strip the lead-in from each clause and take the first
+clause that then begins with a verb a person types at a coding agent. The words are kept exactly as
+typed; an excerpt may be shorter than the prompt, never tidier. Deterministic, offline, not stored.
 """
 
 from __future__ import annotations
@@ -24,9 +12,7 @@ from typing import NamedTuple
 
 CARD_WIDTH = 120
 
-# Throat-clearing: matched at a clause's start, stripped repeatedly. Longest first so "i would like
-# to" wins over "i", and "let's" over "let". These only ever remove a PREFIX -- no phrase in this
-# list can eat a word from the middle of an ask.
+# Lead-in, stripped repeatedly from a clause's start only; longer phrases first, so they win.
 _LEAD_IN = (
     "another thing is that", "one thing i would like to", "do you think you can",
     "i was wondering if you could", "i was wondering if", "i would like you to",
@@ -42,9 +28,8 @@ _LEAD_IN = (
     "btw", "anyway", "actually", "basically", "just", "maybe", "perhaps", "please", "pls", "plz",
 )
 
-# The imperative vocabulary people type at a coding agent. An excerpt starts here. A prompt whose
-# ask uses a verb outside this list falls back to its first substantial clause -- a duller name,
-# never a wrong one, which is the right way round for a list that can never be complete.
+# Verbs an ask starts with. An ask outside this list falls back to the first substantial clause:
+# duller, never wrong.
 _ASK_VERBS = frozenset("""
 add address allow annotate apply audit backfill build bump bundle cache call capture change chart
 check clarify clean clear commit compare convert copy create cut debug delete deploy deprecate
@@ -60,19 +45,12 @@ teach test tidy tighten track trim truncate turn update upgrade use validate ver
 write
 """.split())
 
-# The lead-in list cannot cover how people actually spell it -- "we shoudl proably add …" is one
-# typo away from "we should probably" and a list of misspellings has no end. What survives a typo is
-# the pronoun: words before an ask verb that include an "i"/"we"/"you" are somebody talking about
-# themselves on the way to the request, whatever the words between are. A clause with no pronoun in
-# front of the verb ("the csv link should show daily totals") is a statement about the code and
-# keeps its subject.
+# A misspelled lead-in still has its pronoun: words with "i", "we" or "you" before an ask verb are
+# the way to a request ("we shoudl proably add ..."); without one the clause is about the code.
 _PERSON = frozenset(("i", "im", "i'm", "ive", "i've", "i'd", "id", "we", "we'd", "we've", "weve",
                      "us", "you"))
-# ...and what cannot sit directly in front of it. Half the ask vocabulary is also an ordinary noun
-# -- report, record, log, order, name, check, review, plot -- so "the quiet-day figure we quoted in
-# the report is basically wrong" contains "report" behind a pronoun and read as a request to report
-# something. Nobody writes "the" or "of" in front of an imperative, so a determiner or preposition
-# immediately before the verb rules the clause out and the real ask later in the prompt wins.
+# Many ask verbs are also nouns ("in the report"); a determiner or preposition just before one
+# means it is not an imperative.
 _BLOCKS_JUMP = frozenset(("the", "a", "an", "this", "that", "these", "those", "my", "our", "your",
                           "its", "their", "his", "her", "of", "in", "on", "at", "for", "from",
                           "with", "by", "into", "about", "over", "under", "no", "not"))
@@ -83,13 +61,11 @@ _MAX_PREFIX = 8
 _TRAILING = frozenset(("etc", "etc.", "thanks", "thanx", "thx", "ty", "pls", "plz", "please",
                        "ok", "okay", "right", "yeah", "yep", "cheers", "sorry", "then"))
 
-# "before we move on to X, I would like to Y" asks for Y. A clause opening with one of these is
-# the frame around the request, so it is passed over as a candidate -- still available to the
-# fallback, which is what keeps a prompt made only of such clauses from coming back empty.
+# A clause opening with one of these frames the request ("before we move on to X, do Y" asks Y),
+# so it is skipped as a candidate but kept for the fallback.
 _SUBORDINATE = ("before", "after", "once", "when", "while", "whenever", "if", "unless", "since",
                 "because", "although", "though", "instead of", "rather than", "as long as",
-                # Explanations of a request already made. "the reason is that i get asked for these
-                # numbers twice a week" is why the csv download was wanted, not the ask for it.
+                # explanations of a request already made
                 "the reason is", "the reason being", "the problem is", "the thing is that")
 
 _FENCE = re.compile(r"```.*?```", re.DOTALL)
@@ -100,14 +76,13 @@ _WORD = re.compile(r"[a-z']+")
 _MAX_CLAUSES = 8
 # Below this a clause is a fragment ("hey", "ok wait"), not a description of work.
 _MIN_CLAUSE = 12
-# ...and below this a comma is not a seam at all, so "commit, push, rebundle" stays one clause
-# rather than becoming a chapter called "commit".
+# ...and below this a comma is not a seam, so "commit, push, rebundle" stays one clause.
 _MIN_COMMA_CLAUSE = 24
 
 
 class Ask(NamedTuple):
-    """`gist` is what goes on screen; `trimmed` says whether the prompt held more than this, which
-    is what tells a surface to offer the rest rather than implying the excerpt is the whole ask."""
+    """`gist` is what goes on screen; `trimmed` says whether the prompt held more, so a surface
+    offers the rest."""
 
     gist: str
     trimmed: bool
@@ -186,8 +161,7 @@ def _from_ask_verb(clause: str) -> str:
 
 
 def _clip(text: str, width: int) -> tuple[str, bool]:
-    """`text` bounded to `width`, cut on a word boundary and marked. Mid-word truncation is what
-    makes a trimmed line read as corrupted rather than as an excerpt."""
+    """`text` bounded to `width`, cut on a word boundary and marked with an ellipsis."""
     if len(text) <= width:
         return text, False
     cut = text[: width - 1]
@@ -198,13 +172,9 @@ def _clip(text: str, width: int) -> tuple[str, bool]:
 
 
 def _clauses(text: str) -> list[str]:
-    """`text` cut into candidate clauses.
-
-    A newline or a sentence end is a real seam. A comma is not, quite: it separates clauses in a
-    run-on ("add the csv link, the committee keeps asking") and it separates items in a list of
-    asks ("commit, push, rebundle, then deploy"), and cutting on every comma turns the second into
-    a chapter called "commit". So a comma only cuts once what precedes it is long enough to be a
-    description of work; below that the pieces are joined back up."""
+    """`text` cut into candidate clauses at newlines and sentence ends. A comma cuts only once what
+    precedes it is long enough to describe work, so a list of asks ("commit, push, rebundle")
+    stays one clause."""
     out: list[str] = []
     for sentence in _SENTENCE.split(text):
         sentence = sentence.strip()
@@ -218,11 +188,7 @@ def _clauses(text: str) -> list[str]:
                 pieces.append(buf)
                 buf = ""
         if buf:
-            # A short tail ("…, thanks", "…, etc") belongs to the clause it trailed, where
-            # `_drop_trailing` will take it off, rather than standing as a clause of its own --
-            # but only within its own sentence. Merged across the sentence break, "add a quux
-            # helper\nand keep it tiny" came back as one comma-joined clause, which is the tool
-            # putting punctuation into somebody's words.
+            # a short tail joins the clause it trailed in its own sentence, for `_drop_trailing`
             if pieces:
                 pieces[-1] = f"{pieces[-1]}, {buf}"
             else:
@@ -257,9 +223,7 @@ def ask_parts(text: str, width: int = CARD_WIDTH) -> Ask:
             chosen = stripped
             break
     if not chosen:
-        # No clause opens with an ask -- a question, a complaint, a paste. Fall back to the first
-        # one with enough in it to describe work, still without its conversational opening, and
-        # only then to the prompt as typed: an excerpt always has words in it.
+        # no clause opens with an ask: the first substantial one without its lead-in, else as typed
         chosen = next((c for c in clauses if len(c) >= _MIN_CLAUSE), clauses[0] if clauses else "")
         opened = _strip_lead_in(chosen)
         chosen = _drop_trailing(opened if len(opened) >= _MIN_CLAUSE else chosen)

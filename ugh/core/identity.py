@@ -1,26 +1,12 @@
-"""Robust entity matching across a before/after snapshot.
-
-Promoted verbatim from ``experiments/patch_clustering/identity_match.py`` (plan U2) -- the
-matcher tiers and guard constants are unchanged; only the module's location and this docstring
-moved. Originally ported from sem (``references/sem/src/model/identity.rs``), which taught us
-the one rule our miner broke: *never link entities by name alone*. sem's ``match_entities``
-walks tiers of decreasing confidence -- exact id, identical body (content hash), then fuzzy
-token-Jaccard with size guards -- so ``foo -> bar`` with the same body is ONE renamed entity
-(not delete + add), while two unrelated ``__init__``s never link because the size + kind +
-threshold guards reject them. That last property is exactly what a name-set heuristic lacks
-(the ``__init__``/``main``/``run`` collision noted in the mining findings).
-
-We port sem's tiers, keyed on the hashes ``ugh.entities.extract.Entity`` carries
-(``content_hash`` / ``structural_hash``, computed once at extraction from the parsed AST):
+"""Entity matching across a commit, after sem's ``match_entities``: never link entities by name
+alone. Tiers of decreasing confidence, keyed on the hashes ``Entity`` carries:
 
     tier 1   exact surface id (``file::name``)      content differs -> modified
     tier 2   identical body (content hash)          rename / move  (link)
-    tier 2b  identical structure (structural hash)  rename / move  (link)  -- sem's Phase 2 fallback
+    tier 2b  identical structure (structural hash)  rename / move  (link)
     tier 3   fuzzy Jaccard >= 0.80, size-guarded    rename / move  (link)
 
-Tier 2b is what an earlier port lacked: an AST structural hash catches a move/reformat whose
-raw bytes differ (reflow, comment edit) but whose code is the same -- deterministically, without
-leaning on the fuzzy threshold. Deterministic and offline.
+The size, kind and threshold guards keep two unrelated ``__init__`` methods from linking.
 """
 
 from __future__ import annotations
@@ -40,17 +26,13 @@ class Snap:
     ent: Entity
     content_hash: str
     structural_hash: str
-    tokens: frozenset[bytes]  # byte tokens (split on raw bytes) -- fuzzy tier is a heuristic
-    # signal only, never stored/materialized, so no decode is needed here.
+    tokens: frozenset[bytes]  # raw byte tokens: only the fuzzy tier reads them, so no decode
     ntok: int
 
 
 def snapshot(entities: list[Entity], source: bytes | str) -> list[Snap]:
-    """Wrap each entity with its extraction-time hashes plus a token set (for the fuzzy tier).
-
-    Byte-native (`start_byte`/`end_byte`) so tokenizing never round-trips through a lossy
-    decode; `source` accepts `str` too for ergonomic hand-written callers/tests (encoded once,
-    losslessly, via UTF-8 -- matching `extract_file`'s own contract)."""
+    """Each entity with its hashes and the token set of its bytes in `source` (a `str` is encoded
+    as UTF-8)."""
     src = source if isinstance(source, bytes) else source.encode("utf-8")
     out: list[Snap] = []
     for e in entities:
@@ -68,26 +50,9 @@ def _jaccard(a: frozenset[str], b: frozenset[str]) -> float:
 
 
 def _is_import(entity_id: str) -> bool:
-    """Whether an entity id names an import statement.
-
-    An import's identity is the file it sits in and the module it names, and both halves are
-    already in the id. Two imports are the same import when both halves match, which the exact
-    surface id tier has already handled by the time the rename and move tiers run. So an import
-    reaching those tiers can only be a different import, and linking it to one is wrong in both
-    directions.
-
-    Same file, different module: `import { Run } from './run'` becoming
-    `import { Wrapped } from './probe2'` reads almost the same and sits on the same line, which
-    is enough for the structural and fuzzy tiers to call the second a rename of the first. It is
-    a prune and an add.
-
-    Different file, same module: an import of `./run` leaving one file while another file that
-    imports `./run` is added in the same commit is not one import moving between them. Both
-    files import that module on their own account. This one is worse than a cosmetic
-    mislabelling: the resulting `move` op is dropped when the ideal is reduced, taking the rest
-    of the commit's ops for both files with it, and `ugh save` then refuses the whole edit with
-    `put() would overwrite uncommitted changes`. Extracting a module and importing it where the
-    old import used to be is the most ordinary refactor there is, and it could not be saved."""
+    """Whether an entity id names an import statement. An import's id already holds its file and
+    its module, so tier 1 matches the same import; one reaching the rename and move tiers is a
+    different import, removed in one place and added in another, and must not link."""
     return "::__import__::" in entity_id
 
 
@@ -104,13 +69,11 @@ def _link_pass(
     matched_b: set[str],
     matched_a: set[str],
 ) -> list[tuple[Snap, Snap]]:
-    """Tiers 2 + 3 (content-hash then guarded fuzzy). Marks matched ids in place and
-    returns ``(old, new)`` rename/move links. Shared by the per-file and cross-file passes."""
+    """Tiers 2, 2b and 3. Marks matched ids in place and returns ``(old, new)`` rename/move
+    links. Shared by the per-file and cross-file passes."""
     links: list[tuple[Snap, Snap]] = []
 
-    # tiers 2 + 2b -- identical body then identical structure. Index unmatched before-entities
-    # by each hash; match after-entities against content_hash first (exact bytes), then
-    # structural_hash (same code modulo formatting/comments -- sem's Phase 2 fallback).
+    # tiers 2 and 2b: exact bytes first, then the same code modulo formatting and comments
     for key in ("content_hash", "structural_hash"):
         pool: dict[str, list[Snap]] = {}
         for s in before:
@@ -197,10 +160,8 @@ def match_pair(before: list[Snap], after: list[Snap]) -> Match:
 def link_residual(
     removed: list[Snap], added: list[Snap]
 ) -> tuple[list[tuple[Snap, Snap]], set[str], set[str]]:
-    """Cross-file move detection: match a commit's leftover removals against its leftover
-    additions (tiers 2 + 3 only -- surface ids never coincide across files). This is the
-    safe generalization of sem's file-rename move pass: a function cut from one file and
-    pasted into another links by body, not by name."""
+    """Cross-file moves: match a commit's leftover removals against its leftover additions by
+    tiers 2, 2b and 3 (surface ids never coincide across files)."""
     matched_r: set[str] = set()
     matched_a: set[str] = set()
     links = _link_pass(removed, added, matched_r, matched_a)

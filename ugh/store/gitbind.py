@@ -1,4 +1,5 @@
-"""Binding between the operation-ideal kernel and the underlying git repo."""
+"""The git binding: every git command ugh runs, with the batch readers and memos that keep them
+cheap."""
 
 from __future__ import annotations
 
@@ -13,12 +14,8 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 
-# Marks a commit ugh made for its OWN mechanics -- the materialization behind a revert, a restore,
-# or an undo -- rather than work the developer did. History is append-only, so undoing is a forward
-# commit; without this mark those commits are indistinguishable from real work and `ugh now` reports
-# "ugh restore f-08ccdb12..." back to the developer as a thing they accomplished. The mark is what
-# lets every human-facing list fold them and count them separately, while every *semantic* read
-# (ops, ideals, provenance) keeps treating them exactly as before.
+# Marks a commit ugh made for its own mechanics (a take-out, a bring-back, an undo) rather than the
+# developer's work, so the list of saves leaves it out. Mining treats it like any other commit.
 BOOKKEEPING_KEY = "Sgt-Bookkeeping"
 
 # git's canonical empty-tree object: diffing against it makes a root commit (no parent)
@@ -31,10 +28,8 @@ class GitError(Exception):
 
 
 class PushRejected(GitError):
-    """A non-forcing `git push` was rejected because the remote moved (non-fast-forward). The
-    remedy is `ugh sync` then push again -- ugh never force-pushes (design doc §3.2, C7). Kept a
-    subclass of `GitError` so an unaware caller still treats it as a failure, while `ugh push`
-    catches it specifically to route the user to sync."""
+    """A non-forcing `git push` was rejected because the remote moved. The remedy is `ugh sync`,
+    then push again; ugh never force-pushes."""
 
 
 @dataclass(frozen=True)
@@ -60,11 +55,7 @@ def format_bookkeeping_trailer() -> str:
     return f"{BOOKKEEPING_KEY}: 1"
 
 
-# Subjects ugh gave its own materialization commits before the trailer existed. Used ONLY to fold
-# pre-existing history in display: a repo mined before this change has no trailer to read, and a
-# developer should not have to see years of `ugh revert <hex>` rows to get the benefit. Never used
-# for anything semantic -- a real commit a user happened to title "ugh revert x" would be hidden
-# from a list, which is recoverable, but must never be treated as ugh's own for op purposes.
+# Subjects of ugh's own commits made before the trailer existed, matched for display only.
 _LEGACY_BOOKKEEPING_PREFIXES = ("ugh revert ", "ugh restore ", "ugh pin ", "ugh cherry-pick ",
                                 "ugh undo:", "ugh: materialize ideal", "ugh land: ")
 
@@ -108,13 +99,9 @@ def _hunk_new_range(header: str) -> tuple[int, int] | None:
 
 
 class _CatFileBatch:
-    """One long-lived ``git cat-file --batch`` process for a repo. Blob reads used to spawn one
-    git subprocess per call (`blob_bytes`) or per batch (`blob_bytes_many`); mining a chunk of
-    history issues hundreds of such calls, and at ~15-20ms per spawn the process startup itself
-    -- not the object reads -- dominated `mine()` wall-clock. A persistent batch process answers
-    every read over one pipe. Requests are ``<rev>:<path>`` lines, so ref resolution happens at
-    request time (new commits/refs made after the process started resolve fine; git also
-    re-scans its object store on a lookup miss, so freshly-written loose objects are found)."""
+    """One long-lived ``git cat-file --batch`` process for a repo, so mining does not pay a process
+    start per blob. Requests are ``<rev>:<path>`` lines resolved at request time, so refs and
+    objects made after the process started are found."""
 
     def __init__(self, repo: str) -> None:
         self.repo = repo
@@ -220,9 +207,7 @@ class _CatFileBatch:
         stdin, stdout = self.proc.stdin, self.proc.stdout
         payload = "".join(f"{rev}:{path}\n" for rev, path in specs).encode()
 
-        # Feed stdin from a helper thread: a large request batch can overfill the OS pipe buffer
-        # while git is itself blocked writing responses we haven't read yet -- the classic
-        # two-pipe deadlock. The reader (this thread) drains stdout concurrently.
+        # a thread feeds stdin: a large batch can fill the pipe while git blocks writing replies
         def _feed() -> None:
             try:
                 stdin.write(payload)
@@ -247,8 +232,7 @@ class _CatFileBatch:
                 body = stdout.read(size + 1)  # content + trailing newline
                 if len(body) != size + 1:
                     raise GitError("cat-file --batch stream ended early")
-                # A non-blob object (e.g. a directory path resolving to a tree) is not file
-                # content -- report absent, exactly like a missing path.
+                # a tree (a directory path) is not file content
                 results.append(body[:size] if fields[1] == b"blob" else None)
         finally:
             feeder.join()
@@ -263,9 +247,7 @@ _BATCH_PROCS_MAX = 8
 
 
 def _batch_for(repo: Path) -> _CatFileBatch:
-    # Keyed by the *resolved* path: callers routinely construct `GitBinding(".")`, and a bare
-    # "." names a different repo whenever the process's cwd moves (tests chdir constantly) --
-    # a relative key would hand one repo's batch process to another repo's reads.
+    # the resolved path: "." names another repo whenever the process changes directory
     key = os.path.realpath(repo)
     with _BATCH_PROCS_LOCK:
         batch = _BATCH_PROCS.get(key)
@@ -288,17 +270,9 @@ def _close_batch_procs() -> None:
 
 
 # -- head-state read memo --------------------------------------------------------------------
-# One CLI command's views each construct their own `GitBinding(repo)` and independently re-run
-# the same whole-history `git log` / `symbolic-ref` / `rev-parse HEAD` subprocesses (~20ms each;
-# bare `ugh log` paid 9 `symbolic-ref` + 3 full-history walks). These module-level memos let
-# HEAD-anchored pure reads be paid once per *HEAD state* instead of once per call site. Validity
-# is anchored on git's own files, never on explicit invalidation: `_head_sig` stats `HEAD`, the
-# reflog (`logs/HEAD` -- every commit/checkout/reset/merge appends, so its *size* changes even
-# within one mtime tick), the checked-out branch's loose ref, and `packed-refs`. Any history- or
-# ref-moving mutation -- by this process mid-verb or by another process between MCP tool calls --
-# changes the signature, and the whole entry is dropped. Only reads whose output is a function of
-# that signature are routed through it: HEAD-anchored walks, or walks from an explicit full sha
-# (whose ancestry is immutable).
+# HEAD-anchored reads are paid once per HEAD state, not once per caller. The state is a signature
+# over git's own files (`_head_sig`: `HEAD`, the reflog, the branch's loose ref, `packed-refs`), so
+# any commit, checkout or ref move by any process drops the entry; no explicit invalidation.
 _GITDIR_CACHE: "OrderedDict[str, tuple[Path, Path]]" = OrderedDict()
 _HEAD_MEMO: "OrderedDict[str, tuple[tuple, dict]]" = OrderedDict()
 _HEX = frozenset("0123456789abcdef")
@@ -379,9 +353,8 @@ class GitBinding:
         self.repo = Path(repo_path)
 
     def repo_key(self) -> str:
-        """A stable process-wide identity for this repo: the resolved absolute path. The cache
-        key every content-addressed memo over this binding must use -- `self.repo` is often a
-        relative `"."`, which silently renames the repo whenever the process chdirs."""
+        """The resolved absolute path, the key every memo over this binding uses: `self.repo` is
+        often `"."`, which names another repo after a chdir."""
         return os.path.realpath(self.repo)
 
     def _head_sig(self) -> tuple | None:
@@ -436,13 +409,8 @@ class GitBinding:
     def _git(
         self, *args: str, check: bool = True, env: dict[str, str] | None = None
     ) -> subprocess.CompletedProcess:
-        # `errors="replace"` (not the default strict decode): `git diff` embeds a changed
-        # file's raw content inline in its output, so a non-UTF-8 tracked file makes this
-        # decode itself blow up otherwise. Every caller of `_git` only reads structural,
-        # ASCII-safe markers out of that output (hunk headers, `+++ b/path` lines, name-status
-        # letters) -- never the file's own content bytes, which are always read separately via
-        # `blob_bytes` -- so a lossy replacement here never touches anything byte-fidelity
-        # actually depends on.
+        # `errors="replace"`: `git diff` output embeds file content, which may not be UTF-8; callers
+        # read only its ASCII markers and read content through `blob_bytes`.
         proc = subprocess.run(
             ["git", "-C", str(self.repo), *args],
             capture_output=True,
@@ -462,16 +430,8 @@ class GitBinding:
         return proc.returncode == 0 and proc.stdout.strip() == "true"
 
     def init(self) -> bool:
-        """Initialize the repo if needed and ensure a usable committer identity. Returns whether a
-        placeholder identity had to be planted.
-
-        Identity is set at repo scope only when unset (`_has_identity` reads the full config
-        cascade, so a user with a global identity is never touched), which lets a bare container or
-        a test fixture commit at all. But planting it *silently* meant every commit a real developer
-        made through ugh was authored "ugh <ugh@ugh.local>" -- wrong in `git log`, wrong
-        in blame, wrong on the remote, and invisible until someone else noticed. So the fact is
-        returned, and every caller that a human can reach says so out loud.
-        """
+        """Initialize the repo if needed and plant a placeholder committer identity at repo scope
+        when none is configured anywhere. Returns whether it planted one, so a caller can warn."""
         if not self.is_repo():
             self.repo.mkdir(parents=True, exist_ok=True)
             self._git("init", "-q")
@@ -485,9 +445,7 @@ class GitBinding:
         return planted
 
     def placeholder_identity(self) -> bool:
-        """Whether this repo currently commits as the planted placeholder rather than as a person.
-        Read at commit time so the warning follows the *state*, not just the one `init` call that
-        created it -- a repo initialized months ago is the case that actually bites."""
+        """Whether this repo commits as the planted placeholder rather than as a person."""
         return self._git(
             "config", "--get", "user.email", check=False
         ).stdout.strip() == "ugh@ugh.local"
@@ -516,8 +474,7 @@ class GitBinding:
         return self._memo_head(("head",), compute)
 
     def symbolic_ref(self) -> str | None:
-        """The branch HEAD points at (e.g. ``refs/heads/main``), or None in detached-HEAD
-        state -- the lens's key for per-ref witness tracking (U6)."""
+        """The branch HEAD points at (e.g. ``refs/heads/main``), or None when detached."""
         def compute() -> str | None:
             proc = self._git("symbolic-ref", "-q", "HEAD", check=False)
             return proc.stdout.strip() if proc.returncode == 0 else None
@@ -530,11 +487,9 @@ class GitBinding:
         return proc.stdout.strip() if proc.returncode == 0 else None
 
     def pseudo_ref_set(self, name: str) -> bool:
-        """Whether a `*_HEAD` pseudo-ref file (MERGE_HEAD, CHERRY_PICK_HEAD, REVERT_HEAD) is
-        currently set -- one stat on the per-worktree gitdir instead of a `rev-parse` subprocess.
-        Falls back to `rev_parse` when the gitdir can't be resolved. A present-but-unresolvable
-        file reads as set, which errs toward "operation in flight" -- the safe direction for
-        every caller (they refuse to mine, never the reverse)."""
+        """Whether a `*_HEAD` pseudo-ref (MERGE_HEAD, CHERRY_PICK_HEAD, REVERT_HEAD) is set: one
+        stat in the gitdir, else `rev_parse`. A file that does not resolve counts as set, the safe
+        direction."""
         dirs = _git_dirs(self.repo, self.repo_key())
         if dirs is None:
             return self.rev_parse(name) is not None
@@ -550,29 +505,20 @@ class GitBinding:
         return parents[0] if parents else None
 
     def merge_base(self, a: str, b: str) -> str | None:
-        """The best common ancestor of `a` and `b` (`git merge-base`), or None if they share none
-        -- the point sync mines forward from (`merge_base..theirs`) to fold a teammate's foreign
-        commits into the union without a checkout (U20, C3)."""
+        """The best common ancestor of `a` and `b` (`git merge-base`), or None if they share none."""
         proc = self._git("merge-base", a, b, check=False)
         out = proc.stdout.strip()
         return out if proc.returncode == 0 and out else None
 
     def parents(self, sha: str) -> list[str]:
-        """The parent SHAs of `sha` in git's own order (first parent first) -- empty for a root
-        commit. `len(parents) >= 2` marks a merge, which the miner treats specially (1.3, F7):
-        mining a merge against its first parent alone re-attributes the second parent's whole
-        cumulative delta as one op, so `_mine_one` restricts a merge to the paths it resolved
-        differently from *both* sides and lets each branch's own commits carry the rest."""
+        """The parent SHAs of `sha`, first parent first; empty for a root commit."""
         proc = self._git("rev-list", "--parents", "-n", "1", sha, check=False)
         out = proc.stdout.split()
         return out[1:] if proc.returncode == 0 and len(out) > 1 else []
 
     def is_ancestor(self, a: str, b: str) -> bool:
-        """True iff commit `a` is an ancestor of `b` (or `a == b`) -- `git merge-base
-        --is-ancestor`, exit 0 for yes, 1 for no. The causal-ordering primitive U21's pin
-        witness-topo tie-break asks: a pin recorded at a witness that is an ancestor of another's
-        witness is causally earlier, so the descendant's assignment wins. A witness that doesn't
-        resolve (missing/foreign) makes this False, falling the tie-break through to its hash path."""
+        """True iff commit `a` is an ancestor of `b` (or `a == b`); False when either does not
+        resolve."""
         if not a or not b:
             return False
         return self._git("merge-base", "--is-ancestor", a, b, check=False).returncode == 0
@@ -581,25 +527,13 @@ class GitBinding:
         return self._git("log", "-1", "--format=%B", sha).stdout
 
     def blob_bytes(self, sha: str, path: str) -> bytes | None:
-        """Raw bytes of ``path`` at ``sha`` (absent -> None). Never decodes as text -- the safe
-        way to read a path that might be binary. Served by the repo's
-        persistent ``cat-file --batch`` process, not a subprocess spawn per call."""
+        """Raw bytes of ``path`` at ``sha``, or None when absent. Never decoded."""
         return self.blob_bytes_many([(sha, path)])[0]
 
     def blob_bytes_many(self, specs: list[tuple[str, str]]) -> list[bytes | None]:
-        """Raw bytes for many ``(sha, path)`` pairs, aligned with ``specs`` order -- the batched
-        counterpart to ``blob_bytes``. Mining one commit needs many blobs at once (every tracked
-        file for ``tree_at``, or every changed file for a diff); one subprocess per blob made
-        mining scale as O(commits x files) subprocess spawns. All reads go through the repo's
-        one persistent ``git cat-file --batch`` process (``<rev>:<path>`` object specs, so no
-        oid lookup is needed first) -- even the per-batch spawn this method used to pay was the
-        dominant mining cost at hundreds of batches per history chunk.
-
-        A spec whose rev or path contains a newline can't be framed as a ``<rev>:<path>`` line in
-        that pipe protocol -- it would split into two requests and silently desync the shared
-        stream for every later reader in the process -- so it detours through a one-shot ``git
-        show`` argv read. Newlines in tracked paths are legal in git trees and exotic in practice,
-        but the tool's bar is that a read never errors on a noisy repo."""
+        """Raw bytes for many ``(sha, path)`` pairs, in ``specs`` order, through the repo's one
+        ``cat-file --batch`` process. A spec containing a newline cannot be framed as a request line
+        without desyncing the shared pipe, so it goes through ``git show`` instead."""
         if not specs:
             return []
         results: list[bytes | None] = [None] * len(specs)
@@ -616,39 +550,19 @@ class GitBinding:
         return results
 
     def _show_blob(self, sha: str, path: str) -> bytes | None:
-        """One-shot raw-bytes read of ``path`` at ``sha`` via ``git show`` argv -- the fallback
-        `blob_bytes_many` uses for a spec a newline makes unframeable in the shared batch pipe.
-        Never text-decodes, so a binary blob comes back as its bytes rather than raising."""
+        """Raw bytes of ``path`` at ``sha`` through ``git show``, for a spec with a newline."""
         proc = subprocess.run(
             ["git", "-C", str(self.repo), "show", f"{sha}:{path}"], capture_output=True
         )
         return proc.stdout if proc.returncode == 0 else None
 
-    def list_tree(self, sha: str, prefix: str) -> list[str]:
-        """Every tracked path under ``prefix`` at ``sha`` -- e.g. every op file a remote's commit
-        carries, for `ugh sync`'s (U15) provenance-union pass without reading the whole tree via
-        ``tree_at``."""
-        proc = self._git("ls-tree", "-r", "--name-only", sha, "--", prefix, check=False)
-        return [line for line in proc.stdout.splitlines() if line]
-
     def blob_oid(self, sha: str, path: str) -> str | None:
-        """The git blob object id of ``path`` at ``sha`` -- the stable content address a binary
-        file's image can point at without embedding the bytes themselves. Served by the repo's
-        persistent ``cat-file --batch-check`` process (object info only, no content transfer)
-        instead of an ``ls-tree`` subprocess spawn per call. ``--batch-check`` reports a tree
-        entry whose object is absent from this repo's odb as missing -- submodule gitlinks (the
-        commit lives in the submodule's odb) and promisor-filtered blobs in partial clones --
-        so a miss falls back to parsing ``ls-tree``, which reads the tree entry itself and
-        returns the recorded oid for ANY entry type, exactly as this method always did."""
+        """The object id ``path`` has at ``sha``, or None when absent, from ``cat-file
+        --batch-check``, falling back to ``ls-tree``."""
         info = _batch_for(self.repo).info_many([(sha, path)])[0]
         if info is not None:
             return info[0]
-        # A gitlink (submodule, mode 160000) or a promisor-filtered blob on a partial clone is
-        # not in this repo's object store, so `--batch-check` reports it `missing` -- but the tree
-        # still records the oid (the submodule's commit sha, or the filtered blob's id), which
-        # `ls-tree` reads straight from the tree object without touching the odb. Fall back to it
-        # so those entries keep their stable content address instead of folding to a `None`
-        # (unchained) whole-file version and silently breaking chain continuity across the commit.
+        # a submodule or a filtered blob is not in the object store, but the tree records its id
         proc = self._git("ls-tree", sha, "--", path, check=False)
         if proc.returncode != 0 or not proc.stdout:
             return None
@@ -656,15 +570,8 @@ class GitBinding:
         return fields[2] if len(fields) >= 3 else None
 
     def symlink_paths(self, tree_ish: str, paths: list[str]) -> set[str]:
-        """The subset of ``paths`` that are symlinks (git mode ``120000``) in the tree at
-        ``tree_ish`` -- one ``git ls-tree`` scoped to just those paths, not a full recursive walk.
-        Symlinks are unmanaged (R3): their blob is the target-path *string*, so mining consults
-        this to skip mode-120000 entries before that string leaks into the DAG as ordinary
-        content. A missing path (deleted at ``tree_ish``) simply doesn't appear in the output.
-
-        Batched under an argv byte budget: a single commit that lands a vendored tree changes tens
-        of thousands of paths, and one invocation carrying all of them raises
-        ``OSError: [Errno 7] Argument list too long`` before git runs at all."""
+        """The subset of ``paths`` that are symlinks (mode ``120000``) at ``tree_ish``, which mining
+        skips: a symlink's blob is its target path, not content. Batched under the argv budget."""
         out: set[str] = set()
         for batch in _argv_batches(paths):
             proc = self._git("ls-tree", "-z", tree_ish, "--", *batch, check=False)
@@ -679,27 +586,17 @@ class GitBinding:
         return out
 
     def history(self, since: str | None = None, target: str = "HEAD") -> list[tuple[str, str | None, str]]:
-        """``(sha, first_parent, subject)`` oldest-first. ``since``, if given, restricts to
-        commits reachable from ``target`` (default HEAD) but not from ``since`` (``since..target``)
-        -- each commit's own first-parent is still returned for diffing, so incremental mining
-        diffs each commit against its true predecessor regardless of where the range starts.
-        ``target`` lets sync mine a *fetched* teammate branch (``merge_base..theirs_sha``) without
-        checking it out (U20). First-parent only: merges never re-attribute a whole side branch
-        onto the merge commit (a v1 simplification also used by the entity miner)."""
+        """``(sha, first_parent, subject)`` for the commits reachable from ``target``, or
+        ``since..target``, oldest first in topological order. Each row carries its own first parent,
+        so a range diffs each commit against its true predecessor."""
         return [(sha, parent, subject) for sha, parent, subject, _t, _bk
                 in self.history_meta(since, target)]
 
     def history_meta(
         self, since: str | None = None, target: str = "HEAD",
     ) -> list[tuple[str, str | None, str, int | None, bool]]:
-        """`history()` plus each commit's committer time and whether it is ugh's own bookkeeping --
-        `(sha, first_parent, subject, ts, bookkeeping)`, oldest-first.
-
-        Both extras ride along in the format string of the walk `history()` already does, because
-        both were previously separate full-history `git log` calls (`head_time`, a `--grep` for the
-        trailer) on surfaces that had just run this one. Widening the format measured free; the
-        extra walks did not. `history()` stays a 3-tuple so the miner and every other caller are
-        untouched -- only the two callers that want the extras take this."""
+        """`history()` plus each commit's committer time and whether it is ugh's own bookkeeping:
+        `(sha, first_parent, subject, ts, bookkeeping)`, in the same one walk."""
         def compute() -> list[tuple[str, str | None, str, int | None, bool]]:
             rev_range = f"{since}..{target}" if since is not None else target
             fmt = "%H%x1f%P%x1f%s%x1f%ct%x1f%(trailers:key=" + BOOKKEEPING_KEY + ",valueonly)"
@@ -725,11 +622,8 @@ class GitBinding:
         return compute()
 
     def commit_times(self, target: str = "HEAD") -> dict[str, int]:
-        """``sha -> committer unix timestamp`` for every commit reachable from ``target``. One
-        ``git log`` call, no per-op cost. The committer date is when the commit was *created* --
-        for ugh that is the save beat, so it is the wall-clock "when this work landed" that the
-        alignment pipeline's temporal generator compares against a conversation turn's own
-        wall-clock. Empty on an unborn/failed ref (never raises)."""
+        """``sha -> committer unix timestamp`` for every commit reachable from ``target``; empty when
+        it does not resolve."""
         def compute() -> dict[str, int]:
             proc = self._git("log", "--format=%H%x1f%ct", target, check=False)
             if proc.returncode != 0:
@@ -745,31 +639,6 @@ class GitBinding:
             return dict(self._memo_head(("commit_times", target), compute))
         return compute()
 
-    def graph_topology(self, target: str = "HEAD") -> dict:
-        """`{"mainline": set[str], "merges": set[str]}` for every commit reachable from `target`,
-        in two cheap passes. `mainline` is the first-parent chain from the tip -- the "trunk" a
-        `ugh log` spine draws as a continuous line; a commit not in it landed on a side branch that
-        was later merged. `merges` is the commits with two or more parents (where a side branch
-        folded back in). The default `ugh log` uses this to draw a narrow git-log-style spine to the
-        left of each save without re-deriving topology per row."""
-        def compute() -> dict:
-            merges: set[str] = set()
-            proc = self._git("log", "--format=%H%x1f%P", target, check=False)
-            if proc.returncode == 0:
-                for line in proc.stdout.splitlines():
-                    if not line:
-                        continue
-                    sha, _, parents = line.partition("\x1f")
-                    if len(parents.split()) >= 2:
-                        merges.add(sha)
-            fp = self._git("log", "--first-parent", "--format=%H", target, check=False)
-            mainline = set(fp.stdout.split()) if fp.returncode == 0 else set()
-            return {"mainline": mainline, "merges": merges}
-        if target == "HEAD" or _is_full_sha(target):
-            cached = self._memo_head(("graph_topology", target), compute)
-            return {"mainline": set(cached["mainline"]), "merges": set(cached["merges"])}
-        return compute()
-
     def first_parent_path_log(self, ref: str, path: str) -> list[tuple[str, list[str]]]:
         """``(sha, parents)`` newest-first for every commit on ``ref``'s first-parent line whose
         ``path`` differs from its first parent's."""
@@ -780,11 +649,7 @@ class GitBinding:
                 (line.partition("\x1f") for line in proc.stdout.splitlines() if line)]
 
     def tree_at(self, sha: str) -> dict[str, str]:
-        """Every readable text file in the tree at ``sha`` -> its contents (the past snapshot).
-
-        Powers the scrubber's untracked-code rewind: whole-repo structure at a past commit,
-        not just ugh-tracked features. Binary/unreadable blobs are skipped.
-        """
+        """Every text file in the tree at ``sha``, path -> contents; binary blobs are skipped."""
         listing = self._git("ls-tree", "-r", "--name-only", sha, check=False)
         if listing.returncode != 0:
             return {}
@@ -859,42 +724,22 @@ class GitBinding:
         ]
 
     def working_tree_snapshot(self) -> str:
-        """A git tree object id for the current working directory -- tracked files, their
-        uncommitted edits/deletions, and untracked-but-not-ignored files, all included -- so
-        Gap 2's dirty-tree mining pass (U7.5) can diff it against HEAD exactly the way `mine()`
-        diffs two real commits. Computed via a scratch index (a fresh, unique `GIT_INDEX_FILE`)
-        so the real `.git/index` is never touched; `.gitignore` (including `.sgt/local/*`) is
-        respected automatically since gitignore rules aren't index-specific.
-
-        The scratch path is reserved via `mkstemp` then immediately removed -- git errors on an
-        existing-but-empty index file ("index file smaller than expected"), so the path must not
-        exist yet when `add -A` runs; it creates a fresh index there itself.
-
-        The scratch index lives in the *real* git dir resolved via `--absolute-git-dir`, not
-        `self.repo / ".git"`: in a linked worktree (which is how `ugh land` runs concurrent
-        sessions, U23) `.git` is a file pointing at the worktree's gitdir, so assuming a directory
-        there fails.
-        """
+        """A tree object id for the working directory as it is: tracked files with their uncommitted
+        edits and untracked files that are not ignored, so the dirty pass can diff it against HEAD
+        like a commit. Built in a scratch `GIT_INDEX_FILE` inside the real git dir (a linked
+        worktree's `.git` is a file), so the real index is never touched."""
         git_dir = Path(self._git("rev-parse", "--absolute-git-dir").stdout.strip())
         fd, scratch_path = tempfile.mkstemp(dir=str(git_dir), prefix=".sgt-scratch-index-")
         os.close(fd)
-        os.unlink(scratch_path)
+        os.unlink(scratch_path)  # git rejects an existing empty index file; `add -A` creates it
         try:
             env = {"GIT_INDEX_FILE": scratch_path}
             self._git("add", "-A", env=env)
             try:
                 return self._git("write-tree", env=env).stdout.strip()
             except GitError as first:
-                # `write-tree` can fail with "invalid object ... for '<path>'" when a file the
-                # scratch index refers to is not resolvable as an object -- seen against a
-                # zero-byte file whose empty blob was not in the object store. Re-staging costs
-                # milliseconds and fixes the transient case, where a file changed underneath
-                # `add -A`; the tool writes into `.sgt/` constantly, so it can race itself.
-                #
-                # If it fails twice it is not transient, and what must not happen then is what
-                # happened in the pilot: a participant, ten minutes into a session, reading
-                # `GitError: git write-tree failed (128) ... e69de29bb2d1...` and having no idea
-                # whether they broke something. Say which file, and say it is not their fault.
+                # A file changing under `add -A` can leave an unresolvable object; staging again
+                # fixes that. A second failure is not transient, so it is explained in words.
                 self._git("add", "-A", env=env)
                 try:
                     return self._git("write-tree", env=env).stdout.strip()
@@ -932,33 +777,21 @@ class GitBinding:
             raise GitError("commit succeeded but HEAD is unresolved")
         return head
 
-    # -- sync transport (U15) -----------------------------------------------
+    # -- sync transport -----------------------------------------------------
     def is_clean(self) -> bool:
-        """True if the working tree and index have no uncommitted changes -- the precondition
-        `ugh sync` needs before it can run `git merge`."""
+        """True if the working tree and index have no uncommitted changes."""
         proc = self._git("status", "--porcelain", check=False)
         return proc.returncode == 0 and not proc.stdout.strip()
 
     def has_dirty_source(self) -> bool:
-        """True if any path outside `.sgt/` has an uncommitted working-tree change -- modified,
-        deleted, staged, *or* untracked -- which is exactly the precondition for `_sync`'s dirty
-        mining pass (R16). Only `.sgt/` is excluded: it is ugh's own state, never mined as codebase
-        content (`_mine_one` skips it), and after any `get()`/`put()` the working tree carries
-        untracked `.sgt/ops/*` churn -- were that counted, the guard would never fire in a real
-        repo. Untracked *source* files, by contrast, are genuine pending adds and must still be
-        mined (they are, in the `save` golden). So on a tree clean by this measure the O(files)
-        pending pass would produce no source ops and is skipped. A git error degrades to `True`
-        (run the pass) rather than silently skipping."""
+        """True if any path outside `.sgt/` is modified, deleted, staged or untracked: the condition
+        for the dirty mining pass. A git error reads as True, so the pass runs."""
         proc = self._git("status", "--porcelain", "--", ".", ":(exclude).sgt", check=False)
         return proc.returncode != 0 or bool(proc.stdout.strip())
 
     def dirty_source_digest(self) -> str | None:
-        """A content hash of every uncommitted non-`.sgt` source change: the `git diff HEAD` patch
-        (all tracked worktree changes, staged or not) plus each untracked source file's bytes. This
-        is the signal `_sync` gates on -- an unchanged digest means re-running the O(files) dirty
-        mining pass would produce byte-identical ops, so the whole mine is a provable no-op. Returns
-        None on a git error (unborn HEAD, etc.), so the caller falls back to mining rather than
-        trusting a fingerprint it couldn't compute."""
+        """A hash of every uncommitted change outside `.sgt/`: the `git diff HEAD` patch plus each
+        untracked file's name and bytes. None on a git error (an unborn HEAD): the caller mines."""
         diff = self._git("diff", "HEAD", "--", ".", ":(exclude).sgt", check=False)
         others = self._git(
             "ls-files", "-o", "--exclude-standard", "-z", "--", ".", ":(exclude).sgt", check=False
@@ -973,7 +806,7 @@ class GitBinding:
             try:
                 h.update((self.repo / path).read_bytes())
             except OSError:
-                pass  # vanished between listing and read -- the name in the digest already marks it
+                pass  # vanished since the listing; its name is already in the digest
         return h.hexdigest()
 
     def upstream(self) -> str | None:
@@ -1005,18 +838,14 @@ class GitBinding:
         self._git("fetch", remote, branch)
 
     def fetch_ref(self, remote: str, refspec: str) -> bool:
-        """Best-effort `git fetch <remote> <refspec>` for an arbitrary ref (D1's land log lives
-        outside `refs/heads/`, so it needs its own refspec rather than `fetch`'s plain branch
-        name). Swallows failure -- an older remote that has never pushed the ref is not an error,
-        just nothing to recover from yet. Returns whether the fetch succeeded."""
+        """`git fetch <remote> <refspec>` for a ref outside `refs/heads/` (the state ref). Returns
+        whether it succeeded: a remote that never received the ref is not an error."""
         proc = self._git("fetch", remote, refspec, check=False)
         return proc.returncode == 0
 
     def push(self, remote: str, branch: str) -> str:
-        """`git push <remote> <branch>` with no force of any kind (C7). A non-fast-forward
-        rejection (the remote moved) raises `PushRejected` distinctly from every other failure, so
-        `ugh push` can route the user to `ugh sync` rather than ever forcing. Returns the pushed
-        HEAD sha on success."""
+        """`git push <remote> <branch>` without force; returns the pushed HEAD sha. A rejection
+        because the remote moved raises `PushRejected`, any other failure `GitError`."""
         proc = self._git("push", remote, branch, check=False)
         if proc.returncode != 0:
             stderr = proc.stderr.strip()
@@ -1029,21 +858,16 @@ class GitBinding:
         return head
 
     def push_ref(self, remote: str, refspec: str) -> bool:
-        """Best-effort `git push <remote> <refspec>` for an arbitrary ref (D1's land log). Never
-        forces and swallows failure -- the branch push it accompanies is the one that must
-        succeed; the log ref is advisory transport, not correctness-bearing. Returns whether the
-        push succeeded."""
+        """`git push <remote> <refspec>` without force, for the state ref. Returns whether it
+        succeeded."""
         proc = self._git("push", remote, refspec, check=False)
         return proc.returncode == 0
 
     def commit_tree(
         self, tree: str, parents: list[str], message: str, trailers: str | None = None
     ) -> str:
-        """`git commit-tree <tree> [-p <parent> ...] -m <msg>` -> a new commit sha, WITHOUT moving
-        any ref. The plumbing `land` uses to construct the landing commit (a real 2-parent merge
-        when the session's HEAD diverges from the branch tip) before compare-and-swapping the branch
-        onto it. `commit_all`/`complete_merge` can't be reused here because they move HEAD, which
-        must not happen until the CAS wins the race."""
+        """`git commit-tree <tree> [-p <parent> ...] -m <msg>`: a new commit sha, moving no ref, for
+        a state-ref commit that `update_ref_cas` then publishes."""
         args = ["commit-tree", tree]
         for parent in parents:
             args += ["-p", parent]
@@ -1052,7 +876,7 @@ class GitBinding:
         return self._git(*args).stdout.strip()
 
     def _git_stdin(
-        self, *args: str, stdin: bytes, check: bool = True, env: dict[str, str] | None = None
+        self, *args: str, stdin: bytes, env: dict[str, str] | None = None
     ) -> subprocess.CompletedProcess:
         """`_git` for a command fed raw bytes on stdin (`hash-object --stdin`, `update-index
         --index-info`). No text mode: stdin/stdout stay bytes so a binary blob round-trips
@@ -1063,7 +887,7 @@ class GitBinding:
             capture_output=True,
             env={**os.environ, **env} if env is not None else None,
         )
-        if check and proc.returncode != 0:
+        if proc.returncode != 0:
             raise GitError(
                 f"git {' '.join(args)} failed ({proc.returncode}): "
                 f"{proc.stderr.decode('utf-8', 'replace').strip()}"
@@ -1071,18 +895,13 @@ class GitBinding:
         return proc
 
     def write_tree_from_blobs(self, entries: dict[str, bytes]) -> str:
-        """A git tree object id built from an in-memory `{repo-relative-path: content}` mapping,
-        without touching the working tree or the real index -- the write half of `refs/ugh/state`
-        (plan 1.2), as `working_tree_snapshot` is the write half for the working directory. Each
-        blob is written with `hash-object -w`, the whole set staged into a scratch `GIT_INDEX_FILE`
-        in one `update-index --index-info`, then serialized with `write-tree` (which builds the
-        nested tree objects for `.sgt/ops/<id>`-style paths automatically). An empty mapping yields
-        git's empty-tree oid. The scratch index lives in the *real* git dir (`--absolute-git-dir`,
-        correct under a linked worktree) and is removed after, exactly like `working_tree_snapshot`."""
+        """A tree object id built from `{repo-relative path: content}` without touching the working
+        tree or the real index, through a scratch index as in `working_tree_snapshot`. An empty
+        mapping gives the empty tree."""
         git_dir = Path(self._git("rev-parse", "--absolute-git-dir").stdout.strip())
         fd, scratch_path = tempfile.mkstemp(dir=str(git_dir), prefix=".sgt-scratch-index-")
         os.close(fd)
-        os.unlink(scratch_path)  # git errors on an existing-but-empty index; `update-index` creates it
+        os.unlink(scratch_path)  # git rejects an existing empty index; `update-index` creates it
         env = {"GIT_INDEX_FILE": scratch_path}
         try:
             lines = []
@@ -1099,10 +918,8 @@ class GitBinding:
                 pass
 
     def read_tree_blobs(self, tree_ish: str, prefix: str = "") -> dict[str, bytes]:
-        """Every path under `prefix` (all paths when empty) at `tree_ish`, mapped to raw bytes --
-        the bytes-preserving, prefix-scoped counterpart to `tree_at` (which text-decodes and drops
-        binary). The read half of `refs/ugh/state` materialization (plan 1.2). Missing tree-ish or
-        empty prefix match yields `{}`."""
+        """Every path under `prefix` (all when empty) at `tree_ish`, mapped to raw bytes; `{}` when
+        nothing matches."""
         args = ["ls-tree", "-r", "--name-only", tree_ish]
         if prefix:
             args += ["--", prefix]
@@ -1114,15 +931,8 @@ class GitBinding:
         return {p: b for p, b in zip(paths, blobs) if b is not None}
 
     def update_ref_cas(self, ref: str, new: str, old: str | None) -> bool:
-        """Compare-and-swap the branch record (plan U23, C9/LAW-G): `git update-ref <ref> <new>
-        <old>` atomically moves `ref` to `new` only if it still points at `old` -- the 40-zero oid
-        when `old` is None ("create only if absent"). Returns True on success, False on a CAS
-        failure (the ref moved off `old`, or a create raced another create -- git reports both as
-        `cannot lock ref`), and raises `GitError` on any other failure. This atomic old-value
-        precondition, shared across every process touching this repo's ref store, is the *entire*
-        concurrency-safety mechanism for `land`; the U23 store-lock audit confirmed the single-writer
-        store lock is per-`add()` (already correct for op appends) and must not be widened around
-        this."""
+        """Move `ref` to `new` only if it still points at `old` (None: only if absent), atomically
+        (`git update-ref`). False when the ref moved or a create raced; `GitError` otherwise."""
         old_val = old if old is not None else "0" * 40
         proc = self._git("update-ref", ref, new, old_val, check=False)
         if proc.returncode == 0:

@@ -8,10 +8,8 @@ Four small files, each merged rather than overwritten so an existing config surv
   installed package.
 * `.vscode/settings.json` -- `ugh.path`, so the extension does not have to find `ugh` on PATH.
 
-Every command is written with the *absolute* path of the running `ugh`, for the reason
-`_install_prompt_hook` already documents: hooks, MCP servers, and the extension host all run in
-shell environments that need not have the install on their PATH. A GUI-launched VS Code inherits
-the login shell's PATH, not the terminal's, so a bare `ugh` is a coin flip. An absolute path is not.
+Every command uses the absolute path of the running `ugh`: hooks, MCP servers and a GUI-launched
+VS Code run in environments that need not have the install on their PATH.
 """
 
 from __future__ import annotations
@@ -25,12 +23,8 @@ from ugh.agent_assets import SKILLS_DIR
 
 
 def resolve_ugh_path() -> str:
-    """Absolute path of the running `ugh`, or the bare name if it cannot be resolved.
-
-    `sys.argv[0]` is the console script when invoked as `ugh`; under `python -m ugh.cli` or pytest
-    it is something else, so fall back to a PATH lookup and finally to the bare name (which at
-    least works wherever PATH happens to be right).
-    """
+    """Absolute path of the running `ugh`: `sys.argv[0]` when it is the console script, else the
+    PATH lookup, else the bare name."""
     exe = Path(sys.argv[0])
     if exe.name != "ugh":
         found = shutil.which("ugh")
@@ -64,12 +58,8 @@ def install_mcp_json(repo: Path, ugh_path: str) -> bool:
 
 
 def install_mcp_approval(repo: Path) -> bool:
-    """Pre-approve the project server in the *shared* `.claude/settings.json`.
-
-    Claude Code otherwise prompts once per repo before enabling a project-scoped server. This goes
-    in the tracked settings file, not `settings.local.json`, so it survives a clone -- the local
-    file is gitignored by convention and would leave every fresh checkout facing the prompt again.
-    """
+    """Pre-approve the project server in the tracked `.claude/settings.json`, not the local one, so
+    a fresh clone does not prompt before enabling it."""
     path = repo / ".claude" / "settings.json"
     data = _read_json(path)
     enabled = data.setdefault("enabledMcpjsonServers", [])
@@ -80,11 +70,8 @@ def install_mcp_approval(repo: Path) -> bool:
 
 
 def install_skills(repo: Path) -> int:
-    """Copy the bundled Claude Code skills into `.claude/skills/`. Returns how many were written.
-
-    Overwrites on re-run so `ugh init --agent` after an upgrade refreshes stale skill text; skills
-    are generated content, and a repo that edited them in place has no way to say so anyway.
-    """
+    """Copy the bundled Claude Code skills into `.claude/skills/`, overwriting so a re-run after an
+    upgrade refreshes them. Returns how many were written."""
     if not SKILLS_DIR.is_dir():
         return 0
     dest_root = repo / ".claude" / "skills"

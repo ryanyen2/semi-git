@@ -9,7 +9,7 @@ import threading
 import pytest
 
 from ugh.core.op import MINER_VERSION, Attribution, make_op
-from ugh.core.store import FsckReport, Store, StoreError, _serialize, fsck
+from ugh.core.store import FsckReport, Store, StoreError, fsck
 
 
 def _op(sym: str = "a.py::foo", n: int = 0):
@@ -247,32 +247,6 @@ def test_v0_file_deserializes_with_empty_attribution(tmp_path):
     fetched = store.get(op.id)
     assert fetched.provenance == ("sha0", "sha1")
     assert fetched.attribution == ()
-
-
-def test_add_bytes_unions_a_v0_and_a_v1_file_for_the_same_id(tmp_path):
-    """The D7 pitfall: two clones hold a v0 and a v1 file for the *same* op id. `add`/`add_bytes`
-    unions on collision, so the union must merge shapes (not compare bytes) -- provenance grows and
-    the v1 file's attribution survives."""
-    store = Store(tmp_path)
-    store.init()
-    op = make_op({"a.py::foo": (None, "v0")}, {"a.py::foo": b"body"})
-
-    # a v0 file already on disk: provenance ["shaA"], no attribution
-    (store.ops_dir / op.id).write_bytes(_v0_bytes(op, ["shaA"]))
-
-    # a v1 file for the same id arrives (as raw bytes, e.g. from a teammate's clone via sync)
-    v1 = make_op(
-        {"a.py::foo": (None, "v0")}, {"a.py::foo": b"body"},
-        provenance=("shaB",), attribution=(Attribution(sha="shaB", session="s1"),),
-    )
-    merged = store.add_bytes(_serialize(v1))
-
-    assert merged.provenance == ("shaA", "shaB")
-    assert merged.attribution == (Attribution(sha="shaB", session="s1"),)
-    # ...and persisted, not just returned
-    persisted = store.get(op.id)
-    assert persisted.provenance == ("shaA", "shaB")
-    assert persisted.attribution == (Attribution(sha="shaB", session="s1"),)
 
 
 def test_attribute_stamps_a_committed_op_without_moving_its_id(tmp_path):

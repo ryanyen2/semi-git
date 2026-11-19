@@ -1,15 +1,11 @@
-"""The lens: get/put integration with git.
+"""The lens between git and the op store.
 
-`get` mines the commits new to the current ref since its witness, oldest first, persists them into
-the store (whose provenance merge on a content-address collision is the identification law), and
-returns the ref's ideal: every op mined from the ref's history, reduced to a valid ideal, plus the
-working tree's uncommitted edits. Every op comes from mining a commit, ugh's own commits included,
-so the ideal only grows and `code(I)` is the ref's tree. A first contact mines the history oldest
-first in deadline-bounded chunks; the witness records how far it got.
-
-`commit` commits the working tree as git would and mines the commit like any other.
-`init(repo, horizon=...)` mines the horizon commit against the empty tree and never mines deeper
-history.
+`get` mines the commits new to the current ref since its witness, oldest first, stores the ops (an
+op mined twice merges its provenance), and returns the ref's ideal: every op mined from the ref's
+history, reduced to a valid ideal, plus the working tree's uncommitted edits. Every op comes from
+mining a commit, ugh's own included, so `code(I)` is the ref's tree. A first contact mines in
+deadline-bounded chunks and the witness records how far it got. `commit` commits the working tree
+and mines that commit like any other.
 """
 
 from __future__ import annotations
@@ -35,18 +31,14 @@ class DirtyWorkingTreeError(Exception):
     """A verb would overwrite or commit uncommitted working-tree changes."""
 
 
-_CHUNK_BUDGET_SECONDS = 10.0  # KTD-3: one _sync() chunk's wall-clock ceiling on mine() work.
+_CHUNK_BUDGET_SECONDS = 10.0  # one chunk's wall-clock ceiling, so an interactive read cannot hang
 
-# An in-progress git merge/cherry-pick/revert leaves conflict-marker bytes (`<<<<<<<`) in the tree
-# and a `*_HEAD` pseudo-ref set. Mining that tree would fold the markers into a permanent op, so the
-# dirty pass is skipped while one is live (`_sync`) and `save` refuses outright.
 _MERGE_PSEUDO_REFS = (("MERGE_HEAD", "merge"), ("CHERRY_PICK_HEAD", "cherry-pick"), ("REVERT_HEAD", "revert"))
 
 
 def merge_in_progress(gb: GitBinding) -> str | None:
-    """The name of the in-flight git operation (merge/cherry-pick/revert) whose `*_HEAD` pseudo-ref
-    is set, or None. The one guard against mining conflict-marker bytes into an op (F26), lifted here
-    from `save` so every mine-on-contact path (`revert`/`switch`/read views) shares it."""
+    """The in-flight git merge, cherry-pick or revert, or None. Its tree holds conflict markers,
+    so the dirty pass skips it and `save` refuses."""
     for pseudo, verb in _MERGE_PSEUDO_REFS:
         if gb.pseudo_ref_set(pseudo):
             return verb
@@ -79,11 +71,8 @@ def _save_ideal_table(repo: Path, table: dict[str, list[str]]) -> None:
 
 
 def _load_sync_cache(repo: Path) -> dict[str, dict]:
-    """The per-ref no-op gate: `{ref_key: {"fp": <fingerprint>, "ids": [sorted op_ids]}}`. `fp`
-    covers everything a re-mine depends on -- HEAD, the dirty working-tree source content, and the
-    persisted ideal entry -- so when it's unchanged since the last `_sync`, that sync would return
-    the same ideal and can be skipped entirely (the mine's O(files) dirty pass is the bulk of a
-    warm `get()`). Local, never travels; an absent file loads as `{}`."""
+    """The per-ref no-op gate, `{ref_key: {"fp", "ids", "store"}}`: when the fingerprint and the
+    store digest are unchanged since the last `_sync`, that sync would return the same ideal."""
     return state.load_json(repo, "sync_cache", default={})
 
 
@@ -92,12 +81,8 @@ def _save_sync_cache(repo: Path, table: dict[str, dict]) -> None:
 
 
 def _store_digest(ops) -> str:
-    """A digest of the op store's id set, cached beside the fingerprint below.
-
-    The gate needs this separately because the ideal is a function of the *whole store*, not only of
-    the ids it happened to cache, and `_sync_fingerprint` cannot see the store: it covers HEAD, the
-    dirty working tree, and the persisted ideal entry. Costs one pass over ids the callers have
-    already loaded."""
+    """A digest of the op store's id set. The ideal depends on the whole store, which the
+    fingerprint does not cover."""
     h = hashlib.sha256()
     for oid in sorted(op.id for op in ops):
         h.update(oid.encode())
@@ -105,31 +90,15 @@ def _store_digest(ops) -> str:
     return h.hexdigest()
 
 
-# Folded into the no-op gate's fingerprint, and bumped when a *writer* bug means entries already on
-# disk cannot be trusted -- the same "old entries compare unequal and take one extra sync, no
-# migration" trick the `store` key below uses. `MINER_VERSION` is the wrong lever for that: its
-# contract (R12) is mining/untangling/identity changes, and bumping it re-mines all history.
-# "2": entries written before F130 were keyed to a *second* reading of the working tree taken at write
-# time, so a repo wedged by that race (`status` reports drift, `save` says "nothing to save") would
-# otherwise stay wedged after upgrading -- the fix stops new poisoning, only eviction heals the old.
+# Bump to evict every cached gate entry without re-mining history (bumping MINER_VERSION re-mines).
 _FINGERPRINT_SCHEMA = "2"
 
 
 def _sync_fingerprint(gb: GitBinding, head: str, ideal_entry, digest: str | None = None,
                      ) -> str | None:
-    """The fingerprint the no-op gate compares. None (git couldn't compute the dirty digest) means
-    'don't gate -- mine'. `ideal_entry` is the persisted ideal id-list for this ref, so an explicit
-    ideal edit (revert/pin, U8) -- which moves neither HEAD nor the tree -- still changes the
-    fingerprint and forces a fresh sync. `MINER_VERSION` is folded in so upgrading ugh invalidates
-    the memo: a gate that keeps serving a prior version's mining result pins its bugs in place --
-    the stale-anchor wedge (2026-08-09) survived its own fix that way until the cache was
-    hand-cleared.
-
-    `digest`, if given, is a working-tree digest the caller already sampled, used instead of reading
-    the tree again. Writers must pass it (F130): the entry a sync stores is a claim about the tree it
-    *mined*, and re-reading the tree seconds later to key that claim attributes the result to
-    whatever happens to be on disk by then. Readers pass nothing -- they are asking about the tree
-    as it stands now, which is exactly what a fresh sample answers."""
+    """The no-op gate's key over HEAD, the dirty source, the miner version and the persisted ideal
+    entry, or None when git cannot digest the dirty tree (then mine). A writer passes the `digest`
+    it sampled before mining, so the entry describes the tree it mined, not the tree after."""
     if digest is None:
         digest = gb.dirty_source_digest()
     if digest is None:
@@ -154,16 +123,9 @@ def _ref_key(gb: GitBinding) -> str | None:
 
 
 # -- persisted derivation stamps (`.sgt/local/derive_cache.json`) ----------------------------
-# The ideal machinery's expensive derivations -- grounding (`is_valid_ideal`,
-# re-run by `Ideal.from_ops` on every construction) and provenance-set reduction
-# (`order.reduce_to_ideal`) -- are pure functions of the *content-addressed id set* they're
-# given. A CLI command is a
-# fresh process, so the kernel's in-process memos never carry across commands, and every command
-# re-paid the same O(ops) derivations for the same unchanged ideals. These stamps persist the
-# digest of each id set that passed validation (and each reduction's dropped-set) so the *next*
-# process skips the derivation. What is NOT stamped, and re-runs live on every call, is the
-# presence check (`ids <= present`): a `git switch` can remove op files while the digest is
-# unchanged, and presence is the one input that isn't fixed by the ids themselves.
+# Validation and reduction are pure functions of the content-addressed id set, so their results
+# persist across processes. Presence (`ids <= present`) is still checked live: a `git switch` can
+# remove op files without changing the ids.
 _DERIVE_STATE: dict[str, dict] = {}  # repo_key -> {"valid": [...], "valid_set": set, "reduce": {}}
 _DERIVE_VALID_MAX = 128
 _DERIVE_REDUCE_MAX = 8
@@ -196,9 +158,8 @@ def _derive_state(repo: Path) -> dict:
 
 
 def _derive_record(repo: Path, st: dict) -> None:
-    """Trim to the caps (drop oldest) and persist. Only called when an entry was just added, so a
-    steady-state read never writes. Concurrent writers last-win; losing an entry only means one
-    future re-derivation -- this is a cache, `.sgt/ops` stays the only authority."""
+    """Trim to the caps, oldest first, and persist. Concurrent writers last-win; a lost entry costs
+    one re-derivation."""
     st["valid"] = st["valid"][-_DERIVE_VALID_MAX:]
     st["valid_set"] = set(st["valid"])
     reduce_map = st["reduce"]
@@ -216,7 +177,7 @@ def _validated_from_ops(repo: Path, ids, ops: list) -> Ideal:
     digest = _ids_digest(ids)
     if digest in st["valid_set"] and ids <= {op.id for op in ops}:
         return Ideal(op_ids=ids)
-    ideal = Ideal.from_ops(ids, ops)  # raises on an invalid set, exactly as before
+    ideal = Ideal.from_ops(ids, ops)
     st["valid"].append(digest)
     st["valid_set"].add(digest)
     _derive_record(repo, st)
@@ -224,9 +185,8 @@ def _validated_from_ops(repo: Path, ids, ops: list) -> Ideal:
 
 
 def _reduced_ideal_ids(repo: Path, raw_ids, ops: list) -> frozenset[str]:
-    """`order.reduce_to_ideal` with the persisted dropped-set stamp:
-    the reduction of a given present-op id set is fixed by content addressing, so only the
-    (usually tiny) dropped set is stored and the result is `present-filtered ids - dropped`."""
+    """`order.reduce_to_ideal` with a persisted stamp of whichever side, kept or dropped, is
+    smaller."""
     present = {op.id for op in ops}
     key_set = frozenset(raw_ids) & present
     st = _derive_state(repo)
@@ -237,8 +197,6 @@ def _reduced_ideal_ids(repo: Path, raw_ids, ops: list) -> frozenset[str]:
         return ids if entry.get("side") == "kept" else key_set - ids
     result = order.reduce_to_ideal(key_set, ops)
     dropped = key_set - result
-    # Persist whichever side is smaller -- a mostly-linear ref drops a handful, while the
-    # maximal reduction over a store with unfinished backfills can drop most of it.
     st["reduce"][digest] = (
         {"side": "kept", "ids": sorted(result)} if len(result) < len(dropped)
         else {"side": "dropped", "ids": sorted(dropped)}
@@ -253,35 +211,20 @@ def _committed_ids_by_provenance(gb: GitBinding, store: Store) -> set[str]:
     return set(_reduced_ideal_ids(store.repo, _provenance_ids_at(gb, "HEAD", all_ops), all_ops))
 
 
-def ops_with_frontier_images(
-    repo: str | Path, ideal: Ideal, for_paths: "set[str] | None" = None
-) -> list:
-    """The footprint-only index ops, with the *frontier producers'* full ops (images included)
-    substituted in -- exactly the set `fold.code` reads images from when materializing `ideal`.
-    `Store.all_ops()` decodes every op's images (85%+ of the store's bytes) yet a materializing
-    read only ever opens the images of the ops at the ideal's frontier, so a view that needs
-    `code(ideal, ops)` plus footprint-level queries can use this and skip the full decode. Do
-    NOT hand the result to anything folding a *different* ideal -- its frontier ops would carry
-    `images={}` (empty, not absent) and fold to zero-length content.
-
-    `for_paths`, if given, narrows the fetch to the producers of symbols on those paths -- for a
-    caller that will fold only those paths (`fold.code(..., only_paths=for_paths)`, the backstop
-    reads). Folding any other path from such a list would hit the imageless ops, so the two
-    restrictions must always travel together."""
+def ops_with_frontier_images(repo: str | Path, ideal: Ideal) -> list:
+    """The footprint-only index ops with the full ops (images included) of `ideal`'s frontier
+    producers substituted in: enough for `fold.code(ideal, ...)` without decoding every image. Do
+    not fold a different ideal from the result; its frontier ops would have empty images."""
     from concurrent.futures import ThreadPoolExecutor
 
     repo = Path(repo)
     ops = opindex.index_ops(repo)
     tip = ideal.frontier(ops)
-    if for_paths is not None:
-        tip = {sym: oid for sym, oid in tip.items() if sym.split("::", 1)[0] in for_paths}
     need = sorted(set(tip.values()))
     store = Store(repo)
 
     def _safe_get(oid: str):
-        # Mirror `Store.all_ops`' R1 skip: a truncated/corrupt frontier op file degrades to a
-        # read-side skip rather than propagating out of `pool.map` and erroring a read view
-        # (`status_view`, `fsck_tree`, `_reproducible_content`) -- ops must never error.
+        # A corrupt op file is skipped, as `Store.all_ops` does; a read view must not error.
         try:
             return store.get(oid)
         except (json.JSONDecodeError, KeyError, TypeError, ValueError):
@@ -290,17 +233,14 @@ def ops_with_frontier_images(
     with ThreadPoolExecutor(max_workers=8) as pool:
         full = list(pool.map(_safe_get, need))
     by_id = {op.id: op for op in full if op is not None}
-    # A frontier producer whose full op couldn't be read (corrupt, or vanished after the index
-    # snapshot) is dropped entirely -- exactly as `all_ops` would exclude it -- not kept
-    # footprint-only: its `images={}` would fold to silent zero-length content for the symbols it
-    # produces, which is a worse failure than the op's absence.
+    # Drop an unreadable producer rather than keep it imageless, which would fold to empty files.
     unreadable = set(need) - set(by_id)
     return [by_id.get(op.id, op) for op in ops if op.id not in unreadable]
 
 
 def current_ideal(repo: str | Path) -> Ideal:
-    """The current ref's committed ideal as last mined -- a pure read: the cached table entry, or
-    the provenance scan when the ref has none yet."""
+    """The current ref's committed ideal as last mined, without mining: the cached table entry, or
+    the provenance scan when the ref has none."""
     repo = Path(repo)
     gb = GitBinding(repo)
     store = Store(repo)
@@ -311,8 +251,8 @@ def current_ideal(repo: str | Path) -> Ideal:
 
 
 def ideal_for_ref(repo: str | Path, ref: str = "HEAD") -> Ideal:
-    """The ideal `ref`'s history implies, a pure read: this miner's ops whose provenance is in
-    `ref`'s ancestry, grounded. A ref whose history was never mined yields less; `get()` it first."""
+    """The ideal `ref`'s history implies, without mining: this miner's ops whose provenance is in
+    `ref`'s ancestry, reduced. A ref never mined yields less; `get()` it first."""
     repo = Path(repo)
     all_ops = opindex.index_ops(repo)
     included = _provenance_ids_at(GitBinding(repo), ref, all_ops)
@@ -327,9 +267,8 @@ def _provenance_ids_at(gb: GitBinding, ref: str, all_ops: list) -> set[str]:
 
 
 def _sync(repo: Path, treat_as_root: str | None = None, *, unbounded: bool = False) -> Ideal:
-    """`unbounded=True` drops the per-chunk wall-clock ceiling, so this call mines whatever is
-    left rather than whatever fits in `_CHUNK_BUDGET_SECONDS`. For callers whose contract is
-    completeness (`resync`) rather than interactivity -- see the note on the deadline sites."""
+    """Mine what is new to the current ref and return its ideal. `treat_as_root` mines from that
+    commit against the empty tree; `unbounded` mines to the end instead of one chunk."""
     gb = GitBinding(repo)
     store = Store(repo)
     store.init()
@@ -366,13 +305,11 @@ def _sync(repo: Path, treat_as_root: str | None = None, *, unbounded: bool = Fal
                     and cached.get("store") == _store_digest(index_ops)):
                 return _validated_from_ops(repo, cached_ids, index_ops)
 
-    # The tree digest is sampled before mining and keys this sync's cache entry (F130), so an edit
-    # landing mid-sync misses the gate next time. An in-progress git merge is never mined (F26).
+    # Sampled before mining, so an edit landing mid-sync misses the gate next time.
     dirty_digest_at_mine = gb.dirty_source_digest()
     include_dirty = gb.has_dirty_source() and merge_in_progress(gb) is None
 
-    # History is mined oldest first, so every commit's parent is mined before it: versions are read
-    # from history. A deadline cuts one call to a chunk; the witness records how far it got.
+    # Oldest first, so every commit's parent is mined before it.
     deadline = None if unbounded or treat_as_root is not None else time.monotonic() + _CHUNK_BUDGET_SECONDS
     if treat_as_root is not None:
         rows = gb.history(gb.parent_of(treat_as_root), head)
@@ -386,8 +323,7 @@ def _sync(repo: Path, treat_as_root: str | None = None, *, unbounded: bool = Fal
                                deadline=deadline, history_override=rows)
     new_witness = head if not rows or last_sha == rows[-1][0] else last_sha or prev_head
 
-    # Staleness is judged before our own `store.add` writes, which always make the snapshot look
-    # stale; stale here means someone else wrote ops the snapshot missed.
+    # Judged before our own writes, which always look stale; stale here means another writer.
     index_stale_before_add = opindex.is_stale(repo)
     new_committed_ids: set[str] = set()
     pending_ids: set[str] = set()
@@ -402,8 +338,6 @@ def _sync(repo: Path, treat_as_root: str | None = None, *, unbounded: bool = Fal
         else:
             opindex.apply_delta(repo, stored_ops)
 
-    # The ideal is every op mined from this ref's history, reduced to a valid ideal; the table is
-    # its cache.
     all_ops = opindex.index_ops(repo)
     ideal_table = _load_ideal_table(repo)
     already_seeded = key in ideal_table
@@ -424,7 +358,7 @@ def _sync(repo: Path, treat_as_root: str | None = None, *, unbounded: bool = Fal
                 table[key] = new_witness
                 _save_witnesses(repo, table)
 
-    # The in-memory ideal carries the dirty overlay on top of the durable committed set.
+    # The returned ideal adds the uncommitted edits to the committed set.
     result = Ideal.from_ops(order.reduce_to_ideal(committed_ids | pending_ids, all_ops), all_ops)
 
     if treat_as_root is None and new_witness == head:
@@ -437,32 +371,25 @@ def _sync(repo: Path, treat_as_root: str | None = None, *, unbounded: bool = Fal
 
 
 def get(repo: str | Path, *, unbounded: bool = False) -> Ideal:
-    """Mine what's new to the current ref, persist it, and return the ref's current ideal.
-
-    Deadline-chunked by default so an interactive read cannot hang; `unbounded=True` mines to
-    the end instead, for a caller that needs the record complete rather than prompt."""
+    """Mine what is new to the current ref and return its ideal. One deadline-bounded chunk by
+    default; `unbounded=True` mines to the end."""
     return _sync(Path(repo), unbounded=unbounded)
 
 
-def sync_status(repo: str | Path, ref: str | None = None) -> dict:
-    """A pure read (no mining): `complete` is True iff `ref`'s witness (the last commit mined for
-    it) is its head. `ref=None` reports on the currently checked-out ref."""
+def sync_status(repo: str | Path) -> dict:
+    """`{"complete": ...}`: whether the checked-out ref's witness (the last commit mined for it)
+    is its head, without mining."""
     repo = Path(repo)
     gb = GitBinding(repo)
-    if ref is None:
-        key = _ref_key(gb) or gb.head()
-        head = gb.head()
-    else:
-        head = gb.rev_parse(ref)
-        key = ref if ref.startswith("refs/") else f"refs/heads/{ref}"
+    key = _ref_key(gb) or gb.head()
+    head = gb.head()
     witness = _load_witnesses(repo).get(key)
     return {"complete": witness is not None and witness == head}
 
 
 def resync(repo: str | Path) -> dict:
-    """`ugh check --repair`: drop the current ref's witness, ideal and sync cache and re-derive them
-    from what HEAD reaches now, unbounded (the caller treats the return as "the record matches
-    HEAD"). The op store is never touched."""
+    """`ugh check --repair`: drop the current ref's witness, ideal and gate entries and mine them
+    again from HEAD, unbounded. The op store is not touched."""
     repo = Path(repo)
     gb = GitBinding(repo)
     key = _ref_key(gb) or gb.head()
@@ -486,8 +413,8 @@ def resync(repo: str | Path) -> dict:
 
 
 def init(repo: str | Path, horizon: str | None = None) -> Ideal:
-    """`ugh init`: bind (or reuse) the repo and the kernel store, then mine -- from genesis, or
-    from `horizon` onward if given (R10)."""
+    """`ugh init`: bind the repo and the store, then mine from the root, or from `horizon` onward
+    with deeper history never mined."""
     repo = Path(repo)
     gb = GitBinding(repo)
     gb.init()

@@ -1,38 +1,11 @@
-"""Three-tier file boundary (plan U27, D4): every path mined resolves to a tier -- `entity`
-(parsed via tree-sitter grammar), `opaque` (whole-file pseudo-symbol -- today's implicit
-fallback for anything with no grammar), or `ignored` (excluded from mining entirely).
-Configuration layers, highest wins: `.sgt/tiers.json` (committed, explicit per-pattern
-overrides -- the escape hatch) > two default exclusions (any dot-path, and anything the repo's
-`.gitignore` matches) > `.sgtignore` (gitignore-style, ignored-tier only, committed) > the
-built-in default (`entity` if a tree-sitter grammar exists for the path, else `opaque`).
+"""Every mined path resolves to a tier: `entity` (split by its tree-sitter grammar), `opaque` (one
+whole-file symbol) or `ignored` (not mined). Highest first: the patterns in `.sgt/tiers.json`;
+then dot-paths and paths the root `.gitignore` matches, even tracked ones; then `.sgtignore`; then
+`entity` when a grammar exists for the path, else `opaque`.
 
-Default exclusions (D4, launch): ugh is a lens over *source you author*, not the tooling and
-config that surrounds it. Two classes are `ignored` by default, so they never mint one-file
-"features":
-  1. Dot-paths -- any path with a leading-dot component (`.gitignore`, `.github/…`, `.vscode/…`,
-     `.claude/…`, `.mcp.json`, and ugh's own `.sgt/…`). Pure function of the path.
-  2. `.gitignore` matches -- honored even for *tracked* files. Files committed before a
-     `.gitignore` rule existed (a `.claude/` or `build/` checked in, then later ignored) still
-     reach the miner as tracked blobs; git wouldn't re-ignore them, but ugh should. This goes
-     deliberately beyond git's tracked-file semantics.
-Either default is overridable: an `entity`/`opaque` pattern in `.sgt/tiers.json` (checked first)
-force-includes a path ugh would otherwise skip.
-
-LAW-0 (mining determinism): resolving a path's tier reads `.sgt/tiers.json`/`.sgtignore`/
-`.gitignore` as committed *in the mined commit's own tree* (`load_tiers_at`), never the current
-working tree -- so tier assignment stays a pure function of the commit, and two replicas with
-divergent working configs re-mine identical history to byte-identical ops. (A non-dot file that
-gains a `.gitignore` rule mid-history is therefore mined before that commit and closed after --
-the standard tier-transition path in `mine.py`; dot-paths are commit-independent.)
-
-`.sgtignore` remains for the reverse case: paths that are *not* dot-paths and *not* gitignored,
-but which ugh still shouldn't mine (a vendored subtree, generated artifacts checked in on
-purpose). Its matcher is the same compact gitignore engine below.
-
-Pattern matching is a compact gitignore engine (`_gitignore_ignored`): comments, `!` negation
-(ordered -- last match wins), leading-`/` and embedded-`/` anchoring, trailing-`/` dir-only,
-and `*`/`?`/`**` globs with `*` not crossing `/`. Only the repo-root `.gitignore` is read (no
-per-directory nested ignore files) -- that keeps a tier a pure function of one blob per tree.
+Mining reads these files as committed in the mined commit's own tree (`load_tiers_at`), so a tier
+is a function of the commit and every clone mines the same ops. Patterns follow a compact subset
+of gitignore (`_gitignore_ignored`), and only the root `.gitignore` is read.
 """
 
 from __future__ import annotations
@@ -46,10 +19,7 @@ from pathlib import Path
 from ugh import state
 from ugh.entities.extract import _language_for
 
-# Basenames that are near-universally generated/vendored lockfiles -- collapsed under the
-# `derived` flag (S4) so review surfaces can fold them away, regardless of tier. Domain
-# knowledge (package-manager conventions), not measured against this repo's own history -- no
-# locally sampled repo happened to have one tracked.
+# Lockfile basenames, flagged `derived` whatever their tier.
 DERIVED_BASENAMES = frozenset({
     "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "poetry.lock", "Pipfile.lock",
     "Cargo.lock", "Gemfile.lock", "composer.lock", "uv.lock", "go.sum",
@@ -61,11 +31,9 @@ _EMPTY_OVERRIDES: dict[str, tuple[str, ...]] = {"entity": (), "opaque": (), "ign
 
 @dataclass(frozen=True)
 class TierConfig:
-    """One commit's (or the working tree's) effective tier configuration. `overrides` maps each
-    tier name to its ordered pattern tuple (`.sgt/tiers.json`); conflict priority when a path
-    matches more than one tier's patterns is `ignored` > `opaque` > `entity` -- the most
-    exclusionary match wins. `sgtignore` is `.sgtignore`'s patterns; `gitignore` is the repo-root
-    `.gitignore`'s patterns -- both ignored-tier only, both run through the same engine."""
+    """One commit's (or the working tree's) tier configuration. `overrides` maps each tier to its
+    patterns from `.sgt/tiers.json`, the most exclusionary match winning; `sgtignore` and
+    `gitignore` are patterns for `ignored` only."""
 
     overrides: dict[str, tuple[str, ...]] = field(default_factory=lambda: dict(_EMPTY_OVERRIDES))
     sgtignore: tuple[str, ...] = ()
@@ -76,8 +44,7 @@ EMPTY = TierConfig()
 
 
 def _has_dot_component(path: str) -> bool:
-    """A path with any leading-dot component -- `.gitignore`, `.github/x`, `sub/.cache/y`. The
-    first default exclusion; a pure function of the path (no config), so it's commit-independent."""
+    """A path with any leading-dot component: `.gitignore`, `.github/x`, `sub/.cache/y`."""
     return any(part.startswith(".") for part in path.split("/") if part)
 
 
@@ -144,25 +111,18 @@ def _parse_tiers_json(body) -> dict[str, tuple[str, ...]]:
 
 
 def load_tiers_at(gb, sha: str) -> TierConfig:
-    """`TierConfig` as committed at `sha` -- the mining-time read (LAW-0): never the working
-    tree, so tier assignment stays a pure function of the mined commit. `sha` may be any
-    tree-ish `GitBinding` accepts, including the dirty-pass synthetic snapshot tree."""
+    """`TierConfig` as committed at `sha`, any tree-ish `GitBinding` accepts (the dirty pass
+    passes a snapshot tree). Mining reads this, never the working tree."""
     return load_tiers_at_many(gb, [sha])[sha]
 
 
-# Memo: a tree-ish's committed tier config is immutable (a commit sha or a content-addressed
-# snapshot tree fixes `.sgt/tiers.json` + `.sgtignore` forever), yet the rebirth lookback and
-# per-commit mining re-read the same pair for the same trees hundreds of times per history
-# chunk. Bounded LRU keyed by (repo, tree-ish).
+# (repo, tree-ish) -> its config, which a tree-ish fixes forever.
 _TIERS_AT_CACHE: "OrderedDict[tuple, TierConfig]" = OrderedDict()
 _TIERS_AT_CACHE_MAX = 4096
 
 
 def load_tiers_at_many(gb, shas: list[str]) -> dict[str, TierConfig]:
-    """`load_tiers_at` for several `sha`s in one batched blob read instead of two per `sha`
-    (`.sgt/tiers.json` + `.sgtignore`) -- mining a commit needs this for both the commit and
-    its parent. Memoized per (repo, tree-ish): a committed config never changes for a given
-    tree, so only never-seen trees pay the blob read at all."""
+    """`load_tiers_at` for several `sha`s in one batched blob read, memoized per tree-ish."""
     repo_key = gb.repo_key()
     out: dict[str, TierConfig] = {}
     misses: list[str] = []
@@ -195,7 +155,7 @@ def load_tiers_at_many(gb, shas: list[str]) -> dict[str, TierConfig]:
 
 
 def load_tiers(repo) -> TierConfig:
-    """`TierConfig` from the working tree -- for CLI reporting/mutation, never mining."""
+    """`TierConfig` from the working tree, for reads of it; mining uses `load_tiers_at`."""
     tiers_body = state.load_json(repo, "tiers", default=None)
     overrides = _parse_tiers_json(tiers_body) if tiers_body is not None else dict(_EMPTY_OVERRIDES)
     ignore_path = Path(repo) / ".sgtignore"
@@ -206,12 +166,8 @@ def load_tiers(repo) -> TierConfig:
 
 
 def resolve_tier(path: str, cfg: TierConfig) -> str:
-    """The tier `path` resolves to under `cfg`: explicit override (`ignored` > `opaque` >
-    `entity` conflict priority) > the two default exclusions (dot-path, `.gitignore` match) >
-    `.sgtignore` (ignored only) > the built-in default -- `entity` if a tree-sitter grammar
-    exists for `path`, else `opaque`. The overrides are checked first, so an `entity`/`opaque`
-    pattern in `.sgt/tiers.json` force-includes a dot-path or gitignored path ugh would otherwise
-    skip. An `entity` override for a path with no grammar silently degrades to `opaque`."""
+    """The tier `path` resolves to under `cfg`, in the order the module docstring gives. An
+    `entity` override for a path with no grammar is `opaque`."""
     if _gitignore_ignored(path, cfg.overrides.get("ignored", ())):
         return "ignored"
     if _gitignore_ignored(path, cfg.overrides.get("opaque", ())):
@@ -226,7 +182,5 @@ def resolve_tier(path: str, cfg: TierConfig) -> str:
 
 
 def is_derived(path: str) -> bool:
-    """S4: derived (generated/vendored-lockfile) files carry a flag review surfaces collapse --
-    independent of tier, so a lockfile stays `opaque` (or `ignored`, if the user chooses) but is
-    still marked for UI folding."""
+    """Whether `path` is a lockfile, flagged so a view can fold it away whatever its tier."""
     return path.rsplit("/", 1)[-1] in DERIVED_BASENAMES

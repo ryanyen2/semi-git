@@ -1,9 +1,5 @@
-"""Files `ugh init --agent` copies into a repo to wire up a coding agent.
-
-`skills/` holds the Claude Code skills (`ugh-agent`, `ugh-plan`, `ugh-workflow`). They live here,
-inside the package, rather than in this repo's own `.claude/skills/` so that a plain
-`uv tool install ugh` can install them into any repo without a checkout present. This repo
-gets its own copy the same way everyone else does, by running `ugh init --agent`.
+"""Files `ugh init --agent` copies into a repo to wire up a coding agent. `skills/` holds the Claude
+Code skills, inside the package so an installed `ugh` can copy them without a checkout.
 """
 
 from __future__ import annotations

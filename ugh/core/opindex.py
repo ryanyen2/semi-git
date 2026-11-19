@@ -1,14 +1,6 @@
-"""A footprint-only sidecar index over the op store (plan: optimize the ugh agent surface for
-context + retrieval speed, Part A). `Store.all_ops()` hex-decodes every op's `images` blob --
-85%+ of the store's on-disk bytes -- yet no read-only projection view (`ugh.api`, `ugh.core.lens`'s
-pure ideal-derivations) ever looks at `op.images`; only `fold.py`/`migrate.py`/
-`repair/context.py` and `compute_id` do. This module maintains `.sgt/local/op_index.json`, a
-snapshot of every stored op's payload minus `images`, so those callers can read footprint/
-requires/provenance/intent/kind without paying the decode.
-
-Never pass an `index_ops` result to `fold.code` or anything that materializes bytes -- its
-`images` are `{}` (empty), not absent, so a fold would silently produce zero-length content for
-every symbol instead of raising on a missing dict entry.
+"""The op index: `.sgt/local/op_index.json`, every stored op's payload without its images, so
+reads that need footprints, requires and provenance skip decoding the images that make up most of
+the store. Never fold an `index_ops` result: its images are `{}` and fold to empty files.
 """
 
 from __future__ import annotations
@@ -46,13 +38,8 @@ def _snapshot_body(ops: list[Op], built_mtime_ns: int) -> dict:
 
 
 def rebuild(repo: str | Path, store: Store | None = None) -> None:
-    """Full backfill: iterate `Store.all_ops()` once (paying the images decode exactly once) and
-    write the snapshot. `built_mtime_ns` is captured *before* that read starts, not after --
-    `Store.all_ops()` takes real wall-clock time on a large store (seconds, not instant) and holds
-    no lock, so a concurrent `Store.add`/`attribute` landing mid-read would otherwise timestamp
-    *before* a post-read capture and never be flagged stale. Stamping first guarantees any write
-    happening during or after the read has `mtime >= built_mtime_ns`, so it's correctly seen as
-    newer."""
+    """Write the index from `Store.all_ops()`. The build time is taken before the read, which holds
+    no lock, so a write landing during it is newer than the build and marks the index stale."""
     repo = Path(repo)
     begin_ts = time.time_ns()
     store = store or Store(repo)
@@ -60,10 +47,8 @@ def rebuild(repo: str | Path, store: Store | None = None) -> None:
 
 
 def apply_delta(repo: str | Path, stored_ops: list[Op]) -> None:
-    """Incremental upsert of `stored_ops` (the in-memory ops `_sync` just mined/merged -- no
-    re-read of the store) into the existing snapshot. Rebuilds from scratch if the snapshot is
-    absent. `built_mtime_ns` is captured at entry, before touching the existing snapshot, for the
-    same reason `rebuild` captures it before its read (see there)."""
+    """Upsert `stored_ops` into the index without reading the store, or rebuild it when absent. The
+    build time is taken first, as in `rebuild`."""
     repo = Path(repo)
     if not stored_ops:
         return
@@ -84,20 +69,10 @@ def apply_delta(repo: str | Path, stored_ops: list[Op]) -> None:
     })
 
 
-# `_ops_dir_stat` memo keyed by the ops directory's mtime, with git's racy-clean rule deciding
-# whether the memoized scan can be trusted without re-listing the directory: every store write
-# lands via rename into the directory (`_write_atomic`'s `os.replace`, git's object/checkout
-# writes), and any rename/add/delete stamps the dir with the writer's wall-clock mtime. So a scan
-# that *started* comfortably after the dir's mtime (`_RACY_SLACK_NS`, covering coarse filesystem
-# timestamp granularity) cannot be invalidated silently: a write landing after the scan started
-# must stamp the dir strictly newer than the memoized mtime, and the single dir stat below sees
-# it; a write stamped within the memoized tick necessarily landed before the scan started (its
-# wall clock is inside the slack window) and was therefore in the listing the scan read. Within
-# the slack window -- a scan racing the write burst it follows -- the memo is not trusted and the
-# listing re-runs, with the dirent count as the same-tick guard exactly as before. The memoized
-# entry also persists to `.sgt/local/ops_dirstat.json` once it earns trust, so the *next process*
-# (each CLI command is one) skips its first full listing too. LRU: hits re-order, overflow evicts
-# the oldest.
+# `_ops_dir_stat` memo, trusted by git's racy-clean rule: every write renames into the ops
+# directory and stamps its mtime, so a scan that started `_RACY_SLACK_NS` after that mtime stays
+# current while the mtime is unchanged. A trusted scan also persists to `ops_dirstat` for the next
+# process.
 _DIR_STAT_MEMO: "OrderedDict[str, tuple[int, int, tuple[int, int]]]" = OrderedDict()
 _RACY_SLACK_NS = 2_000_000_000  # > any real filesystem timestamp granularity (HFS+: 1s)
 
@@ -125,8 +100,7 @@ def _ops_dir_stat(repo: Path) -> tuple[int, int]:
             result = (rec["count"], rec["max_mtime_ns"])
             _DIR_STAT_MEMO[key] = (dir_mtime, rec["scan_start_ns"], result)
             return result
-    # One scan feeds both the cheap count (the same-tick guard) and the per-entry stat (the
-    # expensive part the count-match reuse skips inside the slack window).
+    # within the slack window an unchanged count reuses the memoized max mtime
     entries = [e for e in os.scandir(ops_dir) if e.is_file()]
     count = len(entries)
     if memo is not None and memo[0] == dir_mtime and memo[2][0] == count:
@@ -140,7 +114,7 @@ def _ops_dir_stat(repo: Path) -> tuple[int, int]:
     _DIR_STAT_MEMO[key] = (dir_mtime, scan_start, (count, max_mtime))
     if len(_DIR_STAT_MEMO) > 8:
         _DIR_STAT_MEMO.popitem(last=False)
-    if scan_start - dir_mtime > _RACY_SLACK_NS:  # only a trustworthy scan is worth persisting
+    if scan_start - dir_mtime > _RACY_SLACK_NS:
         state.save_json(repo, "ops_dirstat", {
             "dir_mtime_ns": dir_mtime, "count": count,
             "max_mtime_ns": max_mtime, "scan_start_ns": scan_start,
@@ -149,14 +123,8 @@ def _ops_dir_stat(repo: Path) -> tuple[int, int]:
 
 
 def _stale_against_dir(repo: Path, miner_version, op_count, built_mtime_ns: int) -> bool:
-    """Whether a snapshot with this `(miner_version, op_count, built_mtime_ns)` is stale against
-    `.sgt/ops/`, checked stat-only (no op file reads). The single staleness rule, shared by
-    `_is_stale_body` (which reads the fields off a loaded snapshot body) and `index_ops`' memo
-    fast path (which reads them off the memoized parse), so the two cannot silently diverge if the
-    rule ever gains a signal: a miner-version mismatch (catches `migrate ops-v3`), a dirent-count
-    mismatch (catches sync ingest / prune), or a build timestamp at or before the newest op file's
-    mtime (catches `Store.add`'s provenance-merge and `Store.attribute` rewrites, which bump mtime
-    without changing count)."""
+    """The one staleness rule, stat-only: another miner version, another op count, or a build time
+    at or before the newest op file's mtime (a provenance merge rewrites a file in place)."""
     if miner_version != MINER_VERSION:
         return True
     count, max_mtime = _ops_dir_stat(repo)
@@ -166,9 +134,7 @@ def _stale_against_dir(repo: Path, miner_version, op_count, built_mtime_ns: int)
 
 
 def _is_stale_body(repo: Path, body: dict | None) -> bool:
-    """`is_stale`'s check against an already-loaded (or absent) snapshot body -- factored out so
-    `index_ops` can check staleness against the body it already read instead of reloading the
-    file a second time."""
+    """`is_stale` for a snapshot body already loaded (or None)."""
     if body is None:
         return True
     return _stale_against_dir(
@@ -177,23 +143,13 @@ def _is_stale_body(repo: Path, body: dict | None) -> bool:
 
 
 def is_stale(repo: str | Path) -> bool:
-    """True if the snapshot is missing or out of date with `.sgt/ops/`, checked stat-only (no op
-    file reads): absent, a miner-version mismatch (catches `migrate ops-v3`), a dirent-count
-    mismatch (catches sync ingest / prune), or a build timestamp at or before the newest op file's
-    mtime (catches `Store.add`'s provenance-merge and `Store.attribute` rewrites, which bump mtime
-    without changing count)."""
+    """True if the index is missing or out of date with `.sgt/ops/` (`_stale_against_dir`)."""
     repo = Path(repo)
     return _is_stale_body(repo, state.load_json(repo, "op_index", default=None))
 
 
-# Process-level memo of the parsed snapshot, keyed by the snapshot file's identity
-# (mtime_ns, size) plus the metadata staleness gates on (miner_version, built_mtime_ns,
-# op_count). One CLI command reads the index through several projection views (map/grid/segments/
-# history all call `index_ops`), and each call re-parsed the same multi-megabyte JSON into the
-# same Op list. Staleness against `.sgt/ops/` is still re-verified stat-only on every call
-# through the *shared* `_stale_against_dir` predicate `_is_stale_body` uses, so a concurrent
-# writer is caught exactly as before -- the memo skips the parse, never the check. LRU: hits
-# re-order, overflow evicts the oldest.
+# The parsed index per repo, keyed by the file's (mtime_ns, size). A hit skips the parse, never
+# the staleness check.
 _PARSED_MEMO: "OrderedDict[str, tuple[tuple[int, int], object, int, object, list[Op]]]" = OrderedDict()
 
 
@@ -206,11 +162,8 @@ def _snapshot_stat(repo: Path) -> tuple[int, int] | None:
 
 
 def index_ops(repo: str | Path) -> list[Op]:
-    """Every stored op, `Op`s reconstructed with `images={}` -- the fast accessor for read-only
-    projection views. Self-heals: rebuilds first if the snapshot is stale. Never pass the result
-    to `fold.code`. Loads the snapshot at most twice (once to check staleness, once more only if
-    a rebuild just ran) rather than `is_stale` + a separate reload on every call; an unchanged
-    snapshot file (same mtime/size) skips even that load and returns the memoized parse."""
+    """Every stored op with `images={}`, rebuilding the index first when it is stale. Never pass
+    the result to `fold.code`."""
     repo = Path(repo)
     repo_key = os.path.realpath(repo)  # "." renames per chdir; the memo must not follow it
     memo = _PARSED_MEMO.get(repo_key)
@@ -223,8 +176,8 @@ def index_ops(repo: str | Path) -> list[Op]:
     body = state.load_json(repo, "op_index", default=None)
     if _is_stale_body(repo, body):
         rebuild(repo)
-        snap_stat = _snapshot_stat(repo)  # stat before the reload (mirrors the top-of-function
-        body = state.load_json(repo, "op_index", default=None)  # order): a stale key just misses
+        snap_stat = _snapshot_stat(repo)  # stat before the reload, so a stale key only misses
+        body = state.load_json(repo, "op_index", default=None)
     if body is None:
         return []
     ops = [_to_op(entry) for entry in body["ops"]]
@@ -233,7 +186,7 @@ def index_ops(repo: str | Path) -> list[Op]:
             snap_stat, body.get("miner_version"), body.get("built_mtime_ns", -1),
             body.get("op_count", -1), ops,
         )
-        if len(_PARSED_MEMO) > 8:  # a CLI process touches one repo; long-lived hosts a few
+        if len(_PARSED_MEMO) > 8:
             _PARSED_MEMO.popitem(last=False)
     return list(ops)
 

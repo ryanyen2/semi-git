@@ -1,6 +1,5 @@
-"""Read/inspection verbs: `ugh log` lists the saves with their names, `ugh status` prints what needs
-attention, and `check` verifies op-store integrity and, with `--repair`, re-derives the current ref
-after a git history rewrite. Every verb mines the working tree on contact before reading (R9)."""
+"""`log` lists the saves with their names, `status` prints what needs attention, and `check`
+verifies the op store and, with `--repair`, mines the current ref again after a history rewrite."""
 
 from __future__ import annotations
 
@@ -65,8 +64,8 @@ def _cmd_check(args) -> int:
 
 
 def _fsck(repo: str, as_json: bool = False) -> int:
-    """Verify the kernel op store's integrity (plan U3): every ``.sgt/ops/<id>`` file's content
-    hashes to its own filename. Repair is `--repair`, not this read's job."""
+    """`ugh check`: every ``.sgt/ops/<id>`` file hashes to its name, and the local tables name ops
+    and commits that exist."""
     from ugh.core.store import fsck as run_fsck
 
     report = run_fsck(repo)
@@ -111,7 +110,7 @@ def _fsck_tree(repo: str, as_json: bool = False) -> int:
     `drift` fails; unmanaged and unseeded paths are reported for context."""
     from ugh.core.lens import fsck_tree, get
 
-    get(repo)  # mine-on-contact so the comparison reflects current reality (R9)
+    get(repo)
     result = fsck_tree(repo)
     if as_json:
         return _emit_json(result)
@@ -140,9 +139,7 @@ def _resync(repo: str, as_json: bool = False) -> int:
         return 0
     delta = res["after"] - res["before"]
     change = "unchanged" if delta == 0 else (f"+{delta}" if delta > 0 else str(delta))
-    # A partial re-derivation is not a successful one. `resync` mines unbounded now, so this
-    # should not fire -- and if it ever does, the record is short and the next verb may refuse
-    # over files nobody touched, which is unreadable unless this line said so first.
+    # mining is unbounded, so this should not fire; a short record would confuse every later verb
     if not res.get("complete", True):
         print(f"⚠ resync {res['key']} — the walk did not reach the end of history; the record is "
               f"incomplete ({res['after']} op(s)). Re-run it.")

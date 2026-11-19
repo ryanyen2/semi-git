@@ -31,9 +31,6 @@ class EntityEdge:
     dst: str  # entity id
     type: str  # "contains" | "uses"
 
-    def to_dict(self) -> dict:
-        return {"src": self.src, "dst": self.dst, "type": self.type}
-
 
 @dataclass
 class EntityGraph:
@@ -297,16 +294,11 @@ def _walk(path: str, src: bytes, ents: list[Entity]) -> dict:
     }
 
 
-# Content-addressed facts cache, the `_walk` counterpart to `extract.py`'s `_EXTRACT_CACHE` (same
-# rationale, same bound): `build_entity_graph` runs once per mined commit over the *whole* tree,
-# but consecutive commits share almost every file's bytes. The cached value is read-only.
+# (language, source digest) -> `_walk` facts, read-only: consecutive commits share most files.
 _REFS_CACHE: "OrderedDict[tuple, dict]" = OrderedDict()
 _REFS_CACHE_MAX = 4096
 
-# Disk backing for the facts cache (`.sgt/local/refs_cache.json`), the exact counterpart of
-# `extract.py`'s persisted extraction cache (see the note there): the same attach/flush contract,
-# driven by the same owning verbs, persisting the entries the most recent `build_entity_graph`
-# pass touched.
+# Persisted to `.sgt/local/refs_cache.json` with the same attach/flush contract as `extract.py`'s.
 _REFS_PERSIST_REPO = None
 _REFS_SEEN: set[tuple] = set()  # keys touched since the last flush
 _REFS_MISSES = 0
@@ -338,7 +330,7 @@ def attach_persistent_refs_cache(repo) -> None:
         try:
             key = (lang, bytes.fromhex(hexdigest))
         except ValueError:
-            continue  # one bad entry degrades to a re-parse, never an error
+            continue  # a bad entry is parsed again
         if isinstance(facts, dict):
             _REFS_CACHE.setdefault(key, facts)
     while len(_REFS_CACHE) > _REFS_CACHE_MAX:
@@ -428,6 +420,7 @@ def _module_file(importer: str, spec: str, files, roots: list[str]) -> str | Non
 
 # -- assembly ----------------------------------------------------------------
 def build_entity_graph(codebase: dict[str, str]) -> EntityGraph:
+    """The entities of `codebase` (`{path: source}`) with their contains and uses edges."""
     entities = extract_codebase(codebase)
     by_id = {e.id: e for e in entities}
     ents_by_file: dict[str, list[Entity]] = {}

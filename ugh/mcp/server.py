@@ -7,7 +7,7 @@ with ``handle_request`` a pure function that is unit-tested without a process.
 Tools: ``ugh_init``, ``ugh_log``, ``ugh_check``, ``ugh_save`` (with ``as``), ``ugh_name``,
 ``ugh_revert``, ``ugh_restore``, ``ugh_show``, ``ugh_find``, ``ugh_plan``. Every operand is an
 address (`ugh.address`) and every step in a result carries its address. Every tool mines the working
-tree on contact first (R9), so it reflects whatever the agent just edited.
+tree on contact first, so it sees whatever the agent just edited.
 """
 
 from __future__ import annotations
@@ -22,9 +22,8 @@ SERVER_INFO = {"name": "ugh", "version": "0.1.0"}
 
 
 # ---------------------------------------------------------------------------
-# Tool handlers — each takes (repo_path, arguments) and returns a JSON-able dict.
-# The read tools delegate to the canonical JSON projection in ``ugh.api`` so the MCP surface
-# and the CLI's ``--json`` mode return the identical schema and never drift.
+# Tool handlers: each takes (repo_path, arguments) and returns a JSON-able dict. The read tools
+# return ``ugh.api``'s views, the same schema as the CLI's ``--json``.
 # ---------------------------------------------------------------------------
 def tool_init(repo_path: str, args: dict) -> dict:
     """Bind git + the kernel op store to a repo and mine its existing history. Idempotent."""
@@ -76,13 +75,9 @@ def _verb(repo_path: str, verb: str, ref: str, emit: bool, whole: bool = False) 
 
 def _carry_prompt(repo_path: str, args: dict, *, key: str | None = None,
                   key_kind: str = "chat") -> None:
-    """Carry the user's ask into the turn store (capture weave P1, design doc 2026-09-01 §4a):
-    an MCP client has no `UserPromptSubmit` hook, so the relaying agent is the only channel the
-    driving prompt can arrive through. Recorded as channel `"agent"` -- an agent's claim of the
-    user's verbatim words, trust-tiered below a harness capture (`hook`) and above a paraphrase
-    (`note`) -- keyed by the agent's chat session id, or by whatever key the caller supplies when
-    no session id was passed. Content-addressing dedupes the hook-captured twin. Guarded like
-    every capture side-effect: never fail the verb it rides on."""
+    """Record the user's ask the agent relayed as a turn on channel `"agent"`, keyed by the chat
+    session id, else by `key`. An MCP client has no `UserPromptSubmit` hook, so this is the only
+    way the ask arrives. Never fails the tool it rides on."""
     try:
         prompt = (args.get("prompt") or "").strip()
         chat = (args.get("claude_session_id") or "").strip()
@@ -106,7 +101,7 @@ def tool_revert(repo_path: str, args: dict) -> dict:
         return {"error": "missing 'ref'"}
     if not args.get("emit"):  # a preview is a read; only the applying call carries intent
         _carry_prompt(repo_path, args)
-    get(repo_path)  # mine-on-contact before planning/applying the edit (R9)
+    get(repo_path)
     return _verb(repo_path, "revert", ref, bool(args.get("emit", False)), bool(args.get("whole", False)))
 
 
@@ -324,20 +319,14 @@ TOOLS: dict[str, tuple[str, dict, Any]] = {
 }
 
 
-# Tools that change the ideal, mapped to the verb the editor previews. An agent
-# working through these is the one case where something moves in the graph with
-# nobody watching a terminal, so the editor is told before it happens.
+# Tools that change the code, mapped to the verb the editor previews: an agent's take-out happens
+# with nobody watching a terminal, so the editor is told first.
 _ANNOUNCED = {"ugh_revert": "revert", "ugh_restore": "restore"}
 
 
 def _announce(repo_path: str, name: str, arguments: dict, state: str) -> None:
-    """Leave a note saying what is about to happen, for any editor watching.
-
-    Best-effort and silent: a tool call must never fail because a UI hint could
-    not be written. The file is a single small JSON object rather than an
-    append-only log because only the current action is ever interesting -- an
-    editor that missed one has missed it.
-    """
+    """Write `.sgt/local/pending_action.json`, the action about to happen, for a watching editor.
+    Only the current action matters, so it is one object, not a log. Never fails the tool call."""
     verb = _ANNOUNCED.get(name)
     if verb is None:
         return

@@ -1,6 +1,5 @@
-"""Bootstrap verbs: `init` binds git + the kernel op store (mining existing history, or -- with
-`--horizon` -- only from a given commit on, R10), and `mcp` runs the stdio MCP server for
-coding-agent clients."""
+"""`init` binds the repo and mines its history (from `--horizon` on, if given) and installs the
+capture hooks; `mcp` runs the stdio MCP server."""
 
 from __future__ import annotations
 
@@ -34,13 +33,9 @@ def _cmd_init(args) -> int:
     activity_hooked = _install_activity_hook(args.path)
     if hooked or activity_hooked:
         GitBinding(args.path).exclude_locally(".claude/settings.local.json")
-    # Opt-in, because plenty of people run `ugh` from the CLI alone and have no use for
-    # an agent config appearing in their repo. `--agent` is what a coding-agent or VS Code user
-    # runs instead.
+    # opt-in: a CLI-only user has no use for agent config in their repo
     agent = _install_agent(args.path) if args.agent else None
-    # Never let a repo commit as the placeholder without the user hearing about it: every commit
-    # ugh makes here would be authored "ugh <ugh@ugh.local>" in git log, blame, and on
-    # the remote, and the only moment that is cheap to fix is right now.
+    # warn now: every commit ugh makes would otherwise be authored "ugh <ugh@ugh.local>"
     placeholder = GitBinding(args.path).placeholder_identity()
     if args.as_json:
         return _emit_json({"ok": True, "path": args.path, "horizon": args.horizon,
@@ -71,14 +66,11 @@ def _cmd_init(args) -> int:
 
 
 def _install_prompt_hook(path: str) -> bool:
-    """Zero-burden capture setup (intent-ledger M1): merge a `UserPromptSubmit` hook into the
-    repo's `.claude/settings.local.json` (per-user, so `init` excludes it locally -- never the
-    shared settings) so every prompt typed to Claude Code is recorded verbatim as a local
-    turn via `ugh intent record`. The command is written with the running `ugh`'s absolute path:
-    hooks execute in whatever shell environment Claude Code has, and a bare `ugh` silently does
-    nothing when the venv isn't on that shell's PATH (testbed 2026-07-31). Idempotent; preserves
-    existing settings; any failure means "no hook", never a failed init. Returns whether the hook
-    is (now) installed."""
+    """Merge a `UserPromptSubmit` hook running `ugh intent record` into the repo's per-user
+    `.claude/settings.local.json`, so each prompt typed to Claude Code becomes a local turn. The
+    command uses the running `ugh`'s absolute path, since the hook's shell may not have the venv on
+    its PATH. Idempotent; a failure means no hook, never a failed init. Returns whether it is
+    installed."""
     import json
     from pathlib import Path
 
@@ -102,13 +94,8 @@ def _install_prompt_hook(path: str) -> bool:
 
 
 def _install_activity_hook(path: str) -> bool:
-    """The live-activity companion to `_install_prompt_hook`: merge a `PostToolUse` hook into the
-    repo's `.claude/settings.local.json` so every Edit/Write/MultiEdit Claude Code runs is appended
-    to the local activity feed via `ugh intent activity` -- the "what the agent is doing right now"
-    signal. `matcher` is a pipe-separated regex over tool names (Claude Code's
-    PostToolUse schema), the one structural difference from the prompt hook (which is not tool-
-    scoped). Same absolute-path resolution, idempotency (substring check on `intent activity`), and
-    best-effort contract; preserves any existing hooks. Returns whether the hook is (now) installed."""
+    """Like `_install_prompt_hook`, for a `PostToolUse` hook running `ugh intent activity` on every
+    Edit, Write and MultiEdit. Returns whether it is installed."""
     import json
     from pathlib import Path
 
@@ -133,9 +120,8 @@ def _install_activity_hook(path: str) -> bool:
 
 
 def _install_agent(path: str) -> dict | None:
-    """Write the agent + editor config (`ugh init --agent`). Best-effort, like the hooks: a repo
-    that cannot be wired up should still end up initialized, with the failure visible rather than
-    fatal."""
+    """Write the agent and editor config (`ugh init --agent`), or return None when it cannot be
+    written; the repo stays initialized either way."""
     from ugh.agent_assets.install import install_agent
 
     try:
@@ -147,5 +133,5 @@ def _install_agent(path: str) -> dict | None:
 def _cmd_mcp(args) -> int:
     from ugh.mcp import serve
 
-    serve(args.path)  # stdio MCP server for coding-agent clients
+    serve(args.path)
     return 0

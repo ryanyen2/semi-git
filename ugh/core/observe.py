@@ -1,16 +1,10 @@
-"""What the project's check observed on one commit's tree: a save's second footprint
-(docs/design/2026-11-16-removal-sets.md §1).
+"""What the project's check observed on one commit's tree: a save's second footprint.
 
-An observation is the check's exit code, its output (stdout then stderr) and, when it ran Python 3.12
-or later, the lines of the repository's files it executed. The check runs with a directory first on
-`PYTHONPATH` whose `sitecustomize.py` every Python process the check starts loads: it records
-`sys.monitoring` line events in files under the repository root, writes them at exit to its own file
-in the directory `UGH_OBSERVE_LINES` names, then loads the project's own `sitecustomize`, if any. A
-line that runs when a function or class is defined (its decorators and signature, a class body
-outside its methods) does not count as running it. A check that ran no such Python records no lines.
-
-One local file per commit, `.sgt/local/observations/<sha>.json`; it does not travel. Recording takes
-as long as the check, and in return the observation comes from the real environment.
+An observation is the check's exit code, its output (stdout then stderr) and, under Python 3.12 or
+later, the lines of the repository's files it executed. A `sitecustomize.py` put first on
+`PYTHONPATH` records `sys.monitoring` line events in every Python process the check starts, then
+loads the project's own. A line that runs only to define a function or class does not count. One
+local file per commit, `.sgt/local/observations/<sha>.json`.
 """
 
 from __future__ import annotations

@@ -16,7 +16,7 @@ A merge settles every symbol on which its parents differ: unless it took one sid
 over sides that left the symbol as the merge base had it, the symbol gets a new version at the
 merge and each parent's version is joined into it by an op of the merge. A symbol's chain may
 therefore branch where two lines of history changed it, and always joins again at the merge that
-brought them together, so a ref's history has one tip per symbol and never a fork.
+brought them together, so a ref's history has one tip per symbol.
 """
 
 from __future__ import annotations
@@ -57,10 +57,8 @@ _PARSE_ERR_CACHE_MAX = 4096
 
 
 def _parse_has_error(path: str, source: bytes) -> bool:
-    """True if tree-sitter could not cleanly parse `source` as `path`'s language -- the signal
-    that separates "legitimately no entities" (e.g. a pure-constants module) from "unparseable
-    mid-edit", which must degrade to a whole-file symbol rather than report zero entities (R7).
-    Content-addressed cache: a pure function of (language, bytes)."""
+    """True if tree-sitter could not cleanly parse `source` as `path`'s language. It tells a file
+    with no entities (a module of constants) from one unparseable mid-edit, which is mined whole."""
     lang = _language_for(path)
     if lang is None:
         return False
@@ -78,34 +76,23 @@ def _parse_has_error(path: str, source: bytes) -> bool:
 
 
 def _is_unparseable_whole_file(path: str, raw: bytes | None) -> bool:
-    """True iff `path`'s bytes `raw` are entity-tier but do not parse cleanly, so mining
-    represents them as a single whole-file symbol (the degrade at `_mine_one`) rather than
-    entities. An empty-but-parseable file (zero entities, no error) is NOT whole-file -- it is
-    entity-rep carrying only residue -- so this must AND both conditions, matching the degrade site."""
+    """True iff `raw` is non-empty, has no entities and does not parse cleanly, so mining
+    represents it as one whole-file symbol. A parseable file with no entities is residue only."""
     return bool(raw) and not extract_file(path, raw) and _parse_has_error(path, raw)
 
 
 def _entity_bytes(source: bytes, entity: Entity) -> bytes:
-    """Verbatim bytes for one entity's span -- byte-native (`start_byte`/`end_byte`), so CRLF
-    line endings, non-UTF-8 content, and control characters inside a body all survive exactly.
-    No decode, no line join -- a decode-then-reslice pipeline is exactly what can silently
-    truncate or corrupt bytes a line-based differ can't see (kernel byte-fidelity audit,
-    2026-07-08)."""
+    """One entity's span, sliced by byte offsets without decoding, so every byte survives."""
     return source[entity.start_byte : entity.end_byte]
 
 
-_RESIDUE_HEAD = "\x00HEAD\x00"  # sentinel: the gap before a file's first top-level entity (or
-# the whole file, if it has none) -- mirrors _ANCHOR_FIRST's role for entity ordering.
+_RESIDUE_HEAD = "\x00HEAD\x00"  # the gap before a file's first top-level entity, or the whole file
 
 
 def _residue_segments(raw: bytes, entities: list[Entity]) -> dict[str, bytes]:
-    """Positional residue (ADR S3.5, byte-fidelity fold): the file's raw bytes *not* covered by
-    any top-level entity, split into one segment per gap -- keyed by the name of the top-level
-    entity immediately preceding it, or `_RESIDUE_HEAD` for the gap before the first entity (or
-    a file with none at all). Concatenating every top-level entity in document order with its
-    trailing gap reconstructs the file exactly: a verbatim byte partition, no synthesized
-    separator anywhere. Only top-level (container-less) entities anchor a gap -- a nested
-    entity's bytes are already inside its container's own span."""
+    """The file's bytes outside its top-level entities, one segment per gap, keyed by the entity
+    before it (`_RESIDUE_HEAD` for the first). The entities in order, each followed by its gap,
+    are the file exactly."""
     top = sorted((e for e in entities if e.container is None), key=lambda e: e.start_byte)
     if not top:
         return {_RESIDUE_HEAD: raw}
@@ -116,13 +103,12 @@ def _residue_segments(raw: bytes, entities: list[Entity]) -> dict[str, bytes]:
     return segments
 
 
-_ANCHOR_FIRST = "\x00FIRST\x00"  # sentinel: this entity was first in its file's top-level order
+_ANCHOR_FIRST = "\x00FIRST\x00"  # this entity is first in its file's top-level order
 
 
 def _top_level_anchor_facts(entities: list[Entity]) -> dict[str, str | None]:
-    """For each top-level entity (by current start_line order), the name of the top-level
-    entity immediately before it, or None if it's first. Only top-level entities (no
-    container) get an anchor; a nested method's position follows its class, not tracked here."""
+    """For each top-level entity, the top-level entity just before it, or None for the first. A
+    nested member's position follows its container."""
     top_level = sorted((e for e in entities if e.container is None), key=lambda e: e.start_line)
     facts: dict[str, str | None] = {}
     prev: str | None = None

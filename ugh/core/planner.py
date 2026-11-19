@@ -1,4 +1,4 @@
-"""Taking steps out of the code and bringing them back (docs/design/2026-11-16-removal-sets.md §6).
+"""Taking steps out of the code and bringing them back.
 
 A step is one save's change to one unit. A file's units are its head (everything before the first
 definition), each top-level definition with the blank lines before it and the commented lines after
@@ -41,6 +41,10 @@ class Step:
 
 @dataclass
 class Plan:
+    """What a take-out or bring-back would do, or did: the steps undone, the holds with their
+    reasons, the removal set, the files before and after, the check's verdict and which steps the
+    check ran."""
+
     verb: str
     target: str
     ok: bool = True

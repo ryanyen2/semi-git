@@ -1,27 +1,9 @@
-"""Stint derivation (capture weave P2, docs/design/2026-09-01-capture-weave.md §4c): the
-deterministic prompt→op join, computed from capture manifests -- never stored, never guessed.
-
-A **stint** is one turn's grounded slice of a save: the turn, the activity events its session
-produced while that turn was the session's latest word, and the ops of the closing save whose
-footprint files those events touched. Op membership is a pure function of captured evidence: no
-LLM, no similarity score. What the evidence cannot ground falls to the residual, so a hand-typed
-edit is never attributed to the nearest prompt just because it was nearby in time.
-
-The rules, each carrying one of the design's cases:
-
-- An event's owning turn is its session's latest turn at or before the event -- looked up across
-  *all* manifests, so a turn whose session kept working silently through later saves keeps owning
-  that work (case 4, one prompt / many saves) without ever being re-harvested.
-- Ownership is per-session, never global time (case 6, two agent windows interleaved).
-- A turn that owns no events is not a stint (case 5, the question that produced no code); a stint
-  whose files ground no ops claims nothing (case 9, the abandoned prompt -- claiming requires
-  fresh events in the window being derived, so an old ask never reopens onto later work).
-- An op claimed by several stints keeps every claim (case 8, the correction chain).
-
-`asks_for_ops` is the read side, for an op set: `ugh show` asks it for the steps of each save an
-address touches. `ask_record` is the shape it returns -- an excerpt (`ugh.intent.gist`) plus whose
-words they were and how much of the selection they account for -- and `dominant_ask` picks the one
-a single line quotes.
+"""Stints: which captured ask grounds which ops of a save, derived from the capture manifests and
+never stored. A stint is one turn, the activity events its session produced while that turn was the
+session's latest, and the ops of the save whose files those events touched. Ownership is per
+session, looked up across every manifest, so one prompt can ground several saves. A turn with no
+events is no stint, and an op no event grounds is residual, never given to the nearest prompt.
+`asks_for_ops` is the read side, and `dominant_ask` picks the ask a single line quotes.
 """
 
 from __future__ import annotations
@@ -31,8 +13,8 @@ from pathlib import Path
 
 
 def _rel_file(file: str | None, root: Path) -> str | None:
-    """An event's file as a repo-relative path, `None` for a file outside the repo (pre-guard
-    captures) or no file at all. A relative path is taken as already repo-relative."""
+    """An event's file as a repo-relative path, or `None` for no file or one outside the repo. A
+    relative path is taken as already repo-relative."""
     if not file:
         return None
     p = Path(file)
@@ -51,20 +33,15 @@ def _op_files(op_entry: dict) -> frozenset[str]:
 
 
 def derive_stints(manifests: dict[str, dict], sha: str, root: str | Path) -> dict:
-    """The stints of the save `sha` closed, derived from the manifest store alone.
-
-    Returns `{"stints": [...], "residual_op_ids": [...]}` where each stint is
-    `{"turn": <turn record>, "events": [...], "files": [...], "op_ids": [...]}`, stints ordered by
-    their turn's time. Empty when `sha` has no manifest (a pre-weave save) -- honest absence, the
-    caller renders nothing rather than a guess."""
+    """The stints of the save `sha`, from the manifests alone: `{"stints": [{"turn", "events",
+    "files", "op_ids"}], "residual_op_ids"}`, stints in turn order. Empty when `sha` has no
+    manifest."""
     target = manifests.get(sha)
     if target is None:
         return {"stints": [], "residual_op_ids": []}
     root = Path(root)
 
-    # Every chat turn up to this window's close, per session, time-ordered: the ownership index.
-    # Manifest copies only (self-sufficiency: this must survive a future turn-store GC); the
-    # target's own turns are naturally included since its end <= its end.
+    # every chat turn up to this window's close, per session, in time order
     by_session: dict[str, list[dict]] = {}
     for m in manifests.values():
         if m["end"] > target["end"]:
@@ -102,13 +79,10 @@ def derive_stints(manifests: dict[str, dict], sha: str, root: str | Path) -> dic
 
 
 def whole_save_turns(repo: str | Path, target: dict | None, sha: str) -> list[dict]:
-    """The turns that are explicit claims about the WHOLE save `sha`, as opposed to ambient
-    conversation. Two sources: a sha-keyed turn (`-m` via the CLI, or an MCP-carried prompt with
-    no chat key -- read from the turn store, not the manifest, because that carry lands *after*
-    the window closed and tool_save re-reflects to pick it up), and an `agent`-channel chat turn
-    inside the save's window (an MCP client without hooks produces no events, so its deliberate
-    carry must not count for *less* than passing no session id at all would). A hook turn is
-    never here -- ambient words need event grounding (case 5)."""
+    """The turns that claim the whole save `sha`: a sha-keyed turn (`save -m`, or a prompt an MCP
+    save carried without a chat id), read from the turn store since it can land after the window
+    closed, and an `agent`-channel chat turn in the window, since an MCP client without hooks has no
+    events to ground it. A hook turn needs events, so it is never here."""
     from ugh.intent.turns import turns_for
 
     wide = list(turns_for(repo, sha, key_kind="sha"))
@@ -117,9 +91,7 @@ def whole_save_turns(repo: str | Path, target: dict | None, sha: str) -> list[di
     return wide
 
 
-# Where a captured ask came from, in words: the capture channel's trust tier (`ugh.intent.turns`).
-# A harness capture is the developer's own typing, an agent carry is an agent's claim about it, a
-# note is a paraphrase.
+# Where a captured ask came from, by channel (`ugh.intent.turns`), in words.
 _SOURCE = {
     "hook": "you, in a Claude Code chat",
     "agent": "you, relayed by the assistant",
@@ -130,17 +102,8 @@ _SOURCE = {
 
 
 def resumable(session_id: str | None) -> bool:
-    """Whether `claude --resume <session_id>` would actually reopen anything.
-
-    Every surface that shows a captured ask offers the way back into the conversation it came from,
-    and until this check the offer was made blind -- for a session whose transcript had been
-    compacted away, for one recorded on another machine, and (the case that forced this) for the
-    replayed history a study bundle ships, where the command is printed beside real words and fails
-    when anybody types it. A command that cannot work is worse than no command: it teaches the
-    reader that the lines here are decoration.
-
-    The words themselves are the payload and are always there; this only gates the accelerator.
-    Reads `CLAUDE_CONFIG_DIR` so an isolated Claude Code install answers for its own transcripts."""
+    """Whether `claude --resume <session_id>` would reopen anything: the session has a transcript
+    under `CLAUDE_CONFIG_DIR` (default `~/.claude`). A surface offers the command only then."""
     if not session_id:
         return False
     import os
@@ -148,20 +111,15 @@ def resumable(session_id: str | None) -> bool:
     root = Path(os.environ.get("CLAUDE_CONFIG_DIR") or (Path.home() / ".claude")) / "projects"
     try:
         return any(root.glob(f"*/{session_id}.jsonl"))
-    except OSError:  # an unreadable or absent config dir is simply "cannot resume"
+    except OSError:
         return False
 
 
 def ask_record(text: str, *, channel: str, actor: str = "human", ts: float | None = None,
-               session: str | None = None, claimed: int = 0, scope: str = "stint",
-               full: bool = True) -> dict:
-    """One captured ask, in the shape every surface renders.
-
-    `gist` is the excerpt to put on a line, `trimmed` whether the prompt held more, `chars` how
-    much more (a reader deciding whether to open it wants the size, not a guess), and `source` who
-    typed it in words. `full=False` drops the verbatim `text` -- what a list of forty chapters
-    sends, where forty prompts would be most of the payload and none of them would be read until
-    one is opened."""
+               session: str | None = None, claimed: int = 0, scope: str = "stint") -> dict:
+    """One captured ask as every surface renders it: `gist` the excerpt for one line, `trimmed`
+    whether the prompt held more, `chars` its length, `source` who typed it, in words, and `text`
+    the prompt verbatim."""
     from ugh.intent.gist import CARD_WIDTH, ask_parts
 
     parts = ask_parts(text, CARD_WIDTH)
@@ -169,23 +127,15 @@ def ask_record(text: str, *, channel: str, actor: str = "human", ts: float | Non
            "channel": channel, "source": _SOURCE.get(channel, channel), "actor": actor,
            "ts": ts, "claude_session_id": session, "resumable": resumable(session),
            "claimed": claimed, "scope": scope}
-    if full:
-        out["text"] = text
+    out["text"] = text
     return out
 
 
 def asks_for_ops(repo: str | Path, op_ids, shas) -> list[dict]:
-    """Every captured ask that grounds any of `op_ids`, in conversation order.
-
-    The one join behind every surface that shows captured words for a selection of steps.
-
-    Each ask carries `claimed` (how many of `op_ids` its stint grounds) so a caller can pick the
-    dominant one for a one-line render, `scope` ("stint" for grounded ambient words, "save" for an
-    explicit claim about the whole save), and both the excerpt and the verbatim text -- the excerpt
-    for a row, the text for the reader who opens it. `shas` are the saves that witness these ops
-    (chronological); a sha with no manifest contributes only its committed sidecar digest, which is
-    how pre-weave history stays honestly empty rather than guessed at.
-    """
+    """Every captured ask that grounds any of `op_ids` in the saves `shas`, in conversation order.
+    Each carries `claimed`, how many of `op_ids` it grounds, and `scope`: "stint" for words grounded
+    by events, "save" for a claim about the whole save. A save with no manifest contributes only its
+    recorded prompt."""
     from ugh.intent.manifest import load_manifests
     from ugh.intent.prompts import prompt_for
 
@@ -196,8 +146,7 @@ def asks_for_ops(repo: str | Path, op_ids, shas) -> list[dict]:
 
     def add(key: str, *, text: str, channel: str, actor: str, ts: float | None,
             session: str | None, claimed: int, scope: str) -> None:
-        """One ask per turn, its claim summed across the saves it reached (case 4: one prompt, many
-        saves). A key seen twice is the same words, not two asks."""
+        """One ask per turn, its claim summed across the saves it reached."""
         if not (text or "").strip():
             return
         if key in by_key:
@@ -222,8 +171,7 @@ def asks_for_ops(repo: str | Path, op_ids, shas) -> list[dict]:
                 session=t["key"] if t["key_kind"] == "chat" else None,
                 claimed=len(wanted & save_ops), scope="save")
         digest = prompt_for(repo, sha)
-        # A digest that repeats an ask already listed is the same words twice, not a second ask:
-        # the sidecar is written FROM a turn, so the two agree by construction more often than not.
+        # a recorded prompt that repeats a listed ask is the same words, not a second ask
         if digest and digest not in {a["text"] for a in by_key.values()}:
             add(f"sidecar:{sha}", text=digest, channel="sidecar", actor="human", ts=None,
                 session=None, claimed=len(wanted & save_ops), scope="save")
@@ -232,9 +180,8 @@ def asks_for_ops(repo: str | Path, op_ids, shas) -> list[dict]:
 
 
 def dominant_ask(asks: list[dict]) -> dict | None:
-    """The one ask to put on a single line: the one grounding the most of the selection, latest
-    first on a tie -- a correction is the standing word, the same rule `_dominant_turn` uses for a
-    chapter's name. `None` for a selection nothing captured claims."""
+    """The ask to put on a single line: the one grounding the most of the selection, the latest on
+    a tie, since a correction is the standing word. `None` when there is none."""
     if not asks:
         return None
     return max(asks, key=lambda a: (a["claimed"], a["ts"] or 0.0))

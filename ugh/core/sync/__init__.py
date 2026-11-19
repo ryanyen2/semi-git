@@ -54,6 +54,8 @@ class Choice:
 
 @dataclass(frozen=True)
 class SyncReport:
+    """What one sync did, the units it left as choices, and the names both sides relabelled."""
+
     remote: str
     branch: str
     message: str  # "already up to date" | "fast-forwarded" | "merged"

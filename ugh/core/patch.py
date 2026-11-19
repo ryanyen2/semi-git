@@ -1,21 +1,7 @@
-"""Three-way line merge: how the planner (`ugh.core.planner`) un-applies a step.
-
-`merge3(base, ours, theirs)` applies the change `base -> theirs` onto `ours`, where all three
-are byte images of one symbol:
-
-    base   = the symbol right AFTER the op being subtracted (the removed contribution's result)
-    ours   = the symbol's live tip today (later work included)
-    theirs = the symbol right BEFORE the op being subtracted
-
-The classic diff3 shape, used here in exactly one direction: subtracting a mid-chain op's
-contribution from the tip without touching the later work layered above it. A region changed
-only in `theirs` is the removed op's own contribution -- inverted. A region changed only in
-`ours` is later work -- kept verbatim. A region changed in both is a genuine overlap the fold
-must never guess about -- reported as a conflict, and the caller keeps `ours` unchanged and
-surfaces the symbol for a human edit (never a silent demolition, never a refusal deadlock).
-
-Deterministic (SequenceMatcher with autojunk off), pure, and line-based: symbol images are
-source text, and line granularity is what a developer can review in a preview.
+"""Three-way line merge. `merge3(base, ours, theirs)` applies the change `base -> theirs` onto
+`ours`, all three byte images of one unit. The planner un-applies a step with `base` the unit after
+it and `theirs` the unit before it; sync merges a unit both sides changed. A region both sides
+changed is a conflict, and the result is then `ours` unchanged. Deterministic and line-based.
 """
 
 from __future__ import annotations
@@ -28,7 +14,7 @@ from dataclasses import dataclass
 class Merge3Result:
     merged: bytes  # `ours` verbatim when `conflicted`
     conflicted: bool
-    changed: bool  # False when the subtraction is a no-op (nothing of base->theirs applies)
+    changed: bool  # False when nothing of base -> theirs applies
 
 
 def _lines(data: bytes) -> list[bytes]:
@@ -60,10 +46,12 @@ def _overlaps(a: tuple[int, int], b: tuple[int, int]) -> bool:
 
 
 def merge3(base: bytes, ours: bytes, theirs: bytes) -> Merge3Result:
+    """`ours` with the change `base -> theirs` applied; `ours` unchanged and `conflicted` when both
+    sides changed one region."""
     if base == theirs:
         return Merge3Result(merged=ours, conflicted=False, changed=False)
     if base == ours:
-        # No later work on this symbol: the subtraction is exactly `theirs`.
+        # ours never moved from base, so the result is theirs
         return Merge3Result(merged=theirs, conflicted=False, changed=True)
 
     base_lines = _lines(base)

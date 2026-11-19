@@ -9,11 +9,8 @@ from ._common import _emit_json, _fail_json
 
 
 def _dirty_refusal(exc, as_json: bool) -> int:
-    """Render a `DirtyWorkingTreeError` from a materializing verb as a clean refusal, not a raw
-    traceback with a half-written `.sgt` (F4/F5). The guard's message already names the offending
-    files; append the *actual*, executable remedy -- absorb the edits with `ugh save`, or commit /
-    `git restore` them, then re-run. (`ugh` never overwrites uncommitted work; there is no `ugh put`
-    verb, and `log --refresh` does not clear a dirty tree.)"""
+    """A `DirtyWorkingTreeError` as a refusal that names the remedy: save, commit or restore the
+    files, then re-run."""
     msg = str(exc)
     if "overwrite uncommitted changes" in msg:
         msg += (" -- record them with `ugh save`, or commit / `git restore` those files, then "
@@ -23,8 +20,7 @@ def _dirty_refusal(exc, as_json: bool) -> int:
 
 def register(subs, parent) -> None:
     r = subs.add_parser("revert", parents=[parent])
-    # `--emit` (machine dry-run: VS Code/MCP) and `--yes` (non-tty apply) are hidden: on a tty the
-    # preview and its `[y/N]` are the default confirm step.
+    # hidden: `--emit` is the machine dry-run, `--yes` applies without the tty's [y/N]
     r.add_argument("--emit", action="store_true", help=argparse.SUPPRESS)
     r.add_argument("--yes", action="store_true", help=argparse.SUPPRESS)
     r.add_argument("--whole", action="store_true",
@@ -67,7 +63,7 @@ def _kernel_edit_verb(
     target = " ".join(ref_tokens)
     from ._common import busy
     with busy(f"working out what `{target}` covers…"):
-        get(repo)  # mine-on-contact before planning/applying the edit (R9)
+        get(repo)
     try:
         steps = resolve(repo, target)
     except AddressError as e:

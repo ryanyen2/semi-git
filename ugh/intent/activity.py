@@ -1,16 +1,7 @@
-"""Local agent-action feed: a bounded ring buffer of the last few tool events a `PostToolUse` hook
-appends (one row per Edit/Write).
-
-Deliberately unlike `ugh.intent.turns`: a *turn* is a keep-everything, content-addressed record of
-human utterance (idempotent re-capture is the point). An activity *event* is the opposite -- two
-edits to the same file are two genuine events, so there is no dedupe; and the feed is transient
-telemetry, not evidence reflection reasons over, so it is trimmed to a fixed cap (`_MAX`) rather than
-kept forever. The store is a plain ordered list, newest last.
-
-Shares `turns.capture_lock` (the dedicated `.sgt/local/intent.lock`, not the store flock -- flock is
-non-reentrant and this may run inside a verb that holds the store lock) so a burst of hook fires
-from two Claude Code windows can't lose an event to a load/append/save race. Reads are lock-free.
-"""
+"""Agent activity: the last `_MAX` tool events a `PostToolUse` hook appended (one per Edit or
+Write), oldest first. Unlike turns, two edits to one file are two events, so nothing is deduped.
+Writes hold `turns.capture_lock`, not the store lock, because a hook can fire inside a verb that
+already holds the store lock."""
 
 from __future__ import annotations
 
@@ -21,21 +12,19 @@ from ugh import state
 from ugh.intent.turns import capture_lock
 
 _ARTIFACT = "intent_activity"
-_MAX = 200  # ring-buffer cap: keep the most recent this-many events, drop the oldest
+_MAX = 200
 
 
 def load_activity(repo: str | Path) -> list[dict]:
-    """The whole feed as an ordered list (oldest first) -- empty if nothing captured yet."""
+    """Every recorded event, oldest first."""
     events = state.load_json(repo, _ARTIFACT, default=[])
     return events if isinstance(events, list) else []
 
 
 def record_activity(repo: str | Path, *, tool: str, file: str | None = None,
                     session_id: str | None = None, ts: float | None = None) -> dict | None:
-    """Append one tool event to the feed and trim to the last `_MAX`. `seq` is a monotonic counter
-    (one past the current last event's, so it survives trimming) that gives events a stable order
-    even within the same `ts`. Returns the appended record, or `None` for an empty `tool` (a no-op).
-    """
+    """Append one tool event, trim to the last `_MAX`, and return it (`None` for an empty `tool`).
+    `seq` continues from the last event, so order survives trimming and equal timestamps."""
     if not tool:
         return None
     with capture_lock(repo):

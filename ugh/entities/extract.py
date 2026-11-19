@@ -1,45 +1,10 @@
-"""Tree-sitter entity extraction for Python and TypeScript (deterministic, offline).
-
-An *entity* is an addressable code unit — a function, class, method, top-level binding or
-import — named by a scope-qualified path (``Bar.m``) that mirrors the effect-model address space in
-``ugh/effects/model.py:units`` so a Python entity lines up with the effect targets and
-blame spans that paint it. Extraction is pure over the source **bytes**: same bytes in, same
-entity list out (no LLM, no network, no dict-order nondeterminism — tree-sitter's walk is
-deterministic and we never sort by anything but document order).
-
-Coverage is whole-repo by design (origin R1/R5): files in an unsupported language, and
-syntactically-broken files, yield zero entities rather than raising — the map shows them as
-honest unattributed structure, it does not choke on them.
-
-Byte-native by construction (kernel byte-fidelity audit, 2026-07-08): tree-sitter parses raw
-bytes directly and every entity's span is addressed by ``start_byte``/``end_byte`` sliced
-straight from those bytes — never through a decoded ``str`` round-trip. This is what makes
-extraction correct on CRLF line endings, non-UTF-8 files, and any byte sequence a decode-then-
-reslice pipeline would corrupt or truncate (form feeds, line separators inside string literals).
-``start_line``/``end_line`` survive only as a display/blame convenience derived from
-tree-sitter's own row count; they are never used to slice content.
-
-An entity's span always includes any decorator/``export`` wrapper that grammatically belongs to
-it (Python's ``decorated_definition`` parent; TypeScript's ``export_statement`` parent, or a
-class-body member's preceding ``decorator`` sibling) — see ``_entity_span``. Without this, a
-decorator attaches to whichever entity happens to render first after materialization, which is
-silent semantic corruption, not a formatting nit.
-
-A file can legitimately produce more than one raw hit for the same scope-qualified name
-(``@overload`` stubs, a ``@property`` getter next to its ``@x.setter``, a ``@x.register``
-overload). ``_coalesce`` folds a contiguous group (no differently-named entity's span between
-its members) into one ``Entity`` whose span is the verbatim union of its members — one logical
-symbol, matching how the language treats them. A non-contiguous collision (rare: a conditional
-redefinition) falls back to a stable document-order ordinal suffix so two different id's worth
-of code is never silently collapsed into one.
-
-Each entity also carries two body hashes, computed here because this is the one place with the
-parsed AST in hand (ported from ``references/sem`` — reference only, not a dependency):
-``content_hash`` over the exact span bytes answers "did the text change at all", and
-``structural_hash`` over normalized AST tokens (comments stripped, whitespace trimmed) answers
-"is this the same code modulo formatting/comments" — the signal a rename/move detector needs
-and one a line-range differ cannot produce. They are in-memory identity signals, kept out of
-``to_dict`` so the read projection stays lean.
+"""Tree-sitter entity extraction for Python and TypeScript (JavaScript through the TypeScript
+grammars). An entity is a function, class, method, top-level binding or import, named by its
+scope-qualified path (``Bar.m``). Extraction is a pure function of the source bytes: spans are byte
+offsets into them, an unsupported or unparseable file yields no entities, and a span includes the
+decorators or ``export`` that belong to it. Same-name hits that sit together (``@overload`` stubs, a
+property's getter and setter) fold into one entity; others get an ordinal suffix. Each entity
+carries a content hash of its bytes and a structural hash that ignores formatting and comments.
 """
 
 from __future__ import annotations
@@ -58,10 +23,7 @@ import tree_sitter_typescript as _tst
 @dataclass(frozen=True)
 class Entity:
     """One code unit. ``name`` is scope-qualified (``Class.method``); ``id`` is repo-unique.
-
-    ``start_byte``/``end_byte`` are the entity's true span in the file's raw bytes -- the only
-    addressing this kernel slices content by. ``start_line``/``end_line`` (1-based, inclusive)
-    are a display/blame derivative, kept for callers that only need a human-readable range."""
+    Content is sliced by ``start_byte``/``end_byte`` only; the line numbers are for display."""
 
     id: str  # f"{file}::{name}" — unique across the repo
     name: str  # scope-qualified path within the file, e.g. "Bar.m"
@@ -76,9 +38,7 @@ class Entity:
     end_byte: int = 0  # byte offset one past the end of the entity's span
 
     def to_dict(self) -> dict:
-        # Hashes and byte offsets are deliberately omitted: in-memory diff/addressing signals,
-        # not part of the read projection (keeps the entity-graph view lean and golden fixtures
-        # stable).
+        # hashes and byte offsets are in-memory signals, left out of the projection
         return {
             "id": self.id,
             "name": self.name,
@@ -91,8 +51,6 @@ class Entity:
 
 
 # -- language registry -------------------------------------------------------
-# Built lazily and cached: constructing a Language/Parser is cheap but not free, and a
-# whole-repo parse hits the same two languages thousands of times.
 _LANGS: dict[str, Language] = {}
 
 
@@ -116,13 +74,7 @@ _EXT_LANG = {
     ".mts": "typescript",
     ".cts": "typescript",
     ".tsx": "tsx",
-    # JavaScript reuses the TypeScript grammars: TS is a syntactic superset of JS, so every
-    # def-bearing node in `_DEFS["typescript"]`/`["tsx"]` parses the same out of a `.js`/`.jsx` file.
-    # Without these entries a JS/React repo produced no symbol-level ops at all -- every file fell
-    # through `_language_for` to a single whole-file symbol, which quietly removes the entire point
-    # of ugh (features, blame, and revert are all symbol-scoped) for a large share of real projects.
-    # Deliberately not a new dependency: `tree-sitter-javascript` would add a grammar for syntax the
-    # installed one already accepts (CLAUDE.md §8).
+    # JavaScript parses with the TypeScript grammars, a syntactic superset, so no extra dependency
     ".js": "typescript",
     ".mjs": "typescript",
     ".cjs": "typescript",
@@ -158,24 +110,14 @@ _DEFS: dict[str, dict[str, str]] = {
 # functions are declared in modern TS; treat the declarator as a function entity.
 _ARROW_VALUES = {"arrow_function", "function_expression"}
 
-# The single node type that wraps a decorated def as its parent, per language -- climbing to it
-# absorbs every decorator (Python) or the `export` keyword plus any decorator riding along with
-# it (TypeScript's `export_statement`, confirmed empirically: `export_statement`'s children are
-# `[decorator?, export, default?, <declaration>]`, all siblings inside one wrapper).
+# The parent node that wraps a decorated or exported def; climbing to it takes in its decorators
+# and `export`.
 _WRAPPER_PARENT = {"python": "decorated_definition", "typescript": "export_statement", "tsx": "export_statement"}
 
 _DECLARATION_TYPES = {"lexical_declaration", "variable_declaration"}
 
-# Top-level import statements are promoted to entities (design 2026-08-27, import ownership).
-# Before this they lived inside the anonymous `_RESIDUE_HEAD` blob and were individually
-# unaddressable, so no revert could remove one -- every feature revert left dangling imports and
-# a tree that fails to compile. Promoting them keeps the fold a pure verbatim partition (an
-# import is module-level and cannot overlap a definition's span; verified across 131 files /
-# 680 imports in two languages) while making a single import removable.
-#
-# Only *root* children count. An import nested inside `if TYPE_CHECKING:` stays residue --
-# conservative in the safe direction, since a binding we fail to promote is merely one we cannot
-# collect, never one we wrongly delete.
+# Root-level imports are entities, so one can be taken out on its own. An import nested in a block
+# (`if TYPE_CHECKING:`) stays residue.
 _IMPORT_TYPES: dict[str, set[str]] = {
     "python": {"import_statement", "import_from_statement", "future_import_statement"},
     "typescript": {"import_statement", "export_statement"},
@@ -249,11 +191,8 @@ def _import_entities(root: Node, src: bytes, path: str, lang: str) -> list[Entit
 
 
 def _owned_end(node: Node, src: bytes) -> int:
-    """A root statement's end, swallowing its own line terminator. Without it, removing the
-    statement leaves its trailing gap anchored to a symbol that is no longer live, and `_fold_file`
-    relocates orphaned residue to the end of the file -- so dropping one import silently moved a
-    newline to the bottom. Owning the terminator makes the gap empty, and an empty gap is skipped
-    rather than orphaned."""
+    """A root statement's end, its line terminator included, so taking the statement out leaves
+    an empty gap rather than a newline the fold would move to the end of the file."""
     end = node.end_byte
     return end + 1 if src[end : end + 1] == b"\n" else end
 
@@ -349,10 +288,8 @@ def _structural_hash_range(start: Node, end: Node, src: bytes) -> str:
 
 
 def _widen_over_decorator_siblings(node: Node) -> Node:
-    """Widen leftward over any contiguous ``decorator`` nodes immediately preceding ``node`` in
-    the same parent -- covers TypeScript class-body members, whose decorator is a *sibling* of
-    the ``method_definition``/field it decorates, not a child or a wrapping parent (confirmed
-    empirically: `@HostListener('click')` sits beside `onClick()` inside `class_body`)."""
+    """Widen leftward over the ``decorator`` nodes just before ``node``: a TypeScript class member's
+    decorator is its sibling, not its parent."""
     start = node
     prev = start.prev_sibling
     while prev is not None and prev.type == "decorator":
@@ -421,16 +358,9 @@ class _Hit:
 
 
 def _coalesce(hits: list[_Hit], all_hits_by_name: dict[str, list[_Hit]], src: bytes) -> list[_Hit]:
-    """Fold a same-name group into one entity where safe, else disambiguate with a stable
-    ordinal so no two entities ever collide on `id` (`_symbol_kind`'s "unique id per file"
-    invariant that every downstream consumer -- footprints, identity, the fold -- relies on).
-
-    Mergeable iff the group is *contiguous*: no other, differently-named entity's span falls
-    within the group's own outer byte range. `@overload` stubs beside their implementation, or a
-    `@property` getter beside its `@x.setter`, satisfy this (any code between them is ordinary
-    residue, safely absorbed into the merged span verbatim); a name genuinely re-declared with
-    unrelated code between the declarations does not, and keeps its own separate identity via an
-    ordinal suffix rather than being silently dropped."""
+    """Fold a same-name group into one entity when no differently-named entity lies within its
+    byte range (`@overload` stubs, a getter beside its setter); otherwise keep each with an ordinal
+    suffix, so ids stay unique per file and nothing is dropped."""
     if len(hits) == 1:
         return hits
     ordered = sorted(hits, key=lambda h: h.start_node.start_byte)
@@ -438,9 +368,7 @@ def _coalesce(hits: list[_Hit], all_hits_by_name: dict[str, list[_Hit]], src: by
     hi = ordered[-1].end_node.end_byte
 
     def _contained_in_a_member(h: _Hit) -> bool:
-        # A nested child of one of *this group's own* members (e.g. a method inside a
-        # duplicated class) sits inside the envelope by construction -- that's containment,
-        # not interference, and must not block the merge.
+        # a member's own nested children (a method of a duplicated class) do not block the merge
         return any(
             m.start_node.start_byte <= h.start_node.start_byte and h.end_node.end_byte <= m.end_node.end_byte
             for m in ordered
@@ -463,9 +391,6 @@ def _coalesce(hits: list[_Hit], all_hits_by_name: dict[str, list[_Hit]], src: by
             end_byte=ordered[-1].end_byte,
         )
         return [merged]
-    # Non-contiguous collision (rare: a conditional redefinition) -- keep the first occurrence's
-    # name, disambiguate the rest with a stable, document-order ordinal so the id space stays
-    # unique without losing any entity's content.
     out: list[_Hit] = []
     for i, h in enumerate(ordered):
         name = h.name if i == 0 else f"{h.name}${i + 1}"
@@ -474,31 +399,14 @@ def _coalesce(hits: list[_Hit], all_hits_by_name: dict[str, list[_Hit]], src: by
     return out
 
 
-# Content-addressed extraction cache (U10): `extract_file` is a pure function of (path, language,
-# source bytes), so a file byte-identical to one parsed earlier -- the common case across
-# consecutive commits, which touch a handful of files but re-parse the whole tree -- reuses its
-# entity list instead of re-running tree-sitter. Bounded LRU: mining walks history in order, so a
-# file's old content versions fall out of the working set naturally; the cap keeps a full-history
-# init from growing unbounded. Entities are frozen and the list is treated read-only by every
-# caller (`extract_codebase` extends a fresh list), so the cached list is shared, not copied.
+# (path, language, sha256 of source) -> entities, LRU. The lists are shared: callers must not
+# mutate them.
 _EXTRACT_CACHE: "OrderedDict[tuple, list[Entity]]" = OrderedDict()
 _EXTRACT_CACHE_MAX = 4096
 
-# Disk backing for the cache (`.sgt/local/extract_cache.json`). The cache is process-level and a
-# CLI command is one process, so after any source edit the dirty mining pass re-parsed the whole
-# tree -- plus the rebirth-lookback's historical blobs -- even though every *unchanged* input's
-# extraction was computed by an earlier command: ~6s of pure repeat tree-sitter work on this
-# repo. The backing file persists the mining working set: every entry touched between the owning
-# verb's attach and its flush (the live tree's file-versions plus the lookback's stable blob
-# set). Keys are content-addressed, so staleness is structural: an edited file misses and
-# re-parses; an entry nothing touches anymore falls out at the next flush. The owning verbs
-# (`mine()`, the clustering signal build) attach and flush -- `extract_file` itself stays
-# repo-free.
-# Discriminates the *shape* of a cached entity list, not its inputs. The cache key is
-# (path, lang, sha256(source)) -- content-addressed, so it cannot notice that the extractor now
-# returns import entities for bytes it already parsed. Without this, promoting imports would read
-# stale pre-import lists straight off disk and the change would look like it did nothing.
-# Bump on any change to what extract_file returns for unchanged input.
+# The cache persists to `.sgt/local/extract_cache.json` between `mine()`'s attach and flush: every
+# entry touched in between, so the next process re-parses only changed files.
+# Bump on any change to what extract_file returns for unchanged input; the key cannot see it.
 _EXTRACT_WALK = 3
 
 _PERSIST_REPO = None
@@ -510,9 +418,8 @@ _ENTITY_FIELDS = ("id", "name", "file", "kind", "start_line", "end_line", "conta
 
 
 def attach_persistent_cache(repo) -> None:
-    """Point the extraction cache's disk backing at `repo`'s `.sgt/local/` and load it. Idempotent
-    per repo; switching repos loads the new backing (stale other-repo entries already in memory
-    are harmless -- keys are content-addressed, so a hit is correct wherever it came from)."""
+    """Point the cache's disk backing at `repo` and load it. Idempotent per repo; entries from
+    another repo are harmless, since keys are content-addressed."""
     global _PERSIST_REPO
     if _PERSIST_REPO is not None and os.path.realpath(_PERSIST_REPO) == os.path.realpath(repo):
         return
@@ -521,7 +428,7 @@ def attach_persistent_cache(repo) -> None:
 
     body = state.load_json(repo, "extract_cache", default=None)
     if not isinstance(body, dict) or body.get("walk") != _EXTRACT_WALK:
-        return  # extractor shape changed: every persisted list is stale, re-parse from source
+        return  # another extractor shape: every persisted list is stale
     entries = body.get("entries")
     if not isinstance(entries, dict):
         return
@@ -532,17 +439,15 @@ def attach_persistent_cache(repo) -> None:
             key = (fpath, lang, bytes.fromhex(hexdigest))
             ents = [Entity(**dict(zip(_ENTITY_FIELDS, row, strict=True))) for row in rows]
         except (TypeError, ValueError):
-            continue  # one bad entry degrades to a re-parse, never an error
+            continue  # a bad entry is parsed again
         _EXTRACT_CACHE.setdefault(key, ents)
     while len(_EXTRACT_CACHE) > _EXTRACT_CACHE_MAX:
         _EXTRACT_CACHE.popitem(last=False)
 
 
 def flush_persistent_cache() -> None:
-    """Persist every entry touched since the last flush, then reset the touched set. No-op when
-    detached or when nothing new was parsed -- a steady-state pass over unchanged inputs reads
-    the same entries it would rewrite, so skipping the write loses nothing. Called by the verbs
-    that attached (never per-file)."""
+    """Persist every entry touched since the last flush and reset the touched set. Nothing is
+    written when detached or when nothing new was parsed."""
     global _PERSIST_MISSES
     if _PERSIST_REPO is None or _PERSIST_MISSES == 0 or not _PERSIST_SEEN:
         return
@@ -562,14 +467,10 @@ def flush_persistent_cache() -> None:
     state.save_json(_PERSIST_REPO, "extract_cache", {"walk": _EXTRACT_WALK, "entries": entries})
 
 
-def extract_file(path: str, source: bytes | str, *, language: str | None = None) -> list[Entity]:
-    """Parse one file's source into entities. Unsupported/unparseable -> ``[]`` (never raises).
-
-    `source` is bytes-native throughout -- pass raw bytes (e.g. a git blob) whenever they're
-    available; a `str` is accepted for ergonomic hand-written callers/fixtures and encoded once
-    via UTF-8 (lossless, since a Python `str` is already correctly decoded). Content-addressed
-    cache (U10): a byte-identical re-parse of the same path/language returns the cached list."""
-    lang = language or _language_for(path)
+def extract_file(path: str, source: bytes | str) -> list[Entity]:
+    """Parse one file's source into entities; an unsupported language gives ``[]`` and nothing
+    raises. A `str` source is encoded as UTF-8. Identical bytes return the cached list."""
+    lang = _language_for(path)
     if lang is None:
         return []
     src = source if isinstance(source, bytes) else source.encode("utf-8")
@@ -618,7 +519,7 @@ def extract_file(path: str, source: bytes | str, *, language: str | None = None)
         by_name.setdefault(h.name, []).append(h)
 
     out: list[Entity] = []
-    for name in by_name:  # dict preserves first-seen (document) order -- deterministic
+    for name in by_name:  # document order
         for h in _coalesce(by_name[name], by_name, src):
             out.append(
                 Entity(

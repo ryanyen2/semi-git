@@ -1,5 +1,4 @@
-"""Shared CLI helpers used across the verb-family modules: the `--json` emitter and the
-short failure printer. Family-specific printers live with their family."""
+"""Helpers the verb families share: the `--json` emitter, the failure printers, the spinner."""
 
 from __future__ import annotations
 
@@ -17,8 +16,7 @@ def _fail(message: str) -> int:
 
 
 def _fail_json(message: str, as_json: bool) -> int:
-    """A failure rendered per the caller's `--json`: the `{"ok": False, "error": ...}` envelope
-    or the short text printer. The shared shape repeated across the verb-family modules."""
+    """A failure as `{"ok": False, "error": ...}` under `--json`, else as one printed line."""
     return _emit_json({"ok": False, "error": message}) if as_json else _fail(message)
 
 
@@ -33,18 +31,6 @@ def observed_text(seen: dict | None) -> str:
                f"output: {d['added']} line(s) added, {d['removed']} removed against the parent"))
 
 
-def confirm(lines: list[str], question: str) -> bool:
-    """Print a preview and ask `[y/N]`. Only call on an interactive tty: the caller gates
-    `isatty`/`--json` first, so the machine contract applies immediately."""
-    for line in lines:
-        print(line)
-    try:
-        reply = input(f"\n{question} [y/N] ").strip().lower()
-    except EOFError:
-        reply = ""
-    return reply in ("y", "yes")
-
-
 def choice_lines(choices: list[dict]) -> list[str]:
     """Pending two-version choices, one line each with the command that shows both versions."""
     from ugh.api import plural
@@ -56,15 +42,10 @@ def choice_lines(choices: list[dict]) -> list[str]:
             + [f"    {c['address']}  →  ugh resolve {c['address']}" for c in choices])
 
 
-def _add_view_flags(p, *, paged: bool = False) -> None:
-    """`--full` (every compact-by-default `ugh.api` view) and, for a view whose compact shape is
-    itself paginated (`oplog_view`/`history_view`), `--limit`/`--offset`. Attached per-subparser
-    (not the shared `parent` in `cli/__init__.py`) -- most verbs never take these."""
+def _add_view_flags(p) -> None:
+    """Add `--full`, for a view that is compact by default."""
     p.add_argument("--full", action="store_true",
                     help="the full (uncompacted) payload instead of the compact default")
-    if paged:
-        p.add_argument("--limit", type=int, default=None)
-        p.add_argument("--offset", type=int, default=0)
 
 
 import contextlib
@@ -72,13 +53,8 @@ import contextlib
 
 @contextlib.contextmanager
 def busy(text: str, *, delay: float = 0.4):
-    """A single dim spinner line on stderr while a slow verb works, erased when it finishes.
-
-    The verbs that mine or recluster (`save`, `revert`, `restore`, `log --refresh`) can sit
-    silent for several seconds, and a silent prompt reads as a hang -- the study's pilots
-    re-typed the command or killed it. Shows nothing at all for fast calls (`delay` passes
-    first), for non-ttys, and for `--json` pipelines (stderr piped): the machine contract and
-    the scrollback stay byte-identical."""
+    """A dim spinner line on stderr while a slow verb works, erased when it finishes, so a long
+    mine does not read as a hang. Nothing is drawn before `delay` or when stderr is not a tty."""
     import sys
     import threading
 
