@@ -1,0 +1,140 @@
+{
+  "ok": true,
+  "applied": false,
+  "verb": "revert",
+  "target": "hourly profile",
+  "message": "",
+  "undone": [
+    {
+      "address": "bikecount/metrics.py::hourly_averages@196f7b6",
+      "save": "196f7b6",
+      "subject": "add a by-hour page showing average rides per hour",
+      "unit": "bikecount/metrics.py::hourly_averages",
+      "ran": null
+    },
+    {
+      "address": "bikecount/pages/hourly.py::ORDER@196f7b6",
+      "save": "196f7b6",
+      "subject": "add a by-hour page showing average rides per hour",
+      "unit": "bikecount/pages/hourly.py::ORDER",
+      "ran": null
+    },
+    {
+      "address": "bikecount/pages/hourly.py::PATH@196f7b6",
+      "save": "196f7b6",
+      "subject": "add a by-hour page showing average rides per hour",
+      "unit": "bikecount/pages/hourly.py::PATH",
+      "ran": null
+    },
+    {
+      "address": "bikecount/pages/hourly.py::TITLE@196f7b6",
+      "save": "196f7b6",
+      "subject": "add a by-hour page showing average rides per hour",
+      "unit": "bikecount/pages/hourly.py::TITLE",
+      "ran": null
+    },
+    {
+      "address": "bikecount/pages/hourly.py@196f7b6",
+      "save": "196f7b6",
+      "subject": "add a by-hour page showing average rides per hour",
+      "unit": "bikecount/pages/hourly.py::__import__::bikecount",
+      "ran": null
+    },
+    {
+      "address": "bikecount/pages/hourly.py@196f7b6",
+      "save": "196f7b6",
+      "subject": "add a by-hour page showing average rides per hour",
+      "unit": "bikecount/pages/hourly.py::__import__::bikecount.pages",
+      "ran": null
+    },
+    {
+      "address": "bikecount/pages/hourly.py@196f7b6",
+      "save": "196f7b6",
+      "subject": "add a by-hour page showing average rides per hour",
+      "unit": "bikecount/pages/hourly.py::__residue__::\u0000HEAD\u0000",
+      "ran": null
+    },
+    {
+      "address": "bikecount/pages/hourly.py::render@196f7b6",
+      "save": "196f7b6",
+      "subject": "add a by-hour page showing average rides per hour",
+      "unit": "bikecount/pages/hourly.py::render",
+      "ran": null
+    },
+    {
+      "address": "bikecount/pages/hourly.py::render@22496d8",
+      "save": "22496d8",
+      "subject": "scope every page to a picked date window, default last complete year",
+      "unit": "bikecount/pages/hourly.py::render",
+      "ran": null
+    },
+    {
+      "address": "bikecount/metrics.py::hourly_averages_weekday@b9f66c7",
+      "save": "b9f66c7",
+      "subject": "split the by-hour page into weekday and weekend charts",
+      "unit": "bikecount/metrics.py::hourly_averages_weekday",
+      "ran": null
+    },
+    {
+      "address": "bikecount/metrics.py::hourly_averages_weekend@b9f66c7",
+      "save": "b9f66c7",
+      "subject": "split the by-hour page into weekday and weekend charts",
+      "unit": "bikecount/metrics.py::hourly_averages_weekend",
+      "ran": null
+    },
+    {
+      "address": "bikecount/pages/hourly.py::render@b9f66c7",
+      "save": "b9f66c7",
+      "subject": "split the by-hour page into weekday and weekend charts",
+      "unit": "bikecount/pages/hourly.py::render",
+      "ran": null
+    },
+    {
+      "address": "bikecount/metrics.py::hourly_averages@c360a3d",
+      "save": "c360a3d",
+      "subject": "exclude event days from averages, keep them in totals",
+      "unit": "bikecount/metrics.py::hourly_averages",
+      "ran": null
+    }
+  ],
+  "held": [],
+  "removal_set": {
+    "saves": [
+      {
+        "sha": "196f7b6",
+        "subject": "add a by-hour page showing average rides per hour",
+        "steps": 8
+      },
+      {
+        "sha": "22496d8",
+        "subject": "scope every page to a picked date window, default last complete year",
+        "steps": 1
+      },
+      {
+        "sha": "b9f66c7",
+        "subject": "split the by-hour page into weekday and weekend charts",
+        "steps": 3
+      },
+      {
+        "sha": "c360a3d",
+        "subject": "exclude event days from averages, keep them in totals",
+        "steps": 1
+      }
+    ],
+    "steps": 13
+  },
+  "files": {
+    "bikecount/metrics.py": {
+      "before": "\"\"\"Turning readings into the numbers the pages show.\"\"\"\nfrom bikecount import events\n\n\ndef daily_totals(readings):\n    \"\"\"Total per calendar day, oldest first.\"\"\"\n    days = {}\n    for r in readings:\n        day = r.when.date()\n        days[day] = days.get(day, 0) + r.total\n    return sorted(days.items())\n\n\ndef busiest_day(readings):\n    \"\"\"The day with the most people, and its count.\"\"\"\n    return max(daily_totals(readings), key=lambda kv: kv[1])\n\n\ndef yearly_summary(readings):\n    \"\"\"Total, average day and busiest day for each calendar year, oldest first.\n\n    Each entry is (year, total, average day, busiest day, busiest day's count).\n    The average leaves out event days (storms, holidays), so one snowbound\n    Monday doesn't drag down what an ordinary day looks like. It's otherwise\n    over days that are actually in the file, so a partial year at either end\n    of the data isn't averaged down over months it doesn't cover. The total\n    still counts every day, event days included.\n    \"\"\"\n    days_by_year = {}\n    for day, count in daily_totals(readings):\n        days_by_year.setdefault(day.year, []).append((day, count))\n    summary = []\n    for year, days in sorted(days_by_year.items()):\n        total = sum(count for _, count in days)\n        busiest_day, busiest_count = max(days, key=lambda kv: kv[1])\n        normal_days = [count for day, count in days if not events.label(day)]\n        avg = round(sum(normal_days) / max(len(normal_days), 1))\n        summary.append((year, total, avg, busiest_day, busiest_count))\n    return summary\n\n\ndef monthly_totals(readings):\n    \"\"\"Total per calendar month, oldest first. Each key is the first of the month.\"\"\"\n    months = {}\n    for r in readings:\n        month = r.when.date().replace(day=1)\n        months[month] = months.get(month, 0) + r.total\n    return sorted(months.items())\n\n\ndef hourly_averages(readings):\n    \"\"\"Average count for each hour of the day, 0 to 23, midnight first.\n\n    Readings from event days (storms, holidays) are left out, so a snowbound\n    Monday doesn't pull down what an ordinary hour looks like.\n    \"\"\"\n    totals = {}\n    counts = {}\n    for r in readings:\n        if events.label(r.when.date()):\n            continue\n        hour = r.when.hour\n        totals[hour] = totals.get(hour, 0) + r.total\n        counts[hour] = counts.get(hour, 0) + 1\n    return sorted((hour, round(totals[hour] / counts[hour])) for hour in totals)\n\n\ndef hourly_averages_weekday(readings):\n    \"\"\"Same as hourly_averages, Monday to Friday only.\"\"\"\n    return hourly_averages(r for r in readings if r.when.weekday() < 5)\n\n\ndef hourly_averages_weekend(readings):\n    \"\"\"Same as hourly_averages, Saturday and Sunday only.\"\"\"\n    return hourly_averages(r for r in readings if r.when.weekday() >= 5)\n\n\ndef side_totals(readings):\n    \"\"\"Total bikes counted on the east and west sidewalks.\"\"\"\n    east = sum(r.east for r in readings)\n    west = sum(r.west for r in readings)\n    return east, west\n\n\ndef hourly_west_share(readings):\n    \"\"\"West sidewalk's share of the total, as a percent, for each hour of day.\n\n    Higher than 50 means west carries more than east at that hour; lower\n    means east does. East's share is just 100 minus this.\n    \"\"\"\n    east = {}\n    west = {}\n    for r in readings:\n        hour = r.when.hour\n        east[hour] = east.get(hour, 0) + r.east\n        west[hour] = west.get(hour, 0) + r.west\n    return sorted((hour, round(100 * west[hour] / (east[hour] + west[hour]))) for hour in east)\n\n\ndef west_share_by_year(readings):\n    \"\"\"West sidewalk's share of the total, as a percent, for each calendar year.\n\n    Same idea as hourly_west_share, but by year, to check whether the split\n    between the two sides is stable over time or drifting.\n    \"\"\"\n    east = {}\n    west = {}\n    for r in readings:\n        year = r.when.year\n        east[year] = east.get(year, 0) + r.east\n        west[year] = west.get(year, 0) + r.west\n    return sorted((year, round(100 * west[year] / (east[year] + west[year]))) for year in east)\n",
+      "after": "\"\"\"Turning readings into the numbers the pages show.\"\"\"\nfrom bikecount import events\n\n\ndef daily_totals(readings):\n    \"\"\"Total per calendar day, oldest first.\"\"\"\n    days = {}\n    for r in readings:\n        day = r.when.date()\n        days[day] = days.get(day, 0) + r.total\n    return sorted(days.items())\n\n\ndef busiest_day(readings):\n    \"\"\"The day with the most people, and its count.\"\"\"\n    return max(daily_totals(readings), key=lambda kv: kv[1])\n\n\ndef yearly_summary(readings):\n    \"\"\"Total, average day and busiest day for each calendar year, oldest first.\n\n    Each entry is (year, total, average day, busiest day, busiest day's count).\n    The average leaves out event days (storms, holidays), so one snowbound\n    Monday doesn't drag down what an ordinary day looks like. It's otherwise\n    over days that are actually in the file, so a partial year at either end\n    of the data isn't averaged down over months it doesn't cover. The total\n    still counts every day, event days included.\n    \"\"\"\n    days_by_year = {}\n    for day, count in daily_totals(readings):\n        days_by_year.setdefault(day.year, []).append((day, count))\n    summary = []\n    for year, days in sorted(days_by_year.items()):\n        total = sum(count for _, count in days)\n        busiest_day, busiest_count = max(days, key=lambda kv: kv[1])\n        normal_days = [count for day, count in days if not events.label(day)]\n        avg = round(sum(normal_days) / max(len(normal_days), 1))\n        summary.append((year, total, avg, busiest_day, busiest_count))\n    return summary\n\n\ndef monthly_totals(readings):\n    \"\"\"Total per calendar month, oldest first. Each key is the first of the month.\"\"\"\n    months = {}\n    for r in readings:\n        month = r.when.date().replace(day=1)\n        months[month] = months.get(month, 0) + r.total\n    return sorted(months.items())\n\n\ndef side_totals(readings):\n    \"\"\"Total bikes counted on the east and west sidewalks.\"\"\"\n    east = sum(r.east for r in readings)\n    west = sum(r.west for r in readings)\n    return east, west\n\n\ndef hourly_west_share(readings):\n    \"\"\"West sidewalk's share of the total, as a percent, for each hour of day.\n\n    Higher than 50 means west carries more than east at that hour; lower\n    means east does. East's share is just 100 minus this.\n    \"\"\"\n    east = {}\n    west = {}\n    for r in readings:\n        hour = r.when.hour\n        east[hour] = east.get(hour, 0) + r.east\n        west[hour] = west.get(hour, 0) + r.west\n    return sorted((hour, round(100 * west[hour] / (east[hour] + west[hour]))) for hour in east)\n\n\ndef west_share_by_year(readings):\n    \"\"\"West sidewalk's share of the total, as a percent, for each calendar year.\n\n    Same idea as hourly_west_share, but by year, to check whether the split\n    between the two sides is stable over time or drifting.\n    \"\"\"\n    east = {}\n    west = {}\n    for r in readings:\n        year = r.when.year\n        east[year] = east.get(year, 0) + r.east\n        west[year] = west.get(year, 0) + r.west\n    return sorted((year, round(100 * west[year] / (east[year] + west[year]))) for year in east)\n"
+    },
+    "bikecount/pages/hourly.py": {
+      "before": "\"\"\"What time of day people ride: the average count for each hour.\"\"\"\nfrom bikecount import charts, metrics\nfrom bikecount.pages import shell\n\nPATH = \"/hourly\"\nTITLE = \"By Hour\"\nORDER = 1\n\n\ndef render(readings, start, end):\n    hours = metrics.hourly_averages(readings)\n    hour, avg = max(hours, key=lambda kv: kv[1])\n    rows = \"\".join(f\"<tr><td>{h:02d}:00</td><td>{a:,}</td></tr>\" for h, a in hours)\n\n    weekday = metrics.hourly_averages_weekday(readings)\n    weekend = metrics.hourly_averages_weekend(readings)\n    by_hour = lambda h: f\"{h:02d}:00\"\n\n    return shell(\"By Hour\", f\"\"\"\n<p class=\"label\">Busiest hour of day</p>\n<p class=\"big\">{hour:02d}:00</p>\n<p>average {avg:,} bikes an hour</p>\n<p class=\"label\" style=\"margin-top:32px\">Average count by hour of day</p>\n{charts.bar_chart(hours, label=by_hour)}\n<table><tr><th>Hour</th><th>Avg bikes</th></tr>{rows}</table>\n<p class=\"label\" style=\"margin-top:32px\">Weekday vs weekend</p>\n<div style=\"display:flex;gap:32px\">\n<div style=\"flex:1\"><p>Weekday</p>{charts.bar_chart(weekday, label=by_hour)}</div>\n<div style=\"flex:1\"><p>Weekend</p>{charts.bar_chart(weekend, label=by_hour)}</div>\n</div>\n\"\"\", start, end)\n",
+      "after": null
+    }
+  },
+  "check": "not_run",
+  "observed": {
+    "head": null
+  }
+}

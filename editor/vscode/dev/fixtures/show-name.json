@@ -1,0 +1,317 @@
+{
+  "ok": true,
+  "address": "event days",
+  "steps": [
+    {
+      "address": "bikecount/events.py::EVENT_DAYS@66ca5b9",
+      "kind": "create",
+      "name": "event days",
+      "out": false,
+      "unit": "bikecount/events.py::EVENT_DAYS",
+      "before": null,
+      "after": "\nEVENT_DAYS = {\n    datetime.date(2019, 2, 4): \"February 2019 snowstorm\",\n    datetime.date(2019, 2, 5): \"February 2019 snowstorm\",\n    datetime.date(2019, 2, 6): \"February 2019 snowstorm\",\n    datetime.date(2019, 2, 9): \"February 2019 snowstorm\",\n    datetime.date(2019, 2, 10): \"February 2019 snowstorm\",\n    datetime.date(2019, 2, 11): \"February 2019 snowstorm\",\n    datetime.date(2019, 2, 12): \"February 2019 snowstorm\",\n\n    datetime.date(2012, 12, 25): \"Christmas\",\n    datetime.date(2013, 12, 25): \"Christmas\",\n    datetime.date(2014, 12, 25): \"Christmas\",\n    datetime.date(2015, 12, 25): \"Christmas\",\n    datetime.date(2016, 12, 25): \"Christmas\",\n    datetime.date(2017, 12, 25): \"Christmas\",\n    datetime.date(2018, 12, 25): \"Christmas\",\n\n    datetime.date(2013, 7, 4): \"Fourth of July\",\n    datetime.date(2014, 7, 4): \"Fourth of July\",\n    datetime.date(2015, 7, 4): \"Fourth of July\",\n    datetime.date(2016, 7, 4): \"Fourth of July\",\n    datetime.date(2017, 7, 4): \"Fourth of July\",\n    datetime.date(2018, 7, 4): \"Fourth of July\",\n    datetime.date(2019, 7, 4): \"Fourth of July\",\n\n    datetime.date(2012, 11, 22): \"Thanksgiving\",\n    datetime.date(2013, 11, 28): \"Thanksgiving\",\n    datetime.date(2014, 11, 27): \"Thanksgiving\",\n    datetime.date(2015, 11, 26): \"Thanksgiving\",\n    datetime.date(2016, 11, 24): \"Thanksgiving\",\n    datetime.date(2017, 11, 23): \"Thanksgiving\",\n    datetime.date(2018, 11, 22): \"Thanksgiving\",\n\n    datetime.date(2013, 1, 1): \"New Year's Day\",\n    datetime.date(2014, 1, 1): \"New Year's Day\",\n    datetime.date(2015, 1, 1): \"New Year's Day\",\n    datetime.date(2016, 1, 1): \"New Year's Day\",\n    datetime.date(2017, 1, 1): \"New Year's Day\",\n    datetime.date(2018, 1, 1): \"New Year's Day\",\n    datetime.date(2019, 1, 1): \"New Year's Day\",\n}\n",
+      "lines": [
+        14,
+        55
+      ]
+    },
+    {
+      "address": "bikecount/events.py::label@66ca5b9",
+      "kind": "create",
+      "name": "event days",
+      "out": false,
+      "unit": "bikecount/events.py::label",
+      "before": null,
+      "after": "\n\ndef label(day):\n    \"\"\"The name of the event on this day, or None for an ordinary day.\"\"\"\n    return EVENT_DAYS.get(day)\n",
+      "lines": [
+        56,
+        60
+      ]
+    },
+    {
+      "address": "bikecount/events.py@66ca5b9",
+      "kind": "create",
+      "name": "event days",
+      "out": false,
+      "unit": "bikecount/events.py::__import__::datetime",
+      "before": null,
+      "after": "import datetime\n",
+      "lines": [
+        13,
+        13
+      ]
+    },
+    {
+      "address": "bikecount/events.py@66ca5b9",
+      "kind": "create",
+      "name": "event days",
+      "out": false,
+      "unit": "bikecount/events.py::__residue__::\u0000HEAD\u0000",
+      "before": null,
+      "after": "\"\"\"Days that are nothing like a normal day: storms, holidays, one-off closures.\n\nEvery other module treats one day the same as the next, so a snowstorm or a\nholiday just looks like a strange dip in the numbers. This is the list of\nwhich days those are, so pages can tell them apart later.\n\nThe handful below are ones you can spot just by looking at the daily\ntotals: Christmas, the Fourth of July, Thanksgiving and New Year's Day are\nall sharply quieter than the days around them, every year they appear in\nthe data, and the February 2019 snowstorm is the biggest drop on record.\nRyan has a fuller list in his email; fold those in here too, one line each.\n\"\"\"\n",
+      "lines": [
+        1,
+        12
+      ]
+    },
+    {
+      "address": "bikecount/charts.py::bar_chart@0c56354",
+      "kind": "change",
+      "name": "event days",
+      "out": true,
+      "unit": "bikecount/charts.py::bar_chart",
+      "before": "\n\ndef bar_chart(pairs, width=760, height=220, label=str):\n    \"\"\"A bar per pair, tallest bar full height. `pairs` is [(label_value, count)].\"\"\"\n    if not pairs:\n        return \"<p>nothing to draw</p>\"\n    top = max(count for _, count in pairs) or 1\n    step = width / len(pairs)\n    bars = []\n    for i, (key, count) in enumerate(pairs):\n        h = (count / top) * (height - 30)\n        bars.append(\n            f'<rect x=\"{i * step:.1f}\" y=\"{height - 20 - h:.1f}\" width=\"{step * 0.8:.1f}\" '\n            f'height=\"{h:.1f}\" fill=\"#3b6ea5\"><title>{label(key)}: {count:,}</title></rect>'\n        )\n    return f'<svg viewBox=\"0 0 {width} {height}\" width=\"100%\" height=\"{height}\">{\"\".join(bars)}</svg>'\n",
+      "after": "\n\ndef bar_chart(pairs, width=760, height=220, label=str, event=lambda key: None):\n    \"\"\"A bar per pair, tallest bar full height. `pairs` is [(label_value, count)].\n\n    `event(key)` names the tracked event on that bar, or None for an ordinary one.\n    Event bars are drawn in amber instead of blue, so a known storm or holiday\n    doesn't get read as a real swing in the numbers.\n    \"\"\"\n    if not pairs:\n        return \"<p>nothing to draw</p>\"\n    top = max(count for _, count in pairs) or 1\n    step = width / len(pairs)\n    bars = []\n    for i, (key, count) in enumerate(pairs):\n        h = (count / top) * (height - 30)\n        name = event(key)\n        fill = \"#d98c3d\" if name else \"#3b6ea5\"\n        title = f\"{label(key)}: {count:,}\" + (f\" ({name})\" if name else \"\")\n        bars.append(\n            f'<rect x=\"{i * step:.1f}\" y=\"{height - 20 - h:.1f}\" width=\"{step * 0.8:.1f}\" '\n            f'height=\"{h:.1f}\" fill=\"{fill}\"><title>{title}</title></rect>'\n        )\n    return f'<svg viewBox=\"0 0 {width} {height}\" width=\"100%\" height=\"{height}\">{\"\".join(bars)}</svg>'\n",
+      "lines": [
+        2,
+        17
+      ]
+    },
+    {
+      "address": "bikecount/events.py::label_for_month@0c56354",
+      "kind": "create",
+      "name": "event days",
+      "out": true,
+      "unit": "bikecount/events.py::label_for_month",
+      "before": null,
+      "after": "\n\ndef label_for_month(month):\n    \"\"\"The name of a tracked event day that falls in this calendar month, or None.\n\n    Monthly totals are keyed by the first of the month, not by day, so this\n    matches on year and month instead of an exact date.\n    \"\"\"\n    names = {name for day, name in EVENT_DAYS.items()\n             if day.year == month.year and day.month == month.month}\n    return \", \".join(sorted(names)) if names else None\n",
+      "lines": null
+    },
+    {
+      "address": "bikecount/pages/monthly.py::render@0c56354",
+      "kind": "change",
+      "name": "event days",
+      "out": true,
+      "unit": "bikecount/pages/monthly.py::render",
+      "before": "\n\ndef render(readings):\n    months = metrics.monthly_totals(readings)\n    high_month, high_count = max(months, key=lambda kv: kv[1])\n    low_month, low_count = min(months, key=lambda kv: kv[1])\n    by_month = lambda d: d.strftime(\"%b %Y\")\n\n    return shell(\"Monthly\", f\"\"\"\n<div style=\"display:flex;gap:32px\">\n<div style=\"flex:1\"><p class=\"label\">Highest month</p><p class=\"big\">{by_month(high_month)}</p><p>{high_count:,} bikes</p></div>\n<div style=\"flex:1\"><p class=\"label\">Lowest month</p><p class=\"big\">{by_month(low_month)}</p><p>{low_count:,} bikes</p></div>\n</div>\n<p class=\"label\" style=\"margin-top:32px\">Total by month, back to {months[0][0]:%B %Y}</p>\n{charts.bar_chart(months, label=by_month)}\n\"\"\")\n",
+      "after": "\n\ndef render(readings):\n    months = metrics.monthly_totals(readings)\n    high_month, high_count = max(months, key=lambda kv: kv[1])\n    low_month, low_count = min(months, key=lambda kv: kv[1])\n    by_month = lambda d: d.strftime(\"%b %Y\")\n\n    return shell(\"Monthly\", f\"\"\"\n<div style=\"display:flex;gap:32px\">\n<div style=\"flex:1\"><p class=\"label\">Highest month</p><p class=\"big\">{by_month(high_month)}</p><p>{high_count:,} bikes</p></div>\n<div style=\"flex:1\"><p class=\"label\">Lowest month</p><p class=\"big\">{by_month(low_month)}</p><p>{low_count:,} bikes</p></div>\n</div>\n<p class=\"label\" style=\"margin-top:32px\">Total by month, back to {months[0][0]:%B %Y}</p>\n{charts.bar_chart(months, label=by_month, event=events.label_for_month)}\n<p style=\"color:#777;font-size:13px\">Amber bars contain a known non-normal day &mdash; storms, holidays &mdash; not a real swing.</p>\n\"\"\")\n",
+      "lines": [
+        8,
+        23
+      ]
+    },
+    {
+      "address": "bikecount/pages/monthly.py@0c56354",
+      "kind": "change",
+      "name": "event days",
+      "out": true,
+      "unit": "bikecount/pages/monthly.py::__import__::bikecount",
+      "before": "from bikecount import charts, metrics\n",
+      "after": "from bikecount import charts, events, metrics\n",
+      "lines": [
+        2,
+        2
+      ]
+    },
+    {
+      "address": "bikecount/pages/overview.py::render@0c56354",
+      "kind": "change",
+      "name": "event days",
+      "out": true,
+      "unit": "bikecount/pages/overview.py::render",
+      "before": "\n\ndef render(readings):\n    days = metrics.daily_totals(readings)\n    day, count = max(days, key=lambda kv: kv[1])\n    recent = days[-14:]\n    rows = \"\".join(f\"<tr><td>{d}</td><td>{c:,}</td></tr>\" for d, c in recent[::-1])\n    return shell(\"Overview\", f\"\"\"\n<p class=\"label\">Busiest day on record</p>\n<p class=\"big\">{count:,}</p>\n<p>{day:%A %d %B %Y}</p>\n<p class=\"label\" style=\"margin-top:32px\">Last 14 days</p>\n{charts.bar_chart(recent, label=lambda d: d.strftime(\"%d %b\"))}\n<table><tr><th>Day</th><th>Bikes</th></tr>{rows}</table>\n<p style=\"color:#777;margin-top:32px\">{len(readings):,} hours of readings.</p>\n\"\"\")\n",
+      "after": "\n\ndef render(readings):\n    days = metrics.daily_totals(readings)\n    day, count = max(days, key=lambda kv: kv[1])\n    recent = days[-14:]\n    rows = \"\".join(f\"<tr><td>{d}</td><td>{c:,}</td></tr>\" for d, c in recent[::-1])\n    return shell(\"Overview\", f\"\"\"\n<p class=\"label\">Busiest day on record</p>\n<p class=\"big\">{count:,}</p>\n<p>{day:%A %d %B %Y}</p>\n<p class=\"label\" style=\"margin-top:32px\">Last 14 days</p>\n{charts.bar_chart(recent, label=lambda d: d.strftime(\"%d %b\"), event=events.label)}\n<p style=\"color:#777;font-size:13px\">Amber bars are known non-normal days &mdash; storms, holidays &mdash; not a real swing.</p>\n<table><tr><th>Day</th><th>Bikes</th></tr>{rows}</table>\n<p style=\"color:#777;margin-top:32px\">{len(readings):,} hours of readings.</p>\n\"\"\")\n",
+      "lines": [
+        8,
+        23
+      ]
+    },
+    {
+      "address": "bikecount/pages/overview.py@0c56354",
+      "kind": "change",
+      "name": "event days",
+      "out": true,
+      "unit": "bikecount/pages/overview.py::__import__::bikecount",
+      "before": "from bikecount import charts, metrics\n",
+      "after": "from bikecount import charts, events, metrics\n",
+      "lines": [
+        2,
+        2
+      ]
+    },
+    {
+      "address": "bikecount/metrics.py::hourly_averages@c360a3d",
+      "kind": "change",
+      "name": "event days",
+      "out": false,
+      "unit": "bikecount/metrics.py::hourly_averages",
+      "before": "\n\ndef hourly_averages(readings):\n    \"\"\"Average count for each hour of the day, 0 to 23, midnight first.\"\"\"\n    totals = {}\n    counts = {}\n    for r in readings:\n        hour = r.when.hour\n        totals[hour] = totals.get(hour, 0) + r.total\n        counts[hour] = counts.get(hour, 0) + 1\n    return sorted((hour, round(totals[hour] / counts[hour])) for hour in totals)\n",
+      "after": "\n\ndef hourly_averages(readings):\n    \"\"\"Average count for each hour of the day, 0 to 23, midnight first.\n\n    Readings from event days (storms, holidays) are left out, so a snowbound\n    Monday doesn't pull down what an ordinary hour looks like.\n    \"\"\"\n    totals = {}\n    counts = {}\n    for r in readings:\n        if events.label(r.when.date()):\n            continue\n        hour = r.when.hour\n        totals[hour] = totals.get(hour, 0) + r.total\n        counts[hour] = counts.get(hour, 0) + 1\n    return sorted((hour, round(totals[hour] / counts[hour])) for hour in totals)\n",
+      "lines": [
+        49,
+        65
+      ]
+    },
+    {
+      "address": "bikecount/metrics.py::yearly_summary@c360a3d",
+      "kind": "change",
+      "name": "event days",
+      "out": false,
+      "unit": "bikecount/metrics.py::yearly_summary",
+      "before": "\n\ndef yearly_summary(readings):\n    \"\"\"Total, average day and busiest day for each calendar year, oldest first.\n\n    Each entry is (year, total, average day, busiest day, busiest day's count).\n    The average is over days that are actually in the file, so a partial year\n    at either end of the data isn't averaged down over months it doesn't cover.\n    \"\"\"\n    days_by_year = {}\n    for day, count in daily_totals(readings):\n        days_by_year.setdefault(day.year, []).append((day, count))\n    summary = []\n    for year, days in sorted(days_by_year.items()):\n        total = sum(count for _, count in days)\n        busiest_day, busiest_count = max(days, key=lambda kv: kv[1])\n        summary.append((year, total, round(total / len(days)), busiest_day, busiest_count))\n    return summary\n",
+      "after": "\n\ndef yearly_summary(readings):\n    \"\"\"Total, average day and busiest day for each calendar year, oldest first.\n\n    Each entry is (year, total, average day, busiest day, busiest day's count).\n    The average leaves out event days (storms, holidays), so one snowbound\n    Monday doesn't drag down what an ordinary day looks like. It's otherwise\n    over days that are actually in the file, so a partial year at either end\n    of the data isn't averaged down over months it doesn't cover. The total\n    still counts every day, event days included.\n    \"\"\"\n    days_by_year = {}\n    for day, count in daily_totals(readings):\n        days_by_year.setdefault(day.year, []).append((day, count))\n    summary = []\n    for year, days in sorted(days_by_year.items()):\n        total = sum(count for _, count in days)\n        busiest_day, busiest_count = max(days, key=lambda kv: kv[1])\n        normal_days = [count for day, count in days if not events.label(day)]\n        avg = round(sum(normal_days) / len(normal_days))\n        summary.append((year, total, avg, busiest_day, busiest_count))\n    return summary\n",
+      "lines": [
+        17,
+        39
+      ]
+    },
+    {
+      "address": "bikecount/metrics.py@c360a3d",
+      "kind": "create",
+      "name": "event days",
+      "out": false,
+      "unit": "bikecount/metrics.py::__import__::bikecount",
+      "before": null,
+      "after": "from bikecount import events\n",
+      "lines": [
+        2,
+        2
+      ]
+    }
+  ],
+  "saves": [
+    {
+      "sha": "66ca5b908720d6fc7b88be6c601a562210271283",
+      "subject": "track known non-normal days like storms and holidays",
+      "date": "2026-08-24T13:50:51+00:00",
+      "ask": null,
+      "observed": null
+    },
+    {
+      "sha": "0c56354027ee87bd3de380b4e56032556996b2c7",
+      "subject": "mark tracked event days on the daily and monthly charts",
+      "date": "2026-08-24T13:57:24+00:00",
+      "ask": null,
+      "observed": null
+    },
+    {
+      "sha": "c360a3d9c8c73babd43f929b9d9c0efde3554a69",
+      "subject": "exclude event days from averages, keep them in totals",
+      "date": "2026-08-24T14:05:51+00:00",
+      "ask": null,
+      "observed": null
+    }
+  ],
+  "plan": {
+    "ok": true,
+    "applied": false,
+    "verb": "revert",
+    "target": "event days",
+    "message": "",
+    "undone": [
+      {
+        "address": "bikecount/metrics.py::hourly_averages@c360a3d",
+        "save": "c360a3d",
+        "subject": "exclude event days from averages, keep them in totals",
+        "unit": "bikecount/metrics.py::hourly_averages",
+        "ran": null
+      }
+    ],
+    "held": [
+      {
+        "address": "bikecount/events.py::EVENT_DAYS@66ca5b9",
+        "save": "66ca5b9",
+        "subject": "track known non-normal days like storms and holidays",
+        "unit": "bikecount/events.py::EVENT_DAYS",
+        "ran": null,
+        "reason": "uses",
+        "holders": []
+      },
+      {
+        "address": "bikecount/events.py@66ca5b9",
+        "save": "66ca5b9",
+        "subject": "track known non-normal days like storms and holidays",
+        "unit": "bikecount/events.py::__import__::datetime",
+        "ran": null,
+        "reason": "uses",
+        "holders": []
+      },
+      {
+        "address": "bikecount/events.py@66ca5b9",
+        "save": "66ca5b9",
+        "subject": "track known non-normal days like storms and holidays",
+        "unit": "bikecount/events.py::__residue__::\u0000HEAD\u0000",
+        "ran": null,
+        "reason": "changed_later",
+        "holders": []
+      },
+      {
+        "address": "bikecount/events.py::label@66ca5b9",
+        "save": "66ca5b9",
+        "subject": "track known non-normal days like storms and holidays",
+        "unit": "bikecount/events.py::label",
+        "ran": null,
+        "reason": "uses",
+        "holders": [
+          {
+            "address": "bikecount/metrics.py::yearly_summary@c360a3d",
+            "save": "c360a3d",
+            "subject": "exclude event days from averages, keep them in totals"
+          }
+        ]
+      },
+      {
+        "address": "bikecount/metrics.py@c360a3d",
+        "save": "c360a3d",
+        "subject": "exclude event days from averages, keep them in totals",
+        "unit": "bikecount/metrics.py::__import__::bikecount",
+        "ran": null,
+        "reason": "uses",
+        "holders": [
+          {
+            "address": "bikecount/metrics.py::yearly_summary@14d1a02",
+            "save": "14d1a02",
+            "subject": "no division by zero in the normal-day average"
+          }
+        ]
+      },
+      {
+        "address": "bikecount/metrics.py::yearly_summary@c360a3d",
+        "save": "c360a3d",
+        "subject": "exclude event days from averages, keep them in totals",
+        "unit": "bikecount/metrics.py::yearly_summary",
+        "ran": null,
+        "reason": "same_lines",
+        "holders": [
+          {
+            "address": "bikecount/metrics.py::yearly_summary@14d1a02",
+            "save": "14d1a02",
+            "subject": "no division by zero in the normal-day average"
+          }
+        ],
+        "now": "\n\ndef yearly_summary(readings):\n    \"\"\"Total, average day and busiest day for each calendar year, oldest first.\n\n    Each entry is (year, total, average day, busiest day, busiest day's count).\n    The average leaves out event days (storms, holidays), so one snowbound\n    Monday doesn't drag down what an ordinary day looks like. It's otherwise\n    over days that are actually in the file, so a partial year at either end\n    of the data isn't averaged down over months it doesn't cover. The total\n    still counts every day, event days included.\n    \"\"\"\n    days_by_year = {}\n    for day, count in daily_totals(readings):\n        days_by_year.setdefault(day.year, []).append((day, count))\n    summary = []\n    for year, days in sorted(days_by_year.items()):\n        total = sum(count for _, count in days)\n        busiest_day, busiest_count = max(days, key=lambda kv: kv[1])\n        normal_days = [count for day, count in days if not events.label(day)]\n        avg = round(sum(normal_days) / max(len(normal_days), 1))\n        summary.append((year, total, avg, busiest_day, busiest_count))\n    return summary\n",
+        "would": "\n\ndef yearly_summary(readings):\n    \"\"\"Total, average day and busiest day for each calendar year, oldest first.\n\n    Each entry is (year, total, average day, busiest day, busiest day's count).\n    The average is over days that are actually in the file, so a partial year\n    at either end of the data isn't averaged down over months it doesn't cover.\n    \"\"\"\n    days_by_year = {}\n    for day, count in daily_totals(readings):\n        days_by_year.setdefault(day.year, []).append((day, count))\n    summary = []\n    for year, days in sorted(days_by_year.items()):\n        total = sum(count for _, count in days)\n        busiest_day, busiest_count = max(days, key=lambda kv: kv[1])\n        summary.append((year, total, round(total / len(days)), busiest_day, busiest_count))\n    return summary\n"
+      }
+    ],
+    "removal_set": {
+      "saves": [
+        {
+          "sha": "14d1a02",
+          "subject": "no division by zero in the normal-day average",
+          "steps": 1
+        },
+        {
+          "sha": "66ca5b9",
+          "subject": "track known non-normal days like storms and holidays",
+          "steps": 4
+        },
+        {
+          "sha": "c360a3d",
+          "subject": "exclude event days from averages, keep them in totals",
+          "steps": 3
+        }
+      ],
+      "steps": 8
+    },
+    "files": {
+      "bikecount/metrics.py": {
+        "before": "\"\"\"Turning readings into the numbers the pages show.\"\"\"\nfrom bikecount import events\n\n\ndef daily_totals(readings):\n    \"\"\"Total per calendar day, oldest first.\"\"\"\n    days = {}\n    for r in readings:\n        day = r.when.date()\n        days[day] = days.get(day, 0) + r.total\n    return sorted(days.items())\n\n\ndef busiest_day(readings):\n    \"\"\"The day with the most people, and its count.\"\"\"\n    return max(daily_totals(readings), key=lambda kv: kv[1])\n\n\ndef yearly_summary(readings):\n    \"\"\"Total, average day and busiest day for each calendar year, oldest first.\n\n    Each entry is (year, total, average day, busiest day, busiest day's count).\n    The average leaves out event days (storms, holidays), so one snowbound\n    Monday doesn't drag down what an ordinary day looks like. It's otherwise\n    over days that are actually in the file, so a partial year at either end\n    of the data isn't averaged down over months it doesn't cover. The total\n    still counts every day, event days included.\n    \"\"\"\n    days_by_year = {}\n    for day, count in daily_totals(readings):\n        days_by_year.setdefault(day.year, []).append((day, count))\n    summary = []\n    for year, days in sorted(days_by_year.items()):\n        total = sum(count for _, count in days)\n        busiest_day, busiest_count = max(days, key=lambda kv: kv[1])\n        normal_days = [count for day, count in days if not events.label(day)]\n        avg = round(sum(normal_days) / max(len(normal_days), 1))\n        summary.append((year, total, avg, busiest_day, busiest_count))\n    return summary\n\n\ndef monthly_totals(readings):\n    \"\"\"Total per calendar month, oldest first. Each key is the first of the month.\"\"\"\n    months = {}\n    for r in readings:\n        month = r.when.date().replace(day=1)\n        months[month] = months.get(month, 0) + r.total\n    return sorted(months.items())\n\n\ndef hourly_averages(readings):\n    \"\"\"Average count for each hour of the day, 0 to 23, midnight first.\n\n    Readings from event days (storms, holidays) are left out, so a snowbound\n    Monday doesn't pull down what an ordinary hour looks like.\n    \"\"\"\n    totals = {}\n    counts = {}\n    for r in readings:\n        if events.label(r.when.date()):\n            continue\n        hour = r.when.hour\n        totals[hour] = totals.get(hour, 0) + r.total\n        counts[hour] = counts.get(hour, 0) + 1\n    return sorted((hour, round(totals[hour] / counts[hour])) for hour in totals)\n\n\ndef hourly_averages_weekday(readings):\n    \"\"\"Same as hourly_averages, Monday to Friday only.\"\"\"\n    return hourly_averages(r for r in readings if r.when.weekday() < 5)\n\n\ndef hourly_averages_weekend(readings):\n    \"\"\"Same as hourly_averages, Saturday and Sunday only.\"\"\"\n    return hourly_averages(r for r in readings if r.when.weekday() >= 5)\n\n\ndef side_totals(readings):\n    \"\"\"Total bikes counted on the east and west sidewalks.\"\"\"\n    east = sum(r.east for r in readings)\n    west = sum(r.west for r in readings)\n    return east, west\n\n\ndef hourly_west_share(readings):\n    \"\"\"West sidewalk's share of the total, as a percent, for each hour of day.\n\n    Higher than 50 means west carries more than east at that hour; lower\n    means east does. East's share is just 100 minus this.\n    \"\"\"\n    east = {}\n    west = {}\n    for r in readings:\n        hour = r.when.hour\n        east[hour] = east.get(hour, 0) + r.east\n        west[hour] = west.get(hour, 0) + r.west\n    return sorted((hour, round(100 * west[hour] / (east[hour] + west[hour]))) for hour in east)\n\n\ndef west_share_by_year(readings):\n    \"\"\"West sidewalk's share of the total, as a percent, for each calendar year.\n\n    Same idea as hourly_west_share, but by year, to check whether the split\n    between the two sides is stable over time or drifting.\n    \"\"\"\n    east = {}\n    west = {}\n    for r in readings:\n        year = r.when.year\n        east[year] = east.get(year, 0) + r.east\n        west[year] = west.get(year, 0) + r.west\n    return sorted((year, round(100 * west[year] / (east[year] + west[year]))) for year in east)\n",
+        "after": "\"\"\"Turning readings into the numbers the pages show.\"\"\"\nfrom bikecount import events\n\n\ndef daily_totals(readings):\n    \"\"\"Total per calendar day, oldest first.\"\"\"\n    days = {}\n    for r in readings:\n        day = r.when.date()\n        days[day] = days.get(day, 0) + r.total\n    return sorted(days.items())\n\n\ndef busiest_day(readings):\n    \"\"\"The day with the most people, and its count.\"\"\"\n    return max(daily_totals(readings), key=lambda kv: kv[1])\n\n\ndef yearly_summary(readings):\n    \"\"\"Total, average day and busiest day for each calendar year, oldest first.\n\n    Each entry is (year, total, average day, busiest day, busiest day's count).\n    The average leaves out event days (storms, holidays), so one snowbound\n    Monday doesn't drag down what an ordinary day looks like. It's otherwise\n    over days that are actually in the file, so a partial year at either end\n    of the data isn't averaged down over months it doesn't cover. The total\n    still counts every day, event days included.\n    \"\"\"\n    days_by_year = {}\n    for day, count in daily_totals(readings):\n        days_by_year.setdefault(day.year, []).append((day, count))\n    summary = []\n    for year, days in sorted(days_by_year.items()):\n        total = sum(count for _, count in days)\n        busiest_day, busiest_count = max(days, key=lambda kv: kv[1])\n        normal_days = [count for day, count in days if not events.label(day)]\n        avg = round(sum(normal_days) / max(len(normal_days), 1))\n        summary.append((year, total, avg, busiest_day, busiest_count))\n    return summary\n\n\ndef monthly_totals(readings):\n    \"\"\"Total per calendar month, oldest first. Each key is the first of the month.\"\"\"\n    months = {}\n    for r in readings:\n        month = r.when.date().replace(day=1)\n        months[month] = months.get(month, 0) + r.total\n    return sorted(months.items())\n\n\ndef hourly_averages(readings):\n    \"\"\"Average count for each hour of the day, 0 to 23, midnight first.\"\"\"\n    totals = {}\n    counts = {}\n    for r in readings:\n        hour = r.when.hour\n        totals[hour] = totals.get(hour, 0) + r.total\n        counts[hour] = counts.get(hour, 0) + 1\n    return sorted((hour, round(totals[hour] / counts[hour])) for hour in totals)\n\n\ndef hourly_averages_weekday(readings):\n    \"\"\"Same as hourly_averages, Monday to Friday only.\"\"\"\n    return hourly_averages(r for r in readings if r.when.weekday() < 5)\n\n\ndef hourly_averages_weekend(readings):\n    \"\"\"Same as hourly_averages, Saturday and Sunday only.\"\"\"\n    return hourly_averages(r for r in readings if r.when.weekday() >= 5)\n\n\ndef side_totals(readings):\n    \"\"\"Total bikes counted on the east and west sidewalks.\"\"\"\n    east = sum(r.east for r in readings)\n    west = sum(r.west for r in readings)\n    return east, west\n\n\ndef hourly_west_share(readings):\n    \"\"\"West sidewalk's share of the total, as a percent, for each hour of day.\n\n    Higher than 50 means west carries more than east at that hour; lower\n    means east does. East's share is just 100 minus this.\n    \"\"\"\n    east = {}\n    west = {}\n    for r in readings:\n        hour = r.when.hour\n        east[hour] = east.get(hour, 0) + r.east\n        west[hour] = west.get(hour, 0) + r.west\n    return sorted((hour, round(100 * west[hour] / (east[hour] + west[hour]))) for hour in east)\n\n\ndef west_share_by_year(readings):\n    \"\"\"West sidewalk's share of the total, as a percent, for each calendar year.\n\n    Same idea as hourly_west_share, but by year, to check whether the split\n    between the two sides is stable over time or drifting.\n    \"\"\"\n    east = {}\n    west = {}\n    for r in readings:\n        year = r.when.year\n        east[year] = east.get(year, 0) + r.east\n        west[year] = west.get(year, 0) + r.west\n    return sorted((year, round(100 * west[year] / (east[year] + west[year]))) for year in east)\n"
+      }
+    },
+    "check": "not_run",
+    "observed": {
+      "head": null
+    }
+  }
+}

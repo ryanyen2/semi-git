@@ -1,14 +1,14 @@
-// The render panel's CSP is the part that fails invisibly. A policy missing `frame-src` does not
-// raise anything the extension can catch -- the iframe is simply blocked, and the panel shows an
-// empty box that reads exactly like a dev server that has not finished booting. These pin the
-// policy to the URL actually being loaded, so the two cannot drift.
-//
-// Run: npm test  (node's built-in runner and type-stripping -- no dependencies. Needs Node >= 22.6.)
+// The render panel's CSP fails invisibly: a policy missing `frame-src` blocks the iframe and leaves
+// an empty box that reads like a slow dev server. These pin the policy to the URL actually loaded.
+// Run: npm test.
 
 import assert from "node:assert/strict";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { test } from "node:test";
 
-import { bootHtml, devCommand, errorHtml, frameHtml, plain } from "./renderSeam.ts";
+import { bootHtml, devCommand, errorHtml, frameHtml, nowAnchor, plain } from "./renderSeam.ts";
+import type { LogView } from "./types.ts";
 
 const CSP_SOURCE = "vscode-resource://test";
 
@@ -41,6 +41,16 @@ test("a remote-forwarded URL carries its own origin into the policy", () => {
 test("the policy still denies everything it did not name", () => {
   const html = frameHtml(CSP_SOURCE, "http://127.0.0.1:5191/", "now");
   assert.match(html, /default-src 'none'/);
+});
+
+test("now is written by bringing back the newest save that has steps and none of them out", () => {
+  const log: LogView = JSON.parse(fs.readFileSync(path.join("dev", "fixtures", "log.json"), "utf8"));
+  const sha = nowAnchor(log)!;
+  const i = log.saves.findIndex((s) => s.sha === sha);
+  assert.ok(log.saves[i].steps.length && log.saves[i].steps.every((st) => !st.out));
+  assert.ok(log.saves.slice(0, i).every((s) => !s.steps.length || s.steps.some((st) => st.out)));
+  assert.equal(nowAnchor({ saves: [] }), undefined);
+  assert.equal(nowAnchor(null), undefined);
 });
 
 test("an empty label renders as `now` rather than an empty span", () => {

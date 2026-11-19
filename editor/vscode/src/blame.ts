@@ -1,121 +1,90 @@
-// In-situ semantic blame: a whole-span gutter/border decoration per `blame_view` span, colored by
-// the owning feature's identity (color.ts's OKLCH generator) so a feature reads the same color
-// here as it does in the feature tree. Hovering a span shows its label and feature id — the
-// "detail on demand" layer that used to live in hover.ts/codelens.ts, folded into the decoration
-// itself now that there's no per-node webview to link out to. Toggled by `ugh.blame.enabled`.
+// A quiet tint at the left edge of each named definition, in its name's hue (the workbench's hue
+// for that name), and the same colour in the overview ruler. Unnamed definitions are left
+// untinted. Toggled by `ugh.blame.enabled`.
 
 import * as vscode from "vscode";
-import { colorForNode, colorWithAlpha } from "./color";
+import { nameColor } from "./color";
+import { Documents } from "./documents";
 import { Store } from "./store";
-import { BlameView } from "./types";
+import { headLine, nameOf } from "./units";
 
-export class BlameController implements vscode.Disposable {
+export class Blame implements vscode.Disposable {
   private types = new Map<string, vscode.TextEditorDecorationType>();
-  private disposables: vscode.Disposable[] = [];
-  private debounce: NodeJS.Timeout | undefined;
+  private subs: { dispose(): void }[];
+  private timer: NodeJS.Timeout | undefined;
 
-  constructor(private store: Store) {
-    this.disposables.push(
-      vscode.window.onDidChangeActiveTextEditor(() => this.schedule()),
-      this.store.onDidChange(() => this.schedule()),
-      vscode.workspace.onDidChangeConfiguration((e) => {
-        if (e.affectsConfiguration("ugh.blame")) {
-          this.schedule();
-        }
+  constructor(private readonly docs: Documents, store: Store) {
+    this.subs = [
+      store.onChange(() => this.schedule()),
+      vscode.window.onDidChangeVisibleTextEditors(() => this.schedule()),
+      vscode.workspace.onDidChangeTextDocument((e) => {
+        if (vscode.window.visibleTextEditors.some((ed) => ed.document === e.document)) this.schedule(400);
       }),
-      // Identity colors are theme-aware (OKLCH lightness shifts light<->dark), so the cached
-      // per-color decoration types are stale after a theme switch: drop them and re-render.
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration("ugh.blame")) this.schedule();
+      }),
       vscode.window.onDidChangeActiveColorTheme(() => {
-        const editor = vscode.window.activeTextEditor;
-        if (editor) {
-          this.clearAll(editor);
-        }
-        this.types.forEach((t) => t.dispose());
-        this.types.clear();
+        this.clear();
         this.schedule();
-      })
-    );
+      }),
+    ];
   }
 
-  private enabled(): boolean {
-    return vscode.workspace.getConfiguration("ugh").get<boolean>("blame.enabled", true);
+  private dark(): boolean {
+    const kind = vscode.window.activeColorTheme.kind;
+    return kind === vscode.ColorThemeKind.Dark || kind === vscode.ColorThemeKind.HighContrast;
   }
 
-  private typeFor(featureId: string): vscode.TextEditorDecorationType {
-    let t = this.types.get(featureId);
+  private typeFor(color: string): vscode.TextEditorDecorationType {
+    let t = this.types.get(color);
     if (!t) {
-      const color = colorForNode(featureId);
       t = vscode.window.createTextEditorDecorationType({
         isWholeLine: true,
-        backgroundColor: colorWithAlpha(featureId, 0.07),
         borderWidth: "0 0 0 2px",
         borderStyle: "solid",
         borderColor: color,
         overviewRulerColor: color,
-        overviewRulerLane: vscode.OverviewRulerLane.Full,
+        overviewRulerLane: vscode.OverviewRulerLane.Left,
       });
-      this.types.set(featureId, t);
+      this.types.set(color, t);
     }
     return t;
   }
 
-  private schedule(): void {
-    clearTimeout(this.debounce);
-    this.debounce = setTimeout(() => void this.render(), 120);
-  }
-
-  private clearAll(editor: vscode.TextEditor): void {
-    for (const t of this.types.values()) {
-      editor.setDecorations(t, []);
-    }
+  private schedule(delay = 120): void {
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => void this.render(), delay);
   }
 
   async render(): Promise<void> {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return;
+    const on = vscode.workspace.getConfiguration("ugh").get<boolean>("blame.enabled", true);
+    for (const editor of vscode.window.visibleTextEditors) {
+      const ranges = new Map<string, vscode.Range[]>();
+      const all = on ? await this.docs.units(editor.document) : undefined;
+      const lines = all ? editor.document.getText().split("\n") : [];
+      for (const unit of all?.units ?? []) {
+        if (unit.kind === "head") continue;
+        const name = nameOf(unit.steps);
+        if (!name) continue;
+        const color = nameColor(name, this.dark());
+        const list = ranges.get(color) ?? [];
+        // From the line the name is on, so the blank lines between definitions stay untinted.
+        list.push(new vscode.Range(headLine(unit, lines) - 1, 0, unit.last - 1, 0));
+        ranges.set(color, list);
+      }
+      for (const [color, t] of this.types) editor.setDecorations(t, ranges.get(color) ?? []);
+      for (const [color, list] of ranges) if (!this.types.has(color)) editor.setDecorations(this.typeFor(color), list);
     }
-    // Only real workspace files have a semantic blame. Focusing the "ugh" Output panel,
-    // a diff view, a git:// gutter, or any other virtual document makes it the active editor;
-    // running `ugh blame` on that URI fails and appends to the output channel, which re-reveals
-    // it and re-fires this handler -- a self-sustaining loop. Gate to file scheme (matches the
-    // `{ scheme: "file" }` selector every other read surface registers with).
-    if (editor.document.uri.scheme !== "file") {
-      return;
-    }
-    const rel = vscode.workspace.asRelativePath(editor.document.uri, false);
-    let blame: BlameView;
-    try {
-      blame = await this.store.blame(rel);
-    } catch {
-      return;
-    }
-    this.clearAll(editor);
-    if (blame.error || !this.enabled()) {
-      return;
-    }
-    const byType = new Map<vscode.TextEditorDecorationType, vscode.DecorationOptions[]>();
-    for (const s of blame.spans) {
-      const t = this.typeFor(s.feature_id);
-      const range = new vscode.Range(s.start_line - 1, 0, s.end_line - 1, 0);
-      // The feature's name alone. The raw `feature_id` used to follow it in backticks: 64 hex
-      // characters nobody retypes, in the one hover a reader opens to learn what this span is.
-      const hoverMessage = new vscode.MarkdownString(escape(s.label));
-      const opts = byType.get(t) ?? [];
-      opts.push({ range, hoverMessage });
-      byType.set(t, opts);
-    }
-    for (const [t, opts] of byType) {
-      editor.setDecorations(t, opts);
-    }
+  }
+
+  private clear(): void {
+    this.types.forEach((t) => t.dispose());
+    this.types.clear();
   }
 
   dispose(): void {
-    this.disposables.forEach((d) => d.dispose());
-    this.types.forEach((t) => t.dispose());
+    clearTimeout(this.timer);
+    this.subs.forEach((s) => s.dispose());
+    this.clear();
   }
-}
-
-function escape(s: string): string {
-  return s.replace(/[<>]/g, (c) => (c === "<" ? "&lt;" : "&gt;"));
 }

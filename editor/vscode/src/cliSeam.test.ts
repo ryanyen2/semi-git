@@ -1,99 +1,77 @@
-// The extension had no tests at all, which is how F125 survived eight months in six call sites and
-// how F126 survived in the one place every failure message passes through. These cover the two pure
-// decisions in `cliSeam.ts`; anything needing the extension host is still uncovered.
-//
-// Run: npm test  (node's built-in runner and type-stripping -- no dependencies. Needs Node >= 22.6.)
+// The argv each verb is run with, and what a failed run is reported as. Run: npm test (node's own
+// runner and type stripping, Node >= 22.6).
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-// `ExecFailure` is imported separately because node strips types without resolving them: a type
-// in a value import survives into the runtime lookup and fails as a missing export.
 import type { ExecFailure } from "./cliSeam.ts";
-import { failureDetail, isSpawnFailure, mutationArgs } from "./cliSeam.ts";
+import { args, failureDetail, isSpawnFailure } from "./cliSeam.ts";
+
+test("a preview is --emit, an apply is --yes, and the addresses come after --", () => {
+  assert.deepEqual(args.preview("revert", ["event days"]), ["revert", "--emit", "--json", "--", "event days"]);
+  assert.deepEqual(args.apply("revert", ["a.py::f", "3f2a1c0"]), ["revert", "--yes", "--json", "--", "a.py::f", "3f2a1c0"]);
+  assert.ok(!args.apply("restore", ["x"]).includes("--emit"));
+});
+
+test("--whole goes to revert only, before the addresses", () => {
+  assert.deepEqual(args.preview("revert", ["x"], true), ["revert", "--emit", "--json", "--whole", "--", "x"]);
+  assert.deepEqual(args.apply("restore", ["x"], true), ["restore", "--yes", "--json", "--", "x"]);
+});
+
+test("an address or a label that starts with a dash is never read as a flag", () => {
+  assert.deepEqual(args.show("-x"), ["show", "--json", "--", "-x"]);
+  assert.deepEqual(args.name("a.py::f", "--whole"), ["name", "--json", "--", "a.py::f", "--whole"]);
+  assert.deepEqual(args.rename("-old", "new name"), ["rename", "--json", "--", "-old", "new name"]);
+  assert.deepEqual(args.find("-v"), ["find", "--json", "--", "-v"]);
+});
+
+test("save carries -m and --as only when given", () => {
+  assert.deepEqual(args.save(), ["save", "--json"]);
+  assert.deepEqual(args.save("add input validation", "checkout"),
+    ["save", "--json", "-m", "add input validation", "--as", "checkout"]);
+  assert.deepEqual(args.save(undefined, "checkout"), ["save", "--json", "--as", "checkout"]);
+});
+
+test("resolve shows both versions without a flag and settles with one", () => {
+  assert.deepEqual(args.versions("m.py::f"), ["resolve", "--json", "--", "m.py::f"]);
+  assert.deepEqual(args.resolve("m.py::f", "theirs"), ["resolve", "--theirs", "--json", "--", "m.py::f"]);
+  assert.deepEqual(args.resolve("m.py::f", "apply"), ["resolve", "--apply", "--json", "--", "m.py::f"]);
+});
+
+test("sync and push name a remote and branch only when given", () => {
+  assert.deepEqual(args.sync(), ["sync", "--json"]);
+  assert.deepEqual(args.sync("origin", "main"), ["sync", "--json", "--", "origin", "main"]);
+  assert.deepEqual(args.push("origin"), ["push", "--json", "--", "origin"]);
+});
+
+test("the render panel's write previews onto a directory", () => {
+  assert.deepEqual(args.emitTo("revert", "22496d8..", "/tmp/t"),
+    ["revert", "--emit", "--json", "--out", "/tmp/t", "--", "22496d8.."]);
+});
 
 const BIN = "/usr/local/bin/ugh";
-const detail = (err: ExecFailure) => failureDetail(err, BIN, 30_000);
+const detail = (err: ExecFailure) => failureDetail(err, BIN, 120_000);
 
-test("revert and restore carry the --yes the tty gate needs", () => {
-  assert.deepEqual(mutationArgs(["revert", "f-1234"]), ["revert", "f-1234", "--yes"]);
-  assert.deepEqual(mutationArgs(["restore", "op-9"]), ["restore", "op-9", "--yes"]);
-  // Through the shape `applyMutation` builds, which is how two of the six call sites arrive.
-  assert.deepEqual(mutationArgs(["revert", "f-1", "--keep", "op-2,op-3"]),
-                   ["revert", "f-1", "--keep", "op-2,op-3", "--yes"]);
+test("a JSON refusal reports its one line, not the JSON", () => {
+  assert.equal(detail({ code: 1, stdout: JSON.stringify({ ok: false, error: "working tree has uncommitted changes" }) }),
+    "working tree has uncommitted changes");
+  assert.equal(detail({ code: 2, stdout: JSON.stringify({ ok: false, message: "no such address: 'nope'", hits: [] }) }),
+    "no such address: 'nope'");
 });
 
-test("verbs that would reject --yes do not get it", () => {
-  // A parse error, not a refusal: only the two ideal-edit verbs accept the flag.
-  for (const argv of [["init"], ["feature", "rename", "f-1", "x"], ["save", "-m", "x"], ["fulfill"]]) {
-    assert.deepEqual(mutationArgs(argv), argv, argv.join(" "));
-  }
+test("a dispatch error comes from stderr", () => {
+  assert.match(detail({ code: 2, stdout: "", stderr: "ugh: unknown verb `bogus`.\n" }), /unknown verb/);
 });
 
-test("--yes is not doubled when a caller already passed it", () => {
-  assert.deepEqual(mutationArgs(["revert", "f-1", "--yes"]), ["revert", "f-1", "--yes"]);
-});
-
-test("a semantic refusal is read off stdout, not lost to err.message", () => {
-  // F126, measured against the real CLI: exit 1, the whole explanation on stdout, stderr empty.
-  const d = detail({
-    code: 1,
-    stdout: "✗ [revert] nope::nothing — symbol 'nope::nothing' is not live in the ideal\n",
-    stderr: "",
-    message: "Command failed: /usr/local/bin/ugh revert nope::nothing\n",
-  });
-  assert.match(d, /not live in the ideal/);
-  assert.doesNotMatch(d, /Command failed/);
-});
-
-test("a dispatch error still comes from stderr, which is where the CLI puts it", () => {
-  const d = detail({
-    code: 2,
-    stdout: "",
-    stderr: "ugh: unknown verb `bogusverb`.\n  run `ugh help` for the verb surface.\n",
-    message: "Command failed",
-  });
-  assert.match(d, /unknown verb/);
-});
-
-test("a failing --json read reports its field, not the tail of the JSON object", () => {
-  // The regression the first version of this fix shipped: every read passes --json, so tailing
-  // stdout would have shown the user the closing lines of an object.
-  const payload = JSON.stringify(
-    { applied: false, ok: false, verb: "revert", removed: [], added: [],
-      message: "symbol 'nope::nothing' is not live in the ideal" }, null, 2);
-  const d = detail({ code: 1, stdout: payload, stderr: "", message: "Command failed" });
-  assert.equal(d, "symbol 'nope::nothing' is not live in the ideal");
-});
-
-test("a _fail_json envelope reports its error field", () => {
-  const payload = JSON.stringify({ ok: false, error: "cannot overwrite uncommitted changes in m.py" });
-  const d = detail({ code: 1, stdout: payload, stderr: "", message: "Command failed" });
-  assert.match(d, /uncommitted changes/);
-});
-
-test("a long prose refusal is capped but keeps its last lines", () => {
-  const stdout = [...Array(40).keys()].map((i) => `preview line ${i}`).join("\n") +
-    "\n  not applied — this was the preview. re-run with --yes to apply.\n";
-  const d = detail({ code: 2, stdout, stderr: "", message: "Command failed" });
-  assert.match(d, /not applied/);
-  assert.ok(d.split("\n").length <= 12, `${d.split("\n").length} lines survived the cap`);
-  assert.doesNotMatch(d, /preview line 0\b/);
-});
-
-test("a spawn failure is classified apart from a CLI that ran and refused", () => {
+test("a spawn failure names the binary and is told apart from a refusal", () => {
   const missing: ExecFailure = { code: "ENOENT", stdout: "", stderr: "", message: "spawn ENOENT" };
   assert.ok(isSpawnFailure(missing));
-  assert.match(detail(missing), /could not run the ugh CLI at '\/usr\/local\/bin\/ugh'/);
-  // A refusal carries output, so it must never be mistaken for a bad binary path -- the two need
-  // completely different fixes and the wrong one sends the user to their settings.
-  assert.equal(isSpawnFailure({ code: 1, stdout: "✗ nope", stderr: "", message: "Command failed" }), false);
+  assert.match(detail(missing), /could not run '\/usr\/local\/bin\/ugh'/);
+  assert.equal(isSpawnFailure({ code: 1, stdout: "{}", stderr: "" }), false);
 });
 
-test("a timeout says so rather than reporting whatever partial output arrived", () => {
-  const d = detail({ killed: true, code: null as unknown as number, stdout: "half a tree", stderr: "", message: "killed" });
-  assert.match(d, /timed out after 30000ms/);
-  assert.ok(!isSpawnFailure({ killed: true, code: "ENOENT" }));
+test("a timeout says so, whatever partial output arrived", () => {
+  assert.match(detail({ killed: true, code: null, stdout: "{\"half\":" }), /did not answer within 120s/);
 });
 
 test("a failure with nothing on either stream still says something", () => {

@@ -1,0 +1,75 @@
+{
+  "ok": true,
+  "applied": false,
+  "verb": "restore",
+  "target": "0c56354",
+  "message": "",
+  "undone": [
+    {
+      "address": "bikecount/charts.py::bar_chart@43dafc6",
+      "save": "43dafc6",
+      "subject": "ugh revert 0c56354",
+      "unit": "bikecount/charts.py::bar_chart",
+      "ran": null
+    },
+    {
+      "address": "bikecount/events.py::label_for_month@43dafc6",
+      "save": "43dafc6",
+      "subject": "ugh revert 0c56354",
+      "unit": "bikecount/events.py::label_for_month",
+      "ran": null
+    },
+    {
+      "address": "bikecount/pages/monthly.py@43dafc6",
+      "save": "43dafc6",
+      "subject": "ugh revert 0c56354",
+      "unit": "bikecount/pages/monthly.py::__import__::bikecount",
+      "ran": null
+    },
+    {
+      "address": "bikecount/pages/monthly.py::render@43dafc6",
+      "save": "43dafc6",
+      "subject": "ugh revert 0c56354",
+      "unit": "bikecount/pages/monthly.py::render",
+      "ran": null
+    },
+    {
+      "address": "bikecount/pages/overview.py@43dafc6",
+      "save": "43dafc6",
+      "subject": "ugh revert 0c56354",
+      "unit": "bikecount/pages/overview.py::__import__::bikecount",
+      "ran": null
+    },
+    {
+      "address": "bikecount/pages/overview.py::render@43dafc6",
+      "save": "43dafc6",
+      "subject": "ugh revert 0c56354",
+      "unit": "bikecount/pages/overview.py::render",
+      "ran": null
+    }
+  ],
+  "held": [],
+  "removal_set": null,
+  "files": {
+    "bikecount/charts.py": {
+      "before": "\"\"\"Hand-drawn SVG. No charting library, this is one page of bars.\"\"\"\n\n\ndef bar_chart(pairs, width=760, height=220, label=str):\n    \"\"\"A bar per pair, tallest bar full height. `pairs` is [(label_value, count)].\"\"\"\n    if not pairs:\n        return \"<p>nothing to draw</p>\"\n    top = max(count for _, count in pairs) or 1\n    step = width / len(pairs)\n    bars = []\n    for i, (key, count) in enumerate(pairs):\n        h = (count / top) * (height - 30)\n        bars.append(\n            f'<rect x=\"{i * step:.1f}\" y=\"{height - 20 - h:.1f}\" width=\"{step * 0.8:.1f}\" '\n            f'height=\"{h:.1f}\" fill=\"#3b6ea5\"><title>{label(key)}: {count:,}</title></rect>'\n        )\n    return f'<svg viewBox=\"0 0 {width} {height}\" width=\"100%\" height=\"{height}\">{\"\".join(bars)}</svg>'\n",
+      "after": "\"\"\"Hand-drawn SVG. No charting library, this is one page of bars.\"\"\"\n\n\ndef bar_chart(pairs, width=760, height=220, label=str, event=lambda key: None):\n    \"\"\"A bar per pair, tallest bar full height. `pairs` is [(label_value, count)].\n\n    `event(key)` names the tracked event on that bar, or None for an ordinary one.\n    Event bars are drawn in amber instead of blue, so a known storm or holiday\n    doesn't get read as a real swing in the numbers.\n    \"\"\"\n    if not pairs:\n        return \"<p>nothing to draw</p>\"\n    top = max(count for _, count in pairs) or 1\n    step = width / len(pairs)\n    bars = []\n    for i, (key, count) in enumerate(pairs):\n        h = (count / top) * (height - 30)\n        name = event(key)\n        fill = \"#d98c3d\" if name else \"#3b6ea5\"\n        title = f\"{label(key)}: {count:,}\" + (f\" ({name})\" if name else \"\")\n        bars.append(\n            f'<rect x=\"{i * step:.1f}\" y=\"{height - 20 - h:.1f}\" width=\"{step * 0.8:.1f}\" '\n            f'height=\"{h:.1f}\" fill=\"{fill}\"><title>{title}</title></rect>'\n        )\n    return f'<svg viewBox=\"0 0 {width} {height}\" width=\"100%\" height=\"{height}\">{\"\".join(bars)}</svg>'\n"
+    },
+    "bikecount/events.py": {
+      "before": "\"\"\"Days that are nothing like a normal day: storms, holidays, one-off closures.\n\nEvery other module treats one day the same as the next, so a snowstorm or a\nholiday just looks like a strange dip in the numbers. This is the list of\nwhich days those are, so pages can tell them apart later.\n\nThe handful below are ones you can spot just by looking at the daily\ntotals: Christmas, the Fourth of July, Thanksgiving and New Year's Day are\nall sharply quieter than the days around them, every year they appear in\nthe data, and the February 2019 snowstorm is the biggest drop on record.\nRyan has a fuller list in his email; fold those in here too, one line each.\n\"\"\"\nimport datetime\n\nEVENT_DAYS = {\n    datetime.date(2019, 2, 4): \"February 2019 snowstorm\",\n    datetime.date(2019, 2, 5): \"February 2019 snowstorm\",\n    datetime.date(2019, 2, 6): \"February 2019 snowstorm\",\n    datetime.date(2019, 2, 9): \"February 2019 snowstorm\",\n    datetime.date(2019, 2, 10): \"February 2019 snowstorm\",\n    datetime.date(2019, 2, 11): \"February 2019 snowstorm\",\n    datetime.date(2019, 2, 12): \"February 2019 snowstorm\",\n\n    datetime.date(2012, 12, 25): \"Christmas\",\n    datetime.date(2013, 12, 25): \"Christmas\",\n    datetime.date(2014, 12, 25): \"Christmas\",\n    datetime.date(2015, 12, 25): \"Christmas\",\n    datetime.date(2016, 12, 25): \"Christmas\",\n    datetime.date(2017, 12, 25): \"Christmas\",\n    datetime.date(2018, 12, 25): \"Christmas\",\n\n    datetime.date(2013, 7, 4): \"Fourth of July\",\n    datetime.date(2014, 7, 4): \"Fourth of July\",\n    datetime.date(2015, 7, 4): \"Fourth of July\",\n    datetime.date(2016, 7, 4): \"Fourth of July\",\n    datetime.date(2017, 7, 4): \"Fourth of July\",\n    datetime.date(2018, 7, 4): \"Fourth of July\",\n    datetime.date(2019, 7, 4): \"Fourth of July\",\n\n    datetime.date(2012, 11, 22): \"Thanksgiving\",\n    datetime.date(2013, 11, 28): \"Thanksgiving\",\n    datetime.date(2014, 11, 27): \"Thanksgiving\",\n    datetime.date(2015, 11, 26): \"Thanksgiving\",\n    datetime.date(2016, 11, 24): \"Thanksgiving\",\n    datetime.date(2017, 11, 23): \"Thanksgiving\",\n    datetime.date(2018, 11, 22): \"Thanksgiving\",\n\n    datetime.date(2013, 1, 1): \"New Year's Day\",\n    datetime.date(2014, 1, 1): \"New Year's Day\",\n    datetime.date(2015, 1, 1): \"New Year's Day\",\n    datetime.date(2016, 1, 1): \"New Year's Day\",\n    datetime.date(2017, 1, 1): \"New Year's Day\",\n    datetime.date(2018, 1, 1): \"New Year's Day\",\n    datetime.date(2019, 1, 1): \"New Year's Day\",\n}\n\n\ndef label(day):\n    \"\"\"The name of the event on this day, or None for an ordinary day.\"\"\"\n    return EVENT_DAYS.get(day)\n",
+      "after": "\"\"\"Days that are nothing like a normal day: storms, holidays, one-off closures.\n\nEvery other module treats one day the same as the next, so a snowstorm or a\nholiday just looks like a strange dip in the numbers. This is the list of\nwhich days those are, so pages can tell them apart later.\n\nThe handful below are ones you can spot just by looking at the daily\ntotals: Christmas, the Fourth of July, Thanksgiving and New Year's Day are\nall sharply quieter than the days around them, every year they appear in\nthe data, and the February 2019 snowstorm is the biggest drop on record.\nRyan has a fuller list in his email; fold those in here too, one line each.\n\"\"\"\nimport datetime\n\nEVENT_DAYS = {\n    datetime.date(2019, 2, 4): \"February 2019 snowstorm\",\n    datetime.date(2019, 2, 5): \"February 2019 snowstorm\",\n    datetime.date(2019, 2, 6): \"February 2019 snowstorm\",\n    datetime.date(2019, 2, 9): \"February 2019 snowstorm\",\n    datetime.date(2019, 2, 10): \"February 2019 snowstorm\",\n    datetime.date(2019, 2, 11): \"February 2019 snowstorm\",\n    datetime.date(2019, 2, 12): \"February 2019 snowstorm\",\n\n    datetime.date(2012, 12, 25): \"Christmas\",\n    datetime.date(2013, 12, 25): \"Christmas\",\n    datetime.date(2014, 12, 25): \"Christmas\",\n    datetime.date(2015, 12, 25): \"Christmas\",\n    datetime.date(2016, 12, 25): \"Christmas\",\n    datetime.date(2017, 12, 25): \"Christmas\",\n    datetime.date(2018, 12, 25): \"Christmas\",\n\n    datetime.date(2013, 7, 4): \"Fourth of July\",\n    datetime.date(2014, 7, 4): \"Fourth of July\",\n    datetime.date(2015, 7, 4): \"Fourth of July\",\n    datetime.date(2016, 7, 4): \"Fourth of July\",\n    datetime.date(2017, 7, 4): \"Fourth of July\",\n    datetime.date(2018, 7, 4): \"Fourth of July\",\n    datetime.date(2019, 7, 4): \"Fourth of July\",\n\n    datetime.date(2012, 11, 22): \"Thanksgiving\",\n    datetime.date(2013, 11, 28): \"Thanksgiving\",\n    datetime.date(2014, 11, 27): \"Thanksgiving\",\n    datetime.date(2015, 11, 26): \"Thanksgiving\",\n    datetime.date(2016, 11, 24): \"Thanksgiving\",\n    datetime.date(2017, 11, 23): \"Thanksgiving\",\n    datetime.date(2018, 11, 22): \"Thanksgiving\",\n\n    datetime.date(2013, 1, 1): \"New Year's Day\",\n    datetime.date(2014, 1, 1): \"New Year's Day\",\n    datetime.date(2015, 1, 1): \"New Year's Day\",\n    datetime.date(2016, 1, 1): \"New Year's Day\",\n    datetime.date(2017, 1, 1): \"New Year's Day\",\n    datetime.date(2018, 1, 1): \"New Year's Day\",\n    datetime.date(2019, 1, 1): \"New Year's Day\",\n}\n\n\ndef label(day):\n    \"\"\"The name of the event on this day, or None for an ordinary day.\"\"\"\n    return EVENT_DAYS.get(day)\n\n\ndef label_for_month(month):\n    \"\"\"The name of a tracked event day that falls in this calendar month, or None.\n\n    Monthly totals are keyed by the first of the month, not by day, so this\n    matches on year and month instead of an exact date.\n    \"\"\"\n    names = {name for day, name in EVENT_DAYS.items()\n             if day.year == month.year and day.month == month.month}\n    return \", \".join(sorted(names)) if names else None\n"
+    },
+    "bikecount/pages/monthly.py": {
+      "before": "\"\"\"Total bikes per month, back to the start of the window: shows the dip when the weather turns.\"\"\"\nfrom bikecount import charts, metrics\nfrom bikecount.pages import shell\n\nPATH = \"/monthly\"\nTITLE = \"Monthly\"\nORDER = 2\n\n\ndef render(readings, start, end):\n    months = metrics.monthly_totals(readings)\n    high_month, high_count = max(months, key=lambda kv: kv[1])\n    low_month, low_count = min(months, key=lambda kv: kv[1])\n    by_month = lambda d: d.strftime(\"%b %Y\")\n\n    return shell(\"Monthly\", f\"\"\"\n<div style=\"display:flex;gap:32px\">\n<div style=\"flex:1\"><p class=\"label\">Highest month</p><p class=\"big\">{by_month(high_month)}</p><p>{high_count:,} bikes</p></div>\n<div style=\"flex:1\"><p class=\"label\">Lowest month</p><p class=\"big\">{by_month(low_month)}</p><p>{low_count:,} bikes</p></div>\n</div>\n<p class=\"label\" style=\"margin-top:32px\">Total by month, back to {months[0][0]:%B %Y}</p>\n{charts.bar_chart(months, label=by_month)}\n\"\"\", start, end)\n",
+      "after": "\"\"\"Total bikes per month, back to the start of the window: shows the dip when the weather turns.\"\"\"\nfrom bikecount import charts, events, metrics\nfrom bikecount.pages import shell\n\nPATH = \"/monthly\"\nTITLE = \"Monthly\"\nORDER = 2\n\n\ndef render(readings, start, end):\n    months = metrics.monthly_totals(readings)\n    high_month, high_count = max(months, key=lambda kv: kv[1])\n    low_month, low_count = min(months, key=lambda kv: kv[1])\n    by_month = lambda d: d.strftime(\"%b %Y\")\n\n    return shell(\"Monthly\", f\"\"\"\n<div style=\"display:flex;gap:32px\">\n<div style=\"flex:1\"><p class=\"label\">Highest month</p><p class=\"big\">{by_month(high_month)}</p><p>{high_count:,} bikes</p></div>\n<div style=\"flex:1\"><p class=\"label\">Lowest month</p><p class=\"big\">{by_month(low_month)}</p><p>{low_count:,} bikes</p></div>\n</div>\n<p class=\"label\" style=\"margin-top:32px\">Total by month, back to {months[0][0]:%B %Y}</p>\n{charts.bar_chart(months, label=by_month, event=events.label_for_month)}\n<p style=\"color:#777;font-size:13px\">Amber bars contain a known non-normal day &mdash; storms, holidays &mdash; not a real swing.</p>\n\"\"\", start, end)\n"
+    },
+    "bikecount/pages/overview.py": {
+      "before": "\"\"\"The landing page: the busiest day in the current window and the last fortnight of it.\"\"\"\nfrom bikecount import charts, metrics\nfrom bikecount.pages import shell\n\nPATH = \"/\"\nTITLE = \"Overview\"\nORDER = 0\n\n\ndef render(readings, start, end):\n    days = metrics.daily_totals(readings)\n    day, count = max(days, key=lambda kv: kv[1])\n    recent = days[-14:]\n    rows = \"\".join(f\"<tr><td>{d}</td><td>{round(c, -1):,}</td></tr>\" for d, c in recent[::-1])\n    return shell(\"Overview\", f\"\"\"\n<p class=\"label\">Busiest day, {start:%d %b %Y} to {end:%d %b %Y}</p>\n<p class=\"big\">{round(count, -1):,}</p>\n<p>{day:%A %d %B %Y}</p>\n<p class=\"label\" style=\"margin-top:32px\">Last 14 days</p>\n{charts.bar_chart(recent, label=lambda d: d.strftime(\"%d %b\"))}\n<table><tr><th>Day</th><th>Bikes</th></tr>{rows}</table>\n<p style=\"color:#777;margin-top:32px\">{len(readings):,} hours of readings.</p>\n\"\"\", start, end)\n",
+      "after": "\"\"\"The landing page: the busiest day in the current window and the last fortnight of it.\"\"\"\nfrom bikecount import charts, events, metrics\nfrom bikecount.pages import shell\n\nPATH = \"/\"\nTITLE = \"Overview\"\nORDER = 0\n\n\ndef render(readings, start, end):\n    days = metrics.daily_totals(readings)\n    day, count = max(days, key=lambda kv: kv[1])\n    recent = days[-14:]\n    rows = \"\".join(f\"<tr><td>{d}</td><td>{round(c, -1):,}</td></tr>\" for d, c in recent[::-1])\n    return shell(\"Overview\", f\"\"\"\n<p class=\"label\">Busiest day, {start:%d %b %Y} to {end:%d %b %Y}</p>\n<p class=\"big\">{round(count, -1):,}</p>\n<p>{day:%A %d %B %Y}</p>\n<p class=\"label\" style=\"margin-top:32px\">Last 14 days</p>\n{charts.bar_chart(recent, label=lambda d: d.strftime(\"%d %b\"), event=events.label)}\n<p style=\"color:#777;font-size:13px\">Amber bars are known non-normal days &mdash; storms, holidays &mdash; not a real swing.</p>\n<table><tr><th>Day</th><th>Bikes</th></tr>{rows}</table>\n<p style=\"color:#777;margin-top:32px\">{len(readings):,} hours of readings.</p>\n\"\"\", start, end)\n"
+    }
+  },
+  "check": "not_run",
+  "observed": {
+    "head": null
+  }
+}

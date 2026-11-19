@@ -1,217 +1,234 @@
 <!DOCTYPE html>
-<!-- Local dev preview of the Composition Workbench webview, outside VS Code. Mocks
-     acquireVsCodeApi, supplies VS Code "Dark Modern" theme tokens (unused today -- workbench.css
-     is self-themed -- kept for when it adopts vscode-* tokens), and feeds a sample `compose_view`
-     bundle shaped like workbench.ts's `pushState` message. Open in a browser or screenshot
-     headless (per the visual-surfaces rule: "the user can't see a webview you can't
-     screenshot"). Not shipped (under dev/, .vscodeignore'd). -->
+<!-- The workbench outside VS Code: VS Code's Modern theme tokens, and a mock host that answers the
+     webview protocol from dev/fixtures. Query parameters drive it into one state for a screenshot:
+       state=log.json,status.json | empty | uninit | error | none
+       plan=<fixture>     reply to a preview (default: the detail fixture's own plan)
+       whole=<fixture>    reply to a whole preview, and press Whole when the first preview lands
+       detail=<fixture>   reply to show
+       select=<address>   a focus message once the state is in
+       click=<sel>|<sel>  clicks, in order, at each element's centre
+       hover=<sel>        the pointer rests on it
+       find=<words>       typed into the find field
+       focus=<sel>        give it focus
+       keys=<key>,<key>   key presses on the focused element
+       apply=1            press Take out when the preview lands
+       busy=<verb>        the host is running a verb
+       mode=ledger, open=1 (Unnamed open), light=1
+     Fixtures load with synchronous XHR, so a file:// page needs Chrome's
+     --allow-file-access-from-files. Not shipped (dev/ is .vscodeignore'd). -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<link href="../media/workbench.css" rel="stylesheet">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Workbench preview</title>
 <style>
-/* VS Code "Dark Modern" tokens. The header above used to say these were unused because
-   workbench.css was self-themed -- it is not, and has not been for a long time: it reads
-   --vscode-editor-background, --vscode-foreground and a dozen more. Without them the preview drew
-   every panel with NO background and a serif body font, so the find dropdown appeared transparent
-   over the timeline and the whole page looked like a rendering bug. A preview that misrepresents
-   the surface is worse than no preview: it is what a screenshot gets checked against. */
-:root {
+html[data-theme="dark"] {
+  --vscode-font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  --vscode-font-size: 13px;
+  --vscode-editor-font-family: Menlo, Monaco, "Courier New", monospace;
+  --vscode-panel-background: #181818;
   --vscode-editor-background: #1f1f1f;
-  --vscode-editorWidget-background: #202020;
   --vscode-foreground: #cccccc;
   --vscode-descriptionForeground: #9d9d9d;
-  --vscode-panel-border: #2b2b2b;
-  --vscode-widget-border: #313131;
+  --vscode-errorForeground: #f85149;
   --vscode-focusBorder: #0078d4;
-  --vscode-charts-blue: #4daafc;
-  --vscode-charts-green: #6bbf7b;
-  --vscode-charts-red: #e5675f;
-  --vscode-charts-yellow: #d9a441;
   --vscode-editorWarning-foreground: #cca700;
-  --vscode-testing-iconPassed: #73c991;
-  --vscode-testing-iconFailed: #f14c4c;
-  --vscode-textCodeBlock-background: #181818;
-  --vscode-input-background: #313131;
-  --vscode-input-foreground: #cccccc;
-  --vscode-input-border: #3c3c3c;
   --vscode-list-hoverBackground: #2a2d2e;
   --vscode-list-inactiveSelectionBackground: #37373d;
-  --vscode-toolbar-hoverBackground: #383b41;
+  --vscode-input-background: #313131;
+  --vscode-input-border: #3c3c3c;
+  --vscode-input-foreground: #cccccc;
+  --vscode-input-placeholderForeground: #989898;
   --vscode-button-background: #0078d4;
   --vscode-button-foreground: #ffffff;
   --vscode-button-hoverBackground: #026ec1;
   --vscode-button-secondaryBackground: #313131;
+  --vscode-button-secondaryForeground: #cccccc;
   --vscode-button-secondaryHoverBackground: #3c3c3c;
-  --vscode-diffEditor-insertedLineBackground: rgba(70, 149, 74, 0.22);
-  --vscode-diffEditor-removedLineBackground: rgba(219, 76, 63, 0.22);
-  --vscode-editor-font-family: "SF Mono", Menlo, Consolas, monospace;
-  --vscode-font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+  --vscode-toolbar-hoverBackground: rgba(90, 93, 94, 0.31);
+  --vscode-quickInput-background: #222222;
+  --vscode-quickInput-foreground: #cccccc;
+  --vscode-quickInputList-focusBackground: #04395e;
+  --vscode-widget-shadow: rgba(0, 0, 0, 0.36);
+  --vscode-progressBar-background: #0078d4;
+  --vscode-panelTitle-activeBorder: #0078d4;
+  --vscode-diffEditor-insertedLineBackground: rgba(155, 185, 85, 0.2);
+  --vscode-diffEditor-removedLineBackground: rgba(255, 0, 0, 0.2);
   color-scheme: dark;
 }
-html, body { margin: 0; height: 100%; background: var(--vscode-editor-background);
-             color: var(--vscode-foreground); font-family: var(--vscode-font-family); }
-#app { height: 100%; }
+html[data-theme="light"] {
+  --vscode-font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  --vscode-font-size: 13px;
+  --vscode-editor-font-family: Menlo, Monaco, "Courier New", monospace;
+  --vscode-panel-background: #f8f8f8;
+  --vscode-editor-background: #ffffff;
+  --vscode-foreground: #3b3b3b;
+  --vscode-descriptionForeground: #3b3b3b;
+  --vscode-errorForeground: #f85149;
+  --vscode-focusBorder: #005fb8;
+  --vscode-editorWarning-foreground: #bf8803;
+  --vscode-list-hoverBackground: #f2f2f2;
+  --vscode-list-inactiveSelectionBackground: #e4e6f1;
+  --vscode-input-background: #ffffff;
+  --vscode-input-border: #cecece;
+  --vscode-input-foreground: #3b3b3b;
+  --vscode-input-placeholderForeground: #767676;
+  --vscode-button-background: #005fb8;
+  --vscode-button-foreground: #ffffff;
+  --vscode-button-hoverBackground: #0258a8;
+  --vscode-button-secondaryBackground: #e5e5e5;
+  --vscode-button-secondaryForeground: #3b3b3b;
+  --vscode-button-secondaryHoverBackground: #cccccc;
+  --vscode-toolbar-hoverBackground: rgba(184, 184, 184, 0.31);
+  --vscode-quickInput-background: #f8f8f8;
+  --vscode-quickInput-foreground: #3b3b3b;
+  --vscode-quickInputList-focusBackground: #e8e8e8;
+  --vscode-widget-shadow: rgba(0, 0, 0, 0.16);
+  --vscode-progressBar-background: #005fb8;
+  --vscode-panelTitle-activeBorder: #005fb8;
+  --vscode-diffEditor-insertedLineBackground: rgba(155, 185, 85, 0.2);
+  --vscode-diffEditor-removedLineBackground: rgba(255, 0, 0, 0.2);
+  color-scheme: light;
+}
 </style>
-</head>
-<body>
-<div id="app">
-  <!-- Five controls, and every one of them is something a reader of this history needs.
-       What used to be here as well: a Timeline│Rail view toggle, a composition selector over
-       HEAD-plus-sessions, an oracle chip, a Plans M/N chip with a popover, and a drift indicator
-       drawn as a bare glyph. Each was a live control -- the oracle chip RAN the tiers on click --
-       for machinery nobody reading a history is engaged in, and together they made the first
-       thing in the eyeline a row of terms that have to be dismissed before the work is visible. -->
-  <div id="titlebar">
-    <div class="tb-zone tb-nav">
-      <button id="groupBtn" class="group-btn" title="Group rows by subsystem, or list features by what you touched last">Features</button>
-    </div>
-    <div class="tb-zone tb-find">
-      <input id="findBox" class="find-box" type="search" spellcheck="false"
-             placeholder="find… e.g. the thing that formats dates"
-             title="describe what you are looking for; Enter to search, Esc to clear" />
-      <div id="findResults" class="find-results" hidden></div>
-    </div>
-    <div id="titlebarActions" class="titlebar-actions">
-      <button id="ledgerBtn" title="Open the ledger: the same history as a document, newest first">Ledger</button>
-      <button id="inspectorToggle" title="Hide detail panel">Hide details</button>
-      <button id="saveBtn" title="ugh save: record and commit">Save</button>
-      <button id="undoBtn" title="ugh undo">Undo</button>
-    </div>
-  </div>
-  <!-- The context strip: one standing statement at a time, between the title bar and the map,
-       which it pushes down and never covers: the armed merge/move question, or a focused piece
-       of cross-feature work with its verbs. Hidden when it has nothing to say. These two used to
-       float over the plot as bordered pills. -->
-  <div id="strip">
-    <div id="armedBanner" class="armed-banner" hidden></div>
-    <div id="themeBanner" class="theme-banner" hidden></div>
-    <!-- Why something is faded, and the one way out: the playhead in the past, a followed session,
-         a search. -->
-    <div id="contextRows" class="context-rows" hidden></div>
-    <!-- A held revert or restore: the question, what it will do in words, and its answer. It used
-         to float over the bottom of the plot; here it pushes the map down and covers nothing. -->
-    <div id="confirmBar" class="confirm-bar" hidden></div>
-  </div>
-  <div id="main">
-    <div id="rail"></div>
-    <!-- Lanes a held preview changes that are scrolled out of view: a glow on the rail's edge,
-         counted in the status line, clickable to scroll there. -->
-    <button id="offscreenAbove" class="edge-glow edge-glow-top" hidden></button>
-    <button id="offscreenBelow" class="edge-glow edge-glow-bottom" hidden></button>
-    <div id="inspector"></div>
-  </div>
-  <div id="statusline">
-    <div id="presence" title="what you are looking at, and any unsaved work"></div>
-    <div id="previewContext" class="preview-context-pill" hidden></div>
-    <div id="previewRefusal" class="preview-refusal-pill" hidden></div>
-  </div>
-</div>
+<link href="../media/workbench.css" rel="stylesheet">
 <script>
-  let _st = null;
-  // Kept, not just logged: the panels that ask the host a question (a change projection, a fold)
-  // sequence their replies, so anything driving this page has to answer with the seq the page
-  // actually asked on. Without the record there is no way to reach those panels from outside.
+(function () {
+  const P = new URLSearchParams(location.search);
+  const light = P.get("light") === "1";
+  document.documentElement.dataset.theme = light ? "light" : "dark";
+  document.addEventListener("DOMContentLoaded", () => document.body.classList.add(light ? "vscode-light" : "vscode-dark"));
+
+  const load = (name) => {
+    if (!name) return null;
+    const x = new XMLHttpRequest();
+    x.open("GET", name.includes("/") ? name : "fixtures/" + name, false);
+    x.overrideMimeType("application/json");
+    x.send();
+    return JSON.parse(x.responseText);
+  };
+  const clone = (o) => JSON.parse(JSON.stringify(o));
+  const stateArg = P.get("state") || "log.json,status.json";
+  let log = null, status = null;
+  if (stateArg.includes(".json")) {
+    const [l, s] = stateArg.split(",");
+    log = load(l);
+    status = load(s);
+  }
+  const detail = load(P.get("detail"));
+  const planFx = load(P.get("plan")) || (detail && detail.plan) || null;
+  const wholeFx = load(P.get("whole"));
+  const found = load("find.json");
   window.__posted = [];
-  window.__emits = {}; // a capture's recorded dry runs, by ref (the ledger fixtures carry them)
+
+  const send = (msg, delay) => setTimeout(() => window.postMessage(msg, "*"), delay || 0);
+  const sendState = () => {
+    if (stateArg === "none") return;
+    if (stateArg === "uninit") return send({ type: "state", log: null, status: null, uninitialized: true });
+    if (stateArg === "error") return send({ type: "state", log: null, status: null, error: "ugh log: the op store is behind HEAD; run `ugh check --repair`" });
+    if (stateArg === "empty") return send({ type: "state", log: { saves: [] }, status: { drift: { any: false, paths: [] }, choices: [], observed: { head: null } } });
+    send({ type: "state", log, status });
+  };
+  const unitOf = (a) => (a.lastIndexOf("@") > 0 ? a.slice(0, a.lastIndexOf("@")) : a);
+
+  let wholePressed = false, applied = false;
+  const press = (selector) => {
+    const b = [...document.querySelectorAll(".bar .btn")].find((e) => e.textContent.startsWith(selector));
+    if (b) b.click();
+  };
+
   window.acquireVsCodeApi = () => ({
+    getState: () => ({ mode: P.get("mode") || "timeline", unnamedOpen: P.get("open") === "1" }),
+    setState: () => {},
     postMessage(msg) {
       window.__posted.push(msg);
-      console.log("[webview -> host]", msg);
-      // Answer a dry run the way the host does, from the capture, so a preview can be looked at.
-      if (msg.type === "previewVerb") {
-        const ref = (msg.args || [])[0];
-        const result = window.__emits[ref];
-        if (result) setTimeout(() => window.dispatchEvent(new MessageEvent("message",
-          { data: { type: "previewResult", seq: msg.seq, result } })), 120);
+      switch (msg.type) {
+        case "ready":
+          sendState();
+          if (P.get("busy")) send({ type: "busy", verb: P.get("busy") }, 10);
+          break;
+        case "preview": {
+          const plan = msg.whole ? wholeFx || planFx : planFx;
+          send(plan ? { type: "plan", id: msg.id, plan } : { type: "plan", id: msg.id, error: "nothing to " + msg.verb + " at " + msg.addresses.join(" ") }, 40);
+          if (wholeFx && !wholePressed) {
+            wholePressed = true;
+            setTimeout(() => press("Whole"), 120);
+          } else if (P.get("apply") === "1" && !applied) {
+            applied = true;
+            setTimeout(() => press(msg.verb === "restore" ? "Bring back" : "Take out"), 160);
+          }
+          break;
+        }
+        case "apply": {
+          const base = clone(msg.whole ? wholeFx || planFx : planFx);
+          const plan = Object.assign(base, {
+            applied: true,
+            check: { judge: "check", passed: true, rounds: 1, output: "ok: 62,030 readings, 4 page(s) render: /, /monthly, /sides, /years\n" },
+            observed: { head: { verdict: "pass", lines_recorded: true }, delta: { added: 1, removed: 1 }, saves_delta: null, reverses: null },
+          });
+          send({ type: "busy", verb: msg.verb });
+          send({ type: "plan", id: msg.id, plan }, 60);
+          const next = clone(log);
+          const undone = new Set(base.undone.map((u) => u.address));
+          const units = new Set(base.undone.map((u) => unitOf(u.address)));
+          for (const s of next.saves) for (const st of s.steps) {
+            if (msg.verb === "revert" && undone.has(st.address)) st.out = true;
+            if (msg.verb === "restore" && st.out && units.has(unitOf(st.address))) st.out = false;
+          }
+          log = next;
+          send({ type: "state", log, status }, 90);
+          send({ type: "busy", verb: null }, 100);
+          break;
+        }
+        case "show":
+          send({ type: "detail", id: msg.id, show: detail }, 30);
+          break;
+        case "find":
+          send({ type: "found", id: msg.id, hits: found.hits }, 30);
+          break;
       }
     },
-    getState: () => _st,
-    setState: (s) => { _st = s; },
   });
-</script>
-<script>
-  // `?raf=timer`: run requestAnimationFrame on timers. Headless Chrome's virtual time starves rAF
-  // (four frames in 2.5 s of budget), so anything frame-driven -- the playhead's spring, a glide --
-  // looks stuck in a capture. Timers do advance under virtual time, so this lets a `--virtual-time-
-  // budget=N` screenshot show the N-th millisecond of a motion. Not for VS Code, which has real frames.
-  if (new URLSearchParams(location.search).get("raf") === "timer") {
-    window.requestAnimationFrame = (cb) => setTimeout(() => cb(performance.now()), 16);
-    window.cancelAnimationFrame = (id) => clearTimeout(id);
-  }
-</script>
-<script src="../media/workbench.js"></script>
-<script src="./fixture.js"></script>
-<script>
-  // The same payload `smoke.js` renders, built by the same code (dev/fixture.js). This page used
-  // to carry its own three-node map with no `grid`, so it drew an empty plot -- the one thing a
-  // preview exists to rule out.
-  // `?fx=<file>` renders another capture (a scratch copy of a real repository) through the same builder
-  const fx = new URLSearchParams(location.search).get("fx") || "fixture-compose.json";
-  fetch("./" + fx)
-    .then((r) => r.json())
-    .then((raw) => {
-      // a capture may nest the compose under `compose` (the ledger fixtures do)
-      window.__fixture = buildComposeFixture(raw.compose || raw);
-      window.__emits = raw.emits || {};
-      // `?hues=1`: the real identity colours (src/color.ts, dark theme) instead of the fixture's
-      // placeholder greys, so a capture shows what the panel shows
-      // `?light=1`: VS Code "Light Modern" tokens and the light body class, so the second theme gets looked at
-      const light = !!new URLSearchParams(location.search).get("light");
-      if (light) {
-        document.body.classList.add("vscode-light");
-        const t = { "editor-background": "#ffffff", "editorWidget-background": "#f8f8f8", "foreground": "#3b3b3b", "descriptionForeground": "#717171", "panel-border": "#e5e5e5", "widget-border": "#e5e5e5", "focusBorder": "#005fb8", "input-background": "#ffffff", "textCodeBlock-background": "#f5f5f5", "list-hoverBackground": "#f2f2f2",
-          // the status hues Light Modern really has; without them the alive mark fell back to a pale chart green
-          "testing-iconPassed": "#388a34", "testing-iconFailed": "#e51400", "editorWarning-foreground": "#bf8803", "charts-blue": "#005fb8" };
-        for (const [k, v] of Object.entries(t)) document.documentElement.style.setProperty("--vscode-" + k, v);
-      }
-      if (new URLSearchParams(location.search).get("hues")) {
-        const hue = (id) => { let h = 2166136261; for (let i = 0; i < id.length; i++) { h ^= id.charCodeAt(i); h = Math.imul(h, 16777619); } return (((h >>> 0) * 0.618033988749895) % 1) * 360; };
-        const rgb = (L, C, d) => { const r = d * Math.PI / 180, a = C * Math.cos(r), b = C * Math.sin(r); const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3, m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3, s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3; const g = (x) => Math.round(Math.max(0, Math.min(1, x <= 0.0031308 ? 12.92 * x : 1.055 * Math.pow(x, 1 / 2.4) - 0.055)) * 255).toString(16).padStart(2, "0"); return "#" + g(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s) + g(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s) + g(-0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s); };
-        window.__fixture.map.nodes.forEach((n) => { n.color = light ? rgb(0.55, 0.14, hue(n.id)) : rgb(0.72, 0.13, hue(n.id)); });
-      }
-      // `?actors=<file>`: sessions and a plan merged over the capture, so the forecast band's columns
-      // can be looked at before a repository with live sessions is to hand
-      const actors = new URLSearchParams(location.search).get("actors");
-      const merge = actors ? fetch("./" + actors).then((r) => r.json()).then((a) => Object.assign(window.__fixture, a)) : Promise.resolve();
-      return merge.then(() => {
-        window.dispatchEvent(new MessageEvent("message", { data: { type: "state", compose: window.__fixture } }));
+
+  const centre = (e) => {
+    const r = e.getBoundingClientRect();
+    return { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, bubbles: true };
+  };
+  window.addEventListener("load", () => {
+    let t = 80;
+    const at = (fn) => {
+      setTimeout(fn, t);
+      t += 160;
+    };
+    if (P.get("select")) at(() => send({ type: "focus", address: P.get("select") }));
+    for (const sel of (P.get("click") || "").split("|").filter(Boolean)) {
+      at(() => {
+        const e = document.querySelector(sel);
+        if (e) e.dispatchEvent(new MouseEvent("click", centre(e)));
       });
-    })
-    .then(() => {
-      // `?click=<selector>|<selector>|...`: click each in turn, 500ms apart, so a headless capture can
-      // reach the selected-feature and selected-checkpoint states. A selector may end in `:label=Text`
-      // to pick the element whose text (or whose lane label) starts with Text.
-      const steps = (new URLSearchParams(location.search).get("click") || "").split("|").filter(Boolean);
-      const pick = (sel) => {
-        const m = sel.match(/^(.*):label=(.*)$/); const css = m ? m[1] : sel, want = m ? m[2] : null;
-        const els = [...document.querySelectorAll(css)];
-        if (!want) return els[0];
-        return els.find((e) => (e.textContent || "").trim().startsWith(want)
-          || ((e.closest(".glane") || {}).textContent || "").trim().startsWith(want));
-      };
-      // A step `hover:<selector>` rests the pointer on the element instead of clicking it.
-      steps.forEach((step, i) => setTimeout(() => {
-        const hover = step.startsWith("hover:");
-        const sel = hover ? step.slice(6) : step;
-        const e = pick(sel); if (!e) { console.log("no match", sel); return; }
-        const types = hover ? ["mouseover", "mouseenter"] : ["pointerdown", "mousedown", "pointerup", "mouseup", "click"];
-        for (const type of types) e.dispatchEvent(new MouseEvent(type, { bubbles: type !== "mouseenter", clientX: 1, clientY: 1 }));
-      }, 400 + i * 500));
-      // `?flick=<px per frame>,<frames>`: grab the playhead at the now edge and drag it left that fast
-      // for that many frames, then let go -- the gesture the spring, the notches and the coast answer
-      // (pair with `raf=timer` and a `--virtual-time-budget` that ends mid-motion to see one frame).
-      const flick = (new URLSearchParams(location.search).get("flick") || "").split(",").map(Number);
-      if (flick[0]) setTimeout(() => {
-        const band = document.querySelector(".frontier-band"); if (!band) return;
-        const r = band.getBoundingClientRect(); let x = r.left + 6; const y = r.top + 20;
-        const ev = (type, target) => (target || window).dispatchEvent(new PointerEvent(type, { bubbles: true, clientX: x, clientY: y, pointerId: 1, isPrimary: true }));
-        ev("pointerdown", band);
-        let i = 0; const frames = flick[1] || 12;
-        const iv = setInterval(() => { x -= flick[0]; ev("pointermove"); if (++i >= frames) { clearInterval(iv); ev("pointerup"); } }, 16);
-      }, 900);
-    })
-    .catch((e) => { window.__err = String(e); });
+    }
+    if (P.get("hover")) at(() => {
+      const e = document.querySelector(P.get("hover"));
+      if (e) e.dispatchEvent(new MouseEvent("mousemove", centre(e)));
+    });
+    if (P.get("find")) at(() => {
+      const f = document.querySelector(".find-in");
+      f.focus();
+      f.value = P.get("find");
+      f.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    if (P.get("focus")) at(() => {
+      const e = document.querySelector(P.get("focus"));
+      if (e) e.focus();
+    });
+    for (const key of (P.get("keys") || "").split(",").filter(Boolean)) {
+      at(() => (document.activeElement || document.body).dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true })));
+    }
+  });
+})();
 </script>
+</head>
+<body>
+<script src="../media/workbench.js"></script>
 </body>
 </html>

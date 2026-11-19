@@ -1,754 +1,460 @@
-// Command wiring. Read/preview commands are safe and immediate. The mutating revert command
-// always confirms first, because `ugh revert` refuses on a fork and otherwise re-materializes +
-// commits — so we surface the human report and then invalidate every surface.
+// The palette verbs, and the flows the trees, the hover links and the workbench share: take out
+// and bring back with a preview, name and rename, resolve a two-version choice in VS Code's own
+// diff editor, save, undo, sync, push, init, and the diff editors for a step or an unsaved file.
 
+import { execFile } from "node:child_process";
 import * as path from "node:path";
+import { promisify } from "node:util";
 import * as vscode from "vscode";
-import { ForkResolutionPanel } from "./forkResolution";
-import { hasOwnSymbols } from "./mapFilter";
-import { PlanDiffProvider, showPlanQuickPick } from "./plan";
-import { PreviewProvider } from "./preview";
+import { Keep, Verb } from "./cliSeam";
+import { Documents } from "./documents";
+import { Host } from "./protocol";
+import { RenderPanel } from "./renderPanel";
 import { Store } from "./store";
-import { BlameView, EmitView, NextAction, PlanView, ProposalChecklistEntry } from "./types";
-import { WorkbenchProvider } from "./workbench";
+import { Texts } from "./texts";
+import { Ugh } from "./ugh";
+import { WorkbenchView } from "./workbench";
+import { previewWords, resultWords, undoWords } from "./words";
 
-/** What a tree item hands a command. A feature node carries `id`; a chapter node carries its
- * segment, and the selector for a chapter is `<feature-id>@<index>` -- the same string the
- * terminal takes. Without this the three verbs on a chapter silently acted on nothing, because
- * they were written when only features were selectable and read a bare string. */
-function selectorOf(provided?: unknown): string | undefined {
-  if (!provided) return undefined;
-  if (typeof provided === "string") return provided;
-  const node = provided as { kind?: string; id?: string; segment?: { feature_id: string; seg_index: number } };
-  if (node.kind === "chapter" && node.segment) {
-    return `${node.segment.feature_id}@${node.segment.seg_index}`;
-  }
-  return typeof node.id === "string" ? node.id : undefined;
+const pExecFile = promisify(execFile);
+
+export interface Deps {
+  root: string;
+  ugh: Ugh;
+  store: Store;
+  docs: Documents;
+  texts: Texts;
+  render: RenderPanel;
+  workbench: () => WorkbenchView;
 }
 
-async function pickFeature(store: Store, provided?: unknown): Promise<string | undefined> {
-  const direct = selectorOf(provided);
-  if (direct) {
-    return direct;
-  }
-  let map;
-  try {
-    map = await store.map();
-  } catch {
-    return undefined;
-  }
-  // Husks excluded: a feature whose ops touch only sentinels reverts to nothing, so offering it here
-  // is the silent-success shape (a named target that succeeds while doing nothing).
-  const features = map.nodes.filter((n) => n.kind === "feature" && hasOwnSymbols(n));
-  const pick = await vscode.window.showQuickPick(
-    features.map((n) => ({ label: n.label || n.id, description: `${n.op_count} op(s) · ${n.id}`, id: n.id })),
-    { placeHolder: "Pick a feature" }
-  );
-  return pick?.id;
+const fail = (e: unknown) => void vscode.window.showErrorMessage(String((e as Error)?.message ?? e));
+
+/** An address from a command argument: a string, a list of them, or a tree row carrying one. */
+function addressesOf(arg: unknown): string[] | undefined {
+  if (typeof arg === "string") return [arg];
+  if (Array.isArray(arg) && arg.every((a) => typeof a === "string")) return arg.length ? arg : undefined;
+  const address = (arg as { address?: unknown })?.address;
+  return typeof address === "string" ? [address] : undefined;
 }
 
-function toggle(key: string): void {
-  const c = vscode.workspace.getConfiguration("ugh");
-  const cur = c.get<boolean>(key, true);
-  c.update(key, !cur, vscode.ConfigurationTarget.Workspace);
+function labels(store: Store): string[] {
+  const seen = new Set<string>();
+  for (const save of [...(store.snapshot.log?.saves ?? [])].reverse()) {
+    for (const st of save.steps) if (st.name) seen.add(st.name);
+  }
+  return [...seen];
 }
 
-/**
- * Surface a mutation's report without losing its warnings.
- *
- * The report's first line says what happened; any ⚠ lines after it say what did
- * NOT happen -- a restore that leaves the earlier revert's collateral removed
- * prints one, and truncating to line one silently dropped it. A caveat the CLI
- * thought worth a ⚠ outranks the success line here, because a toast is the only
- * part of this a person reliably reads.
- */
-function mutationHeadline(report: string): string {
-  const lines = report.trim().split("\n").map((l) => l.trim()).filter(Boolean);
-  return lines.filter((l) => l.startsWith("⚠")).pop() || lines[0] || "Done.";
-}
-
-/**
- * Where a flow's outcome is reported.
- *
- * Every flow below used to do both: hand the outcome to `onPhase` (which the workbench draws in
- * its confirm bar, where the decision was taken) AND raise a VS Code notification with the same
- * sentence. One click could produce three of them -- the caveat, the result, and whatever the
- * refresh said -- stacked in the corner, each covering the last, over the part of the timeline the
- * reader was watching to see what the action did.
- *
- * So: exactly one surface per flow. A caller with a phase sink owns its own reporting and gets no
- * notifications; the palette and the tree views have no surface of their own, so they still get
- * them. Errors follow the same rule -- the confirm bar draws a failure with its own Dismiss.
- */
-function reportTo(opts: IdealEditFlowOpts) {
-  const inSurface = Boolean(opts.onPhase);
-  return {
-    phase: opts.onPhase ?? (() => undefined),
-    info: (m: string) => { if (!inSurface) { vscode.window.showInformationMessage(m); } },
-    warn: (m: string) => { if (!inSurface) { vscode.window.showWarningMessage(m); } },
-    error: (m: string) => { if (!inSurface) { vscode.window.showErrorMessage(m); } },
-  };
-}
-
-/** First `n` of a list, comma-joined, with the remainder counted rather than printed -- a modal
- * that lists forty symbols is the same as a modal that lists none. */
-function cap(xs: string[], n = 6): string {
-  return xs.slice(0, n).join(", ") + (xs.length > n ? `, +${xs.length - n} more` : "");
-}
-
-/**
- * The consequence block a revert confirm carries as its modal `detail`.
- *
- * The confirm line alone answers "how many ops", and none of "of what", "which
- * files", "what still points at it", or "what is left alone" -- so a pilot
- * participant hit Rewind on a checkpoint and could not say afterwards what they
- * had rewound to. The emit view already carries every one of those (the CLI
- * prints them above its own y/N gate), so this reads them off the same
- * projection rather than deriving a second opinion the two surfaces could
- * disagree about.
- */
-function consequenceDetail(view: EmitView): string {
-  const files = Object.keys(view.files);
-  // `::__anchor__`/`::__residue__` are the miner's own bookkeeping symbols; naming one at a user
-  // reads as an internal leak, the same reason `ugh.api.so_what_for` skips them in its headline.
-  const symbols = view.affected_symbols.filter((s) => !s.includes("::__"));
-  const frontier = view.frontier ?? [];
-  // `blast` is only the part of the frontier the target REFERENCES directly. Everything else
-  // reached through chain or declared edges comes back as `carry`, and carry rows are toggleable
-  // too -- so "no blast rows" does not mean "nothing is at risk". `toggleable` is the predicate
-  // for that question; `blast` is the predicate for how many the next dialog will ask about.
-  const blast = frontier.filter((r) => r.bucket === "blast" && r.toggleable);
-  const atRisk = frontier.filter((r) => r.toggleable);
-  const locked = frontier.filter((r) => !r.toggleable);
-  const untouched = view.focus?.context_count ?? 0;
-  return [
-    view.focus?.so_what,
-    `${view.removed.length} edit(s) come out` +
-      (files.length ? `, across ${files.length} file(s): ${cap(files)}` : ", changing no files"),
-    symbols.length ? `Symbols affected: ${cap(symbols)}` : undefined,
-    // Absent is not the same as none. `ugh.api._frontier_rows` returns `[]` for any target it
-    // cannot reduce to a single op -- which is every whole-feature and every checkpoint revert,
-    // i.e. both ways into this dialog. Saying "nothing is left dangling" there would be asserting
-    // safety from an absence of data, in the modal that gates a destructive rewrite.
-    frontier.length
-      ? atRisk.length
-        ? `${atRisk.length} later edit(s) are built on this — you pick which to keep next.` +
-          (blast.length && blast.length !== atRisk.length
-            ? ` ${blast.length} of them reference it directly.`
-            : "")
-        : "Nothing built on it is left dangling."
-      : "What is built on top was not computed for this target — check the diff before applying.",
-    locked.length ? `${locked.length} prerequisite(s) it sits on stay put.` : undefined,
-    untouched ? `${untouched} other feature(s) are untouched.` : undefined,
-    files.length ? "Nothing is applied yet — the open PREVIEW tabs are the proposed before → after." : undefined,
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
-/** How a revert/restore flow was entered, and who is listening.
- *
- * The workbench's in-graph staged confirm already painted the consequence on the graph and took an
- * explicit Apply click, so `confirmed` skips the modal that would ask the same question a second
- * time -- the modal was the confirmation; it is not a second safety layer once a real one ran.
- * `openDiff: false` keeps the PREVIEW tabs closed (the workbench offers them on demand instead of
- * stealing focus on every apply). `onPhase` reports the flow's real stages -- checking the
- * consequence, rewriting+committing, rebuilding the graph -- so a surface can paint intermediate
- * progress rather than a dead gap between click and toast. Palette/tree entry points pass nothing
- * and keep the modal-and-diff behavior unchanged. */
-export type IdealEditPhase = "checking" | "applying" | "refreshing" | "done" | "failed" | "cancelled";
-export interface IdealEditFlowOpts {
-  confirmed?: boolean;
-  openDiff?: boolean;
-  onPhase?: (phase: IdealEditPhase, detail?: string) => void;
-}
-
-/** The shared apply tail: mutate → invalidate → report, with phases. The caller has already taken
- * a real confirmation (the modal, or the workbench's staged Apply), so the CLI must not go looking
- * for another one it has no terminal to ask on -- `mutate` passes the `--yes` that says so (see
- * `mutationArgs` in cliSeam.ts).
- *
- * The headline goes through `phase("done", ...)` rather than only into a notification, so the
- * caveat line -- what did NOT happen -- reaches a workbench caller too. It used to be raised as a
- * warning toast and the phase carried the success line, so the two surfaces disagreed about what
- * the same apply had done. */
-async function applyIdealEdit(
-  store: Store,
-  run: () => Promise<string>,
-  report: ReturnType<typeof reportTo>
-): Promise<void> {
-  report.phase("applying");
-  try {
-    const text = await run();
-    report.phase("refreshing");
-    store.invalidate();
-    const headline = mutationHeadline(text);
-    report.info(headline);
-    report.phase("done", headline);
-  } catch (e: any) {
-    report.phase("failed", e.message);
-    report.error(e.message);
-  }
-}
-
-// The interactive revert frontier (U3/R4): preview the selection, then let the user pick which
-// toggleable dependents to KEEP (rescue) vs. drop with the target. `foundation` prerequisites
-// can't be dropped, so they're surfaced as a count, not offered. Applying with kept dependents
-// drafts continuation hollows (see `Ugh.revertKeep`); keeping none is a plain full revert.
-// `sel` is anything the CLI's own selection ladder resolves -- a feature id/label, a `file::name`
-// symbol, or a `<feature>@<n>` checkpoint. `--emit` and a plain `revert <sel>` share that ladder;
-// `--keep` does NOT (cli/ideal_edit.py routes it to `_revert_keep_dependents`, which resolves via
-// `verbs.resolve_target` and never reaches the checkpoint branch). That path is unreachable today
-// only because the frontier above is empty for exactly the targets that would take it.
-async function revertWithFrontier(
-  store: Store,
-  sel: string,
-  preview: PreviewProvider,
-  opts: IdealEditFlowOpts = {}
-): Promise<void> {
-  const report = reportTo(opts);
-  const phase = report.phase;
-  phase("checking");
-  let view: EmitView;
-  try {
-    view = await store.ugh.emit(sel);
-  } catch (e: any) {
-    phase("failed", e.message);
-    report.error(e.message);
-    return;
-  }
-  // A checkpoint target comes back carrying its own chapter name; anything else is named by the
-  // token the user picked. Computed before the refusal branch so even "cannot revert" names the
-  // chapter, and used everywhere below so the question and the answer agree on the noun.
-  const name = view.checkpoint ? `checkpoint "${view.checkpoint}"` : sel;
-
-  if (!view.ok) {
-    phase("failed", view.message || `Cannot revert ${name}.`);
-    report.warn(view.message || `Cannot revert ${name}.`);
-    return;
-  }
-
-  // An `ok` revert that changes nothing is not a change to confirm -- these ops are already out of
-  // this composition. Asking anyway and then reporting success is precisely the "wait, is that
-  // done?" the preview exists to prevent. Mirrors `restoreWithPreview`'s already-live guard below.
-  //
-  // "Changes nothing" is not `removed.length === 0`: the default revert is forward subtraction,
-  // which keeps an op later work builds on and layers a rework over the symbol, so `removed` is
-  // empty while `added` holds the rework and `files` holds real rewrites. Guarded on `removed`
-  // alone, Apply reported success and changed nothing on 4 of 22 checkpoints of the footfall study
-  // repo (review 2026-10-18 §4.7).
-  if (view.removed.length === 0 && (view.added ?? []).length === 0 && Object.keys(view.files ?? {}).length === 0) {
-    const nothing = `${name} removes nothing here — it is already out of this composition.`;
-    phase("done", nothing);
-    report.info(nothing);
-    return;
-  }
-
-  // Show the resulting diff first -- "where this lands" -- so the confirm isn't a blind op-count.
-  // A workbench-staged apply already held the consequence on the graph and offers the diff on
-  // demand, so it opts out rather than having two tabs steal focus on every apply.
-  if (opts.openDiff !== false) await preview.openDiff(view);
-  const detail = consequenceDetail(view);
-
-  const frontier = view.frontier ?? [];
-  const toggleable = frontier.filter((r) => r.toggleable);
-  const lockedCount = frontier.length - toggleable.length;
-
-  // No dependents to choose among -> the plain confirm path (behavior unchanged from before U3).
-  if (toggleable.length === 0) {
-    if (!opts.confirmed) {
-      const ok = await vscode.window.showWarningMessage(
-        `Revert ${name}? Rewrites the working tree and commits.`,
-        { modal: true, detail },
-        "Apply"
-      );
-      if (ok !== "Apply") {
-        phase("cancelled");
-        return;
-      }
-    }
-    await applyIdealEdit(store, () => store.ugh.mutate(["revert", sel]), report);
-    return;
-  }
-
-  const keepEffect = (bucket: string) =>
-    bucket === "blast" ? "keep drafts a continuation hollow" : "keep repoints for free";
-  const picks = await vscode.window.showQuickPick(
-    toggleable.map((r) => ({
-      label: r.op_id.slice(0, 12),
-      description: `${r.bucket} · ${keepEffect(r.bucket)}`,
-      op_id: r.op_id,
-    })),
-    {
-      canPickMany: true,
-      placeHolder:
-        `Revert ${name}: check dependents to KEEP; unchecked are removed with it` +
-        (lockedCount ? ` · ${lockedCount} prerequisite(s) locked` : ""),
-    }
-  );
-  if (!picks) {
-    phase("cancelled");
-    return; // cancelled
-  }
-  const keep = picks.map((p) => p.op_id);
-  // The dependent QuickPick above is a *choice*, not a confirmation -- a staged workbench apply
-  // still gets it, and only the redundant "are you sure" modal after it is skipped.
-  if (!opts.confirmed) {
-    const summary = keep.length
-      ? `keep ${keep.length}/${toggleable.length} dependent(s) — drafts continuation hollows to fulfill`
-      : `remove ${name} and all ${toggleable.length} dependent(s)`;
-    const ok = await vscode.window.showWarningMessage(
-      `Revert ${name} — ${summary}?`,
-      { modal: true, detail },
-      "Apply"
-    );
-    if (ok !== "Apply") {
-      phase("cancelled");
-      return;
-    }
-  }
-  await applyIdealEdit(store, () => store.ugh.revertKeep(sel, keep), report);
-}
-
-/** `ugh restore` with the same feedforward `revert` gets: the resulting diff first, then a confirm
- * carrying real numbers. Restore is revert's inverse (`I ∪ ↓X`), so there is no dependent frontier
- * to choose among -- bringing an edit back also brings what it needs, and nothing is dropped -- but
- * "which files does this rewrite" is exactly as unanswerable from a prose modal here as it is for
- * revert. It also surfaces a refusal (the one-live-version rule) as the CLI's own explanation
- * rather than as a failed mutation after the user already committed to it. */
-async function restoreWithPreview(
-  store: Store,
-  sel: string,
-  preview: PreviewProvider,
-  opts: IdealEditFlowOpts = {}
-): Promise<void> {
-  const report = reportTo(opts);
-  const phase = report.phase;
-  phase("checking");
-  let view: EmitView;
-  try {
-    view = await store.ugh.emit(sel, "restore");
-  } catch (e: any) {
-    phase("failed", e.message);
-    report.error(e.message);
-    return;
-  }
-  if (!view.ok) {
-    phase("failed", view.message || `Cannot restore ${sel}.`);
-    report.warn(view.message || `Cannot restore ${sel}.`);
-    return;
-  }
-
-  // An `ok` restore that adds nothing is the "already live" case, not a change to confirm. Asking
-  // the user to approve a no-op teaches them the confirm means nothing.
-  if (view.added.length === 0) {
-    const nothing = `${sel} is already present — nothing to restore.`;
-    phase("done", nothing);
-    report.info(nothing);
-    return;
-  }
-
-  if (!opts.confirmed) {
-    const changedFiles = opts.openDiff !== false ? await preview.openDiff(view) : 0;
-    const diffNote = changedFiles ? ` Changes ${changedFiles} file(s) — see the open diff.` : "";
-    const brings = view.added.length > 1 ? ` (with ${view.added.length - 1} it depends on)` : "";
-    const ok = await vscode.window.showWarningMessage(
-      `Restore ${sel}? Brings back ${view.added.length} op(s)${brings}.${diffNote} ` +
-        `Rewrites the working tree and commits.`,
-      { modal: true },
-      "Apply"
-    );
-    if (ok !== "Apply") {
-      phase("cancelled");
-      return;
-    }
-  } else if (opts.openDiff !== false) {
-    await preview.openDiff(view);
-  }
-  await applyIdealEdit(store, () => store.ugh.mutate(["restore", sel]), report);
-}
-
-export function registerCommands(
-  context: vscode.ExtensionContext,
-  store: Store,
-  preview: PreviewProvider,
-  refreshBlame: () => void,
-  planDiff: PlanDiffProvider,
-  root: string,
-  workbench: WorkbenchProvider
-): void {
-  const reg = (id: string, fn: (...a: any[]) => any) =>
-    context.subscriptions.push(vscode.commands.registerCommand(id, fn));
-
-  reg("ugh.refresh", () => {
-    store.invalidate();
-    refreshBlame();
-  });
-  reg("ugh.toggleBlame", () => toggle("blame.enabled"));
-  reg("ugh.openWorkbench", () => vscode.commands.executeCommand("ughWorkbench.focus"));
-
-  // Reveal a symbol's owning feature in the workbench graph. Called with a feature id from the
-  // symbol hover's "Open Workbench" link, or with no argument from the editor context menu / palette
-  // -- in which case the feature is resolved from the blame span under the cursor (same path as
-  // ugh.revertSymbol). The workbench selects + spotlights + scrolls to that feature's lane.
-  reg("ugh.revealInWorkbench", async (featureId?: string) => {
-    let feature = featureId;
-    if (!feature) {
-      const editor = vscode.window.activeTextEditor;
-      if (!editor) {
-        vscode.window.showWarningMessage("Open a file and put the cursor on a symbol to reveal its feature.");
-        return;
-      }
-      const rel = vscode.workspace.asRelativePath(editor.document.uri, false);
-      let blame: BlameView;
+/** An address typed, or picked from `ugh find` as you type; the definition at the cursor first. */
+function pickAddress(ugh: Ugh, title: string, initial: string[]): Promise<string | undefined> {
+  const qp = vscode.window.createQuickPick();
+  qp.title = title;
+  qp.placeholder = "Address or words";
+  const base: vscode.QuickPickItem[] = initial.map((a) => ({ label: a, description: "at cursor" }));
+  qp.items = base;
+  let seq = 0;
+  let timer: NodeJS.Timeout | undefined;
+  qp.onDidChangeValue((value) => {
+    clearTimeout(timer);
+    const typed = value.trim();
+    const head: vscode.QuickPickItem[] = typed ? [{ label: typed, description: "address", alwaysShow: true }] : [];
+    qp.items = [...head, ...base];
+    if (!typed) return;
+    const mine = ++seq;
+    timer = setTimeout(async () => {
+      qp.busy = true;
       try {
-        blame = await store.blame(rel);
-      } catch (e: any) {
-        vscode.window.showErrorMessage(e.message);
-        return;
+        const view = await ugh.find(typed, () => mine === seq);
+        if (mine !== seq) return;
+        qp.items = [
+          ...head,
+          ...view.hits
+            .filter((h) => h.address !== typed)
+            .map((h) => ({
+              label: h.address,
+              description: h.matched,
+              detail: h.matched === "subject" || h.matched === "ask" ? h.text : undefined,
+              alwaysShow: true,
+            })),
+        ];
+      } catch {
+        // the typed address stays offered
+      } finally {
+        if (mine === seq) qp.busy = false;
       }
-      const line = editor.selection.active.line + 1; // blame spans are 1-based inclusive
-      const span = blame.spans.find((s) => s.start_line <= line && line <= s.end_line);
-      if (!span) {
-        vscode.window.showWarningMessage("No mined symbol under the cursor.");
-        return;
-      }
-      feature = span.feature_id;
-    }
-    await workbench.revealFeature(feature);
+    }, 200);
   });
-
-  reg("ugh.previewRevert", async (id?: unknown) => {
-    const feature = await pickFeature(store, id);
-    if (feature) {
-      void preview.preview(feature);
-    }
-  });
-  // `opts` (IdealEditFlowOpts) is how the workbench's staged in-graph confirm drives the same
-  // flow: it already showed the consequence and took an explicit Apply, so it passes
-  // `confirmed: true` (skip the modal), `openDiff: false` (diff on demand instead of focus-steal),
-  // and an `onPhase` that paints real progress in the confirm bar. Same-extension executeCommand
-  // passes these through in-process, callbacks included.
-  reg("ugh.revert", async (id?: unknown, opts?: IdealEditFlowOpts) => {
-    const feature = await pickFeature(store, id);
-    if (feature) {
-      await revertWithFrontier(store, feature, preview, opts ?? {});
-    } else {
-      opts?.onPhase?.("cancelled");
-    }
-  });
-  reg("ugh.restore", async (id?: unknown, opts?: IdealEditFlowOpts) => {
-    const feature = await pickFeature(store, id);
-    if (feature) {
-      await restoreWithPreview(store, feature, preview, opts ?? {});
-    } else {
-      opts?.onPhase?.("cancelled");
-    }
-  });
-
-  // `ugh edit <sel>` (U4/KTD5): draft an in-place change. This drafts a continuation hollow and
-  // mechanically repoints dependents; the user then edits the working tree and Saves to fulfill.
-  // (No preview/frontier yet -- `ugh edit` has no `--emit`; that's a flagged CLI follow-up.)
-  reg("ugh.edit", async (id?: unknown) => {
-    const sel = await pickFeature(store, id);
-    if (!sel) {
-      return;
-    }
-    const intent = await vscode.window.showInputBox({
-      prompt: `Edit ${sel} in place — describe the intent (optional)`,
-      placeHolder: "e.g. accept an optional timeout argument",
+  return new Promise((resolve) => {
+    qp.onDidAccept(() => {
+      resolve(qp.selectedItems[0]?.label ?? (qp.value.trim() || undefined));
+      qp.hide();
     });
-    if (intent === undefined) {
-      return; // cancelled
-    }
-    try {
-      const draft = await store.ugh.edit(sel, intent || undefined);
-      store.invalidate();
-      if (!draft.ok) {
-        vscode.window.showWarningMessage(draft.message || `Cannot edit ${sel}.`);
-        return;
-      }
-      const hollows = draft.hollow_ids?.length ?? 0;
-      vscode.window.showInformationMessage(
-        `Drafted edit of ${draft.target ?? sel} (${hollows} hollow${hollows === 1 ? "" : "s"}). ` +
-          `Change the code in your working tree, then Save to fulfill.`
-      );
-    } catch (e: any) {
-      vscode.window.showErrorMessage(e.message);
-    }
-  });
-
-  // `ugh.revertSymbol`: revert the symbol under the cursor. This is the op/symbol-level entry
-  // point that actually surfaces the interactive frontier -- a feature-level revert removes a
-  // whole op-set and has no single-op dependent frontier (ugh.api._frontier_rows resolves the
-  // target to one op). The symbol ref (`file::name`) comes from the blame span over the cursor.
-  reg("ugh.revertSymbol", async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      vscode.window.showWarningMessage("Open a file and put the cursor on a symbol to revert.");
-      return;
-    }
-    const rel = vscode.workspace.asRelativePath(editor.document.uri, false);
-    let blame: BlameView;
-    try {
-      blame = await store.blame(rel);
-    } catch (e: any) {
-      vscode.window.showErrorMessage(e.message);
-      return;
-    }
-    const line = editor.selection.active.line + 1; // blame spans are 1-based inclusive
-    const span = blame.spans.find((s) => s.start_line <= line && line <= s.end_line);
-    if (!span) {
-      vscode.window.showWarningMessage("No mined symbol under the cursor.");
-      return;
-    }
-    await revertWithFrontier(store, span.symbol, preview);
-  });
-
-  reg("ugh.showPlanQuickPick", () => showPlanQuickPick(store, planDiff));
-  reg("ugh.showPlanDiff", (target) => planDiff.showDiff(target));
-
-  // Hand a stalled plan back to Claude Code: relaunch the interrupted session in a terminal.
-  // ugh never authors code itself -- resuming the real agent conversation is the correct on-ramp.
-  // Tradeoff: `claude` must be on PATH; if not, the terminal shows command-not-found -- which is
-  // exactly the "relaunch that session in their terminal" behavior the user asked for.
-  reg("ugh.resumePlan", async (sessionId?: string) => {
-    if (!sessionId) {
-      return;
-    }
-    const view = await store.planView();
-    const session = view.sessions.find((s) => s.session_id === sessionId);
-    // With a captured Claude session id we resume that exact conversation (its plan context is
-    // already restored); otherwise the bare picker lets the user pick -- ugh has already shown
-    // which plan stalled and its remaining steps.
-    const cmd = session?.claude_session_id
-      ? `claude --resume ${session.claude_session_id}`
-      : "claude --resume";
-    // Run the resume (it launches the interactive session and restores context); we deliberately
-    // do NOT append a `-p` prompt -- the user continues the restored conversation by typing.
-    const term = vscode.window.createTerminal({ name: "ugh resume" });
-    term.sendText(cmd, true);
-    term.show();
-  });
-
-  // The "Now" tree's next-action row. A fork routes to its resolution wizard; anything else with a
-  // recommended command runs it in a terminal (a `claude --resume`, `ugh save`, `ugh intent review`
-  // -- all interactive or worth watching, so a terminal, not a silent shell-out). `clean` (no
-  // command) is a no-op; the row is informational.
-  reg("ugh.runNextAction", (action?: NextAction) => {
-    if (!action) {
-      return;
-    }
-    if (action.kind === "resolve_fork" && action.target) {
-      void vscode.commands.executeCommand("ugh.resolveFork", action.target);
-      return;
-    }
-    // A stalled plan isn't a command to fire blindly -- the whole confusion is "what plan, and why
-    // is it stuck?" So route it to the resolution panel, which explains the stall (which steps did
-    // land, under what name, whether a conversation is even linked) before offering resume/close.
-    if (action.kind === "resume_plan" && action.target) {
-      void vscode.commands.executeCommand("ugh.resolveStalledPlan", action.target);
-      return;
-    }
-    if (!action.command) {
-      return;
-    }
-    const term = vscode.window.createTerminal({ name: "ugh next" });
-    term.sendText(action.command, true);
-    term.show();
-  });
-
-  // A stalled plan: work went quiet with steps still unmatched. Rather than a dead click, explain
-  // WHY -- per pending step, whether its predicted files already saw edits (built under a different
-  // name than predicted, which the name-exact matcher will never confirm) or truly got no edits,
-  // plus whether a Claude conversation is even linked for resume -- then offer the three real exits:
-  // resume the thread, mark it done (work landed, keep the record), or abandon it.
-  reg("ugh.resolveStalledPlan", async (sessionId?: string) => {
-    if (!sessionId) {
-      return;
-    }
-    let view: PlanView;
-    try {
-      view = await store.ugh.planStatus();
-    } catch (e: any) {
-      vscode.window.showErrorMessage(e.message);
-      return;
-    }
-    const session = view.sessions.find((s) => s.session_id === sessionId);
-    if (!session) {
-      vscode.window.showInformationMessage("That plan is no longer active -- it may already be closed.");
-      store.invalidate();
-      return;
-    }
-
-    const pending = session.steps.filter((s) => s.status === "pending");
-    const built = pending.filter((s) => s.covered);
-    const csid = session.claude_session_id;
-    const stepLines = pending.map((s) => {
-      const mark = s.covered ? "✓ built" : "✗ no edits";
-      return `${mark}  ${s.title}\n        ${s.coverage_reason ?? "no coverage signal recorded"}`;
+    qp.onDidHide(() => {
+      clearTimeout(timer);
+      resolve(undefined);
+      qp.dispose();
     });
-    const linkNote = csid
-      ? `Linked conversation: claude --resume ${csid}`
-      : "No conversation is linked to this plan -- Resume falls back to Claude Code's session picker.";
-    const detail = [
-      `${pending.length} step(s) still open; ${built.length} already landed under a different name ` +
-        `than the plan predicted, so ugh's name-exact matcher never linked them.`,
-      "",
-      ...stepLines,
-      "",
-      linkNote,
-    ].join("\n");
+    qp.show();
+  });
+}
 
-    // Fully built -> the honest exit is "mark done" (keeps the record); nothing built -> lead with
-    // Abandon. Resume only when there's a way to relaunch the thread.
-    const markDone = built.length === pending.length ? "Mark done (recommended)" : "Mark done";
-    const buttons = csid ? ["Resume in Claude", markDone, "Abandon"] : [markDone, "Abandon"];
-    const choice = await vscode.window.showInformationMessage(
-      `Stalled plan: ${pending.length} step(s) left, ${built.length} already built`,
-      { modal: true, detail },
-      ...buttons
+/** A label from those in use, or a new one typed. `none` adds a first row that picks no label. */
+function pickLabel(title: string, known: string[], none?: string): Promise<string | null | undefined> {
+  const qp = vscode.window.createQuickPick();
+  qp.title = title;
+  qp.placeholder = "Name";
+  const NONE = none ? [{ label: none }] : [];
+  const base = [...NONE, ...known.map((label) => ({ label }))];
+  qp.items = base;
+  qp.onDidChangeValue((value) => {
+    const typed = value.trim();
+    qp.items = typed && !known.includes(typed) ? [{ label: typed, description: "new" }, ...base] : base;
+  });
+  return new Promise((resolve) => {
+    qp.onDidAccept(() => {
+      const picked = qp.selectedItems[0]?.label ?? qp.value.trim();
+      resolve(none && picked === none ? null : picked || undefined);
+      qp.hide();
+    });
+    qp.onDidHide(() => {
+      resolve(undefined);
+      qp.dispose();
+    });
+    qp.show();
+  });
+}
+
+/** `remote branch` from one input; empty means the upstream. */
+async function askWhere(title: string): Promise<[string?, string?] | undefined> {
+  const value = await vscode.window.showInputBox({ title, placeHolder: "remote branch, or empty for the upstream" });
+  if (value === undefined) return undefined;
+  const [remote, branch] = value.trim().split(/\s+/).filter(Boolean);
+  return [remote, branch];
+}
+
+export function flows(d: Deps) {
+  const { root, ugh, store } = d;
+  const refresh = () => void store.refresh();
+
+  async function openFile(rel: string, line?: number): Promise<void> {
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(path.join(root, rel)));
+    const editor = await vscode.window.showTextDocument(doc, { preview: true });
+    if (line) {
+      const pos = new vscode.Position(Math.max(0, line - 1), 0);
+      editor.selection = new vscode.Selection(pos, pos);
+      editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+    }
+  }
+
+  /** The file at HEAD against the file as it is. */
+  async function openUnsaved(rel: string): Promise<void> {
+    let head = "";
+    try {
+      head = (await pExecFile("git", ["show", `HEAD:${rel}`], { cwd: root, maxBuffer: 64 * 1024 * 1024 })).stdout;
+    } catch {
+      // a file HEAD does not have: everything in it is new
+    }
+    await vscode.commands.executeCommand(
+      "vscode.diff",
+      d.texts.put("HEAD", rel, head),
+      vscode.Uri.file(path.join(root, rel)),
+      `${path.basename(rel)} (HEAD ↔ file)`,
     );
-    if (!choice) {
-      return;
-    }
-    if (choice === "Resume in Claude") {
-      const term = vscode.window.createTerminal({ name: "ugh resume plan" });
-      term.sendText(csid ? `claude --resume ${csid}` : "claude --resume", true);
-      term.show();
-      return;
-    }
-    try {
-      if (choice.startsWith("Mark done")) {
-        await store.ugh.planDone(sessionId);
-        vscode.window.showInformationMessage("Plan marked done -- kept as history for revert/attribution.");
-      } else {
-        await store.ugh.planAbandon(sessionId);
-        vscode.window.showInformationMessage("Plan abandoned -- its unfinished steps recorded as open intents.");
-      }
-    } catch (e: any) {
-      vscode.window.showErrorMessage(e.message);
-      return;
-    }
-    store.invalidate();
-  });
+  }
 
-  // The N-column tip diff + merge-op/fulfill/land wizard (Phase 6).
-  reg("ugh.resolveFork", (symbol?: string) => {
-    if (!symbol) {
-      return;
-    }
-    ForkResolutionPanel.createOrShow(context, store, root, symbol);
-  });
-
-  // Partial-accept review + the U23 CAS advance (`ughCompositions`'s proposal context menu).
-  // Refuses a subset that omits a feature another chosen feature `requires`, naming it -- that
-  // validation lives server-side (`propose.py::_resolve_subset`), surfaced here via `report.error`.
-  reg("ugh.proposeLand", async (node?: { kind?: string; proposal?: { id: string; title?: string } }) => {
-    const id = node?.proposal?.id;
-    if (!id) {
-      return;
-    }
-    let checklist: ProposalChecklistEntry[] = [];
+  /** A step's unit before and after its save. */
+  async function openStep(address: string): Promise<void> {
     try {
-      checklist = (await store.ugh.proposalReviewView(id)).feature_checklist || [];
-    } catch (e: any) {
-      vscode.window.showErrorMessage(e.message);
-      return;
-    }
-    let subset: string[] | undefined;
-    if (checklist.length > 1) {
-      const picks = await vscode.window.showQuickPick(
-        checklist.map((f) => ({ label: f.label, description: `${f.op_count} op(s)`, picked: true, id: f.feature_id })),
-        { canPickMany: true, placeHolder: "Land which features? (all selected by default)" }
+      const show = await ugh.show(address);
+      if (!show.ok) return void vscode.window.showWarningMessage(show.message);
+      const rel = show.steps[0]?.unit.split("::")[0] ?? address.split("::")[0].split("@")[0];
+      const join = (side: "before" | "after") => show.steps.map((s) => s[side] ?? "").join("");
+      await vscode.commands.executeCommand(
+        "vscode.diff",
+        d.texts.put(`before ${address}`, rel, join("before")),
+        d.texts.put(`after ${address}`, rel, join("after")),
+        address,
       );
-      if (!picks) {
-        return;
-      }
-      if (picks.length < checklist.length) {
-        subset = picks.map((p) => p.id);
-      }
+    } catch (e) {
+      fail(e);
     }
-    const label = node?.proposal?.title || id;
-    const ok = await vscode.window.showWarningMessage(
-      `Land proposal ${label}${subset ? ` (${subset.length}/${checklist.length} feature(s))` : ""}? Advances the base branch.`,
-      { modal: true },
-      "Land"
-    );
-    if (ok !== "Land") {
-      return;
-    }
+  }
+
+  /** Preview, confirm, apply. A refusal says why in one line. */
+  async function change(verb: Verb, addresses: string[]): Promise<void> {
+    let plan;
     try {
-      const report = await store.ugh.proposeLand(id, subset);
-      store.invalidate();
-      if (report.error) {
-        vscode.window.showErrorMessage(`Land blocked: ${report.error}`);
-      } else if (!report.landed) {
-        vscode.window.showWarningMessage(`Land blocked: ${report.blocked_reason || "unknown reason"}`);
-      } else {
-        vscode.window.showInformationMessage(
-          `✓ propose land ${report.branch}: ${(report.land_sha || "").slice(0, 12)} (${report.ops_added} op(s))`
+      plan = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: "ugh" }, () =>
+        ugh.preview(verb, addresses));
+    } catch (e) {
+      return fail(e);
+    }
+    if (!plan.ok) return void vscode.window.showWarningMessage(plan.message || "Refused");
+    const say = previewWords(plan);
+    if (!say.apply && !say.whole) return void vscode.window.showInformationMessage(say.detail || say.message);
+    const go = verb === "revert" ? "Take out" : "Bring back";
+    const buttons = [...(say.apply ? [go] : []), ...(say.whole ? ["Whole"] : []), "Diff"];
+    let choice = await vscode.window.showWarningMessage(say.message, { modal: true, detail: say.detail }, ...buttons);
+    if (choice === "Diff") {
+      for (const [file, { before, after }] of Object.entries(plan.files)) {
+        await vscode.commands.executeCommand(
+          "vscode.diff",
+          d.texts.put("now", file, before ?? ""),
+          d.texts.put(`${verb} ${plan.target}`, file, after ?? ""),
+          `${path.basename(file)} (${go.toLowerCase()} ${plan.target})`,
+          { preview: false },
         );
       }
-    } catch (e: any) {
-      vscode.window.showErrorMessage(e.message);
+      choice = await vscode.window.showInformationMessage(say.message, ...buttons.filter((b) => b !== "Diff"));
     }
-  });
+    if (choice !== go && choice !== "Whole") return;
+    try {
+      const done = await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: say.message },
+        () => ugh.apply(verb, addresses, choice === "Whole"),
+      );
+      const line = resultWords(done);
+      if (done.applied) void vscode.window.showInformationMessage(line);
+      else void vscode.window.showWarningMessage(line);
+    } catch (e) {
+      fail(e);
+    }
+    refresh();
+  }
 
-  // Pushes the proposal's rendered PR branch and creates/updates a GitHub PR via `gh`.
-  reg("ugh.proposePublish", async (node?: { kind?: string; proposal?: { id: string; title?: string } }) => {
-    const id = node?.proposal?.id;
-    if (!id) {
-      return;
+  async function name(addresses?: string[]): Promise<void> {
+    const cursor = await d.docs.cursorAddress();
+    const picked = addresses ?? [await pickAddress(ugh, "Name", cursor ? [cursor] : [])];
+    const targets = picked.filter((a): a is string => !!a);
+    if (!targets.length) return;
+    const label = await pickLabel(`Name ${targets.join(", ")}`, labels(store));
+    if (!label) return;
+    try {
+      for (const address of targets) await ugh.name(address, label);
+    } catch (e) {
+      fail(e);
     }
-    const label = node?.proposal?.title || id;
-    const ok = await vscode.window.showWarningMessage(`Publish proposal ${label} as a GitHub PR?`, { modal: true }, "Publish");
-    if (ok !== "Publish") {
-      return;
+    refresh();
+  }
+
+  async function rename(label?: string): Promise<void> {
+    const old = label ?? (await vscode.window.showQuickPick(labels(store), { title: "Rename" }));
+    if (!old) return;
+    const next = await vscode.window.showInputBox({ title: `Rename ${old}`, value: old, valueSelection: [0, old.length] });
+    if (!next?.trim() || next.trim() === old) return;
+    try {
+      await ugh.rename(old, next.trim());
+    } catch (e) {
+      fail(e);
     }
-    await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: "ugh propose publish…" },
-      async () => {
-        try {
-          const result = await store.ugh.proposePublish(id);
-          vscode.window.showInformationMessage(
-            result.ok ? `✓ PR ${result.action} on ${result.branch}` : result.error || "publish failed"
-          );
-        } catch (e: any) {
-          vscode.window.showErrorMessage(e.message);
+    refresh();
+  }
+
+  async function keep(address: string, how: Keep): Promise<void> {
+    const doc = vscode.workspace.textDocuments.find(
+      (t) => t.uri.scheme === "file" && t.uri.fsPath === path.join(root, address.split("::")[0]),
+    );
+    if (doc?.isDirty && how === "apply") await doc.save();
+    try {
+      await ugh.resolve(address, how);
+      void vscode.window.showInformationMessage(`Resolved ${address}`);
+    } catch (e) {
+      fail(e);
+    }
+    refresh();
+  }
+
+  /** Theirs on the left, the file on the right, then the three ways to settle it. */
+  async function resolve(address?: string): Promise<void> {
+    const choices = store.snapshot.status?.choices ?? [];
+    const target =
+      address ??
+      (choices.length === 1
+        ? choices[0].address
+        : await vscode.window.showQuickPick(choices.map((c) => c.address), { title: "Resolve" }));
+    if (!target) return;
+    let versions;
+    try {
+      versions = await ugh.versions(target);
+    } catch (e) {
+      return fail(e);
+    }
+    for (const v of versions.choices) {
+      const rel = v.address.split("::")[0];
+      const file = vscode.Uri.file(path.join(root, rel));
+      const now = (await vscode.workspace.openTextDocument(file)).getText();
+      const at = v.ours ? now.indexOf(v.ours) : -1;
+      const theirs = at >= 0 ? now.slice(0, at) + (v.theirs ?? "") + now.slice(at + v.ours!.length) : v.theirs ?? "";
+      await vscode.commands.executeCommand(
+        "vscode.diff",
+        d.texts.put(`theirs ${v.merge}`, rel, theirs),
+        file,
+        `${v.address.split("::").pop()} (theirs ↔ file)`,
+      );
+    }
+    const how = await vscode.window.showInformationMessage(target, "Take theirs", "Keep ours", "Use file as edited");
+    if (how) await keep(target, how === "Take theirs" ? "theirs" : how === "Keep ours" ? "ours" : "apply");
+  }
+
+  async function save(): Promise<void> {
+    const message = await vscode.window.showInputBox({ title: "Save", placeHolder: "Message" });
+    if (message === undefined) return;
+    const label = await pickLabel("Name this save", labels(store), "No name");
+    if (label === undefined) return;
+    await vscode.workspace.saveAll(false);
+    try {
+      const out = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "Saving" },
+        () => ugh.save(message.trim() || undefined, label ?? undefined));
+      if (!out.ok) void vscode.window.showErrorMessage(out.error ?? "Save refused");
+      else if (!out.saved) void vscode.window.showInformationMessage(out.message ?? "Nothing to save");
+      else {
+        const seen = out.observed && "verdict" in out.observed ? ` · check ${out.observed.verdict === "pass" ? "passes" : "fails"}` : "";
+        const n = out.steps?.length ?? 0;
+        void vscode.window.showInformationMessage(`Saved ${out.commit?.slice(0, 7)} · ${n} step${n === 1 ? "" : "s"}${seen}`);
+      }
+    } catch (e) {
+      fail(e);
+    }
+    refresh();
+  }
+
+  async function undo(): Promise<void> {
+    let say;
+    try {
+      say = undoWords(await ugh.undoPreview());
+    } catch (e) {
+      return fail(e);
+    }
+    if (say.kind === "nothing") return void vscode.window.showInformationMessage(say.message);
+    if (say.kind === "refused") return void vscode.window.showWarningMessage(say.message);
+    if ((await vscode.window.showWarningMessage(say.message, { modal: true, detail: say.detail }, "Undo")) !== "Undo") return;
+    try {
+      const out = await ugh.undo();
+      if (out.ok === false) void vscode.window.showWarningMessage(out.message || out.error || "Undo refused");
+      else void vscode.window.showInformationMessage(out.message ? `Undone: ${out.message}` : "Undone");
+    } catch (e) {
+      fail(e);
+    }
+    refresh();
+  }
+
+  async function sync(): Promise<void> {
+    const where = await askWhere("Sync");
+    if (!where) return;
+    try {
+      const out = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "Syncing" },
+        () => ugh.sync(...where));
+      const names = out.name_conflicts.length ? ` · ${out.name_conflicts.length} names differ, ours kept` : "";
+      const line = `Synced ${out.remote}/${out.branch}: ${out.message}${names}`;
+      if (!out.choices.length) void vscode.window.showInformationMessage(line);
+      else {
+        const n = out.choices.length;
+        const pick = await vscode.window.showWarningMessage(`${line} · ${n} two-version choice${n === 1 ? "" : "s"}`, "Resolve");
+        if (pick) {
+          await store.refresh();
+          await resolve(out.choices[0]);
         }
       }
-    );
-  });
-
-  reg("ugh.viewProposal", async (id?: string) => {
-    if (!id) {
-      return;
+    } catch (e) {
+      fail(e);
     }
+    refresh();
+  }
+
+  async function push(): Promise<void> {
+    const where = await askWhere("Push");
+    if (!where) return;
+    const to = where[0] ? where.filter(Boolean).join(" ") : "the upstream";
+    if ((await vscode.window.showWarningMessage(`Push to ${to}?`, { modal: true }, "Push")) !== "Push") return;
     try {
-      const p = await store.proposalView(id);
-      const parts = [
-        `Proposal ${p.id}`,
-        p.title,
-        p.base_ref && `base ${p.base_ref}`,
-        p.status && `state: ${p.status.state}`,
-        p.feature_delta?.length && `features: ${p.feature_delta.map((f) => f.label).join(", ")}`,
-      ].filter(Boolean);
-      vscode.window.showInformationMessage(parts.join(" — "));
-    } catch (e: any) {
-      vscode.window.showErrorMessage(e.message);
+      const out = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "Pushing" },
+        () => ugh.push(...where));
+      if (out.ok) void vscode.window.showInformationMessage(`Pushed ${out.remote}/${out.branch} ${out.pushed_sha?.slice(0, 7) ?? ""}`);
+      else if (out.rejected) {
+        if (await vscode.window.showWarningMessage(out.error ?? "Push rejected", "Sync")) await sync();
+      } else void vscode.window.showErrorMessage(out.error ?? "Push failed");
+    } catch (e) {
+      fail(e);
     }
-  });
+    refresh();
+  }
 
-  // Shared by the drift/unmanaged rows in `ughChanges` -- jump to a file, optionally to a span.
-  reg("ugh.jumpToLocation", async (loc: { path: string; startLine: number; endLine: number }) => {
-    const uri = vscode.Uri.file(path.isAbsolute(loc.path) ? loc.path : path.join(root, loc.path));
-    const doc = await vscode.workspace.openTextDocument(uri);
-    const editor = await vscode.window.showTextDocument(doc);
-    const line = Math.max(0, loc.startLine - 1);
-    const endLine = Math.max(line, loc.endLine - 1);
-    const range = new vscode.Range(line, 0, endLine, 0);
-    editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
-    editor.selection = new vscode.Selection(range.start, range.start);
+  async function init(): Promise<void> {
+    try {
+      await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "Reading the history" },
+        () => ugh.init());
+    } catch (e) {
+      fail(e);
+    }
+    refresh();
+  }
+
+  const act: Host["act"] = async (msg) => {
+    switch (msg.type) {
+      case "name": return name(msg.addresses);
+      case "rename": return rename(msg.label);
+      case "resolve": return resolve(msg.address);
+      case "openStep": return openStep(msg.address);
+      case "openFile": return openFile(msg.path, msg.line).catch(fail);
+      case "render": if (d.render.isOpen()) d.render.show(msg.address); return;
+      case "copy": return void vscode.env.clipboard.writeText(msg.text);
+      case "init": return init();
+    }
+  };
+
+  return { change, name, rename, resolve, keep, save, undo, sync, push, init, openFile, openStep, openUnsaved, act };
+}
+
+export function registerCommands(context: vscode.ExtensionContext, d: Deps, f: ReturnType<typeof flows>): void {
+  const reg = (id: string, fn: (...a: any[]) => unknown) =>
+    context.subscriptions.push(vscode.commands.registerCommand(id, fn));
+  const cursor = async () => [await d.docs.cursorAddress()].filter((a): a is string => !!a);
+  const ask = async (verb: Verb, title: string, arg: unknown) => {
+    const given = addressesOf(arg);
+    const picked = given ?? [await pickAddress(d.ugh, title, verb === "revert" ? await cursor() : [])];
+    if (picked[0]) await f.change(verb, picked as string[]);
+  };
+
+  reg("ugh.openWorkbench", () => d.workbench().focus());
+  reg("ugh.revealInWorkbench", async (arg?: unknown) => d.workbench().focus(addressesOf(arg)?.[0] ?? (await cursor())[0]));
+  reg("ugh.refresh", () => d.store.refresh());
+  reg("ugh.takeOut", (arg?: unknown) => ask("revert", "Take out", arg));
+  reg("ugh.bringBack", (arg?: unknown) => ask("restore", "Bring back", arg));
+  reg("ugh.takeOutDefinition", async () => {
+    const at = await cursor();
+    if (at.length) await f.change("revert", at);
   });
+  reg("ugh.name", (arg?: unknown) => f.name(addressesOf(arg)));
+  reg("ugh.nameDefinition", async () => {
+    const at = await cursor();
+    if (at.length) await f.name(at);
+  });
+  reg("ugh.rename", (arg?: unknown) => f.rename(addressesOf(arg)?.[0]));
+  reg("ugh.resolve", (arg?: unknown) => f.resolve(addressesOf(arg)?.[0]));
+  for (const [id, how] of [["ugh.resolveTheirs", "theirs"], ["ugh.resolveOurs", "ours"], ["ugh.resolveApply", "apply"]] as const) {
+    reg(id, (arg?: unknown) => {
+      const address = addressesOf(arg)?.[0];
+      if (address) return f.keep(address, how);
+    });
+  }
+  reg("ugh.save", () => f.save());
+  reg("ugh.undo", () => f.undo());
+  reg("ugh.sync", () => f.sync());
+  reg("ugh.push", () => f.push());
+  reg("ugh.init", () => f.init());
+  reg("ugh.openRenderPanel", () => d.render.open(null));
+  reg("ugh.toggleBlame", () => {
+    const config = vscode.workspace.getConfiguration("ugh");
+    return config.update("blame.enabled", !config.get<boolean>("blame.enabled", true), vscode.ConfigurationTarget.Global);
+  });
+  reg("ugh.openUnsaved", (arg?: unknown) => {
+    const rel = typeof arg === "string" ? arg : (arg as { path?: string })?.path;
+    if (rel) return f.openUnsaved(rel);
+  });
+  reg("ugh.openStep", (arg?: unknown) => {
+    const address = addressesOf(arg)?.[0];
+    if (address) return f.openStep(address);
+  });
+  reg("ugh.jumpToLocation", (rel: string, line?: number) => f.openFile(rel, line).catch(fail));
 }

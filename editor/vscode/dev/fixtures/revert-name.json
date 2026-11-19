@@ -1,0 +1,152 @@
+{
+  "ok": true,
+  "applied": false,
+  "verb": "revert",
+  "target": "hourly profile",
+  "message": "",
+  "undone": [
+    {
+      "address": "bikecount/pages/hourly.py::ORDER@196f7b6",
+      "save": "196f7b6",
+      "subject": "add a by-hour page showing average rides per hour",
+      "unit": "bikecount/pages/hourly.py::ORDER",
+      "ran": null
+    },
+    {
+      "address": "bikecount/pages/hourly.py::PATH@196f7b6",
+      "save": "196f7b6",
+      "subject": "add a by-hour page showing average rides per hour",
+      "unit": "bikecount/pages/hourly.py::PATH",
+      "ran": null
+    },
+    {
+      "address": "bikecount/pages/hourly.py::TITLE@196f7b6",
+      "save": "196f7b6",
+      "subject": "add a by-hour page showing average rides per hour",
+      "unit": "bikecount/pages/hourly.py::TITLE",
+      "ran": null
+    }
+  ],
+  "held": [
+    {
+      "address": "bikecount/metrics.py::hourly_averages@196f7b6",
+      "save": "196f7b6",
+      "subject": "add a by-hour page showing average rides per hour",
+      "unit": "bikecount/metrics.py::hourly_averages",
+      "ran": null,
+      "reason": "changed_later",
+      "holders": [
+        {
+          "address": "bikecount/metrics.py::hourly_averages@c360a3d",
+          "save": "c360a3d",
+          "subject": "exclude event days from averages, keep them in totals"
+        }
+      ]
+    },
+    {
+      "address": "bikecount/pages/hourly.py@196f7b6",
+      "save": "196f7b6",
+      "subject": "add a by-hour page showing average rides per hour",
+      "unit": "bikecount/pages/hourly.py::__import__::bikecount",
+      "ran": null,
+      "reason": "uses",
+      "holders": [
+        {
+          "address": "bikecount/pages/hourly.py::render@b9f66c7",
+          "save": "b9f66c7",
+          "subject": "split the by-hour page into weekday and weekend charts"
+        }
+      ]
+    },
+    {
+      "address": "bikecount/pages/hourly.py@196f7b6",
+      "save": "196f7b6",
+      "subject": "add a by-hour page showing average rides per hour",
+      "unit": "bikecount/pages/hourly.py::__import__::bikecount.pages",
+      "ran": null,
+      "reason": "uses",
+      "holders": [
+        {
+          "address": "bikecount/pages/hourly.py::render@b9f66c7",
+          "save": "b9f66c7",
+          "subject": "split the by-hour page into weekday and weekend charts"
+        }
+      ]
+    },
+    {
+      "address": "bikecount/pages/hourly.py@196f7b6",
+      "save": "196f7b6",
+      "subject": "add a by-hour page showing average rides per hour",
+      "unit": "bikecount/pages/hourly.py::__residue__::\u0000HEAD\u0000",
+      "ran": null,
+      "reason": "changed_later",
+      "holders": [
+        {
+          "address": "bikecount/pages/hourly.py::render@b9f66c7",
+          "save": "b9f66c7",
+          "subject": "split the by-hour page into weekday and weekend charts"
+        },
+        {
+          "address": "bikecount/pages/hourly.py::render@22496d8",
+          "save": "22496d8",
+          "subject": "scope every page to a picked date window, default last complete year"
+        }
+      ]
+    },
+    {
+      "address": "bikecount/pages/hourly.py::render@196f7b6",
+      "save": "196f7b6",
+      "subject": "add a by-hour page showing average rides per hour",
+      "unit": "bikecount/pages/hourly.py::render",
+      "ran": null,
+      "reason": "changed_later",
+      "holders": [
+        {
+          "address": "bikecount/pages/hourly.py::render@b9f66c7",
+          "save": "b9f66c7",
+          "subject": "split the by-hour page into weekday and weekend charts"
+        },
+        {
+          "address": "bikecount/pages/hourly.py::render@22496d8",
+          "save": "22496d8",
+          "subject": "scope every page to a picked date window, default last complete year"
+        }
+      ]
+    }
+  ],
+  "removal_set": {
+    "saves": [
+      {
+        "sha": "196f7b6",
+        "subject": "add a by-hour page showing average rides per hour",
+        "steps": 8
+      },
+      {
+        "sha": "22496d8",
+        "subject": "scope every page to a picked date window, default last complete year",
+        "steps": 1
+      },
+      {
+        "sha": "b9f66c7",
+        "subject": "split the by-hour page into weekday and weekend charts",
+        "steps": 3
+      },
+      {
+        "sha": "c360a3d",
+        "subject": "exclude event days from averages, keep them in totals",
+        "steps": 1
+      }
+    ],
+    "steps": 13
+  },
+  "files": {
+    "bikecount/pages/hourly.py": {
+      "before": "\"\"\"What time of day people ride: the average count for each hour.\"\"\"\nfrom bikecount import charts, metrics\nfrom bikecount.pages import shell\n\nPATH = \"/hourly\"\nTITLE = \"By Hour\"\nORDER = 1\n\n\ndef render(readings, start, end):\n    hours = metrics.hourly_averages(readings)\n    hour, avg = max(hours, key=lambda kv: kv[1])\n    rows = \"\".join(f\"<tr><td>{h:02d}:00</td><td>{a:,}</td></tr>\" for h, a in hours)\n\n    weekday = metrics.hourly_averages_weekday(readings)\n    weekend = metrics.hourly_averages_weekend(readings)\n    by_hour = lambda h: f\"{h:02d}:00\"\n\n    return shell(\"By Hour\", f\"\"\"\n<p class=\"label\">Busiest hour of day</p>\n<p class=\"big\">{hour:02d}:00</p>\n<p>average {avg:,} bikes an hour</p>\n<p class=\"label\" style=\"margin-top:32px\">Average count by hour of day</p>\n{charts.bar_chart(hours, label=by_hour)}\n<table><tr><th>Hour</th><th>Avg bikes</th></tr>{rows}</table>\n<p class=\"label\" style=\"margin-top:32px\">Weekday vs weekend</p>\n<div style=\"display:flex;gap:32px\">\n<div style=\"flex:1\"><p>Weekday</p>{charts.bar_chart(weekday, label=by_hour)}</div>\n<div style=\"flex:1\"><p>Weekend</p>{charts.bar_chart(weekend, label=by_hour)}</div>\n</div>\n\"\"\", start, end)\n",
+      "after": "\"\"\"What time of day people ride: the average count for each hour.\"\"\"\nfrom bikecount import charts, metrics\nfrom bikecount.pages import shell\n\n\ndef render(readings, start, end):\n    hours = metrics.hourly_averages(readings)\n    hour, avg = max(hours, key=lambda kv: kv[1])\n    rows = \"\".join(f\"<tr><td>{h:02d}:00</td><td>{a:,}</td></tr>\" for h, a in hours)\n\n    weekday = metrics.hourly_averages_weekday(readings)\n    weekend = metrics.hourly_averages_weekend(readings)\n    by_hour = lambda h: f\"{h:02d}:00\"\n\n    return shell(\"By Hour\", f\"\"\"\n<p class=\"label\">Busiest hour of day</p>\n<p class=\"big\">{hour:02d}:00</p>\n<p>average {avg:,} bikes an hour</p>\n<p class=\"label\" style=\"margin-top:32px\">Average count by hour of day</p>\n{charts.bar_chart(hours, label=by_hour)}\n<table><tr><th>Hour</th><th>Avg bikes</th></tr>{rows}</table>\n<p class=\"label\" style=\"margin-top:32px\">Weekday vs weekend</p>\n<div style=\"display:flex;gap:32px\">\n<div style=\"flex:1\"><p>Weekday</p>{charts.bar_chart(weekday, label=by_hour)}</div>\n<div style=\"flex:1\"><p>Weekend</p>{charts.bar_chart(weekend, label=by_hour)}</div>\n</div>\n\"\"\", start, end)\n"
+    }
+  },
+  "check": "not_run",
+  "observed": {
+    "head": null
+  }
+}

@@ -1,196 +1,99 @@
-// Activation: find the .sgt workspace, build the shared store, and wire every surface to it.
-// A file-watcher on .sgt/ invalidates the store after a checkpoint/feature-verb op (`ugh map`,
-// `merge`/`split`/`rename`/`move`/`revert`, all of which touch tree.json and/or pins.json) so the
-// feature-map webview and blame gutters refresh together.
+// Activation: one client, one store, and every surface wired to it. The store refreshes on a file
+// save, when HEAD or a ref moves, when names or the plan change (an agent's `ugh_name` or
+// `ugh_plan` moves no ref), and after every verb. An uninitialized folder gets the same surfaces;
+// they show Init until `.sgt/local/ideal.json` exists.
 
+import * as fs from "node:fs";
+import * as path from "node:path";
 import * as vscode from "vscode";
-import { BlameController } from "./blame";
-import { registerCommands } from "./commands";
-import { DiagnosticsController, DriftCodeActionProvider } from "./diagnostics";
-import { registerGitBridgeCommands } from "./gitBridge";
-import { SymbolHoverProvider } from "./hover";
-import { FeatureInlayHintsProvider } from "./inlayHints";
-import { PlanCodeLensProvider, PlanDiffProvider, PlanStatusBar } from "./plan";
-import { PreviewProvider } from "./preview";
+import { Blame } from "./blame";
+import { flows, registerCommands } from "./commands";
+import { Diagnostics } from "./diagnostics";
+import { Documents } from "./documents";
+import { HoverProvider } from "./hover";
+import { InlayHints } from "./inlayHints";
 import { RenderPanel } from "./renderPanel";
-import { findUghRoot, Ugh } from "./ugh";
-import { GitStatusBar } from "./statusBar";
+import { StatusBar } from "./statusBar";
 import { Store } from "./store";
-import { ChangesTreeProvider } from "./tree/changesTree";
-import { FeaturesTreeProvider } from "./tree/featuresTree";
-import { NowTreeProvider } from "./tree/nowTree";
-import { WorkbenchProvider } from "./workbench";
+import { Texts } from "./texts";
+import { NamesTree } from "./tree/namesTree";
+import { StatusTree } from "./tree/statusTree";
+import { Ugh } from "./ugh";
+import { WorkbenchView } from "./workbench";
 
-export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  const out = vscode.window.createOutputChannel("ugh");
-  context.subscriptions.push(out);
-  const root = await findUghRoot();
-  void vscode.commands.executeCommand("setContext", "ugh.hasRoot", !!root);
+const MARKER = path.join(".sgt", "local", "ideal.json");
 
-  // Always available, even without a `.sgt` store yet -- it's how the welcome-view CTA in
-  // `ughFeatures` (shown when `!ugh.hasRoot`) bootstraps a workspace.
-  context.subscriptions.push(
-    vscode.commands.registerCommand("ugh.init", async () => {
-      const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-      if (!folder) {
-        vscode.window.showErrorMessage("Open a folder first.");
-        return;
-      }
-      try {
-        await new Ugh(folder, out).mutate(["init"]);
-      } catch (e: any) {
-        vscode.window.showErrorMessage(`ugh init failed: ${e.message}`);
-        return;
-      }
-      const choice = await vscode.window.showInformationMessage(
-        "ugh initialized. Reload the window to activate ugh.",
-        "Reload Window"
-      );
-      if (choice === "Reload Window") {
-        void vscode.commands.executeCommand("workbench.action.reloadWindow");
-      }
-    })
-  );
-
+export function activate(context: vscode.ExtensionContext): void {
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  const root = (folders.find((f) => fs.existsSync(path.join(f.uri.fsPath, MARKER))) ?? folders[0])?.uri.fsPath;
   if (!root) {
-    return; // no `.sgt` store; only ugh.init + the welcome view are live until one exists
+    context.subscriptions.push(
+      vscode.commands.registerCommand("ugh.init", () => vscode.window.showWarningMessage("Open a folder first.")),
+    );
+    return;
+  }
+  const keep = <T extends { dispose(): unknown }>(d: T): T => {
+    context.subscriptions.push(d);
+    return d;
+  };
+
+  const out = keep(vscode.window.createOutputChannel("ugh"));
+  const ugh = keep(new Ugh(root, out));
+  const store = new Store({
+    initialized: () => fs.promises.stat(path.join(root, MARKER)).then(() => true, () => false),
+    log: () => ugh.log(),
+    status: () => ugh.status(),
+    show: (rel) => ugh.show(rel),
+  });
+  const setRoot = (has: boolean) => void vscode.commands.executeCommand("setContext", "ugh.hasRoot", has);
+  setRoot(fs.existsSync(path.join(root, MARKER)));
+  keep(store.onChange((s) => setRoot(!s.uninitialized)));
+
+  const docs = new Documents(root, store);
+  const texts = keep(new Texts());
+  const render = keep(new RenderPanel(context, root, ugh, store));
+  let workbench: WorkbenchView;
+  const deps = { root, ugh, store, docs, texts, render, workbench: () => workbench };
+  const f = flows(deps);
+  workbench = keep(new WorkbenchView(context.extensionUri, store, ugh, f.act));
+  registerCommands(context, deps, f);
+
+  const bar = keep(new StatusBar());
+  keep(store.onChange((s) => bar.render(s)));
+  const inlay = keep(new InlayHints(docs, store));
+  const diagnostics = keep(new Diagnostics(root, store));
+  keep(new Blame(docs, store));
+  keep(vscode.workspace.registerTextDocumentContentProvider(Texts.scheme, texts));
+  keep(vscode.window.registerWebviewViewProvider("ughWorkbench", workbench, {
+    webviewOptions: { retainContextWhenHidden: true },
+  }));
+  keep(vscode.window.createTreeView("ughStatus", { treeDataProvider: keep(new StatusTree(root, store)) }));
+  keep(vscode.window.createTreeView("ughNames", { treeDataProvider: keep(new NamesTree(store)) }));
+  keep(vscode.languages.registerHoverProvider({ scheme: "file" }, new HoverProvider(docs)));
+  keep(vscode.languages.registerInlayHintsProvider({ scheme: "file" }, inlay));
+  keep(vscode.languages.registerCodeActionsProvider({ scheme: "file" }, diagnostics, {
+    providedCodeActionKinds: [vscode.CodeActionKind.QuickFix],
+  }));
+
+  let timer: NodeJS.Timeout | undefined;
+  const soon = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => void store.refresh(), 300);
+  };
+  keep({ dispose: () => clearTimeout(timer) });
+  keep(vscode.workspace.onDidSaveTextDocument((doc) => {
+    if (docs.relPath(doc.uri)) soon();
+  }));
+  for (const glob of [".git/HEAD", ".git/refs/**", ".sgt/names.json", ".sgt/local/plan.json"]) {
+    const watcher = keep(vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(root, glob)));
+    watcher.onDidChange(soon);
+    watcher.onDidCreate(soon);
+    watcher.onDidDelete(soon);
   }
 
-  const store = new Store(root, out);
-  context.subscriptions.push(store);
-
-  const blame = new BlameController(store);
-  const preview = new PreviewProvider(store);
-  const planLens = new PlanCodeLensProvider(store);
-  const planDiff = new PlanDiffProvider(root);
-  const planStatusBar = new PlanStatusBar(store);
-  const gitStatusBar = new GitStatusBar(store);
-  const diagnostics = new DiagnosticsController(store, root);
-  const inlayHints = new FeatureInlayHintsProvider(store);
-  context.subscriptions.push(blame, preview, planLens, planDiff, planStatusBar, gitStatusBar, diagnostics, inlayHints);
-  context.subscriptions.push(
-    vscode.languages.registerCodeLensProvider({ scheme: "file" }, planLens),
-    vscode.languages.registerHoverProvider({ scheme: "file" }, new SymbolHoverProvider(store)),
-    vscode.languages.registerCodeActionsProvider({ scheme: "file" }, new DriftCodeActionProvider(), {
-      providedCodeActionKinds: [vscode.CodeActionKind.QuickFix],
-    }),
-    vscode.languages.registerInlayHintsProvider({ scheme: "file" }, inlayHints)
-  );
-
-  const renderPanel = new RenderPanel(context, store, () => root);
-  context.subscriptions.push(
-    renderPanel,
-    vscode.commands.registerCommand("ugh.openRenderPanel", () => renderPanel.open()),
-  );
-
-  // The workbench panel opens on the ledger (docs/design/2026-10-18-workbench-redesign.md): the
-  // history as a document, newest first; its Timeline button swaps the same panel to the Gantt.
-  const workbenchProvider = new WorkbenchProvider(context, store, preview, root, renderPanel);
-  context.subscriptions.push(
-    vscode.commands.registerCommand("ugh.openLedger", () => workbenchProvider.setMode("ledger"))
-  );
-  registerCommands(context, store, preview, () => void blame.render(), planDiff, root, workbenchProvider);
-  registerGitBridgeCommands(context, store);
-
-  context.subscriptions.push(
-    workbenchProvider,
-    vscode.window.registerWebviewViewProvider("ughWorkbench", workbenchProvider, {
-      webviewOptions: { retainContextWhenHidden: true },
-    })
-  );
-
-  // Three views, and the sidebar used to carry five. `ughForks` was an inbox for same-symbol chain
-  // forks and `ughCompositions` was the sessions-and-proposals switch/land/publish surface. Both
-  // are permanently empty on a repository one person is reading -- so what they contributed was two
-  // more names to work out, and, in Compositions' case, a Publish-to-GitHub row sitting one click
-  // deep in a panel somebody opened to look at their own history. Neither verb was removed; they
-  // are asked for by name on the CLI, which is where an outward-facing action belongs.
-  const nowTree = new NowTreeProvider(store);
-  const featuresTree = new FeaturesTreeProvider(store);
-  const changesTree = new ChangesTreeProvider(store);
-  context.subscriptions.push(nowTree, featuresTree, changesTree);
-
-  const nowView = vscode.window.createTreeView("ughNow", { treeDataProvider: nowTree });
-  const featuresView = vscode.window.createTreeView("ughFeatures", { treeDataProvider: featuresTree });
-  const changesView = vscode.window.createTreeView("ughChanges", { treeDataProvider: changesTree });
-  context.subscriptions.push(nowView, featuresView, changesView);
-
-  // Refresh only on .sgt changes -- a mined op, checkpoint, or feature verb rewrites the op store
-  // and tree.json/pins.json under `.sgt/`. We deliberately do NOT watch `**/*.py`: every read
-  // surface (blame/hover/inlay/tree) reaches the tree through `store.map()`, which back when it
-  // passed `--refresh` *rebuilt* (re-clusters + labels). Watching every keystroke-save invalidated
-  // that cache and re-ran the rebuild on each edit -- a full Leiden re-cluster (and, before the
-  // label cache was persisted, a fresh non-deterministic LLM relabel) on every save. Scoping
-  // invalidation to `.sgt/` means the tree refreshes exactly when the op store actually changes; a
-  // symbol written between checkpoints shows up in blame on the next mined op rather than
-  // mid-typing.
-  const ughWatcher = vscode.workspace.createFileSystemWatcher(
-    new vscode.RelativePattern(root, ".sgt/**/*.json")
-  );
-  let pending: NodeJS.Timeout | undefined;
-  const refresh = () => {
-    clearTimeout(pending);
-    pending = setTimeout(() => {
-      // A `ugh map`/`compose` READ rebuilds and rewrites tree.json/ideal.json/label_cache.json/...
-      // under `.sgt/`, which trips this very watcher. Invalidating on our own writes re-issues the
-      // read -> infinite rebuild loop (the sidebar spinning forever). Skip while our subprocess is
-      // active; external mutations arrive while we're idle, and our own mutations invalidate
-      // explicitly, so neither is missed.
-      if (store.ugh.recentlyActive()) return;
-      store.invalidate();
-    }, 250); // debounce write storms
-  };
-  ughWatcher.onDidChange(refresh);
-  ughWatcher.onDidCreate(refresh);
-  ughWatcher.onDidDelete(refresh);
-  context.subscriptions.push(ughWatcher);
-
-  // ...and a second watcher on HEAD, because the loop guard above has to drop what it cannot tell
-  // apart from our own writes. An external rewrite -- a terminal, an agent, a study stage script
-  // that resets the tree, replaces `.sgt/` wholesale and commits a revert -- takes seconds, so its
-  // `.sgt/` events land inside whatever read the editor happened to be doing and are skipped for
-  // good. HEAD is the one thing our READS never touch, so a move here is unambiguously somebody
-  // else's; `invalidateIfHeadMoved` compares against the commit the caches were filled against, so
-  // our own mutations (which invalidate explicitly) don't buy a second compose.
-  const headWatcher = vscode.workspace.createFileSystemWatcher(
-    new vscode.RelativePattern(root, ".git/{HEAD,refs/heads/**}")
-  );
-  let headPending: NodeJS.Timeout | undefined;
-  const headRefresh = () => {
-    clearTimeout(headPending);
-    headPending = setTimeout(() => void store.invalidateIfHeadMoved(), 250); // debounce a checkout
-  };
-  headWatcher.onDidChange(headRefresh);
-  headWatcher.onDidCreate(headRefresh);
-  headWatcher.onDidDelete(headRefresh);
-  context.subscriptions.push(headWatcher, new vscode.Disposable(() => clearTimeout(headPending)));
-
-  // ...and a third watcher, on the plan alone. `ugh plan intake` (an agent's, over MCP, or a
-  // human's in a terminal) writes `.sgt/local/plan_sessions.json` and commits nothing, so the
-  // HEAD backstop above never fires for it and the `.sgt/` watcher drops the event whenever the
-  // editor happened to be mid-read -- which, with the workbench open, is most of the time. The
-  // result was a plan the agent reported taking and a graph that never grew its forecast cars.
-  // Our own reads never write this file (compose/log/plan status all leave its mtime alone), so a
-  // write here is unambiguously somebody else's and needs no `recentlyActive` guard.
-  const planWatcher = vscode.workspace.createFileSystemWatcher(
-    new vscode.RelativePattern(root, ".sgt/local/plan_sessions.json")
-  );
-  let planPending: NodeJS.Timeout | undefined;
-  const planRefresh = () => {
-    clearTimeout(planPending);
-    planPending = setTimeout(() => store.invalidate(), 250);
-  };
-  planWatcher.onDidChange(planRefresh);
-  planWatcher.onDidCreate(planRefresh);
-  planWatcher.onDidDelete(planRefresh);
-  context.subscriptions.push(planWatcher, new vscode.Disposable(() => clearTimeout(planPending)));
-
-  void blame.render();
-  void planStatusBar.refresh();
-  void gitStatusBar.refresh();
-  void diagnostics.render();
+  void store.refresh();
 }
 
 export function deactivate(): void {
-  // disposables handle teardown
+  // the subscriptions dispose everything
 }

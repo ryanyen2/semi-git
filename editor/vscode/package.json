@@ -1,7 +1,7 @@
 {
   "name": "ugh",
   "displayName": "ugh",
-  "description": "See which feature owns each line of code, and remove or restore one feature's work without touching the rest.",
+  "description": "Steps you can name, take out and bring back, beside your code.",
   "version": "0.6.10",
   "publisher": "ugh",
   "license": "MIT",
@@ -23,12 +23,7 @@
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
-    "onCommand:ugh.init",
-    "onCommand:ugh.openRenderPanel",
-    "onCommand:ugh.openWorkbench",
-    "onCommand:ugh.openLedger",
-    "onView:ughFeatures",
-    "workspaceContains:**/.sgt/local/ideal.json"
+    "workspaceContains:.sgt/local/ideal.json"
   ],
   "contributes": {
     "configuration": {
@@ -37,37 +32,22 @@
         "ugh.path": {
           "type": "string",
           "default": "ugh",
-          "description": "Path to the `ugh` executable. Defaults to `ugh` on your PATH."
+          "markdownDescription": "The `ugh` executable. `ugh init --agent` sets it."
         },
         "ugh.blame.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Tint whole files by the feature that owns each span (gutter + overview ruler)."
-        },
-        "ugh.plan.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show a CodeLens above lines matched or drifted from the active plan session."
+          "description": "Tint each named definition at its left edge in its name's hue."
         },
         "ugh.inlayHints.enabled": {
           "type": "boolean",
           "default": false,
-          "description": "Show a \u2039feature-label \u00b7N ops\u203a inlay hint at each symbol's definition line."
-        },
-        "ugh.diagnostics.drift": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show a Hint diagnostic (with a 'Save to clear' quick-fix) on drifted spans."
-        },
-        "ugh.diagnostics.forks": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show a Warning diagnostic on symbols with an open fork."
+          "description": "Show a definition's name at the end of its first line."
         },
         "ugh.render.devCommand": {
           "type": "string",
           "default": "npx vite --host 127.0.0.1 --port ${port} --strictPort",
-          "markdownDescription": "Command the render panel runs to serve the folded tree. `${port}` is substituted with a free port. Runs in a scratch copy of the fold, never in your working tree."
+          "markdownDescription": "The command that serves the running app's tree. `${port}` becomes a free port."
         }
       }
     },
@@ -82,7 +62,7 @@
       "panel": [
         {
           "id": "ughWorkbenchPanel",
-          "title": "ugh Workbench",
+          "title": "ugh",
           "icon": "media/ugh-icon.svg"
         }
       ]
@@ -90,153 +70,47 @@
     "views": {
       "ugh": [
         {
-          "id": "ughNow",
-          "name": "Now",
-          "icon": "media/ugh-icon.svg",
-          "when": "ugh.hasRoot"
+          "id": "ughStatus",
+          "name": "Status"
         },
         {
-          "id": "ughFeatures",
-          "name": "Features",
-          "icon": "media/ugh-icon.svg"
-        },
-        {
-          "id": "ughChanges",
-          "name": "Changes",
-          "icon": "media/ugh-icon.svg",
-          "when": "ugh.hasRoot"
+          "id": "ughNames",
+          "name": "Names"
         }
       ],
       "ughWorkbenchPanel": [
         {
           "type": "webview",
           "id": "ughWorkbench",
-          "name": "Composition Workbench",
-          "when": "ugh.hasRoot"
+          "name": "Workbench"
         }
       ]
     },
     "viewsWelcome": [
       {
-        "view": "ughFeatures",
-        "contents": "No `.sgt` store found in this workspace.\n[Initialize ugh](command:ugh.init)\nReads your existing git history into the op store under `.sgt/`. Your git history and working tree are left untouched.",
+        "view": "ughStatus",
+        "contents": "This folder has no ugh record.\n[Initialize](command:ugh.init)",
         "when": "!ugh.hasRoot"
       }
     ],
     "commands": [
       {
-        "command": "ugh.refresh",
-        "title": "Refresh",
-        "category": "ugh",
-        "icon": "$(refresh)"
-      },
-      {
-        "command": "ugh.runNextAction",
-        "title": "Run Next Action",
-        "category": "ugh"
-      },
-      {
-        "command": "ugh.toggleBlame",
-        "title": "Toggle Feature Blame",
-        "category": "ugh"
-      },
-      {
         "command": "ugh.openWorkbench",
-        "title": "Open Composition Workbench",
+        "title": "Open workbench",
         "category": "ugh",
         "icon": "$(type-hierarchy)"
       },
       {
-        "command": "ugh.openLedger",
-        "title": "Open Ledger",
-        "category": "ugh",
-        "icon": "$(list-flat)"
-      },
-      {
-        "command": "ugh.openRenderPanel",
-        "title": "Open Running App (render panel)",
-        "category": "ugh"
-      },
-      {
         "command": "ugh.revealInWorkbench",
-        "title": "Reveal Feature in Workbench",
-        "category": "ugh"
-      },
-      {
-        "command": "ugh.previewRevert",
-        "title": "Preview Revert (plug out)",
+        "title": "Reveal in workbench",
         "category": "ugh",
-        "icon": "$(diff)"
+        "icon": "$(target)"
       },
       {
-        "command": "ugh.revert",
-        "title": "Revert (choose which dependents to keep)",
-        "category": "ugh"
-      },
-      {
-        "command": "ugh.revertSymbol",
-        "title": "Revert Symbol Under Cursor (choose dependents)",
-        "category": "ugh"
-      },
-      {
-        "command": "ugh.restore",
-        "title": "Restore (plug in)",
-        "category": "ugh"
-      },
-      {
-        "command": "ugh.edit",
-        "title": "Edit in place",
-        "category": "ugh"
-      },
-      {
-        "command": "ugh.showPlanQuickPick",
-        "title": "Show Plan Steps",
-        "category": "ugh"
-      },
-      {
-        "command": "ugh.showPlanDiff",
-        "title": "Show Plan Step Diff",
-        "category": "ugh"
-      },
-      {
-        "command": "ugh.init",
-        "title": "Initialize (ugh init)",
-        "category": "ugh"
-      },
-      {
-        "command": "ugh.resolveFork",
-        "title": "Resolve Fork",
-        "category": "ugh"
-      },
-      {
-        "command": "ugh.resolveStalledPlan",
-        "title": "Resolve Stalled Plan",
-        "category": "ugh"
-      },
-      {
-        "command": "ugh.proposeLand",
-        "title": "Land Proposal",
-        "category": "ugh (advanced)"
-      },
-      {
-        "command": "ugh.proposePublish",
-        "title": "Publish Proposal (GitHub PR)",
-        "category": "ugh (advanced)"
-      },
-      {
-        "command": "ugh.viewProposal",
-        "title": "View Proposal",
-        "category": "ugh (advanced)"
-      },
-      {
-        "command": "ugh.jumpToLocation",
-        "title": "Jump to Location",
-        "category": "ugh"
-      },
-      {
-        "command": "ugh.switch",
-        "title": "Switch Branch",
-        "category": "ugh"
+        "command": "ugh.refresh",
+        "title": "Refresh",
+        "category": "ugh",
+        "icon": "$(refresh)"
       },
       {
         "command": "ugh.save",
@@ -245,138 +119,282 @@
       },
       {
         "command": "ugh.undo",
-        "title": "Undo Last Operation",
+        "title": "Undo",
         "category": "ugh"
       },
       {
         "command": "ugh.sync",
         "title": "Sync",
-        "category": "ugh",
-        "icon": "$(sync)"
+        "category": "ugh"
       },
       {
         "command": "ugh.push",
         "title": "Push",
-        "category": "ugh",
-        "icon": "$(repo-push)"
+        "category": "ugh"
       },
       {
-        "command": "ugh.land",
-        "title": "Land Branch",
+        "command": "ugh.init",
+        "title": "Initialize",
+        "category": "ugh"
+      },
+      {
+        "command": "ugh.takeOut",
+        "title": "Take out…",
+        "category": "ugh",
+        "icon": "$(remove)"
+      },
+      {
+        "command": "ugh.bringBack",
+        "title": "Bring back…",
+        "category": "ugh",
+        "icon": "$(add)"
+      },
+      {
+        "command": "ugh.takeOutDefinition",
+        "title": "Take out definition",
+        "category": "ugh"
+      },
+      {
+        "command": "ugh.name",
+        "title": "Name…",
+        "category": "ugh"
+      },
+      {
+        "command": "ugh.nameDefinition",
+        "title": "Name definition",
+        "category": "ugh"
+      },
+      {
+        "command": "ugh.rename",
+        "title": "Rename…",
+        "category": "ugh",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "ugh.resolve",
+        "title": "Resolve…",
+        "category": "ugh"
+      },
+      {
+        "command": "ugh.resolveTheirs",
+        "title": "Take theirs",
+        "category": "ugh"
+      },
+      {
+        "command": "ugh.resolveOurs",
+        "title": "Keep ours",
+        "category": "ugh"
+      },
+      {
+        "command": "ugh.resolveApply",
+        "title": "Use file as edited",
+        "category": "ugh"
+      },
+      {
+        "command": "ugh.toggleBlame",
+        "title": "Toggle blame",
+        "category": "ugh"
+      },
+      {
+        "command": "ugh.openRenderPanel",
+        "title": "Open running app",
+        "category": "ugh"
+      },
+      {
+        "command": "ugh.openUnsaved",
+        "title": "Open diff against HEAD",
+        "category": "ugh"
+      },
+      {
+        "command": "ugh.openStep",
+        "title": "Open step",
+        "category": "ugh"
+      },
+      {
+        "command": "ugh.jumpToLocation",
+        "title": "Jump to location",
         "category": "ugh"
       }
     ],
     "menus": {
-      "view/title": [
+      "commandPalette": [
         {
-          "command": "ugh.refresh",
-          "when": "view == ughNow",
-          "group": "navigation"
+          "command": "ugh.resolveTheirs",
+          "when": "false"
         },
         {
-          "command": "ugh.refresh",
-          "when": "view == ughFeatures",
-          "group": "navigation"
+          "command": "ugh.resolveOurs",
+          "when": "false"
         },
         {
-          "command": "ugh.openLedger",
-          "when": "view == ughFeatures",
-          "group": "navigation"
+          "command": "ugh.resolveApply",
+          "when": "false"
         },
         {
-          "command": "ugh.refresh",
-          "when": "view == ughChanges",
-          "group": "navigation"
-        }
-      ],
-      "editor/context": [
+          "command": "ugh.openUnsaved",
+          "when": "false"
+        },
         {
-          "command": "ugh.revertSymbol",
-          "when": "ugh.hasRoot && editorTextFocus",
-          "group": "ugh@1"
+          "command": "ugh.openStep",
+          "when": "false"
+        },
+        {
+          "command": "ugh.jumpToLocation",
+          "when": "false"
         },
         {
           "command": "ugh.revealInWorkbench",
-          "when": "ugh.hasRoot && editorTextFocus",
-          "group": "ugh@2"
+          "when": "ugh.hasRoot"
+        },
+        {
+          "command": "ugh.refresh",
+          "when": "ugh.hasRoot"
+        },
+        {
+          "command": "ugh.save",
+          "when": "ugh.hasRoot"
+        },
+        {
+          "command": "ugh.undo",
+          "when": "ugh.hasRoot"
+        },
+        {
+          "command": "ugh.sync",
+          "when": "ugh.hasRoot"
+        },
+        {
+          "command": "ugh.push",
+          "when": "ugh.hasRoot"
+        },
+        {
+          "command": "ugh.takeOut",
+          "when": "ugh.hasRoot"
+        },
+        {
+          "command": "ugh.bringBack",
+          "when": "ugh.hasRoot"
+        },
+        {
+          "command": "ugh.takeOutDefinition",
+          "when": "ugh.hasRoot"
+        },
+        {
+          "command": "ugh.name",
+          "when": "ugh.hasRoot"
+        },
+        {
+          "command": "ugh.nameDefinition",
+          "when": "ugh.hasRoot"
+        },
+        {
+          "command": "ugh.rename",
+          "when": "ugh.hasRoot"
+        },
+        {
+          "command": "ugh.resolve",
+          "when": "ugh.hasRoot"
+        },
+        {
+          "command": "ugh.toggleBlame",
+          "when": "ugh.hasRoot"
+        },
+        {
+          "command": "ugh.openRenderPanel",
+          "when": "ugh.hasRoot"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "ugh.refresh",
+          "when": "view == ughStatus",
+          "group": "navigation"
+        },
+        {
+          "command": "ugh.openWorkbench",
+          "when": "view == ughNames",
+          "group": "navigation"
+        },
+        {
+          "command": "ugh.refresh",
+          "when": "view == ughNames",
+          "group": "navigation"
         }
       ],
       "view/item/context": [
         {
-          "command": "ugh.previewRevert",
-          "when": "view == ughFeatures && viewItem == ughFeature"
+          "command": "ugh.revealInWorkbench",
+          "when": "view == ughNames && viewItem =~ /^ughName/",
+          "group": "inline@1"
         },
         {
-          "command": "ugh.revert",
-          "when": "view == ughFeatures && viewItem == ughFeature"
+          "command": "ugh.takeOut",
+          "when": "view == ughNames && viewItem =~ /^ughName.*\\.in/",
+          "group": "inline@2"
         },
         {
-          "command": "ugh.restore",
-          "when": "view == ughFeatures && viewItem == ughFeature"
+          "command": "ugh.bringBack",
+          "when": "view == ughNames && viewItem =~ /^ughName.*\\.out/",
+          "group": "inline@2"
         },
         {
-          "command": "ugh.edit",
-          "when": "view == ughFeatures && viewItem == ughFeature"
+          "command": "ugh.rename",
+          "when": "view == ughNames && viewItem =~ /^ughName/",
+          "group": "inline@3"
         },
         {
-          "command": "ugh.previewRevert",
-          "when": "view == ughFeatures && viewItem == ughChapter",
+          "command": "ugh.revealInWorkbench",
+          "when": "view == ughNames && viewItem =~ /^ughName/",
+          "group": "1@1"
+        },
+        {
+          "command": "ugh.takeOut",
+          "when": "view == ughNames && viewItem =~ /^ughName.*\\.in/",
+          "group": "1@2"
+        },
+        {
+          "command": "ugh.bringBack",
+          "when": "view == ughNames && viewItem =~ /^ughName.*\\.out/",
+          "group": "1@3"
+        },
+        {
+          "command": "ugh.rename",
+          "when": "view == ughNames && viewItem =~ /^ughName/",
+          "group": "1@4"
+        },
+        {
+          "command": "ugh.resolveTheirs",
+          "when": "view == ughStatus && viewItem == ughChoice",
+          "group": "1@1"
+        },
+        {
+          "command": "ugh.resolveOurs",
+          "when": "view == ughStatus && viewItem == ughChoice",
+          "group": "1@2"
+        },
+        {
+          "command": "ugh.resolveApply",
+          "when": "view == ughStatus && viewItem == ughChoice",
+          "group": "1@3"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "ugh.takeOutDefinition",
+          "when": "ugh.hasRoot && resourceScheme == file",
           "group": "ugh@1"
         },
         {
-          "command": "ugh.revert",
-          "when": "view == ughFeatures && viewItem == ughChapter",
-          "group": "ugh@1"
+          "command": "ugh.nameDefinition",
+          "when": "ugh.hasRoot && resourceScheme == file",
+          "group": "ugh@2"
         },
         {
-          "command": "ugh.restore",
-          "when": "view == ughFeatures && viewItem == ughChapter",
-          "group": "ugh@1"
+          "command": "ugh.revealInWorkbench",
+          "when": "ugh.hasRoot && resourceScheme == file",
+          "group": "ugh@3"
         }
       ]
-    },
-    "walkthroughs": [
-      {
-        "id": "ugh.gettingStarted",
-        "title": "Get started with ugh",
-        "description": "Set up ugh and see your codebase clustered by feature.",
-        "steps": [
-          {
-            "id": "install",
-            "title": "Install the ugh CLI",
-            "description": "This extension shells out to the `ugh` CLI on your PATH.",
-            "media": {
-              "markdown": "walkthroughs/getting-started/install.md"
-            },
-            "completionEvents": [
-              "onContext:ugh.hasRoot"
-            ]
-          },
-          {
-            "id": "init",
-            "title": "Initialize this workspace",
-            "description": "Read your git history into the op store under `.sgt/`.",
-            "media": {
-              "markdown": "walkthroughs/getting-started/init.md"
-            },
-            "completionEvents": [
-              "onCommand:ugh.init"
-            ]
-          },
-          {
-            "id": "explore",
-            "title": "Explore your feature tree",
-            "description": "See your codebase clustered into features.",
-            "media": {
-              "markdown": "walkthroughs/getting-started/explore.md"
-            },
-            "completionEvents": [
-              "onView:ughFeatures"
-            ]
-          }
-        ]
-      }
-    ]
+    }
   },
   "scripts": {
     "compile": "tsc --noEmit && node esbuild.js",

@@ -1,42 +1,36 @@
-// Opt-in inlay hints: `‹feature-label ·N ops›` appended to each symbol's definition line, from
-// the same blame/map data `blame.ts`/`hover.ts` already fetch. Off by default
-// (`ugh.inlayHints.enabled`) -- a hint per definition is a lot of visual noise for a whole-file
-// view, unlike the on-hover/gutter surfaces that only show on demand.
+// The name at the end of a definition's first line, when it has one (`ugh.inlayHints.enabled`).
 
 import * as vscode from "vscode";
+import { Documents } from "./documents";
 import { Store } from "./store";
+import { headLine, nameOf } from "./units";
 
-export class FeatureInlayHintsProvider implements vscode.InlayHintsProvider {
-  private readonly emitter = new vscode.EventEmitter<void>();
-  readonly onDidChangeInlayHints = this.emitter.event;
-  private readonly sub: vscode.Disposable;
+export class InlayHints implements vscode.InlayHintsProvider, vscode.Disposable {
+  private changed = new vscode.EventEmitter<void>();
+  readonly onDidChangeInlayHints = this.changed.event;
+  private subs: { dispose(): void }[];
 
-  constructor(private store: Store) {
-    this.sub = this.store.onDidChange(() => this.emitter.fire());
+  constructor(private readonly docs: Documents, store: Store) {
+    this.subs = [
+      store.onChange(() => this.changed.fire()),
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration("ugh.inlayHints")) this.changed.fire();
+      }),
+    ];
   }
 
-  async provideInlayHints(document: vscode.TextDocument, range: vscode.Range): Promise<vscode.InlayHint[]> {
-    if (!vscode.workspace.getConfiguration("ugh").get<boolean>("inlayHints.enabled", false)) {
-      return [];
-    }
-    const rel = vscode.workspace.asRelativePath(document.uri, false);
-    let blame;
-    let map;
-    try {
-      [blame, map] = await Promise.all([this.store.blame(rel), this.store.map()]);
-    } catch {
-      return [];
-    }
+  async provideInlayHints(doc: vscode.TextDocument, range: vscode.Range): Promise<vscode.InlayHint[]> {
+    if (!vscode.workspace.getConfiguration("ugh").get<boolean>("inlayHints.enabled", false)) return [];
+    const all = await this.docs.units(doc);
+    if (!all) return [];
+    const lines = doc.getText().split("\n");
     const hints: vscode.InlayHint[] = [];
-    for (const span of blame.spans) {
-      const line = span.start_line - 1;
-      if (line < range.start.line || line > range.end.line) {
-        continue;
-      }
-      const opCount = map.nodes.find((n) => n.id === span.feature_id)?.op_count;
-      const label = `‹${span.label}${opCount !== undefined ? ` ·${opCount} ops` : ""}›`;
-      const pos = new vscode.Position(line, document.lineAt(line).text.length);
-      const hint = new vscode.InlayHint(pos, label, vscode.InlayHintKind.Type);
+    for (const unit of all.units) {
+      if (unit.kind !== "definition") continue;
+      const name = nameOf(unit.steps);
+      const line = headLine(unit, lines) - 1;
+      if (!name || line < range.start.line || line > range.end.line) continue;
+      const hint = new vscode.InlayHint(doc.lineAt(line).range.end, name);
       hint.paddingLeft = true;
       hints.push(hint);
     }
@@ -44,7 +38,7 @@ export class FeatureInlayHintsProvider implements vscode.InlayHintsProvider {
   }
 
   dispose(): void {
-    this.sub.dispose();
-    this.emitter.dispose();
+    this.subs.forEach((s) => s.dispose());
+    this.changed.dispose();
   }
 }

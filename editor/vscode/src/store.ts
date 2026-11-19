@@ -1,457 +1,87 @@
-// Shared state: one ugh client, a cached feature map, and a per-file blame cache. Everything
-// reactive (decorations, the tree) listens to `onDidChange` and re-reads from here, so a single
-// refresh after a checkpoint/feature-verb op updates every surface at once.
+// The state every surface reads: `ugh log` and `ugh status`, plus `ugh show <path>` per open file.
+// Refreshes coalesce: a refresh asked for while one runs makes one more pass after it, never a
+// queue of them, and every caller resolves once the newest state is in. The per-file reads change
+// only with the history (saves, names, what is out, the choices), so they are kept until it does.
+//
+// No `vscode` import, so `store.test.ts` can drive it under `node --test`.
 
-import * as fs from "node:fs/promises";
-import * as path from "node:path";
-import * as vscode from "vscode";
-import { FoldFrontier, foldAtSpec, Ugh } from "./ugh";
-import {
-  BlameView,
-  ComposeView,
-  DriftView,
-  FoldView,
-  ForksView,
-  GridView,
-  HistoryView,
-  IntentView,
-  MapNode,
-  MapView,
-  NowView,
-  PlanView,
-  ProposalView,
-  SavePreviewView,
-  SessionsView,
-  StatusView,
-} from "./types";
+import type { LogView, ShowView, Snapshot, StatusView } from "./types.ts";
+
+export interface StoreSource {
+  initialized(): Promise<boolean>;
+  log(): Promise<LogView>;
+  status(): Promise<StatusView>;
+  show(path: string): Promise<ShowView>;
+}
 
 export class Store {
-  readonly ugh: Ugh;
-  private mapCache: MapView | undefined;
-  private mapInFlight: Promise<MapView> | undefined;
-  private historyCache: HistoryView | undefined;
-  private historyInFlight: Promise<HistoryView> | undefined;
-  private gridCache: GridView | undefined;
-  private gridInFlight: Promise<GridView> | undefined;
-  private statusCache: StatusView | undefined;
-  private statusInFlight: Promise<StatusView> | undefined;
-  private nodeById = new Map<string, MapNode>();
-  private blameCache = new Map<string, BlameView>();
-  private planCache: PlanView | undefined;
-  private driftCache: DriftView | undefined;
-  private composeCache: ComposeView | undefined;
-  private composeInFlight: Promise<ComposeView> | undefined;
-  private forksCache: ForksView | undefined;
-  private forksInFlight: Promise<ForksView> | undefined;
-  private sessionsCache: SessionsView | undefined;
-  private intentCache: IntentView | undefined;
-  private intentInFlight: Promise<IntentView> | undefined;
-  private nowCache: NowView | undefined;
-  private nowInFlight: Promise<NowView> | undefined;
-  private proposalCache = new Map<string, ProposalView>();
-  private foldCache = new Map<string, FoldView>(); // bounded LRU of recent frontier folds (see foldAt)
-  // Bumped once per invalidate(). Every coalesced fetch captures it before shelling out and
-  // commits to its cache only if it still matches on resolution -- so a read already in flight
-  // when an external `.sgt/**/*.json` mutation fires the watcher (another terminal, an agent)
-  // can't settle *after* invalidate() cleared the caches and overwrite them with pre-mutation
-  // data. Without this the surface would show stale state until an unrelated event triggered
-  // another read (the "webview doesn't match the CLI until reload" failure).
-  private generation = 0;
-  private _onDidChange = new vscode.EventEmitter<void>();
-  readonly onDidChange = this._onDidChange.event;
+  snapshot: Snapshot = { log: null, status: null };
+  private source: StoreSource;
+  private listeners = new Set<(s: Snapshot) => void>();
+  private running: Promise<void> | undefined;
+  private again = false;
+  private shows = new Map<string, Promise<ShowView>>();
+  private history = "";
 
-  constructor(private readonly repoRoot: string, out: vscode.OutputChannel) {
-    this.ugh = new Ugh(repoRoot, out);
-    void this.stampHead(); // baseline now, so the first staleness check has something to compare
+  constructor(source: StoreSource) {
+    this.source = source;
   }
 
-  // The commit the caches were filled against, or undefined before the first read of it.
-  private headStamp: string | undefined;
-
-  /** Note the repository's current commit as the one the caches now describe. */
-  private async stampHead(): Promise<void> {
-    this.headStamp = await readHead(this.repoRoot);
+  onChange(fn: (s: Snapshot) => void): { dispose(): void } {
+    this.listeners.add(fn);
+    return { dispose: () => this.listeners.delete(fn) };
   }
 
-  /**
-   * Invalidate iff the repository has moved to a different commit than the caches describe.
-   *
-   * The recursive `.sgt` json watcher (extension.ts) is the primary way an external mutation
-   * reaches this store, and it deliberately ignores writes that land while one of OUR subprocesses is
-   * active -- a `ugh map`/`compose` READ rewrites `.sgt/`, so without that guard every read would
-   * re-trigger itself. The cost is that a mutation from outside the editor whose writes overlap
-   * one of our own reads is DROPPED, with no retry: a participant's `./stage 4` rewrites the tree,
-   * replaces `.sgt/` wholesale and commits a revert over several seconds, so its watcher events
-   * routinely land inside a compose and never invalidate anything. The workbench then serves a
-   * graph -- and, worse, cached `--emit` answers -- for a world that no longer exists.
-   *
-   * HEAD is the signal that guard cannot use and this one can: our reads never move it, and our
-   * own mutations invalidate explicitly (which re-baselines this stamp), so a moved HEAD means
-   * somebody else changed the repository. Two small file reads, no subprocess -- cheap enough to
-   * check whenever the workbench comes back into view or is about to answer from a cache.
-   */
-  async invalidateIfHeadMoved(): Promise<boolean> {
-    const head = await readHead(this.repoRoot);
-    if (this.headStamp === undefined || head === this.headStamp) {
-      this.headStamp = head;
-      return false;
+  refresh(): Promise<void> {
+    if (this.running) {
+      this.again = true;
+      return this.running;
     }
-    this.headStamp = head;
-    this.invalidate();
-    return true;
+    const run = this.loop().finally(() => {
+      this.running = undefined;
+    });
+    this.running = run;
+    return run;
   }
 
-  // Shares the in-flight promise like `composeView` -- activation fires several map consumers at
-  // once, so without this each misses the (still-unset) cache and spawns its own `ugh log --tree`.
-  // A forced call starts a fresh fetch rather than joining a possibly-stale in-flight one -- it
-  // means "do not reuse the cache", NOT "rebuild the tree". The rebuild is `rebuildMap()`, kept
-  // apart because it re-mines and a re-mine between a revert and its restore destroys the removal
-  // record (`Ugh.map`).
-  async map(force = false): Promise<MapView> {
-    if (this.mapCache && !force) return this.mapCache;
-    if (!this.mapInFlight || force) {
-      const gen = this.generation;
-      const p: Promise<MapView> = this.ugh
-        .map()
-        .then((v) => {
-          if (gen === this.generation) {
-            this.mapCache = v;
-            this.nodeById = new Map(v.nodes.map((n) => [n.id, n]));
-          }
-          return v;
-        })
-        .finally(() => {
-          if (this.mapInFlight === p) this.mapInFlight = undefined; // never clear a newer slot
-        });
-      this.mapInFlight = p;
+  /** `ugh show <path>`, cached until the history changes. A failed read is not cached. */
+  show(path: string): Promise<ShowView> {
+    let p = this.shows.get(path);
+    if (!p) {
+      p = this.source.show(path);
+      this.shows.set(path, p);
+      p.catch(() => {
+        if (this.shows.get(path) === p) this.shows.delete(path);
+      });
     }
-    return this.mapInFlight;
+    return p;
   }
 
-  // The one deliberate tree rebuild, cached like `map()` so the readers that follow see it. Not a
-  // mode of `map(force)`: a rebuild re-mines, and a mine that lands between a `revert` and its
-  // `restore` leaves the removal with nothing to invert (`Ugh.map`). So it lives behind its own
-  // name, with one caller -- the empty-tree heal, where there is nothing yet to lose.
-  async rebuildMap(): Promise<MapView> {
-    const gen = this.generation;
-    const v = await this.ugh.rebuildMap();
-    if (gen === this.generation) {
-      this.mapCache = v;
-      this.nodeById = new Map(v.nodes.map((n) => [n.id, n]));
+  private async loop(): Promise<void> {
+    do {
+      this.again = false;
+      await this.pass();
+    } while (this.again);
+  }
+
+  private async pass(): Promise<void> {
+    let next: Snapshot;
+    try {
+      if (!(await this.source.initialized())) {
+        next = { log: null, status: null, uninitialized: true };
+      } else {
+        const [log, status] = await Promise.all([this.source.log(), this.source.status()]);
+        next = { log, status };
+      }
+    } catch (e: any) {
+      next = { log: null, status: null, error: String(e?.message ?? e).split("\n")[0] };
     }
-    return v;
-  }
-
-  // Cached alongside `map()` -- both are invalidated together off the same `.sgt/**/*.json`
-  // watcher (a feature verb or a new mined commit changes both the tree and the op DAG). Shares
-  // the in-flight promise like `map`/`composeView`.
-  async history(force = false): Promise<HistoryView> {
-    if (this.historyCache && !force) return this.historyCache;
-    if (!this.historyInFlight || force) {
-      const gen = this.generation;
-      const p: Promise<HistoryView> = this.ugh
-        .history()
-        .then((v) => {
-          if (gen === this.generation) this.historyCache = v;
-          return v;
-        })
-        .finally(() => {
-          if (this.historyInFlight === p) this.historyInFlight = undefined;
-        });
-      this.historyInFlight = p;
+    const history = JSON.stringify([next.log, next.status?.choices, next.uninitialized]);
+    if (history !== this.history) {
+      this.history = history;
+      this.shows.clear();
     }
-    return this.historyInFlight;
+    this.snapshot = next;
+    for (const fn of this.listeners) fn(next);
   }
-
-  // The canonical lane×commit cell join (`grid_view`, plan U3), cached alongside `map`/`history`
-  // and invalidated with them -- the workbench's timeline/rail layouts render from this rather than
-  // re-deriving the (op -> cell) join client-side. Shares the in-flight promise like `map`.
-  async gridView(force = false): Promise<GridView> {
-    if (this.gridCache && !force) return this.gridCache;
-    if (!this.gridInFlight || force) {
-      const gen = this.generation;
-      const p: Promise<GridView> = this.ugh
-        .grid()
-        .then((v) => {
-          if (gen === this.generation) this.gridCache = v;
-          return v;
-        })
-        .finally(() => {
-          if (this.gridInFlight === p) this.gridInFlight = undefined;
-        });
-      this.gridInFlight = p;
-    }
-    return this.gridInFlight;
-  }
-
-  node(id: string): MapNode | undefined {
-    return this.nodeById.get(id);
-  }
-
-  // Shares the in-flight promise like `map` -- the status bar and the tree both call this at
-  // activation.
-  async status(force = false): Promise<StatusView> {
-    if (this.statusCache && !force) return this.statusCache;
-    if (!this.statusInFlight || force) {
-      const gen = this.generation;
-      const p: Promise<StatusView> = this.ugh
-        .status()
-        .then((v) => {
-          if (gen === this.generation) this.statusCache = v;
-          return v;
-        })
-        .finally(() => {
-          if (this.statusInFlight === p) this.statusInFlight = undefined;
-        });
-      this.statusInFlight = p;
-    }
-    return this.statusInFlight;
-  }
-
-  async blame(file: string, force = false): Promise<BlameView> {
-    const cached = this.blameCache.get(file);
-    if (cached && !force) {
-      return cached;
-    }
-    const view = await this.ugh.blame(file);
-    this.blameCache.set(file, view);
-    return view;
-  }
-
-  async planView(force = false): Promise<PlanView> {
-    if (!this.planCache || force) {
-      this.planCache = await this.ugh.planStatus();
-    }
-    return this.planCache;
-  }
-
-  // Drift is no longer a standalone CLI verb (folded into `save`, plan U12); its per-op span
-  // projection is one child of the `compose_view` aggregate this store already fetches, so source
-  // it from there rather than a dead `ugh drift` shell-out.
-  async driftView(force = false): Promise<DriftView> {
-    if (!this.driftCache || force) {
-      this.driftCache = (await this.composeView(force)).drift;
-    }
-    return this.driftCache;
-  }
-
-  // The in-situ save preview -- which features would gain ops on the next `ugh save`. Like
-  // `driftView`, it's one child of the `compose_view` aggregate the store already fetches, so
-  // source it from there rather than a separate shell-out.
-  async savePreview(force = false): Promise<SavePreviewView> {
-    return (await this.composeView(force)).save_preview;
-  }
-
-  // The workbench's primary poll -- one aggregate refresh instead of ~9 separate shell-outs.
-  // Activation fires this from 3 tree/webview consumers at once; share the in-flight promise so
-  // they collapse into a single `ugh advanced compose` invocation instead of each missing the
-  // (still-unset) cache and firing its own.
-  async composeView(force = false): Promise<ComposeView> {
-    if (this.composeCache && !force) return this.composeCache;
-    if (!this.composeInFlight || force) {
-      const gen = this.generation;
-      const p: Promise<ComposeView> = this.ugh
-        .compose()
-        .then((v) => {
-          if (gen === this.generation) this.composeCache = v;
-          return v;
-        })
-        .finally(() => {
-          if (this.composeInFlight === p) this.composeInFlight = undefined;
-        });
-      this.composeInFlight = p;
-    }
-    return this.composeInFlight;
-  }
-
-  // Same in-flight race as `composeView` -- the badge and the tree view both call this at
-  // activation.
-  async forksView(force = false): Promise<ForksView> {
-    if (this.forksCache && !force) return this.forksCache;
-    if (!this.forksInFlight || force) {
-      const gen = this.generation;
-      const p: Promise<ForksView> = this.ugh
-        .forksView()
-        .then((v) => {
-          if (gen === this.generation) this.forksCache = v;
-          return v;
-        })
-        .finally(() => {
-          if (this.forksInFlight === p) this.forksInFlight = undefined;
-        });
-      this.forksInFlight = p;
-    }
-    return this.forksInFlight;
-  }
-
-  // The intent overlay (`ugh.api.intent_view`), cached like `map`/`history` and invalidated with
-  // them off the same `.sgt/**/*.json` watcher. The hover reads it to surface a feature's live
-  // intent-ledger rationale; sharing the in-flight promise keeps repeated hovers from each firing
-  // their own `ugh intent list`.
-  async intentView(force = false): Promise<IntentView> {
-    if (this.intentCache && !force) return this.intentCache;
-    if (!this.intentInFlight || force) {
-      const gen = this.generation;
-      const p: Promise<IntentView> = this.ugh
-        .intentView()
-        .then((v) => {
-          if (gen === this.generation) this.intentCache = v;
-          return v;
-        })
-        .finally(() => {
-          if (this.intentInFlight === p) this.intentInFlight = undefined;
-        });
-      this.intentInFlight = p;
-    }
-    return this.intentInFlight;
-  }
-
-  // The state-of-actions view (`ugh.api.now_view`), cached and invalidated off the same
-  // `.sgt/**/*.json` watcher as the rest -- the activity feed and save preview both write under
-  // `.sgt/`, so an agent edit (via the PostToolUse hook) or a save refreshes the Now tree live.
-  // Shares the in-flight promise so the several tree sections don't each fire their own `ugh now`.
-  async nowView(force = false): Promise<NowView> {
-    if (this.nowCache && !force) return this.nowCache;
-    if (!this.nowInFlight || force) {
-      const gen = this.generation;
-      const p: Promise<NowView> = this.ugh
-        .nowView()
-        .then((v) => {
-          if (gen === this.generation) this.nowCache = v;
-          return v;
-        })
-        .finally(() => {
-          if (this.nowInFlight === p) this.nowInFlight = undefined;
-        });
-      this.nowInFlight = p;
-    }
-    return this.nowInFlight;
-  }
-
-  async sessionsView(force = false): Promise<SessionsView> {
-    if (!this.sessionsCache || force) {
-      this.sessionsCache = await this.ugh.sessionsView();
-    }
-    return this.sessionsCache;
-  }
-
-  async proposalView(id: string, force = false): Promise<ProposalView> {
-    const cached = this.proposalCache.get(id);
-    if (cached && !force) {
-      return cached;
-    }
-    const view = await this.ugh.proposalView(id);
-    this.proposalCache.set(id, view);
-    return view;
-  }
-
-  // A small bounded LRU keyed by the `ugh fold --at` spec: the scrubber replays the same handful
-  // of frontiers as the playhead moves back and forth, so a cache spares a fresh `ugh advanced
-  // fold` per revisited frame. Capped so a long scrub can't grow it without bound (an eviction
-  // per insert past the cap), and cleared in `invalidate()` with the other caches.
-  // `stillWanted` (optional) lets an interactive caller -- the scrub playhead, a selection fold --
-  // drop a queued fold that a newer one superseded before it ever spawns (see Ugh.run). A cache
-  // hit ignores it: already-computed data costs nothing to hand back.
-  // The render panel's fold. Deliberately NOT cached, and deliberately not routed through
-  // `foldAt`'s LRU: this call has a side effect on disk, so a cache hit would report success while
-  // leaving the directory on the previous frontier -- the panel would show the old app and say it
-  // was showing the new one. Exactly the failure class the panel exists to make visible.
-  foldTo(frontier: FoldFrontier, outDir: string, stillWanted?: () => boolean): Promise<FoldView> {
-    return this.ugh.foldTo(frontier, outDir, stillWanted);
-  }
-
-  async foldAt(frontier: FoldFrontier, stillWanted?: () => boolean): Promise<FoldView> {
-    // A `ref` frontier ("HEAD", a branch) is a *moving* target: its spec string is stable but the
-    // content it resolves to changes as the ref advances, so caching it by spec would serve the
-    // pre-advance fold after a checkpoint. `current` ("now") is the most moving of all -- every
-    // save, revert and restore changes the current ideal, and an edit made in a terminal never
-    // reaches `invalidate()` at all, so memoizing it would reintroduce exactly the staleness
-    // `current` was added to cure. Only `commitIndex`/`opIds` name fixed content and are safe to
-    // memoize; the other two always shell out.
-    if ("ref" in frontier || "current" in frontier) return this.ugh.foldAt(frontier, stillWanted);
-    const key = foldAtSpec(frontier);
-    const cached = this.foldCache.get(key);
-    if (cached) {
-      this.foldCache.delete(key); // re-insert to mark most-recently-used (Map keeps insertion order)
-      this.foldCache.set(key, cached);
-      return cached;
-    }
-    const gen = this.generation;
-    const view = await this.ugh.foldAt(frontier, stillWanted);
-    if (gen !== this.generation) return view; // an invalidate() raced this fetch -- don't repopulate
-    this.foldCache.set(key, view);
-    if (this.foldCache.size > 32) {
-      const oldest = this.foldCache.keys().next().value; // least-recently-used
-      if (oldest !== undefined) this.foldCache.delete(oldest);
-    }
-    return view;
-  }
-
-  /** Drop all caches and notify every surface to re-read. Call after any mutation. */
-  invalidate(): void {
-    // The re-read this fires describes whatever the repository is NOW, so the staleness stamp is
-    // re-baselined here rather than only where it is checked -- otherwise our own commits (save,
-    // revert, restore) would look external to the next check and buy a second full compose.
-    void this.stampHead();
-    this.generation++; // any fetch begun before now must not repopulate a cache it's about to clear
-    this.mapCache = undefined;
-    this.mapInFlight = undefined;
-    this.historyCache = undefined;
-    this.historyInFlight = undefined;
-    this.gridCache = undefined;
-    this.gridInFlight = undefined;
-    this.statusCache = undefined;
-    this.statusInFlight = undefined;
-    this.blameCache.clear();
-    this.planCache = undefined;
-    this.driftCache = undefined;
-    this.composeCache = undefined;
-    this.composeInFlight = undefined;
-    this.forksCache = undefined;
-    this.forksInFlight = undefined;
-    this.sessionsCache = undefined;
-    this.intentCache = undefined;
-    this.intentInFlight = undefined;
-    this.nowCache = undefined;
-    this.nowInFlight = undefined;
-    this.proposalCache.clear();
-    this.foldCache.clear();
-    this._onDidChange.fire();
-  }
-
-  dispose(): void {
-    this._onDidChange.dispose();
-  }
-}
-
-/**
- * The commit HEAD points at, read off disk rather than through git.
- *
- * `.git/HEAD` is either a sha or `ref: refs/heads/<name>`, so the branch case costs one more
- * read. A packed ref answers `""` for the branch half, which is still a usable stamp -- it just
- * cannot see a commit on a ref that has never been written loose, and a commit always writes one.
- * `.git` is a file in a linked worktree, holding the real gitdir; resolved here because a stamp
- * that silently answers the same string forever would disable the staleness check without saying so.
- */
-async function readHead(root: string): Promise<string> {
-  try {
-    const dir = await gitDir(root);
-    const head = (await fs.readFile(path.join(dir, "HEAD"), "utf8")).trim();
-    const ref = /^ref:\s*(.+)$/.exec(head);
-    if (!ref) return head;
-    const sha = await fs.readFile(path.join(dir, ref[1].trim()), "utf8").catch(() => "");
-    return `${head} ${sha.trim()}`;
-  } catch {
-    return ""; // not a git repo (or unreadable): every check answers "unchanged"
-  }
-}
-
-async function gitDir(root: string): Promise<string> {
-  const dot = path.join(root, ".git");
-  const stat = await fs.stat(dot).catch(() => undefined);
-  if (stat?.isFile()) {
-    const pointer = /^gitdir:\s*(.+)$/m.exec(await fs.readFile(dot, "utf8"));
-    if (pointer) return path.resolve(root, pointer[1].trim());
-  }
-  return dot;
 }

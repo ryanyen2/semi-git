@@ -1,52 +1,51 @@
-// The always-visible oracle chip (plan: "Titlebar composition selector + oracle chip → Workbench
-// titlebar + always-visible status-bar oracle chip"). A sibling of `plan.ts`'s `PlanStatusBar`
-// rather than a shared class -- unrelated concerns (oracle/fork state vs. plan-step progress), and
-// this one never hides: an unconfigured oracle is itself worth surfacing, not worth hiding.
+// Unsaved files, pending choices, and the check's verdict on HEAD. A click opens the workbench.
 
 import * as vscode from "vscode";
-import { Store } from "./store";
+import { Snapshot } from "./types";
 
-const ORACLE_GLYPH: Record<string, string> = {
-  pass: "✓",
-  fail: "✗",
-  pending: "…",
-  unconfigured: "○",
-};
+const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;
 
-export class GitStatusBar implements vscode.Disposable {
-  private item: vscode.StatusBarItem;
-  private disposables: vscode.Disposable[] = [];
+export class StatusBar implements vscode.Disposable {
+  private item = vscode.window.createStatusBarItem("ugh.status", vscode.StatusBarAlignment.Left, 99);
 
-  constructor(private store: Store) {
-    this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99);
+  constructor() {
+    this.item.name = "ugh";
     this.item.command = "ugh.openWorkbench";
-    this.disposables.push(this.item, this.store.onDidChange(() => void this.refresh()));
   }
 
-  async refresh(): Promise<void> {
-    let status;
-    try {
-      status = await this.store.status();
-    } catch {
-      this.item.text = "ugh: error";
-      this.item.tooltip = "Failed to read ugh status. Click to open the workbench.";
-      this.item.show();
-      return;
+  render(s: Snapshot): void {
+    if (s.uninitialized || (!s.status && !s.error)) return void this.item.hide();
+    if (s.error) {
+      this.item.text = "ugh $(error)";
+      this.item.tooltip = s.error;
+      return void this.item.show();
     }
-    const glyph = ORACLE_GLYPH[status.oracle.status] ?? "?";
-    const forkFlag = status.forks.open > 0 ? ` · ◊${status.forks.open}` : "";
-    const indexingPrefix = status.sync_status.complete ? "" : "$(sync~spin) indexing · ";
-    this.item.text = `${indexingPrefix}oracle: ${glyph}${forkFlag}`;
-    const tooltipBase = status.oracle.configured
-      ? `Oracle: ${status.oracle.status}${status.forks.open ? ` · ${status.forks.open} open fork(s)` : ""}`
-      : "Oracle not configured. Click to open the workbench.";
-    this.item.tooltip = status.sync_status.complete
-      ? tooltipBase
-      : `Indexing repository history; some results may be incomplete. ${tooltipBase}`;
+    const status = s.status!;
+    const unsaved = status.drift.paths.length;
+    const choices = status.choices.length;
+    const head = status.observed?.head;
+    const text = ["ugh"];
+    const tip: string[] = [];
+    if (unsaved) {
+      text.push(`$(edit) ${unsaved}`);
+      tip.push(plural(unsaved, "unsaved file"));
+    }
+    if (choices) {
+      text.push(`$(git-merge) ${choices}`);
+      tip.push(plural(choices, "two-version choice"));
+    }
+    if (head) {
+      text.push(head.verdict === "pass" ? "$(pass)" : "$(error)");
+      tip.push(`check ${head.verdict === "pass" ? "passes" : "fails"} on HEAD`);
+    } else if (status.observed) {
+      tip.push("check not observed on HEAD");
+    }
+    this.item.text = text.join("  ");
+    this.item.tooltip = tip.join(" · ") || "Open workbench";
     this.item.show();
   }
 
   dispose(): void {
-    this.disposables.forEach((d) => d.dispose());
+    this.item.dispose();
   }
 }

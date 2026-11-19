@@ -1,7 +1,6 @@
 {
-  // F5 launches an Extension Development Host with the extension loaded. The second arg is the
-  // folder it opens — point it at any `ugh init`'d workspace so the extension finds
-  // .sgt/local/ideal.json and activates. Adjust the path to whatever project you're testing against.
+  // F5 launches an Extension Development Host with the extension loaded. Open any `ugh init`'d
+  // folder in it.
   "version": "0.2.0",
   "configurations": [
     {

@@ -1,7089 +1,1909 @@
-// The Composition Workbench webview's client script. Left pane is the DEPENDENCY GRAPH (see
-// `computeGraphLayout`): features as identity-colored discs (area = op count), co-change edges,
-// laid out by temporal rank (x = the generation of a feature's median op) and barycenter
-// crossing-min order (y), with collapsed subsystems as meta-nodes and a bottom time-axis frontier
-// scrubber. A commit-index is not a snapshot node -- it's a set of ops across features -- so we
-// draw the features, not a commit spine. The right pane is the inspector (detail, action bar, a
-// code(I) panel driven by one `foldAt` per selection, the op-set decomposition of a scrubbed
-// point, and the working-changes quick-save card). A titlebar composition selector (QuickPick over
-// HEAD + sessions) and an oracle chip round out the skeleton. Color is resolved host-side
-// (workbench.ts calls color.ts's colorForNode) and arrives pre-resolved on every node -- this file
-// never reimplements the OKLCH generator.
-//
-// Interaction: hover a node = dim the field, light it + its co-change neighbors + their edges;
-// click a feature = sticky select + inspector + action bar; click a meta-node = expand the
-// subsystem; hovering an action live-previews its blast radius via `previewVerb` postMessage
-// round-trips to the host (`ugh preview <verb> ... --json`). The armed-action pattern generalizes
-// merge/move. The frontier scrubber (bottom axis) is a read-only fold point: it dims nodes past
-// the point (the graph accretes) and drives the code(I)/op-set panels, but previews/applies still
-// run against the real composition (state.compositionRef), never the scrubbed frontier.
+"use strict";
+// The workbench: saves as columns and names as rows (the timeline), or one row per save (the
+// ledger). The block between the model markers is pure; tests/test_workbench_ui.py runs it in node.
 
-// ---- graph-layout (test slice boundary) ----
-// The feature timeline -- a Gantt. A commit-index is NOT a snapshot node: it's a set of ops spread
-// across features. So we don't draw a commit spine or a node cloud; we draw one LANE per feature.
-//   x  = real commit-time, a shared labeled axis. A feature's bar spans [firstCommit, lastCommit]
-//        (born → last touched); its ops are binned along it as a density heatstrip by the renderer,
-//        so a 2000-op commit is one dark column, never a wall of glyphs.
-//   y  = features grouped into SUBSYSTEM SWIMLANES, ordered by first appearance (foundations up
-//        top). Vertical position means "which feature / which subsystem" -- something a reader can
-//        actually use -- so there is no barycenter/crossing-min pass at all.
-//   frontier = a "now" line on the time axis; ops past it don't count yet, so scrubbing accretes.
-// Co-change stays OFF the default view (it made the old node-link diagram a hairball): edges are
-// still computed (top-K per feature) but only lit on hover. Pure (no DOM/color): sliced out and
-// exercised under node (tests/test_graph_layout.py).
-function computeGraphLayout(map, grid, opts) {
-  opts = opts || {};
-  const collapsed = new Set(opts.collapsed || []);
-  const frontier = opts.frontier == null ? Infinity : opts.frontier;
-  const topK = opts.topK || 4;
+// ---- model
+const ROW_H = 22;
+const COL_W = 22;
+const HAIR_W = 7;
+const LABEL_W = 184;
+const META_W = 220;
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-  const byId = {};
-  for (const n of map.nodes || []) byId[n.id] = n;
+function shortSha(sha) {
+  return String(sha || "").slice(0, 7);
+}
 
-  // The op -> (feature, commit) join is `grid_view`'s already-computed cell table (plan U3, the
-  // canonical `ugh.api.grid_view`): a cell carries the ops one feature touched in one commit, so a
-  // feature's ops are just the cells bearing its id -- no per-op DAG walk here. An op with no
-  // feature has no cell and never appears. `frontier` folds by commit index so scrubbing accretes.
-  const opsByFeature = {};
-  for (const cell of (grid && grid.cells) || []) {
-    if (cell.commit_index > frontier) continue;
-    const bucket = opsByFeature[cell.feature_id] || (opsByFeature[cell.feature_id] = []);
-    for (const oid of cell.op_ids || []) bucket.push({ id: oid, commit_index: cell.commit_index });
-  }
-  for (const fid in opsByFeature) opsByFeature[fid].sort((a, b) => a.commit_index - b.commit_index);
+function unitOf(address) {
+  const s = String(address);
+  const at = s.lastIndexOf("@");
+  return at > 0 ? s.slice(0, at) : s;
+}
 
-  // Visible lanes: DFS the tree; a collapsed subsystem folds to ONE meta-lane (its subtree
-  // aggregated), an expanded subsystem contributes its feature descendants as lanes under a header,
-  // a feature is always a lane. `subsystem` = the grouping key (a meta-lane groups under itself).
-  const visible = [];
-  function nearestSubsystem(id) {
-    let cur = byId[id] ? byId[id].parent : null;
-    while (cur != null) {
-      const p = byId[cur];
-      if (p && p.kind === "subsystem") return cur;
-      cur = p ? p.parent : null;
-    }
-    return null;
-  }
-  function leavesUnder(id) {
-    const out = [];
-    const stack = [id];
-    while (stack.length) {
-      const node = byId[stack.pop()];
-      if (!node) continue;
-      if (node.children && node.children.length) for (const c of node.children) stack.push(c);
-      else out.push(node.id);
-    }
-    return out;
-  }
-  const seen = new Set();
-  function visit(id) {
-    const node = byId[id];
-    if (!node) return;
-    // The map is a DAG: a feature can be a child of more than one subsystem, so the same node is
-    // reachable by multiple paths. Emit it once -- a duplicate lane shares an id, and the id-keyed
-    // `laneById` would drop all but the last copy, leaving a stray, un-rowed duplicate.
-    if (seen.has(id)) return;
-    seen.add(id);
-    const isSub = node.kind === "subsystem";
-    if (isSub && !collapsed.has(id)) {
-      for (const c of node.children || []) visit(c);
-      return;
-    }
-    const isMeta = isSub; // a visible subsystem here is necessarily collapsed
-    const leaves = isMeta ? leavesUnder(id) : [id];
-    visible.push({ id, isMeta, leaves, subsystem: isMeta ? id : nearestSubsystem(id) });
-  }
-  for (const r of (map.roots || []).slice().sort()) visit(r);
+function pathOf(address) {
+  const u = unitOf(address);
+  const i = u.indexOf("::");
+  return i < 0 ? u : u.slice(0, i);
+}
 
-  // Aggregate ops -> op count + first/last commit + the sorted commit list (renderers bin it into a
-  // density strip at their own column resolution). Lanes with no ops at this frontier don't exist
-  // yet -- dropped, so scrubbing left empties the timeline. Dropped too: a lane whose features hold
-  // no symbols of their own, because a cluster whose ops touch only the residue/anchor sentinels is
-  // not something anyone can act on -- `ugh show` answers it with "0 symbols in 0 files" and
-  // reverting it removes nothing. The terminal has applied that filter for a while
-  // (`ugh/tui/graph.py`, `_print_map_tree`) and this surface did not, which is one of the reasons
-  // the workbench, the sidebar and `ugh log --map` listed different features for the same repo.
-  const lanes = [];
-  for (const v of visible) {
-    // Husks leave the leaf SET, not just the listing: `(N)` on a folded row and a header's `N feat`
-    // are leaf counts, so a husk counted inside a fold promises rows that opening it does not
-    // deliver. A node carrying no `own_symbols` key at all is unknown, not empty -- treat it as
-    // present, the same way the Python filter's `("?",)` default does.
-    const leaves = v.leaves.filter((leaf) => {
-      const own = (byId[leaf] || {}).own_symbols;
-      return own == null || own.length > 0;
-    });
-    if (!leaves.length) continue;
-    const commits = [];
-    for (const leaf of leaves) for (const op of opsByFeature[leaf] || []) commits.push(op.commit_index);
-    if (!commits.length) continue;
-    commits.sort((a, b) => a - b);
-    lanes.push({
-      ...v, leaves, opCount: commits.length, firstCommit: commits[0], lastCommit: commits[commits.length - 1], commits,
-    });
-  }
-  const laneById = {};
-  for (const l of lanes) laneById[l.id] = l;
+function defOf(address) {
+  const u = unitOf(address);
+  const i = u.indexOf("::");
+  return i < 0 ? "" : u.slice(i + 2);
+}
 
-  // Visible co-change edges (hover overlay only): reroute each endpoint up to its nearest visible
-  // lane, drop self-loops, merge parallels (sum weight), keep top-K per lane by weight.
-  const idToVisible = {};
-  for (const l of lanes) for (const leaf of l.leaves) idToVisible[leaf] = l.id;
-  const laneIds = new Set(lanes.map((l) => l.id));
-  function resolveVisible(id) {
-    if (idToVisible[id]) return idToVisible[id];
-    let cur = id;
-    while (cur != null && !laneIds.has(cur)) cur = byId[cur] ? byId[cur].parent : null;
-    return cur;
+// Shared with the host's blame gutter: FNV-1a, spread by the golden ratio.
+function hueOf(label) {
+  let h = 2166136261;
+  for (let i = 0; i < label.length; i++) {
+    h ^= label.charCodeAt(i);
+    h = Math.imul(h, 16777619);
   }
-  const merged = {};
-  for (const e of map.edges || []) {
-    const a = resolveVisible(e.a);
-    const b = resolveVisible(e.b);
-    if (a == null || b == null || a === b) continue;
-    const key = a < b ? `${a} ${b}` : `${b} ${a}`;
-    merged[key] = (merged[key] || 0) + (e.weight || 0);
-  }
-  let allEdges = Object.keys(merged).map((k) => {
-    const [a, b] = k.split(" ");
-    return { a, b, weight: merged[k] };
+  return ((h >>> 0) * 0.618033988749895 % 1) * 360;
+}
+
+function toneLevel(n) {
+  return n >= 8 ? 4 : n >= 4 ? 3 : n >= 2 ? 2 : 1;
+}
+
+// Every save gets the same column width, sized to the panel between a floor and a ceiling.
+function fitColumn(log, status, avail) {
+  const saves = (log && log.saves) || [];
+  const merges = new Set(((status && status.choices) || []).map((c) => c.merge));
+  const full = saves.filter((s) => (s.steps || []).length || merges.has(s.sha)).length;
+  if (!full) return COL_W;
+  const w = Math.floor((avail - (saves.length - full) * HAIR_W) / full);
+  return Math.max(18, Math.min(44, w));
+}
+
+function buildModel(log, status, opts) {
+  const open = !!(opts && opts.unnamedOpen);
+  const colW = (opts && opts.colW) || COL_W;
+  const saves = ((log && log.saves) || []).slice().reverse();
+  const choices = (status && status.choices) || [];
+  const isMerge = (sha) => choices.some((c) => c.merge && (c.merge === sha || sha.startsWith(c.merge)));
+  const cols = [];
+  const steps = [];
+  let x = 0;
+  saves.forEach((s, i) => {
+    const own = (s.steps || []).map((st, j) => ({
+      key: shortSha(s.sha) + "#" + j,
+      address: st.address,
+      kind: st.kind,
+      name: st.name || null,
+      out: !!st.out,
+      col: i,
+      unit: unitOf(st.address),
+      path: pathOf(st.address),
+    }));
+    const w = own.length || isMerge(s.sha) ? colW : HAIR_W;
+    cols.push({ i, sha: s.sha, short: shortSha(s.sha), subject: s.subject || "", date: s.date, x, w, steps: own, empty: !own.length });
+    x += w;
+    steps.push(...own);
   });
-  allEdges.sort((x, y) => y.weight - x.weight || (x.a + x.b < y.a + y.b ? -1 : 1));
-  const perNode = {};
-  const edges = [];
-  const overflow = {};
-  for (const e of allEdges) {
-    const ca = perNode[e.a] || 0, cb = perNode[e.b] || 0;
-    if (ca < topK && cb < topK) {
-      edges.push(e);
-      perNode[e.a] = ca + 1;
-      perNode[e.b] = cb + 1;
-    } else {
-      overflow[e.a] = (overflow[e.a] || 0) + 1;
-      overflow[e.b] = (overflow[e.b] || 0) + 1;
+  const byKey = new Map(steps.map((s) => [s.key, s]));
+  const byAddress = new Map();
+  for (const s of steps) {
+    if (!byAddress.has(s.address)) byAddress.set(s.address, []);
+    byAddress.get(s.address).push(s);
+  }
+  const named = new Map();
+  const files = new Map();
+  for (const s of steps) {
+    const into = s.name ? named : files;
+    const k = s.name || s.path;
+    if (!into.has(k)) into.set(k, []);
+    into.get(k).push(s);
+  }
+  const rows = [];
+  const rowOf = new Map();
+  const addRow = (key, kind, label, own, extra) => {
+    const cells = new Map();
+    for (const s of own) {
+      if (!cells.has(s.col)) cells.set(s.col, { row: key, col: s.col, steps: [] });
+      cells.get(s.col).steps.push(s);
+      rowOf.set(s.key, key);
     }
-  }
-
-  // Emit rows in TREE order so nesting is visible: walk the map from its roots; at each level
-  // siblings are ordered by first appearance (min descendant firstCommit); an expanded subsystem is
-  // a header row with its descendants rendered one level deeper; a collapsed subsystem is a single
-  // meta-lane; a feature is a lane. `depth` (root = 0, +1 per subsystem level) drives the render
-  // indent, so a sub-subsystem steps in visually under its parent instead of flattening onto the
-  // same level. Ordering by first appearance is preserved WITHIN each level (the old flat behaviour,
-  // now applied recursively) rather than across the whole tree.
-  const laneSet = new Set(lanes.map((l) => l.id));
-  const childrenOf = (id) => (byId[id] && byId[id].children) || [];
-  // A node earns a row iff it's a lane, or an expanded subsystem with >=1 descendant lane.
-  const presentCache = {};
-  function isPresent(id) {
-    if (id in presentCache) return presentCache[id];
-    let present = laneSet.has(id);
-    if (!present) for (const c of childrenOf(id)) if (isPresent(c)) { present = true; break; }
-    return (presentCache[id] = present);
-  }
-  // Earliest firstCommit anywhere under a node (a lane returns its own) -- the per-level sort key.
-  const firstCache = {};
-  function subtreeFirst(id) {
-    if (id in firstCache) return firstCache[id];
-    const l = laneById[id];
-    let best = l ? l.firstCommit : Infinity;
-    if (!l) for (const c of childrenOf(id)) best = Math.min(best, subtreeFirst(c));
-    return (firstCache[id] = best);
-  }
-  // A header's rolled-up magnitude over every descendant feature lane (collapsed metas included).
-  function rollup(id) {
-    let opCount = 0, laneCount = 0, lastCommit = -Infinity;
-    (function walk(nid) {
-      const l = laneById[nid];
-      if (l) { opCount += l.opCount; lastCommit = Math.max(lastCommit, l.lastCommit); laneCount += l.isMeta ? l.leaves.length : 1; }
-      else for (const c of childrenOf(nid)) walk(c);
-    })(id);
-    return { opCount, laneCount, lastCommit };
-  }
-  const sortByFirst = (a, b) => subtreeFirst(a) - subtreeFirst(b) || (a < b ? -1 : 1);
-  // One parent's rows in reading order: its own feature lanes first, then its sub-groups -- each
-  // half in first-appearance order. Ordering a level by time ALONE interleaved the two kinds, and a
-  // subsystem is not one row but a block: a feature born after a subsystem was emitted below that
-  // subsystem's entire subtree, where the indent then read as membership. On seedbank-v3 that filed
-  // four of the repo's own features (`seed catalog`, `sort the grid`, `show what is on the shelf`,
-  // `seed tray`) under the `Plant Discovery` swimlane, whose header says "6 feat" above nine rows.
-  // Grouping is what lets the indent mean containment; inside a group, time still orders.
-  // Mirrors `ordered_children` in ugh/tui/graph.py -- the two layouts stay behaviour-parallel.
-  //
-  // The halves split by NODE KIND, not by "is it a lane": a collapsed subsystem is a lane (one
-  // meta row) while an expanded one is a header, so splitting on lane-ness moved the whole block
-  // from the leaves half to the groups half whenever its fold state changed -- expanding a
-  // subsystem visibly teleported it below every flat feature and the reader lost the row they
-  // had just clicked. Kind is fold-invariant: a subsystem holds one slot, folded or open.
-  const isSubsystemNode = (c) => byId[c] && byId[c].kind === "subsystem";
-  const orderedChildren = (ids) => {
-    const present = ids.filter(isPresent);
-    return present.filter((c) => !isSubsystemNode(c)).sort(sortByFirst)
-      .concat(present.filter(isSubsystemNode).sort(sortByFirst));
+    const r = Object.assign({ key, kind, label, steps: own, total: own.length, cells }, extra);
+    rows.push(r);
+    return r;
   };
-
-  let row = 0;
-  const headers = [];
-  const emitted = new Set();
-  function emit(id, depth) {
-    // The map is a DAG, so the same node can be reached down two paths. `visit` above gives it one
-    // lane; give it one row too, or the second visit overwrites `row` and leaves a blank line where
-    // the first one was.
-    if (emitted.has(id)) return;
-    emitted.add(id);
-    const lane = laneById[id];
-    if (lane) { // a feature leaf or a collapsed-subsystem meta-lane -- one row, no recursion
-      lane.row = row++;
-      lane.depth = depth;
-      lane.groupKey = byId[id] ? byId[id].parent : null;
-      return;
-    }
-    const node = byId[id];
-    if (!node || node.kind !== "subsystem" || !isPresent(id)) return; // expanded subsystem header
-    const roll = rollup(id);
-    headers.push({
-      key: id, label: node.label || id, collapsedId: id, row, depth,
-      firstCommit: subtreeFirst(id), lastCommit: roll.lastCommit,
-      opCount: roll.opCount, laneCount: roll.laneCount,
-    });
-    row++; // the header occupies its own row
-    for (const c of orderedChildren(childrenOf(id))) emit(c, depth + 1);
+  for (const [label, own] of named) addRow("name:" + label, "name", label, own, { hue: hueOf(label) });
+  for (const p of (status && status.plan && status.plan.names) || []) {
+    if (!named.has(p.name)) addRow("plan:" + p.name, "plan", p.name, [], { hue: hueOf(p.name) });
   }
-  for (const r of orderedChildren(map.roots || [])) emit(r, 0);
-  const rowCount = Math.max(1, row);
-
-  return { lanes, headers, edges, overflow, laneById, opsByFeature, rowCount,
-    commitCount: ((grid && grid.commits) || []).length };
-}
-// A post-layout VIEW transform, not a second layout: `computeGraphLayout` above is one half of a
-// pair whose other half is `graph_layout` in ugh/tui/graph.py, and a rule changed in one and not the
-// other drifts silently. So the flat view reuses that output and only reassigns rows.
-//
-// The alternate view, not the default. Flat rows are leaves ordered by most-recently-touched --
-// "what was I just working on" -- at the cost of the hierarchy: every leaf is a sibling, so the
-// grouping the tree exists to show disappears (the study's pilots met this list and read it as a
-// commit log with different labels). It was briefly the default while subsystems had no identity
-// hue and the folded tree opened grey; the host colors subsystems now, so the tree is back as the
-// default and this stays as the toggle.
-function flattenLayout(layout) {
-  const lanes = layout.lanes
-    .slice()
-    .sort((a, b) => (b.lastCommit - a.lastCommit) || (a.label < b.label ? -1 : 1))
-    .map((l, i) => ({ ...l, row: i, depth: 0 }));
-  return { ...layout, lanes, headers: [], rowCount: Math.max(1, lanes.length) };
+  const unnamed = [].concat(...files.values());
+  if (unnamed.length) {
+    addRow("unnamed", "group", "Unnamed", open ? [] : unnamed, { open, total: unnamed.length });
+    if (open) for (const [path, own] of files) addRow("file:" + path, "file", path, own, {});
+  }
+  const marks = [];
+  for (const c of choices) {
+    const col = cols.find((k) => c.merge && (k.sha === c.merge || k.sha.startsWith(c.merge)));
+    if (!col) continue;
+    const unit = unitOf(c.unit || c.address);
+    const last = steps.filter((s) => s.unit === unit).pop();
+    const row = (last && rowOf.get(last.key)) || (rows.find((r) => r.kind === "group" || r.key === "file:" + pathOf(unit)) || {}).key;
+    if (row) marks.push({ row, col: col.i, address: c.address, unit });
+  }
+  return { cols, steps, rows, byKey, byAddress, rowOf, labels: new Set(named.keys()), choices: marks, width: x };
 }
 
-// ---- end-graph-layout (test slice boundary) ----
-
-// ---- segment-layout (test slice boundary) ----
-// The chunk-car timeline layout: the visual atom is the intent *segment* (a `<feature>@<n>`
-// checkpoint), not the raw op. Reuses `computeGraphLayout` verbatim for the gutter -- tree walk,
-// visibility, collapse-to-meta, ordering by first appearance, lanes-with-no-ops dropped -- then
-// threads each visible lane's leaf feature(s) segments onto it as an ordered train of `cars` (a
-// collapsed subsystem's meta-lane naturally gets the union of its features' cars, sorted together
-// -- the "aggregate car strip" the redesign calls for).
-//
-// `segments` is the flat list the compose feed's `intent.segments` already carries (one entry per
-// checkpoint: `feature_id`, `seg_index`, `checkpoint`, `intent` (label), `op_ids`, `op_count`,
-// `first_index`, `last_index`, `tier`, `source`) -- passed in, never re-derived here, so this stays
-// pure like `computeGraphLayout`. The Python counterpart is `segment_layout` in ugh/tui/graph.py,
-// kept behaviour-parallel.
-//
-// A car whose `first_index` is past `frontier` is kept and flagged `isFuture` rather than dropped:
-// the renderer dims it, but a lane's car *count* and positions stay stable while scrubbing -- only
-// cell density (via `computeGraphLayout`'s own op filtering) accretes.
-// ---- readable-subject (test slice boundary)
-// Commits ugh writes for its own verbs carry bookkeeping subjects ("ugh revert 0f628ffc@1",
-// "ugh undo: restore prior ideal", "sgt land: main"). Shown as a checkpoint's name or a save's
-// subject they put an internal reference on screen; they read as what happened, naming the
-// checkpoint by its own name where the reference resolves.
-function readableSubject(text, segments) {
-  const t = String(text || "");
-  const m = /^(?:ugh|sgt) (revert|restore)\s+(\S+)/.exec(t);
-  if (m) {
-    const [fid, n] = m[2].replace(/^f-/, "").split("@");
-    const hit = (segments || []).find((s) => {
-      const [sf, sn] = String(s.checkpoint || "").replace(/^f-/, "").split("@");
-      return sf.startsWith(fid) && (n == null || sn === n) && !/^(?:ugh|sgt) /.test(s.intent || "");
-    });
-    const what = hit && hit.intent ? `“${hit.intent}”` : "a checkpoint";
-    return m[1] === "revert" ? `Took out ${what}` : `Put back ${what}`;
-  }
-  if (/^(?:ugh|sgt) undo\b/.test(t)) return "Undid the last change";
-  const land = /^(?:ugh|sgt) land:?\s*(\S+)?/.exec(t);
-  if (land) return land[1] ? `Landed a session into ${land[1]}` : "Landed a session";
-  return t;
+function colOf(model, ref) {
+  if (!ref || ref.length < 4) return null;
+  const c = model.cols.find((k) => k.sha.startsWith(ref));
+  return c ? c.i : null;
 }
-// ---- end-readable-subject
 
-function computeSegmentLayout(map, grid, segments, opts) {
-  opts = opts || {};
-  const frontier = opts.frontier == null ? Infinity : opts.frontier;
-
-  const byFeature = {};
-  for (const seg of segments || []) {
-    (byFeature[seg.feature_id] || (byFeature[seg.feature_id] = [])).push(seg);
-  }
-
-  // The op -> commit join that feeds each chapter's per-commit bins, kept PER FEATURE rather than
-  // as one index over the whole repository.
-  //
-  // It used to be a single object literal keyed by every op id in the history. An object keyed by
-  // millions of distinct strings leaves V8's fast path and becomes a dictionary, and the cost is not
-  // marginal -- measured on a 2.94M-cell history, building it took 1,734ms of a 3,533ms layout. A
-  // `Map` alone brought that to 572ms; building one SMALL map per feature and discarding it brings
-  // the whole join to 492ms, because each map fits in cache instead of rehashing a table the size of
-  // the repository. The bins produced are identical, op id for op id: this is the same exact join,
-  // not an approximation by commit range (chapters of one feature can share a commit, so a range
-  // join would double-count).
-  //
-  // Cells are grouped unfiltered, deliberately: `computeGraphLayout` drops cells past the frontier
-  // and this must not, or a chapter beyond the playhead would lose the density it is drawn with.
-  const cellsByFeature = new Map();
-  if (segments && segments.length) {
-    for (const cell of (grid && grid.cells) || []) {
-      let bucket = cellsByFeature.get(cell.feature_id);
-      if (!bucket) cellsByFeature.set(cell.feature_id, (bucket = []));
-      bucket.push(cell);
-    }
-  }
-
-  const base = computeGraphLayout(map, grid, opts);
-
-  const lanes = base.lanes.map((l) => {
-    const cars = [];
-    for (const leaf of l.leaves) {
-      const segsHere = byFeature[leaf];
-      if (!segsHere || !segsHere.length) continue;
-      // One small index for this feature, built once and dropped when the feature is done.
-      const commitIndexOf = new Map();
-      for (const cell of cellsByFeature.get(leaf) || []) {
-        for (const oid of cell.op_ids || []) commitIndexOf.set(oid, cell.commit_index);
-      }
-      for (const seg of segsHere) {
-        const bins = new Map();
-        for (const oid of seg.op_ids || []) {
-          const ci = commitIndexOf.get(oid);
-          if (ci != null) bins.set(ci, (bins.get(ci) || 0) + 1);
-        }
-        cars.push({
-          featureId: leaf, segIndex: seg.seg_index, checkpoint: seg.checkpoint, label: readableSubject(seg.intent, segments),
-          opCount: seg.op_count, tier: seg.tier, source: seg.source,
-          // Whether this chapter's ops are still in HEAD's ideal (`present_op_count`, from
-          // `ugh.api._segments_out`). A revert leaves the chapter in the store and takes it out of
-          // the ideal, so a client reading only the store cannot tell a rewound chapter from a live
-          // one -- the inspector listed a reverted checkpoint with a working rewind button on it.
-          // `null` (an unreadable ideal, or a payload written before the field existed) is no claim
-          // and must not read as removed.
-          presentOpCount: seg.present_op_count == null ? null : seg.present_op_count,
-          // `state` (ugh.api._segment_symbols) is read per named symbol. The default revert is
-          // forward subtraction: it keeps ops later work builds on and layers a masking rework
-          // over the symbol, so `present_op_count === 0` drew 15 of 22 reverted footfall chapters
-          // solid and offered Revert on them again. A payload without `state` keeps the count rule.
-          state: seg.state || (seg.present_op_count === 0 ? "reverted" : seg.present_op_count == null ? null : "live"),
-          reverted: seg.state ? seg.state === "reverted" : seg.present_op_count === 0,
-          partial: seg.state === "partial",
-          // Counts in the reader's units: one change is one named function/file in one save
-          // (`change_count`), never an op, 83% of which are residue/anchor bookkeeping.
-          changeCount: seg.change_count == null ? null : seg.change_count,
-          symbols: seg.symbols || [],
-          symbolsTruncated: !!seg.symbols_truncated,
-          // What stands on this checkpoint: later live checkpoints a revert of it would rewrite
-          // (`ugh.api._segments_out`). `null` when the kernel does not say, which is no claim.
-          dependents: Array.isArray(seg.dependents) ? seg.dependents : null,
-          clean: seg.clean == null ? null : !!seg.clean,
-          saves: (seg.commit_shas || []).length,
-          firstIndex: seg.first_index, lastIndex: seg.last_index,
-          subBins: [...bins.entries()].sort((a, b) => a[0] - b[0]),
-          isFuture: seg.first_index > frontier,
-          asks: seg.asks || [],  // the chapter's captured asks: excerpt + whose words (weave P4)
-        });
-      }
-    }
-    cars.sort((a, b) => a.firstIndex - b.firstIndex
-      || (a.featureId < b.featureId ? -1 : a.featureId > b.featureId ? 1 : 0)
-      || a.segIndex - b.segIndex);
-    return { ...l, cars };
-  });
-  const laneById = {};
-  for (const l of lanes) laneById[l.id] = l;
-
-  return { ...base, lanes, laneById };
+function colAt(model, gx) {
+  for (const c of model.cols) if (gx >= c.x && gx < c.x + c.w) return c.i;
+  return null;
 }
-// ---- end-segment-layout (test slice boundary) ----
 
-// Classify a verb preview's affected features into the three roles the closure overlay paints, so
-// the graph reads the same as `ugh revert`'s terminal preview (blast/foundation are the CLI's own
-// buckets -- ugh.api._affected_rows). `target` = the acted-on feature; `blast` = OTHER features
-// losing ops in the closure (collateral); `foundation` = features gaining re-drafted hollow ops.
-// Pure (no DOM); sliced for the node harness (tests/test_closure.py).
-function classifyAffected(result, targetId) {
-  const blast = [], foundation = [];
-  for (const r of (result && result.affected) || []) {
-    if (r.feature_id === targetId) continue; // the target is drawn as `target`, never collateral
-    if (r.direction === "foundation") foundation.push(r.feature_id);
-    else blast.push(r.feature_id);
+// The steps an address names, read off the log the way the core reads it.
+function stepsOf(model, address) {
+  const a = String(address || "").trim();
+  const range = a.match(/^([^.\s]*)\.\.([^.\s]*)$/);
+  if (range) {
+    const lo = range[1] ? colOf(model, range[1]) : -1;
+    const hi = range[2] ? colOf(model, range[2]) : model.cols.length - 1;
+    if (lo == null || hi == null) return [];
+    return model.steps.filter((s) => s.col > lo && s.col <= hi);
   }
-  return { target: targetId, blast, foundation };
+  const at = a.lastIndexOf("@");
+  let base = a;
+  let pool = model.steps;
+  if (at > 0) {
+    const c = colOf(model, a.slice(at + 1));
+    if (c == null) return [];
+    base = a.slice(0, at);
+    pool = pool.filter((s) => s.col === c);
+  } else if (!model.labels.has(a) && /^[0-9a-f]{4,40}$/.test(a)) {
+    const c = colOf(model, a);
+    if (c != null) return pool.filter((s) => s.col === c);
+  }
+  if (model.labels.has(base)) return pool.filter((s) => s.name === base);
+  if (base.includes("::")) return pool.filter((s) => s.unit === base);
+  return pool.filter((s) => s.path === base);
 }
-// ---- end-closure (test slice boundary) ----
 
-// ---- car-impact (test slice boundary) ----
-// The chunk-grain half of a consequence preview. A verb preview carries the exact op ids it
-// removes/adds; intent segments carry the op ids each chapter (car) owns. Joining the two says
-// WHICH recorded chunks change and by how much -- so the graph draws each affected car as a
-// dashed version of the state it will END in: a revert drains it toward the hollow look a
-// reverted car already has, a restore fills a hollow car back toward solid. Dash = not yet true;
-// the body of the car = what will be true. Dependencies included for free: a removed op in
-// another feature's chapter marks THAT car, which is "the dependencies also come out", in situ.
-// Pure (no DOM); the painter half applies classes.
-function classifyCarImpact(removedIds, addedIds, segments, targetOpIds, verb) {
-  const removed = new Set(removedIds || []);
-  const added = new Set(addedIds || []);
-  // The op-set the user actually NAMED (emit's `target_ops`) is forced into the direction the verb
-  // moves it, because the mechanical edit can rewrite some of it in place instead of dropping or
-  // adding ops -- `removed`/`added` alone can be a subset (or empty) there, and the asked-about
-  // chapter must never preview as untouched.
-  //
-  // The direction is the verb's, and it used to be hardcoded to `removed`. On a RESTORE that put
-  // the op-set being brought back into the leaving set, so the chapter the user asked to restore
-  // previewed as draining to hollow -- which is exactly what a revert of it would look like. Both
-  // verbs drew the same picture on the one car the user was looking at, and the picture was the
-  // wrong one. (`gcar-preview-in` and `-out` have always been distinct: 0.55 fill with a pulse
-  // versus 0.12 and dashed. Nothing was wrong with the paint; the classification never asked which
-  // way the edit went.)
-  for (const id of targetOpIds || []) (verb === "restore" ? added : removed).add(id);
-  if (!removed.size && !added.size) return [];
+// The fewest addresses that name exactly these steps: each pick is the name, save, file or file in
+// a save that covers the most of what is left without naming anything outside; the rest are steps.
+function compress(model, keys) {
+  const want = new Set(keys);
+  const steps = [...want].map((k) => model.byKey.get(k));
+  const cands = [];
+  const add = (address, group) => {
+    if (group.length && group.every((s) => want.has(s.key))) cands.push({ address, keys: group.map((s) => s.key) });
+  };
+  for (const label of new Set(steps.map((s) => s.name).filter(Boolean))) add(label, model.steps.filter((s) => s.name === label));
+  for (const c of new Set(steps.map((s) => s.col))) add(model.cols[c].short, model.cols[c].steps);
+  for (const p of new Set(steps.map((s) => s.path))) add(p, model.steps.filter((s) => s.path === p));
+  const inSave = new Map();
+  for (const s of steps) inSave.set(s.path + "\n" + s.col, s);
+  for (const s of inSave.values()) add(s.path + "@" + model.cols[s.col].short, model.cols[s.col].steps.filter((t) => t.path === s.path));
+  const left = new Set(want);
   const out = [];
-  for (const seg of segments || []) {
-    const ids = seg.op_ids || [];
-    if (!ids.length) continue;
-    let nOut = 0, nIn = 0;
-    for (const id of ids) {
-      if (removed.has(id)) nOut++;
-      else if (added.has(id)) nIn++;
+  for (;;) {
+    let best = null, gain = 0;
+    for (const c of cands) {
+      const g = c.keys.filter((k) => left.has(k)).length;
+      if (g > gain) {
+        best = c;
+        gain = g;
+      }
     }
-    if (!nOut && !nIn) continue;
-    const dir = nIn > nOut ? "in" : "out"; // a keep-revert can touch both; the dominant move wins
-    const touched = Math.max(nOut, nIn);
-    out.push({
-      checkpoint: seg.checkpoint, featureId: seg.feature_id, dir, touched,
-      coverage: touched >= ids.length ? "full" : "partial",
-    });
+    if (!best) break;
+    out.push(best.address);
+    for (const k of best.keys) left.delete(k);
+  }
+  for (const k of left) {
+    const a = model.byKey.get(k).address;
+    if (!out.includes(a)) out.push(a);
   }
   return out;
 }
-// ---- end-car-impact
 
+// What a click names: a cell, a row label, a column, or a range of columns.
+function addressFor(model, t) {
+  const row = t.row ? model.rows.find((r) => r.key === t.row) : null;
+  const done = (addresses, label) => {
+    const keys = new Set();
+    for (const a of addresses) for (const s of stepsOf(model, a)) keys.add(s.key);
+    return { addresses, keys: [...keys], label: label || null };
+  };
+  if (t.kind === "cell" && row) {
+    const cell = row.cells.get(t.col);
+    if (!cell) return done([]);
+    if (row.kind === "name") return done([row.label + "@" + model.cols[t.col].short]);
+    return done(compress(model, cell.steps.map((s) => s.key)));
+  }
+  if (t.kind === "row" && row) {
+    if (row.kind === "name") return done([row.label], row.label);
+    if (row.kind === "plan") return done([]);
+    const own = row.kind === "group" ? model.steps.filter((s) => !s.name) : row.steps;
+    return done(compress(model, own.map((s) => s.key)));
+  }
+  if (t.kind === "col") {
+    const c = model.cols[t.col];
+    return done(c && !c.empty ? [c.short] : []);
+  }
+  if (t.kind === "range") {
+    const lo = Math.min(t.from, t.to);
+    const hi = Math.max(t.from, t.to);
+    if (lo === hi) return addressFor(model, { kind: "col", col: lo });
+    if (lo > 0) return done([model.cols[lo - 1].short + ".." + (hi === model.cols.length - 1 ? "" : model.cols[hi].short)]);
+    return done(model.cols.slice(lo, hi + 1).filter((c) => !c.empty).map((c) => c.short));
+  }
+  return done([]);
+}
 
-// ---- change-tree (test slice boundary) ----
-// What a feature -- or one of its chapters -- CHANGED, as a tree the reader can scan and click
-// into. The inspector used to print each of the selected feature's files in full, which answers
-// "what does this code say" and never "what did this do": the reader was left to diff two
-// screenfuls of mostly-unchanged text by eye, in a 12px pre with no syntax highlighting, in the
-// one panel that exists to explain a selection.
-//
-// The input is `ugh <verb> <ref> --emit --json`'s `files`: per changed path a `before`/`after`
-// pair plus each side's entity spans (`ugh.api._side_entity_spans`). That projection *is* a
-// feature's change in this model -- the difference between the tree holding its ops and the tree
-// without them -- so the tree shows the closure too, not only the lane's own lines. Which stored
-// side holds the work is a property of the verb, never of the field name: `before` is always the
-// current ideal, so reverting a live chapter puts its work in `before` and restoring a retired one
-// puts it in `after`. Read the wrong way round, every feature renders as a pure deletion.
-//
-// Pure (no DOM, no vscode API), so the node harness holds the shape.
+function verbFor(model, keys) {
+  const steps = keys.map((k) => model.byKey.get(k)).filter(Boolean);
+  return steps.length && steps.every((s) => s.out) ? "restore" : "revert";
+}
 
-// A file's lines, without the phantom last element `"a\n".split("\n")` produces. A trailing
-// newline is not a line, and counting it as one reports a +1 on every file that gains content at
-// its end.
-function changeLines(text) {
-  const lines = String(text == null ? "" : text).split("\n");
-  if (lines.length && lines[lines.length - 1] === "") lines.pop();
+// The planner's answer, step by step. A restore names the take-out's steps, which the log does not
+// list, so those map back by unit onto the out steps (preferring the selection's own).
+function planMarks(model, plan, selKeys) {
+  const marks = new Map();
+  if (!plan) return marks;
+  const sel = new Set(selKeys || []);
+  const find = (address) => {
+    const hit = model.byAddress.get(address);
+    if (hit) return hit;
+    const unit = unitOf(address);
+    const out = model.steps.filter((s) => s.out && s.unit === unit);
+    const mine = out.filter((s) => sel.has(s.key));
+    return mine.length ? mine : out;
+  };
+  const get = (s) => {
+    if (!marks.has(s.key)) marks.set(s.key, { undone: false, held: [], holder: false, ran: null });
+    return marks.get(s.key);
+  };
+  for (const e of plan.undone || []) {
+    for (const s of find(e.address)) {
+      const m = get(s);
+      m.undone = true;
+      m.ran = e.ran;
+    }
+  }
+  for (const e of plan.held || []) {
+    const holders = (e.holders || []).map((h) => h.address);
+    for (const s of find(e.address)) {
+      const m = get(s);
+      m.held.push({ reason: e.reason, holders });
+      m.ran = e.ran;
+    }
+    for (const h of holders) for (const s of find(h)) get(s).holder = true;
+  }
+  return marks;
+}
+
+// How a cell reads under a plan: the share still in, the share going, the share already out.
+function cellState(steps, marks, sel) {
+  let a = 0, u = 0, o = 0;
+  const st = { held: false, holder: false, norun: false, sel: false };
+  for (const s of steps) {
+    const m = marks && marks.get(s.key);
+    if (m && m.undone) u++;
+    else if (s.out) o++;
+    else a++;
+    if (m && m.held.length) st.held = true;
+    if (m && m.holder) st.holder = true;
+    if (m && m.ran === false) st.norun = true;
+    if (sel && sel.has(s.key)) st.sel = true;
+  }
+  const n = steps.length || 1;
+  return Object.assign(st, { tone: toneLevel(steps.length), a: (a / n) * 100, b: ((a + u) / n) * 100, gone: u > 0, hollow: o > 0 });
+}
+
+function outChanges(before, after) {
+  if (!before) return [];
+  const id = (s, i) => s.address + "|" + s.kind + "|" + i;
+  const seen = new Map();
+  const old = new Map();
+  for (const s of before.steps) {
+    const n = seen.get(s.address + s.kind) || 0;
+    seen.set(s.address + s.kind, n + 1);
+    old.set(id(s, n), s.out);
+  }
+  seen.clear();
+  const changed = [];
+  for (const s of after.steps) {
+    const n = seen.get(s.address + s.kind) || 0;
+    seen.set(s.address + s.kind, n + 1);
+    const was = old.get(id(s, n));
+    if (was != null && was !== s.out) changed.push(s.key);
+  }
+  return changed;
+}
+
+// The lower level: the selection's definitions, grouped by file, each with its steps by save.
+function lowerRows(model, keys) {
+  const steps = [...keys].map((k) => model.byKey.get(k)).filter(Boolean).sort((p, q) => p.col - q.col);
+  const files = new Map();
+  for (const s of steps) {
+    if (!files.has(s.path)) files.set(s.path, new Map());
+    const units = files.get(s.path);
+    if (!units.has(s.unit)) units.set(s.unit, []);
+    units.get(s.unit).push(s);
+  }
+  const rows = [];
+  for (const [path, units] of files) {
+    rows.push({ kind: "file", key: "f:" + path, path, steps: units.get(path) || [] });
+    for (const [unit, own] of units) if (unit !== path) rows.push({ kind: "def", key: "d:" + unit, path, def: defOf(unit), steps: own });
+  }
+  return rows;
+}
+
+const REASONS = {
+  uses: ["still used", "used by"],
+  changed_later: ["changed later", "changed later by"],
+  same_lines: ["its lines changed later", "same lines as"],
+  check: ["the check needs it", "the check needs it"],
+};
+
+function shortAddress(address) {
+  const def = defOf(address);
+  const at = String(address).lastIndexOf("@");
+  const sha = at > 0 ? String(address).slice(at) : "";
+  return (def || pathOf(address).split("/").pop()) + sha;
+}
+
+function answerOf(step, mark, verb) {
+  if (mark && mark.undone) return { text: verb === "restore" ? "comes back" : "goes", tone: "gone" };
+  if (mark && mark.held.length) {
+    const h = mark.held.find((x) => x.holders.length) || mark.held[0];
+    const words = REASONS[h.reason] || [h.reason, h.reason];
+    const text = h.holders.length && h.reason !== "check" ? words[1] + " " + h.holders.map(shortAddress).join(", ") : words[0];
+    return { text: "held, " + text, tone: "held" };
+  }
+  if (step.out) return { text: "out", tone: "out" };
+  return { text: "", tone: "" };
+}
+
+// A directory that does not fit keeps its last segments: "…/pages" rather than "bikecou…".
+function tailDir(dir, room) {
+  if (dir.length <= room) return dir;
+  const parts = dir.split("/");
+  let out = "";
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const next = parts[i] + (out ? "/" + out : "");
+    if (next.length + 2 > room) break;
+    out = next;
+  }
+  return out ? "\u2026/" + out : dir;
+}
+
+function plural(n, one, many) {
+  return n + " " + (n === 1 ? one : many);
+}
+
+function previewWords(plan) {
+  const n = (plan.undone || []).length;
+  const held = (plan.held || []).length;
+  const set = plan.removal_set && plan.removal_set.steps;
+  return {
+    go: plan.verb === "restore" ? n + " come back" : n + (n === 1 ? " goes" : " go"),
+    held: held ? held + " held" : "",
+    whole: set && set > n ? set : 0,
+  };
+}
+
+function firstLine(text) {
+  return String(text || "").split("\n").map((l) => l.trim()).filter(Boolean)[0] || "";
+}
+
+function refusalOf(plan) {
+  if (!plan) return "No answer";
+  if (plan.ok === false) return firstLine(plan.error || plan.message) || "Refused";
+  if (plan.applied === false) {
+    const check = plan.check && typeof plan.check === "object" ? plan.check : null;
+    if (check && check.passed === false) return "Check failed" + (firstLine(check.output) ? ": " + firstLine(check.output) : "");
+    return firstLine(plan.message) || "Not applied";
+  }
+  return null;
+}
+
+function resultWords(plan) {
+  const n = (plan.undone || []).length;
+  const held = (plan.held || []).length;
+  const words = [n + (plan.verb === "restore" ? " back" : " out") + (held ? ", " + held + " held" : "")];
+  const check = plan.check && typeof plan.check === "object" ? plan.check : null;
+  if (check) words.push((check.judge === "parser" ? "parser " : "check ") + (check.passed ? "passed" : "failed"));
+  const o = plan.observed || {};
+  if (o.reverses) words.push("gone, as the check sees it");
+  else if (o.delta) words.push(o.delta.added || o.delta.removed ? "output +" + o.delta.added + " −" + o.delta.removed : "output unchanged");
+  return words;
+}
+
+function checkWords(observed) {
+  const head = observed && observed.head;
+  if (!head) return "HEAD not observed";
+  if (head.verdict === "pass") return "check passed";
+  if (head.verdict === "fail") return "check failed";
+  return "check " + head.verdict;
+}
+
+function ago(iso, now) {
+  const t = Date.parse(iso);
+  if (!isFinite(t)) return "";
+  const s = Math.max(0, (now - t) / 1000);
+  if (s < 60) return "now";
+  if (s < 3600) return Math.floor(s / 60) + "m";
+  if (s < 86400) return Math.floor(s / 3600) + "h";
+  if (s < 86400 * 7) return Math.floor(s / 86400) + "d";
+  const d = new Date(t);
+  const md = MONTHS[d.getMonth()] + " " + d.getDate();
+  return d.getFullYear() === new Date(now).getFullYear() ? md : md + " " + d.getFullYear();
+}
+
+function dateLong(iso, now) {
+  const d = new Date(Date.parse(iso));
+  if (isNaN(d)) return "";
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  const year = d.getFullYear() === new Date(now == null ? Date.now() : now).getFullYear() ? "" : " " + d.getFullYear();
+  return MONTHS[d.getMonth()] + " " + d.getDate() + year + ", " + hh + ":" + mm;
+}
+
+// A date under the first save of each day, unless it would crowd the one before.
+function axisTicks(model) {
+  const ticks = [];
+  let day = "";
+  for (const c of model.cols) {
+    const d = new Date(Date.parse(c.date));
+    if (isNaN(d)) continue;
+    const key = d.getFullYear() + "-" + d.getMonth() + "-" + d.getDate();
+    if (key === day) continue;
+    day = key;
+    const prev = ticks[ticks.length - 1];
+    if (prev && c.x - prev.x < 52) continue;
+    ticks.push({ col: c.i, x: c.x, text: MONTHS[d.getMonth()] + " " + d.getDate() });
+  }
+  return ticks;
+}
+
+// The playhead sits after a save. It moves to the nearest boundary only once the hand is clearly
+// nearer to it, so it settles column by column instead of jittering between two.
+function detent(model, gx, cur) {
+  const ends = model.cols.map((c) => c.x + c.w);
+  let best = 0;
+  for (let k = 1; k < ends.length; k++) if (Math.abs(ends[k] - gx) < Math.abs(ends[best] - gx)) best = k;
+  if (cur == null || best === cur) return best;
+  return Math.abs(gx - ends[best]) + 3 < Math.abs(gx - ends[cur]) ? best : cur;
+}
+
+function moveCursor(model, cur, key) {
+  const rows = model.rows.filter((r) => r.cells.size);
+  if (!rows.length) return null;
+  const ri = cur ? rows.findIndex((r) => r.key === cur.row) : -1;
+  if (ri < 0) return { row: rows[0].key, col: null };
+  const r = rows[ri];
+  const cols = (row) => [...row.cells.keys()].sort((p, q) => p - q);
+  const cs = cols(r);
+  const col = cur.col;
+  if (key === "ArrowRight") {
+    const next = col == null ? cs[0] : cs.find((c) => c > col);
+    return { row: r.key, col: next == null ? col : next };
+  }
+  if (key === "ArrowLeft") {
+    if (col == null) return cur;
+    const prev = cs.filter((c) => c < col).pop();
+    return { row: r.key, col: prev == null ? null : prev };
+  }
+  if (key === "ArrowDown" || key === "ArrowUp") {
+    const nr = rows[Math.min(rows.length - 1, Math.max(0, ri + (key === "ArrowDown" ? 1 : -1)))];
+    if (col == null) return { row: nr.key, col: null };
+    const near = cols(nr).reduce((b, c) => (b == null || Math.abs(c - col) < Math.abs(b - col) ? c : b), null);
+    return { row: nr.key, col: near };
+  }
+  if (key === "Home") return { row: r.key, col: cs[0] };
+  if (key === "End") return { row: r.key, col: cs[cs.length - 1] };
+  return cur;
+}
+
+function moveSave(model, col, key) {
+  const live = model.cols.filter((c) => !c.empty).map((c) => c.i);
+  if (!live.length) return null;
+  if (col == null) return live[live.length - 1];
+  if (key === "ArrowDown") {
+    const p = live.filter((c) => c < col).pop();
+    return p == null ? col : p;
+  }
+  if (key === "ArrowUp") {
+    const n = live.find((c) => c > col);
+    return n == null ? col : n;
+  }
+  return col;
+}
+
+// Replies carry the id of the request they answer; only the latest of each kind is read.
+function requestLedger() {
+  let n = 0;
+  const latest = {};
+  const kindOf = new Map();
+  return {
+    next(kind) {
+      n += 1;
+      latest[kind] = n;
+      kindOf.set(n, kind);
+      return n;
+    },
+    drop(kind) {
+      latest[kind] = 0;
+    },
+    accept(id) {
+      const kind = kindOf.get(id);
+      kindOf.delete(id);
+      return kind && latest[kind] === id ? kind : null;
+    },
+  };
+}
+
+function trimLines(text) {
+  const lines = String(text || "").split("\n");
+  while (lines.length && !lines[0].trim()) lines.shift();
+  while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
   return lines;
 }
 
-// Myers' O(ND) line diff. Returns the 1-based line numbers each side holds ALONE -- enough both to
-// count and to place a change inside an entity's span, which is all the tree needs.
-//
-// `maxD` is not a quality knob. A pathological pair (a generated file, a wholesale rewrite) walks
-// a trace that costs O(D^2) memory, and this runs inside a webview that has to stay responsive, so
-// past the cap we stop aligning and report the untrimmed middles wholesale. That is honest -- all
-// of it did change -- and it is flagged, so the caller can say so rather than quietly reporting a
-// smaller number than the truth.
-function lineDiff(a, b, maxD) {
-  maxD = maxD || 800;
-  const n0 = a.length, m0 = b.length;
-  let lo = 0;
-  while (lo < n0 && lo < m0 && a[lo] === b[lo]) lo++;
-  let hi = 0;
-  while (hi < n0 - lo && hi < m0 - lo && a[n0 - 1 - hi] === b[m0 - 1 - hi]) hi++;
-  const x0 = a.slice(lo, n0 - hi), y0 = b.slice(lo, m0 - hi);
-  const n = x0.length, m = y0.length;
-  const span = (start, count) => {
-    const out = [];
-    for (let i = 0; i < count; i++) out.push(start + i);
-    return out;
-  };
-  if (!n && !m) return { aOnly: [], bOnly: [], capped: false };
-  if (!n || !m) return { aOnly: span(lo + 1, n), bOnly: span(lo + 1, m), capped: false };
-
-  const max = Math.min(n + m, maxD);
-  const off = max + 1;
-  const v = new Int32Array(2 * max + 3);
-  const trace = [];
-  for (let d = 0; d <= max; d++) {
-    // Only the band [-d, d] is live at step d, so the trace stores that band and nothing else: a
-    // whole-array copy per step costs O(D * (N+M)) and blows up on exactly the files that most
-    // need the cap. Every k in the band is copied, not every other one: the backtrack reads the
-    // k-lines of the PREVIOUS step, which are the opposite parity to the ones step d writes, and
-    // sampling only d's own parity hands it stale values from step d-2 -- an alignment that walked
-    // off the front of the file and reported line numbers below 1.
-    const band = new Int32Array(2 * d + 1);
-    for (let k = -d; k <= d; k++) band[k + d] = v[off + k];
-    trace.push(band);
-    for (let k = -d; k <= d; k += 2) {
-      let x = k === -d || (k !== d && v[off + k - 1] < v[off + k + 1]) ? v[off + k + 1] : v[off + k - 1] + 1;
-      let y = x - k;
-      while (x < n && y < m && x0[x] === y0[y]) { x++; y++; }
-      v[off + k] = x;
-      if (x >= n && y >= m) return backtrackDiff(trace, d, x0, y0, lo);
-    }
+function lineDiff(before, after) {
+  const a = trimLines(before);
+  const b = trimLines(after);
+  const n = a.length, m = b.length;
+  if (n * m > 250000) return a.map((s) => ({ t: "-", s })).concat(b.map((s) => ({ t: "+", s })));
+  const L = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) L[i][j] = a[i] === b[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
   }
-  return { aOnly: span(lo + 1, n), bOnly: span(lo + 1, m), capped: true };
-}
-
-// Walk the recorded d-bands back from the end point, collecting the one line each step consumes.
-// The snake between two steps is common text and contributes nothing.
-function backtrackDiff(trace, d, x0, y0, lo) {
-  const aOnly = [], bOnly = [];
-  let x = x0.length, y = y0.length;
-  for (; d > 0; d--) {
-    const band = trace[d];
-    const at = (k) => band[k + d];
-    const k = x - y;
-    const prevK = k === -d || (k !== d && at(k - 1) < at(k + 1)) ? k + 1 : k - 1;
-    const prevX = at(prevK), prevY = prevX - prevK;
-    while (x > prevX && y > prevY) { x--; y--; }
-    if (x > prevX) aOnly.push(lo + x); // a line only `a` has: 1-based, undoing the prefix trim
-    else bOnly.push(lo + y);
-    x = prevX; y = prevY;
+  const ops = [];
+  let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) {
+      ops.push({ t: " ", s: a[i] });
+      i++;
+      j++;
+    } else if (L[i + 1][j] >= L[i][j + 1]) ops.push({ t: "-", s: a[i++] });
+    else ops.push({ t: "+", s: b[j++] });
   }
-  aOnly.reverse();
-  bOnly.reverse();
-  return { aOnly, bOnly, capped: false };
+  while (i < n) ops.push({ t: "-", s: a[i++] });
+  while (j < m) ops.push({ t: "+", s: b[j++] });
+  return ops;
 }
 
-// Line -> owning entity, innermost first. Entities nest (a method sits inside its class), and the
-// useful answer for a changed line is the smallest thing that contains it, so wider spans are
-// painted first and narrower ones overwrite them. Lines outside every span -- imports, module-level
-// statements, the gaps between definitions -- own nothing and are reported at file level.
-function spanOwners(spans, lineCount) {
-  const owner = new Array(lineCount + 1).fill(null);
-  const ordered = (spans || []).slice().sort(
-    (p, q) => (q.end_line - q.start_line) - (p.end_line - p.start_line));
-  for (const s of ordered) {
-    for (let ln = Math.max(1, s.start_line); ln <= Math.min(lineCount, s.end_line); ln++) {
-      owner[ln] = s;
+// The changed lines with one line of context, at most `cap` lines; a skipped stretch is a gap.
+function hunks(ops, cap) {
+  const near = ops.map((o, i) => o.t !== " " || (ops[i - 1] && ops[i - 1].t !== " ") || (ops[i + 1] && ops[i + 1].t !== " "));
+  const lines = [];
+  let more = 0;
+  ops.forEach((o, i) => {
+    if (!near[i]) return;
+    if (lines.length >= cap) {
+      if (o.t !== " ") more++;
+      return;
     }
-  }
-  return owner;
+    if (i > 0 && !near[i - 1] && lines.length) lines.push({ t: "gap", s: "" });
+    lines.push(o);
+  });
+  return { lines, more };
 }
-
-// How an entity reads on a row. An import is a real symbol here -- the extractor mints one per
-// specifier and a revert can take one out on its own -- but its stored name is the `__import__::`
-// marker `_symbol_kind` needs, which is machinery, not a name. Read off `kind` rather than
-// sniffing the string: that is what the field is for, and `_readable_symbols` already showed what
-// happens when a layout marker reaches a person's eyes verbatim.
-function entityName(span) {
-  if (!span) return "(top level)";
-  const name = span.symbol.split("::").slice(1).join("::");
-  return span.kind === "import" ? "import " + name.replace(/^__import__::/, "") : name;
-}
-
-// One changed path's per-entity tally. `added`/`removed` are relative to the WORK, not to a stored
-// field: a line only the with-side has is a line this work wrote.
-function fileChange(path, pair, withSide, maxD) {
-  const other = withSide === "before" ? "after" : "before";
-  const withLines = changeLines(pair[withSide]);
-  const otherLines = changeLines(pair[other]);
-  const d = lineDiff(otherLines, withLines, maxD);
-  const withOwner = spanOwners(pair[withSide + "_spans"], withLines.length);
-  const otherOwner = spanOwners(pair[other + "_spans"], otherLines.length);
-
-  const entities = new Map();
-  const bump = (span, side, line, text) => {
-    const key = span ? span.symbol : " top";
-    let e = entities.get(key);
-    if (!e) {
-      entities.set(key, (e = {
-        kind: "entity", path,
-        symbol: span ? span.symbol : null,
-        name: entityName(span),
-        entityKind: span ? span.kind : null,
-        order: span ? span.start_line : Infinity,
-        added: 0, removed: 0, lines: [],
-      }));
-    }
-    // Document order comes from the with-side where the entity is on it; an entity this work
-    // deleted outright has no with-side span, so it keeps its other-side position and sorts among
-    // the rest rather than being dumped at the end.
-    if (span && e.order === Infinity) e.order = span.start_line;
-    e[side]++;
-    // The line itself, not only the tally. Counting was all this did, and a panel of counts answers
-    // "how much" for a reader who asked "what" -- the whole reason they opened the checkpoint.
-    // Carried here because both sides' text is already in hand and neither is fetched again.
-    e.lines.push({ side: side === "added" ? "+" : "-", line, text });
-  };
-  for (const ln of d.bOnly) bump(withOwner[ln], "added", ln, withLines[ln - 1]);
-  for (const ln of d.aOnly) bump(otherOwner[ln], "removed", ln, otherLines[ln - 1]);
-  // Removed lines are collected on the other side's numbering, so a plain concat interleaves two
-  // unrelated coordinate systems. Sort each entity's lines by position within its own side, with a
-  // removal placed before the addition that replaces it -- which is how a diff reads.
-  for (const e of entities.values()) {
-    e.lines.sort((p, q) => p.line - q.line || (p.side === "-" ? -1 : 1));
-  }
-
-  const children = [...entities.values()].sort(
-    (p, q) => p.order - q.order || String(p.name).localeCompare(String(q.name)));
-  // "(top level)" is the residue bucket -- imports and module statements, not a thing anyone can
-  // point at -- so it reads last however early in the file it happens to sit.
-  children.sort((p, q) => (p.symbol ? 0 : 1) - (q.symbol ? 0 : 1));
-  return {
-    kind: "file", path, name: path.split("/").pop(), children,
-    added: d.bOnly.length, removed: d.aOnly.length, capped: d.capped,
-  };
-}
-
-// The whole projection as a file-explorer tree: directories, then files, then the entities inside
-// them, every node carrying its subtree's totals. Directories with a single child directory fold
-// into one row (`footfall/pages`), the way VS Code's explorer compacts them -- a panel this narrow
-// cannot spend a row and an indent level on a name with nothing to choose between.
-function changeTree(files, opts) {
-  opts = opts || {};
-  const withSide = opts.withSide === "after" ? "after" : "before";
-  const root = { kind: "dir", name: "", path: "", children: [], added: 0, removed: 0 };
-  let capped = false;
-  let fileCount = 0;
-
-  for (const path of Object.keys(files || {}).sort()) {
-    const node = fileChange(path, files[path] || {}, withSide, opts.maxD);
-    if (!node.added && !node.removed) continue; // a byte-identical pair is not a change
-    capped = capped || node.capped;
-    fileCount++;
-    const parts = path.split("/");
-    let dir = root;
-    for (let i = 0; i < parts.length - 1; i++) {
-      const sub = parts.slice(0, i + 1).join("/");
-      let next = dir.children.find((c) => c.kind === "dir" && c.path === sub);
-      if (!next) {
-        next = { kind: "dir", name: parts[i], path: sub, children: [], added: 0, removed: 0 };
-        dir.children.push(next);
-      }
-      dir = next;
-    }
-    dir.children.push(node);
-  }
-
-  const roll = (node, isRoot) => {
-    if (node.kind !== "dir") return;
-    // Fold a lone-child directory into this row before rolling, so the compacted name is the one
-    // the totals hang off. Never the root: it is the container the rows sit in, not a row, and
-    // folding into it deletes the one directory name the reader was going to read.
-    while (!isRoot && node.children.length === 1 && node.children[0].kind === "dir") {
-      const only = node.children[0];
-      node.name = node.name ? node.name + "/" + only.name : only.name;
-      node.path = only.path;
-      node.children = only.children;
-    }
-    node.children.sort((p, q) => (p.kind === q.kind ? 0 : p.kind === "dir" ? -1 : 1)
-      || String(p.name).localeCompare(String(q.name)));
-    node.added = 0;
-    node.removed = 0;
-    for (const c of node.children) {
-      roll(c, false);
-      node.added += c.added;
-      node.removed += c.removed;
-    }
-  };
-  roll(root, true);
-  return { root, added: root.added, removed: root.removed, fileCount, capped };
-}
-
-// GitHub's five-block diffstat, in the terminal grammar the rest of this view already speaks: a
-// fixed-width strip so the column scans, split by the change's own proportion, with `.` filling the
-// remainder. Every non-zero side keeps at least one glyph -- a 200/1 change drawn as five plus
-// signs would say the removal never happened, which is the one thing a reader most needs to see.
-function changeMeter(added, removed, width) {
-  width = width || 5;
-  const total = added + removed;
-  if (!total) return { plus: "", minus: "", rest: ".".repeat(width) };
-  let a = added ? Math.max(1, Math.round((added / total) * width)) : 0;
-  let r = removed ? Math.max(1, Math.round((removed / total) * width)) : 0;
-  while (a + r > width) { if (a >= r) a--; else r--; }
-  return { plus: "+".repeat(a), minus: "-".repeat(r), rest: ".".repeat(width - a - r) };
-}
-// ---- end-change-tree (test slice boundary) ----
-
-// ─── Rendering + interaction ──────────────────────────────────────────────────────────────────
-// Everything below touches the DOM/vscode API and is not exercised by the node harness.
+// ---- end model
 
 (function () {
+  if (typeof acquireVsCodeApi !== "function" || typeof document === "undefined") return;
   const vscode = acquireVsCodeApi();
-  // Op-kind glyphs, reused by the op-set decomposition's per-kind tally.
-
-  const state = vscode.getState() || {
-    collapsed: [], selected: null, compositionLabel: "HEAD", compositionRef: "HEAD",
+  const kept = vscode.getState() || {};
+  const req = requestLedger();
+  const S = {
+    mode: kept.mode === "ledger" ? "ledger" : "timeline",
+    unnamedOpen: !!kept.unnamedOpen,
+    phase: "loading",
+    error: "",
+    log: null,
+    status: null,
+    model: null,
+    sel: null,
+    cursor: null,
+    anchor: null,
+    preview: null,
+    marks: null,
+    showMarks: new Map(),
+    whole: false,
+    detail: new Map(),
+    queue: [],
+    showOut: false,
+    open: new Set(),
+    result: null,
+    busy: null,
+    ph: null,
+    hover: null,
+    hits: null,
+    hitAt: 0,
+    flash: null,
+    arrived: new Set(),
+    pendingFocus: null,
+    scrolled: false,
   };
-  if (state.selectedStep === undefined) state.selectedStep = null;
-  if (state.selectedPlanSession === undefined) state.selectedPlanSession = null;
-  if (state.selectedActor === undefined) state.selectedActor = null; // a live session column, followed
-  if (!Array.isArray(state.multi)) state.multi = state.selected ? [state.selected] : [];
-  // "tree" (the subsystem hierarchy, folded to its top level) | "flat" (feature rows,
-  // newest-touched first). Tree is the default again: the grey-wall objection that made flat the
-  // default is gone (the host now gives subsystems an identity hue too, see workbench.ts), and a
-  // flat list of leaves is how the study's pilots lost the hierarchy this surface exists to show.
-  if (state.grouping !== "flat") state.grouping = "tree";
-  if (state.themeFocus === undefined) state.themeFocus = null; // a cross-feature theme under TableLens focus
-  let compose = {
-    map: { nodes: [], roots: [], edges: [] }, history: { commits: [], ops: [] },
-    grid: { commits: [], cells: [] },
-    status: { oracle: { configured: false, status: "pending" } }, sessions: { sessions: [] }, proposals: [],
-  };
-  let map = compose.map;
-  // id -> node index, rebuilt whenever `map` is reassigned (the "state" handler below). byId is a
-  // hot path -- called per lane and per rail row (directly and via laneColor) -- so it's a Map
-  // lookup rather than an O(nodes) scan on every call.
-  let nodeIndex = new Map((map.nodes || []).map((n) => [n.id, n]));
-  let history = compose.history; // still the per-op stream the render half reads (op-set panel, plan/drift joins)
-  let grid = compose.grid;       // grid_view's cell table -- the layout functions' canonical join (plan U3)
-  let layout = groupedLayout(map, grid, compose);
-  let lastRenderWidth = -1; // rail width the last render() drew at; the resize observer skips no-op width reflows
-  let lastRenderHeight = -1; // rail height the last render() drew at; the observer reflows on vertical resize too
-  // The pane measurement a draw is sized from, recorded at the ONE place the DOM is measured so the
-  // resize gate's baseline can never drift from the geometry actually drawn. It used to be stamped at
-  // the top of render(), which meant anything throwing before the draw (or a draw that never ran) left
-  // the gate claiming the new size while the SVG still showed the old one -- and since the gate then
-  // saw no delta, no later resize ever reflowed: the timeline stayed squeezed into a corner of a wide
-  // pane. 320 is the floor the geometry falls back to; the raw measurement is what gets recorded.
-  function panePx() {
-    lastRenderWidth = rail.clientWidth;
-    lastRenderHeight = rail.clientHeight;
-    return { w: Math.max(lastRenderWidth || 0, 320), h: lastRenderHeight || 0 };
+  const post = (m) => vscode.postMessage(m);
+  const keep = () => vscode.setState({ mode: S.mode, unnamedOpen: S.unnamedOpen });
+
+  function h(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
   }
-
-  // A hidden or collapsed pane (the panel folded shut, another view holding the slot) measures 0x0.
-  // Drawing then bakes the 320px floor and a natural-height axis into the DOM, which is exactly the
-  // squeezed-into-the-corner state a wide pane must never be left in. Skip the draw instead -- the
-  // last good SVG stays put, and reflowIfStale() redraws the moment the pane is measurable again.
-  function paneMeasurable() {
-    return rail.clientWidth > 0;
+  function button(label, cls, onClick) {
+    const b = h("button", "btn" + (cls ? " " + cls : ""), label);
+    b.type = "button";
+    b.addEventListener("click", onClick);
+    return b;
   }
-  let armedVerb = null; // {verb, feature} while "Merge into..."/"Move ops..." is picking a target
-  let previewSeq = 0;
-  let pendingPreview = null;
-  let previewActive = false; // a held Focus & Morph consequence overlay owns the field dim
-  let foldSeq = 0;
-  let pendingFold = null;
-  let foldResultCache = {}; // featureId -> {files, oracle_verdict, forked, error}, reset per composition
-
-  // The inspector's change panel: one `--emit` projection per selected scope (`<verb><ref>`, so a
-  // chapter and its feature never share an answer), reset per composition like every other read.
-  // The two fold sets are transient by design -- see `toggleChangeFold`.
-  let changeSeq = 0;
-  let pendingChange = null;
-  let changeCache = {};
-  const changeFolded = new Set();
-  const changeUnfolded = new Set();
-
-  // The words behind the selected chapter. Two levels, because they cost different things: the
-  // excerpt is already in the payload for every chapter and is drawn for free, and the verbatim
-  // prompts are fetched only when a reader opens one (`requestAsked` -> `ugh show --asked`). A
-  // prompt is a paragraph; forty of them would be most of a panel refresh, for words nobody is
-  // reading yet.
-  //
-  // `askedOpen` is the checkpoint whose full text is showing -- one at a time, since this is a
-  // reading state and two open transcripts in a narrow panel is neither. `askedAnimated` records
-  // which chapter's block has already played its enter, so a poll that re-renders the panel does
-  // not replay the animation under the reader's eyes.
-  let askedSeq = 0;
-  let pendingAsked = null; // {seq, ref}
-  let askedCache = {};     // checkpoint -> {asks} | {error}
-  let askedOpen = null;    // checkpoint whose verbatim prompts are expanded
-  let askedAnimated = null;
-
-  // Multi-select union closure (Stage C): ⌘/ctrl/shift-click accretes a set of feature lanes; the
-  // host resolves the union via `ugh select` and we show the closure count + paint it. Transient
-  // (a selection is exploratory, not worth persisting): the set lives on state.multi, the resolved
-  // closure here.
-  let selectionSeq = 0;
-  let pendingSelection = null;
-  let selectionResult = null; // { refs, view } for the current state.multi, or null
-  let pendingReveal = null; // an editor->graph reveal target awaiting the graph's next render (task 4)
-
-  // The staged destructive action (the in-graph confirm): a Revert/Restore/Back-to-here click
-  // holds its consequence preview on the field and raises the confirm bar; nothing runs until
-  // Apply. While `applyBusy` is set the bar shows the host's real phases instead of the buttons.
-  let stagedAction = null; // {verb, ref, targetId, label, kind: "feature"|"chapter"|"backto", refs?, res?}
-  let applyBusy = null; // {verb, phase, detail} while the host applies a staged action
-  let pendingSettle = []; // feature ids to flash once the post-apply state lands (the receipt)
-  let settleDir = "out"; // which way that flash goes: "out" reverted, "in" restored
-  let semanticState = null; // the meaning rung of find: {query, pending, hits, mode, message}
-  // The result the reader actually clicked, and the lanes it reaches: {query, ids}. A save hit
-  // carries a commit index rather than a feature, so matching the raw query text against lane
-  // labels lit nothing and the map answered a chosen result with no highlight at all.
-  let findPick = null;
-
-  // Composition-picker hover-preview: while the titlebar's composition QuickPick is open, arrowing
-  // over a session/branch item folds it live and takes over the code(I) slot -- "what would
-  // switching to this show," seen before committing to the real `ugh switch`.
-  let compositionPreviewActive = null; // the ref currently previewed, or null when the picker is closed
-  let compositionPreviewCache = {}; // ref -> {files, oracle_verdict, forked, error}
-  let latestCompositionPreviewSeq = 0; // discards a stale reply that lands after a newer hover
-
-  // Frontier scrubber: a commit-index the user is scrubbing on the bottom time axis, independent of
-  // `state` (a transient exploration mode, not worth persisting across a webview reload).
-  let playheadCommitIndex = null;
-  let playheadDragging = false;
-  let playheadSeq = 0;
-  let pendingPlayhead = null;
-  let playheadResultCache = {}; // commitIndex -> {op_count, files, oracle_verdict, forked, error}
-  let scrubTimer = null;
-  // The playhead's mass (see "The playhead as an instrument"): where the spring has it, its
-  // speed, where it is going, the hand's x while dragging, and the frame loop's handle.
-  const ph = { x: null, v: 0, target: null, raf: 0, last: 0, holdTimer: null };
-
-  // Plan marks: predicted steps render as a dashed accent ring + count badge on their predicted
-  // feature's node (see collectPlanMarks / renderNodeBadges). `knownPlanSteps`/`prevKnownPlanSteps`
-  // snapshot ids across renders so an "entering" pulse fires only on a genuine transition.
-  let planMarks = { steps: [], byFeature: {}, floating: [], sessions: [] };
-  // Checkpoints: a feature's intent segments (compose.intent.segments) grouped by feature, in
-  // chronological order -- the "which version do I rewind to" list the inspector shows per feature.
-  let checkpointsByFeature = {};
-  let knownPlanSteps = new Set();
-  let pendingPlanSteps = new Set();
-  let prevKnownPlanSteps = new Set();
-  let prevPendingPlanSteps = new Set();
-  let planStepEnterStagger = {}; // step id -> 0-based order among this render's newly-entering steps
-  let currentActors = [];     // who has work coming (collectActors), rebuilt each graph render
-  let forecastColumns = [];   // the band's columns for this render (forecastColumnsFor)
-  let ghostRects = new Map(); // `${actor.id}|${lane.id}` -> {x, w, barY, midY, rect}, for the overlap ties
-  let offscreen = { above: 0, below: 0 }; // lanes a held preview changes that are scrolled out of view
-
-  // Drift marks: a mined op no active plan predicted -- flags the owning node with a solid ring.
-  let driftMarks = { ids: new Set(), unplaced: [] };
-  let knownDriftIds = new Set();
-  let prevKnownDriftIds = new Set();
-
-  let forkMarks = { byFeature: {}, unplaced: [] };
-
-  // Save-preview marks: which features would GAIN ops on the next `ugh save` (compose.save_preview)
-  // -- rendered as a dashed "ghost car" at the now-frontier of each affected lane, so the user sees
-  // the consequence of saving before saving. Feature-granular by design (op-level reconciliation
-  // stays out of the default surface). `prevPendingFeatures`/`prevCarCounts` snapshot across renders
-  // so a ghost that just LANDED (the save turned it into a real car) can play a one-shot solidify
-  // transition instead of the ghost popping and a solid car appearing from nowhere.
-  let savePreviewMarks = { byFeature: {}, newWork: 0 };
-  let prevPendingFeatures = new Set();
-  let prevCarCounts = {};
-  let landingFeatures = new Set(); // leaf lanes whose newest car should play the solidify anim
-
-  // Theme focus (the TableLens read): one cross-feature group emphasized. Resolved fresh from
-  // compose.intent.themes each recompute -- the payload is the authority, state holds only the id.
-  // While set, ganttGeom compresses every non-member lane to a thin density row and renderCars
-  // outlines the member chapters, so "one piece of work across five features" is one visible band
-  // instead of a footnote in `ugh intent list`.
-  let themeMarks = null; // {id, label, tier, featureIds:Set, commitIdx:Set} | null
-  function resolveThemeMarks() {
-    if (!state.themeFocus) return null;
-    const t = (((compose || {}).intent || {}).themes || []).find((x) => x.theme_id === state.themeFocus);
-    if (!t) return null;
-    const idxOf = new Map(((grid && grid.commits) || []).map((c) => [c.sha, c.index]));
-    const commitIdx = new Set((t.atom_shas || []).map((sh) => idxOf.get(sh)).filter((i) => i != null));
-    return { id: t.theme_id, label: t.label, tier: t.tier,
-             featureIds: new Set(t.feature_span || []), commitIdx };
-  }
-  // The spanning work worth showing: multi-feature, and genuinely NAMED. The "(unwitnessed)"
-  // rollup is the catch-all for commits outside any theme -- it spans most of the repo by
-  // construction and reads as a work item called "(unwitnessed)", which is noise on every
-  // surface that lists work by name.
-  function spanningThemes() {
-    return ((((compose || {}).intent) || {}).themes || [])
-      .filter((t) => (t.feature_span || []).length > 1 && t.label && t.label !== "(unwitnessed)");
-  }
-
-  function laneInThemeFocus(l) {
-    if (!themeMarks) return true;
-    return themeMarks.featureIds.has(l.id) || (l.leaves || []).some((f) => themeMarks.featureIds.has(f));
-  }
-
-  // A save picked in find: its chapters flash across every lane it touched, then the flash clears.
-  let saveFlashIdx = null;
-
-  // Where each chapter was actually drawn this render (checkpoint -> {x, w, midY, laneId}).
-  // The cross-feature spines anchor on these exact rectangles rather than re-deriving the
-  // gap-fill tiling renderCars does -- one layout, two consumers.
-  let carRects = new Map();
-
-  const rail = document.getElementById("rail");
-  const inspector = document.getElementById("inspector");
-  const offscreenAbove = document.getElementById("offscreenAbove");
-  const offscreenBelow = document.getElementById("offscreenBelow");
-  const previewContext = document.getElementById("previewContext"); // "＋N unchanged" context tally
-  const armedBanner = document.getElementById("armedBanner"); // the armed merge/move mode, stated
-  const previewRefusal = document.getElementById("previewRefusal"); // blocked-restore remedies overlay
-  const inspectorToggle = document.getElementById("inspectorToggle");
-  const confirmBar = document.getElementById("confirmBar"); // staged-action consequence + Apply/Cancel
-
-  const SVG_TAGS = new Set(["svg", "g", "path", "circle", "rect", "text", "line", "title", "tspan"]);
-
-  function mk(tag, attrs, children) {
-    const ns = SVG_TAGS.has(tag) ? "http://www.w3.org/2000/svg" : "http://www.w3.org/1999/xhtml";
-    const el = document.createElementNS(ns, tag);
-    for (const k in attrs || {}) {
-      if (k === "text") el.textContent = attrs[k];
-      else el.setAttribute(k, attrs[k]);
-    }
-    for (const c of children || []) el.appendChild(c);
-    return el;
-  }
-
-  function byId(id) {
-    return nodeIndex.get(id);
-  }
-
-  // ─── Plan marks (Phase 6) ─────────────────────────────────────────────────────────────────────
-  // `predicted_feature` is always a real existing feature id or null (ugh/loop/plan.py's decompose
-  // prompt never lets the LLM invent one) -- so a pending step always has a real row to attach to,
-  // or none. Rather than injecting a synthetic ghost subtree ahead of `computeLayout` (Phase 5's
-  // approach), a pending step is treated as a hypothetical *next op* on its predicted feature's
-  // own row: `map`/`history` stay pristine, and this just indexes plan.sessions for the renderer
-  // to consult per-row. A matched step produces no mark at all -- the confirmed op is already a
-  // real entry in `history.ops` and renders as a normal glyph on its true feature row; `steps`
-  // still carries matched entries too, purely so the landing/comet transition (render()) can see
-  // what a step *was* on the one render where it just resolved.
-  function collectPlanMarks(plan, hist) {
-    const opFeature = {};
-    for (const op of (hist && hist.ops) || []) opFeature[op.id] = op.feature_id;
-
-    // Footprint-overlap candidates (`ugh checkpoint`'s preview) a human hasn't confirmed yet --
-    // `step.status` only flips to "matched" after `ugh checkpoint --confirm-hollow/--confirm-op`
-    // actually runs, so a pending step can already have a candidate group here.
-    const groupByHollow = {};
-    for (const group of (plan && plan.checkpoint && plan.checkpoint.matches) || []) {
-      for (const h of group.hollow_ids) groupByHollow[h] = group;
-    }
-
-    const steps = [];
-    const sessions = [];
-    for (const session of (plan && plan.sessions) || []) {
-      let matchedCount = 0;
-      for (const step of session.steps || []) {
-        const matched = step.status === "matched";
-        if (matched) matchedCount++;
-        let matchedFeature = null;
-        let matchedOpId = null;
-        for (const opId of step.matched_op_ids || []) {
-          if (opFeature[opId] != null) {
-            matchedFeature = opFeature[opId];
-            matchedOpId = opId;
-            break;
-          }
-        }
-        steps.push({
-          id: step.hollow_id, sessionId: session.session_id, label: step.title, matched,
-          matchedFeature, matchedOpId, predictedFeature: step.predicted_feature || null,
-          rationale: step.rationale, footprint: step.predicted_footprint || [], files: step.files || [],
-          checkpointMatch: matched ? null : groupByHollow[step.hollow_id] || null,
-        });
-      }
-      sessions.push({
-        sessionId: session.session_id, planText: session.plan_text,
-        claudeSessionId: session.claude_session_id || null, // the agent's own id: joins a live session
-        matchedInSession: !!session.matched_in_session, // its steps were matched against that session's work
-        matchedCount, stepCount: (session.steps || []).length,
-        derivedStatus: session.derived_status || null,
-        pendingCount: session.pending_count != null ? session.pending_count : null,
-        remainingTitles: session.remaining_titles || [],
-      });
-    }
-
-    const byFeature = {};
-    const floating = [];
-    for (const step of steps) {
-      if (step.matched) continue;
-      if (step.predictedFeature) {
-        (byFeature[step.predictedFeature] || (byFeature[step.predictedFeature] = [])).push(step);
-      } else {
-        floating.push(step);
-      }
-    }
-    return { steps, byFeature, floating, sessions };
-  }
-
-  // ─── Drift marks ──────────────────────────────────────────────────────────────────────────────
-  // A drift op (`compose.drift.entries`) is a mined op no active plan session predicted -- "the
-  // actual diverged from plan." `DriftEntry` carries only `op_id`/`kind`/`footprint`/`files`, no
-  // feature/commit-index, so this joins through `history.ops` (same join style as
-  // `collectPlanMarks`'s `opFeature` map) to find where on the rail it already lives: a drift op
-  // is a REAL op, already drawn as an ordinary glyph by `renderOpsForRow` -- this never adds a
-  // second mark, it flags the existing one (a ring drawn around it, decided in renderOpsForRow).
-  // An op with no feature (unattributed) has no row to ring; those are reported as `unplaced` for
-  // the inspector's floating list, mirroring plan's own floating-step idiom.
-  function collectDriftMarks(drift, hist) {
-    const byOp = {};
-    for (const op of (hist && hist.ops) || []) byOp[op.id] = op;
-
-    const ids = new Set();
-    const unplaced = [];
-    for (const entry of (drift && drift.entries) || []) {
-      const op = byOp[entry.op_id];
-      if (op && op.feature_id != null) {
-        ids.add(entry.op_id);
-      } else {
-        unplaced.push(entry);
-      }
-    }
-    return { ids, unplaced };
-  }
-
-  // ─── Checkpoint marks ───────────────────────────────────────────────────────────────────────────
-  // Group `compose.intent.segments` by feature, chronological. Each segment is a "checkpoint" -- a
-  // contiguous chapter of a feature's history sharing one intent, addressable/revertable as
-  // `<feature>@<seg_index>`. The inspector lists these so a feature is a short story, not 100 ops.
-  function segmentsOf(c) {
-    return (c && c.intent && c.intent.segments) || [];
-  }
-
-  function collectCheckpoints(intent) {
-    const byFeature = {};
-    for (const seg of (intent && intent.segments) || []) {
-      (byFeature[seg.feature_id] = byFeature[seg.feature_id] || []).push(seg);
-    }
-    for (const fid of Object.keys(byFeature)) {
-      byFeature[fid].sort((a, b) => a.seg_index - b.seg_index);
-    }
-    return byFeature;
-  }
-
-  // ─── Fork marks ───────────────────────────────────────────────────────────────────────────────
-  // An open same-symbol chain fork (`compose.forks.forks`) has no commit-index column of its own
-  // -- both tips are, by construction, excluded from every verb-visible ideal (they never reach
-  // `history.ops`) -- so it's placed by `dir`-prefix match against `MapNode.dir` (the same locator
-  // `requestFold` already uses), picking the LONGEST matching feature dir so a subsystem's dir
-  // (always a prefix of its children's) never steals a fork from the feature that actually owns
-  // it. A fork whose file matches no feature's dir (e.g. every op on that path was itself forked
-  // away) has nowhere on the rail to attach and is reported as `unplaced`, mirroring drift's own
-  // unplaced idiom rather than inventing a synthetic row.
-  function collectForkMarks(forksView, nodes) {
-    const features = (nodes || []).filter((n) => n.kind === "feature" && n.dir);
-    const byFeature = {};
-    const unplaced = [];
-    for (const fork of (forksView && forksView.forks) || []) {
-      let best = null;
-      for (const n of features) {
-        if (fork.file.startsWith(n.dir) && (!best || n.dir.length > best.dir.length)) best = n;
-      }
-      if (best) {
-        (byFeature[best.id] || (byFeature[best.id] = [])).push(fork);
-      } else {
-        unplaced.push(fork);
-      }
-    }
-    return { byFeature, unplaced };
-  }
-
-  // Save-preview marks: fold `compose.save_preview` into a {feature_id -> pending op_count} map plus
-  // the new-work count (ops belonging to no built feature). Feature-granular by design -- the ghost
-  // car answers "which features gain work on save", never op/symbol-level reconciliation.
-  function collectSavePreview(sp) {
-    const byFeature = {};
-    for (const row of (sp && sp.affected) || []) byFeature[row.feature_id] = row.op_count;
-    return { byFeature, newWork: (sp && sp.new_work_count) || 0 };
-  }
-
-  function saveState() {
-    vscode.setState(state);
-  }
-
-  function recompute() {
-    // Full history: the frontier scrubber dims nodes/cars past its point (see applyFrontier)
-    // rather than re-laying-out on every drag, so the layout stays stable while scrubbing.
-    themeMarks = resolveThemeMarks(); // before geometry: row heights depend on it
-    layout = groupedLayout(map, grid, compose);
-  }
-
-  // The tree view (the default) opens folded to its subsystem rows: root(s) expanded to their
-  // direct children, deeper subsystems collapsed, so the reader meets ~20 rows instead of every
-  // leaf at once. Applied exactly once, and only after real nodes have arrived; any later
-  // expand/collapse persists and is never overwritten.
-  function applyClusterDefaultOnce() {
-    if (state.clusteredOnce) return;
-    const roots = new Set(map.roots || []);
-    const subs = (map.nodes || []).filter(
-      (n) => n.kind === "subsystem" && n.children && n.children.length && !roots.has(n.id)
-    );
-    if (!subs.length) return; // nothing to cluster yet; retry on the next state with real nodes
-    state.collapsed = subs.map((n) => n.id);
-    state.clusteredOnce = true;
-    saveState();
-  }
-
-  const groupBtn = document.getElementById("groupBtn");
-  if (groupBtn) {
-    groupBtn.addEventListener("click", () => {
-      state.grouping = state.grouping === "tree" ? "flat" : "tree";
-      saveState();
-      // Grouping is a LAYOUT choice, so the layout has to be rebuilt -- `render()` alone redraws
-      // the cached one, which flipped the button's label over an unchanged set of rows.
-      applyClusterDefaultOnce();  // the tree view's first open is still folded to its subsystems
-      recompute();
-      render();
-    });
-  }
-
-  // The reader's grouping choice, applied in one place so the two layout call sites cannot
-  // disagree about which view is on screen. "flat" (the default) is feature rows newest-first;
-  // "tree" is the subsystem hierarchy, folded.
-  function groupedLayout(m, g, comp) {
-    if (state.grouping === "tree") {
-      return computeSegmentLayout(m, g, segmentsOf(comp), { collapsed: state.collapsed });
-    }
-    // Flat means FEATURES, so it folds nothing: a collapsed subsystem would come back as a
-    // meta-lane, and a meta-lane is not a feature -- it has no identity hue, and one grey row in a
-    // coloured list reads as a broken row rather than as a different kind of thing. The reader's
-    // fold state is left untouched so switching back to the tree finds it as they left it.
-    return flattenLayout(computeSegmentLayout(m, g, segmentsOf(comp), { collapsed: [] }));
-  }
-
-  // The Save/Undo pair, derived from whichever verb is running in the host. They had no in-flight
-  // state at all, so the only feedback was the toast at the end -- and a reader who sees nothing
-  // clicks again. Both go inert while either one runs, not just the one clicked: they mutate the
-  // same ideal, so an undo fired mid-save is a race the reader did not mean to start. Only the
-  // running one changes its label, because the other is unavailable rather than busy.
-  //
-  // This was a Save/Commit/Undo trio. `ugh save` mines and commits in one verb, so the middle
-  // button's label promised a step the first had already taken, while the command it ran
-  // (`advanced commit`) lands a staged rewrite candidate and otherwise refuses -- drawn permanently
-  // for a state that is rare and gated. Landing moved into the Working-changes card, where the state
-  // is visible and the oracle gate can be shown instead of arriving as a failure after the click.
-  function loopButtonState(busy) {
-    return [["save", "Save", "Saving…"], ["undo", "Undo", "Undoing…"]].map(([verb, idle, running]) => ({
-      verb, label: busy === verb ? running : idle, disabled: busy !== null,
-    }));
-  }
-  // ---- end-signals
-
-  function renderTitlebar() {
-    // The button is labelled with what it SHOWS, not with what clicking it does. A toggle labelled
-    // with its action makes the reader work out which state they are currently in from the label of
-    // the state they are not in.
-    if (groupBtn) {
-      groupBtn.textContent = state.grouping === "tree" ? "Subsystems" : "Features";
-    }
-
-    // ── Actions zone: inspector toggle (Save/Commit/Undo are wired once at init) ─────────────────
-    inspectorToggle.textContent = state.inspectorCollapsed ? "Show details" : "Hide details";
-    inspectorToggle.title = state.inspectorCollapsed ? "Show detail panel" : "Hide detail panel";
-    document.getElementById("app").classList.toggle("inspector-collapsed", !!state.inspectorCollapsed);
-  }
-
-  function render() {
-    renderTitlebar();
-    // Plan-badge transition bookkeeping: a step newly seen pending gets an entering pulse; a step
-    // that just matched drops its pending badge. (The rail's cross-row comet/FLIP morphs retired
-    // with the rail -- the graph re-lays out on structural change and node identity carries
-    // continuity, so per-row Y morphs no longer apply.)
-    prevKnownPlanSteps = knownPlanSteps;
-    prevPendingPlanSteps = pendingPlanSteps;
-    prevKnownDriftIds = knownDriftIds;
-    planStepEnterStagger = {};
-    let enterN = 0;
-    for (const step of planMarks.steps) {
-      if (!step.matched && !prevKnownPlanSteps.has(step.id)) planStepEnterStagger[step.id] = enterN++;
-    }
-    const nextKnown = new Set();
-    const nextPending = new Set();
-    for (const step of planMarks.steps) {
-      nextKnown.add(step.id);
-      if (!step.matched) nextPending.add(step.id);
-    }
-    knownPlanSteps = nextKnown;
-    pendingPlanSteps = nextPending;
-    knownDriftIds = new Set(driftMarks.ids);
-
-    // Save-preview landing: a leaf lane that HAD a ghost last render and now has a genuinely new car
-    // (its car count rose because the save committed the pending work into a real checkpoint) plays
-    // the one-shot solidify transition. A ghost that vanished with no new car (the user reverted the
-    // uncommitted edit instead of saving) is not a landing -- so gate on the car-count rise.
-    const nowPending = new Set(Object.keys(savePreviewMarks.byFeature));
-    const carCounts = {};
-    for (const l of (layout.lanes || [])) carCounts[l.id] = (l.cars || []).length;
-    landingFeatures = new Set();
-    if (!prefersReducedMotion()) {
-      for (const fid of prevPendingFeatures) {
-        if (!nowPending.has(fid) && (carCounts[fid] || 0) > (prevCarCounts[fid] || 0)) {
-          landingFeatures.add(fid);
-        }
-      }
-    }
-    prevPendingFeatures = nowPending;
-    prevCarCounts = carCounts;
-
-    syncFocus();
-    renderGraph();
-    renderInspector();
-    renderPresence();
-    renderThemeBanner();
-    renderContextRows();
-    if (stagedAction && !applyBusy && stagedAction.res) {
-      paintStaged(stagedAction);
-      renderConfirmBar(); // its words also mark the other checkpoints and each function's fate
-    }
-  }
-
-  // Enter/exit the theme focus (a toggle: focusing the focused theme clears it). The state holds
-  // only the id; everything else re-derives from the payload on recompute.
-  function setThemeFocus(themeId) {
-    state.themeFocus = state.themeFocus === themeId ? null : themeId;
-    saveState();
-    recompute();
-    render();
-  }
-
-  // The theme-focus banner: what is focused, what the dimming means, and the two whole-group verbs.
-  // Lives above the plot (like the armed banner) because the focus recolors the whole field -- a
-  // mostly-thin map with no caption reads as a bug, not a lens.
-  function renderThemeBanner() {
-    const el = document.getElementById("themeBanner");
-    if (!el) return;
-    if (!themeMarks) { el.hidden = true; el.innerHTML = ""; return; }
-    el.hidden = false;
-    el.innerHTML = "";
-    const name = document.createElement("span");
-    name.className = "theme-banner-name";
-    name.textContent = themeMarks.label;
-    const note = document.createElement("span");
-    note.className = "theme-banner-note";
-    note.textContent = `one request across ${themeMarks.featureIds.size} features: its checkpoints are ringed, other lanes are faded`;
-    el.append(name, note);
-    const mkBtn = (label, title, fn) => {
-      const b = document.createElement("button");
-      b.textContent = label;
-      b.title = title;
-      b.addEventListener("click", fn);
-      el.appendChild(b);
-      return b;
-    };
-    // The whole-group verbs take the theme's LABEL -- the same string `ugh revert "<name>"`
-    // resolves -- through the ordinary staged-confirm path, so the consequence is previewed and
-    // nothing runs until Apply.
-    const anchor = [...themeMarks.featureIds][0] || null;
-    mkBtn("Revert this work", `ugh revert "${themeMarks.label}", previewed first`, () =>
-      stageAction({ verb: "revert", ref: themeMarks.label, targetId: anchor,
-                    label: themeMarks.label, kind: "feature" }));
-    mkBtn("Restore", `ugh restore "${themeMarks.label}", previewed first`, () =>
-      stageAction({ verb: "restore", ref: themeMarks.label, targetId: anchor,
-                    label: themeMarks.label, kind: "feature" }));
-    mkBtn("Show everything", "clear the focus", () => setThemeFocus(themeMarks.id));
-  }
-
-  // Reveal a save from find: flash its chapters on every lane that commit touched, unfolding any
-  // subsystem that hides one, and say what was highlighted. Clears itself -- a flash is an answer,
-  // not a mode.
-  let saveFlashTimer = null;
-  function revealSave(commitIndex, label) {
-    saveFlashIdx = commitIndex;
-    const touched = new Set(((grid && grid.cells) || [])
-      .filter((c) => c.commit_index === commitIndex).map((c) => c.feature_id));
-    let changed = false;
-    for (const fid of touched) {
-      let cur = byId(fid);
-      cur = cur ? byId(cur.parent) : null;
-      while (cur) {
-        const i = state.collapsed.indexOf(cur.id);
-        if (i >= 0) { state.collapsed.splice(i, 1); changed = true; }
-        cur = byId(cur.parent);
-      }
-    }
-    if (changed) { saveState(); recompute(); }
-    render();
-    const hit = rail.querySelector(".gcar-save-hit");
-    if (hit && hit.scrollIntoView) hit.scrollIntoView({ block: "center" });
-    setPreviewContext(`${label || "save"}: lit on ${touched.size} lane(s)`, "identity");
-    clearTimeout(saveFlashTimer);
-    saveFlashTimer = setTimeout(() => {
-      saveFlashIdx = null;
-      if (previewContext.classList.contains("identity")) setPreviewContext(null);
-      render();
-    }, 4000);
-  }
-
-  // The persistent "where am I" band (Stage C): composition · view · current selection + its live
-  // closure count · scrub position · uncommitted work. Always visible, so the developer never loses
-  // their place regardless of what's selected or scrubbed.
-  // Faded always means "outside what you are looking at", and the strip says which question that is
-  // and offers the one way out: the playhead in the past, a followed session, a search. (A focused
-  // cross-feature request and a held revert have their own rows already.)
-  function renderContextRows() {
-    const host = document.getElementById("contextRows");
-    if (!host) return;
-    host.replaceChildren();
-    const row = (text, button, fn) => {
-      const r = el("div", "context-row");
-      r.appendChild(el("span", "context-text", text));
-      const b = el("button", "context-exit", button);
-      b.addEventListener("click", fn);
-      r.appendChild(b);
-      host.appendChild(r);
-    };
-    if (playheadCommitIndex != null) {
-      const n = ((compose.history || {}).commits || []).length;
-      const when = axisLabel(playheadCommitIndex);
-      row(`Looking at save ${playheadCommitIndex + 1} of ${n}${when.startsWith("save") ? "" : ", " + when}. Work after it is faded.`,
-        "Back to now", () => clearPlayhead());
-    }
-    const followed = selectedActor();
-    if (followed) row(`Following ${followed.label}. Lanes it has not touched are faded.`, "Show all", () => clearActor());
-    const box = document.getElementById("findBox");
-    const q = box ? box.value.trim() : "";
-    if (q) row(`Showing what matches “${q}”. Everything else is faded.`, "Clear", () => {
-      box.value = "";
-      findPick = null;
-      if (typeof renderFind === "function") renderFind("");
-      applyLens();
-      renderContextRows();
-    });
-    host.hidden = !host.children.length;
-  }
-
-  function renderPresence() {
-    const el = document.getElementById("presence");
-    if (!el) return;
-    // "HEAD" is git's word for the present; the present needs no name. A session or branch does.
-    const parts = state.compositionLabel && state.compositionLabel !== "HEAD" ? [state.compositionLabel] : [];
-    const multi = state.multi || [];
-    if (multi.length >= 2) {
-      const view = selectionResult && selectionResult.view;
-      const clo = view && view.ok ? ` → ${(view.files || []).length} file(s)` : "";
-      parts.push(`${multi.length} selected${clo}`);
-    } else if (state.selected) {
-      const n = byId(state.selected);
-      parts.push((n && n.label) || state.selected);
-    }
-    // Lanes the held preview changes that are out of view: the rail's edge glows, counted here.
-    const out = [offscreen.above ? `${offscreen.above} above` : null, offscreen.below ? `${offscreen.below} below` : null].filter(Boolean);
-    if (out.length) parts.push(`also changes ${out.join(", ")}`);
-    const drift = (compose.status && compose.status.drift) || { paths: [] };
-    const dpaths = (drift.paths || []).length;
-    if (dpaths) parts.push(`${dpaths} unsaved file${dpaths === 1 ? "" : "s"}`);
-    const saveBtn = document.getElementById("saveBtn");
-    if (saveBtn) saveBtn.classList.toggle("btn-primary", dpaths > 0);
-    // Staged paths used to land in that count and be described as uncommitted edits. They are the
-    // opposite: a rewrite of ops already recorded, and while one is live every materializing verb
-    // refuses -- which makes it the single most useful thing this always-visible line can carry.
-    if ((compose.status && compose.status.staged && compose.status.staged.paths || []).length) {
-      parts.push("a rewrite is staged");
-    }
-    el.textContent = parts.join("  ·  ");
-  }
-
-  function prefersReducedMotion() {
-    return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  }
-
-  // ─── The feature timeline (Gantt) ───────────────────────────────────────────────────────────
-  // One lane per feature: a left gutter (identity swatch + label) and a train of chunk-CARS, one
-  // per intent segment (`<feature>@<n>` checkpoint) -- the visual atom is the checkpoint, not a
-  // raw op or a shared time column (see computeSegmentLayout). Cars pack left->right in seg_index
-  // order, sized by op_count, shaded inside by their own per-commit density. Rows are grouped into
-  // subsystem swimlanes. The width tracks the pane; it scrolls vertically only when there are more
-  // lanes than fit. A resize re-runs render() via the ResizeObserver, so it reflows continuously.
-  // The bottom axis + frontier scrubber still read real commit-time (recovered cross-feature
-  // alignment lives in the episode rail); a car past the scrubbed frontier just dims in place.
-  // `ghostW` is the width a forecast car needs to carry a READABLE name (~12 glyphs at 6px). It is
-  // deliberately much wider than a history car's minimum: history can lean on position-in-time to say
-  // what it is, a forecast has only its label. Truncating a step title to 6 glyphs ("Reserv…") would
-  // leave the reader exactly where the old `+1` badge did, so the band prefers fewer, legible cars
-  // over more, unreadable ones -- and collapses the remainder into a stack card (see renderForecastCars).
-  // `countW` reserves the right-hand column the per-lane op count is set in. It used to be placed
-  // at `lastCar + 6`, clamped only to the SVG edge -- so on a lane whose work runs to the present
-  // the number landed ON the plot edge and the frontier scrubber, and on every other lane it sat
-  // at a different x. Ragged and overlapping, for a column of numbers that only means anything
-  // read down the page.
-  // `padT` is the plot's top margin. At 14 the `time →` axis title (baseline padT-3, a 9px face)
-  // ascended to y=2 and collided with the first swimlane band at y=14 -- the title read as
-  // clipped by the top of the panel. 20 clears it.
-  const GANTT = { maxLanes: 400, padT: 20, rowH: 22, barH: 10, axisH: 34, minBarW: 6, minCarW: 9, carGap: 1.5, labelMinW: 34, gutterPad: 8, cellGap: 0.5, indent: 14, ghostW: 72, minColW: 48, nowPad: 7, countW: 40 };
-  let graphView = null; // { geom, handleEl, frontierEl, veilEl } -- set each render for the scrubber
-
-  // ─── Reading a checkpoint without covering anything ─────────────────────────────────────────
-  // Hovering a checkpoint used to unfold a chip over its row: larger than the bar, in the lane's
-  // hue, on top of the neighbours. It covered the very things a reader was comparing, and with
-  // several lanes of one hue family it was hard to say which bar a chip belonged to. Nothing grows
-  // now. The bar takes an outline, two faint guides drop from its ends to the time axis, and the
-  // axis itself reads it out: a bracket of exactly the checkpoint's extent on the ruler, and its
-  // name, size and safety under the bracket where the dates usually are. The axis is pinned, so
-  // the reading is on screen however far the rows are scrolled.
-  let hoverLayer = null; // the top <g>, re-made every render (SVG paints in document order)
-
-  function axisRead(x1, x2, text, color, car) {
-    const v = graphView;
-    if (!v || !v.axisReadEl) return;
-    const reading = text != null;
-    v.axisSvg.classList.toggle("reading", reading);
-    v.axisSpanEl.style.display = reading ? "" : "none";
-    v.axisReadEl.style.display = reading ? "" : "none";
-    if (v.axisGlyphEl) { v.axisGlyphEl.remove(); v.axisGlyphEl = null; }
-    if (!reading) return;
-    const geom = v.geom;
-    const lo = geom.plotX0, hi = geom.plotX0 + geom.plotW;
-    v.axisSpanEl.setAttribute("x1", Math.max(lo, x1));
-    v.axisSpanEl.setAttribute("x2", Math.min(hi, Math.max(x1 + 2, x2)));
-    v.axisSpanEl.setAttribute("stroke", color || "var(--accent)");
-    const fit = fitText(text, Math.max(80, geom.plotW), "axis-read");
-    const w = textWidth(fit.text, "axis-read");
-    const mid = (x1 + x2) / 2;
-    const x = Math.max(lo + w / 2, Math.min(hi - w / 2, mid));
-    v.axisReadEl.setAttribute("x", x);
-    v.axisReadEl.textContent = fit.text;
-    // The checkpoint's shape, drawn rather than counted: a cell per function per save.
-    if (car) {
-      const gl = unitGlyph(car, color);
-      if (gl) {
-        const gx = Math.max(lo, x - w / 2 - gl.w - 8);
-        gl.g.setAttribute("transform", `translate(${gx} ${v.handleY + 16 - gl.h + 1})`);
-        v.axisSvg.appendChild(gl.g);
-        v.axisGlyphEl = gl.g;
-      }
-    }
-  }
-
-  // ---- unit-glyph (test slice boundary)
-  // A checkpoint's shape as a unit chart: one cell per function (rows) per save (columns), filled
-  // where that function changed in that save, hollow where it has since been taken out. It is the
-  // thumbnail of the opened checkpoint, so "5 functions, 2 saves" is something seen, not read.
-  function unitCells(car) {
-    const syms = (car.symbols || []).filter((s) => s && s.symbol && !/::__/.test(s.symbol));
-    const saves = [...new Set(syms.flatMap((s) => s.saves || []))].sort((a, b) => a - b);
-    const cols = saves.slice(0, 8), rows = syms.slice(0, 6);
-    const cells = [];
-    rows.forEach((s, r) => cols.forEach((ci, c) => {
-      if ((s.saves || []).includes(ci)) cells.push({ r, c, live: s.live !== false });
-    }));
-    return { rows: rows.length, cols: cols.length, cells, more: syms.length > rows.length || saves.length > cols.length };
-  }
-  // ---- end-unit-glyph
-
-  function unitGlyph(car, color) {
-    const u = unitCells(car);
-    if (!u.rows) return null;
-    const cell = 3, gap = 1;
-    const g = mk("g", { class: "unit-glyph" });
-    for (const k of u.cells) {
-      g.appendChild(mk("rect", { x: k.c * (cell + gap), y: k.r * (cell + gap), width: cell, height: cell, rx: 0.5,
-        fill: k.live ? color : "none", stroke: color, "stroke-width": k.live ? 0 : 0.8 }));
-    }
-    return { g, w: u.cols * (cell + gap) - gap, h: u.rows * (cell + gap) - gap };
-  }
-
-  // The same glyph as an inline element for the detail panel's list.
-  function unitGlyphEl(car, color) {
-    const u = unitCells(car);
+  function chevron(open) {
     const ns = "http://www.w3.org/2000/svg";
-    const cell = 3, gap = 1;
-    const svgEl = document.createElementNS ? document.createElementNS(ns, "svg") : document.createElement("svg");
-    const w = Math.max(1, u.cols) * (cell + gap) - gap, h = Math.max(1, u.rows) * (cell + gap) - gap;
-    svgEl.setAttribute("width", w);
-    svgEl.setAttribute("height", h);
-    svgEl.setAttribute("class", "unit-glyph-inline");
-    for (const k of u.cells) {
-      const r = document.createElementNS ? document.createElementNS(ns, "rect") : document.createElement("rect");
-      r.setAttribute("x", k.c * (cell + gap)); r.setAttribute("y", k.r * (cell + gap));
-      r.setAttribute("width", cell); r.setAttribute("height", cell);
-      r.setAttribute("fill", k.live ? color : "none"); r.setAttribute("stroke", color);
-      r.setAttribute("stroke-width", k.live ? 0 : 0.8);
-      svgEl.appendChild(r);
-    }
-    return svgEl;
-  }
-
-  // The words for one checkpoint, as the axis reads them: its name, its size in the reader's
-  // units, whether it is still in, and whether anything later stands on it.
-  function carReading(car) {
-    const parts = [car.label || "checkpoint"];
-    const named = (car.symbols || []).filter((s) => s && s.symbol && !/::__/.test(s.symbol));
-    if (car.reverted) parts.push("taken out");
-    else if (car.partial && named.length) {
-      const still = named.filter((s) => s.live !== false).length;
-      parts.push(`${still} of ${named.length} still in`);
-    }
-    if (Array.isArray(car.dependents) && !car.reverted) {
-      const n = car.dependents.length;
-      // `clean` (the kernel's): taking it out removes its work outright and touches nothing else.
-      // Not clean with no dependents means the revert works around layout it shares, still
-      // touching no other checkpoint.
-      parts.push(n ? `${n} later checkpoint${n === 1 ? "" : "s"} build${n === 1 ? "s" : ""} on it`
-        : car.clean ? "takes out cleanly" : "nothing later builds on it");
-    }
-    return parts.join(" · ");
-  }
-
-  // Hover is brushing: the bar takes an outline, the checkpoints that stand on it take the amber
-  // outline, and the ruler reads it. No lines are drawn across the plot.
-  function readCar(car, laneId, rect, color) {
-    if (!hoverLayer || !graphView) return;
-    hoverLayer.replaceChildren();
-    axisRead(rect.x, rect.x + rect.w, carReading(car), color, car);
-    for (const dep of (car.reverted ? [] : car.dependents || [])) {
-      const w = findCar(dep.ref);
-      if (w) w.classList.add("gcar-dependent");
-    }
-  }
-
-  function unreadCar() {
-    axisRead(null);
-    if (hoverLayer) hoverLayer.replaceChildren();
-    rail.querySelectorAll(".gcar-dependent").forEach((w) => w.classList.remove("gcar-dependent"));
-  }
-
-  // ─── A checkpoint, opened in place ──────────────────────────────────────────────────────────
-  // Clicking a checkpoint opens a smaller Gantt chart under its lane: one row per function the
-  // checkpoint changed, one column per save it spans, a mark wherever that function changed in that
-  // save. It is the answer to "what is a checkpoint made of", drawn instead of counted: a checkpoint
-  // is these functions over these saves, and every number elsewhere counts these marks. A zoom
-  // flare joins the bar to the panel so the eye knows which bar it is reading.
-  const PANEL = { padT: 6, headH: 16, rowH: 18, padB: 8, maxRows: 12 };
-
-  // The lens's state: which checkpoint it is on and how far it has opened (0..1). Opening tweens
-  // the axis and the panel's height together; the panel's content arrives once the lens is open, so
-  // the room is made before anything moves into it.
-  const focus = { t: 0, from: 0, to: 0, start: 0, raf: 0, ref: null, car: null, laneId: null };
-  const FOCUS_MS = 280;
-
-  function focusCar() {
-    const ref = focus.ref || (focus.car && focus.car.checkpoint);
-    if (!ref) return null;
-    for (const l of layout.lanes || []) for (const c of l.cars || []) if (c.checkpoint === ref) return { lane: l, car: c };
-    return null;
-  }
-
-  function syncFocus() {
-    const open = expandedCar();
-    const ref = open ? open.car.checkpoint : null;
-    if (ref === focus.ref) return;
-    if (ref && focus.ref) focus.t = 0; // one checkpoint to another: the lens moves
-    if (ref) focus.car = open.car;
-    focus.ref = ref;
-    if (!ref && focus.car) focus.ref = null;
-    tweenFocus(ref ? 1 : 0);
-  }
-
-  function tweenFocus(to) {
-    if (focus.raf && typeof cancelAnimationFrame === "function") cancelAnimationFrame(focus.raf);
-    focus.raf = 0;
-    // No frames to tween on (a test harness), reduced motion, or a history too large to redraw per
-    // frame: the lens opens in one step.
-    if (typeof requestAnimationFrame !== "function" || prefersReducedMotion() || (layout.lanes || []).length > 150) {
-      focus.t = to;
-      if (!to) focus.car = null;
-      return;
-    }
-    focus.from = focus.t;
-    focus.to = to;
-    focus.start = 0;
-    focus.raf = requestAnimationFrame(stepFocus);
-  }
-
-  function stepFocus(now) {
-    focus.raf = 0;
-    if (!focus.start) focus.start = now;
-    const k = Math.min(1, (now - focus.start) / FOCUS_MS);
-    const e = 1 - Math.pow(1 - k, 3);
-    focus.t = focus.from + (focus.to - focus.from) * e;
-    if (k >= 1) {
-      focus.t = focus.to;
-      if (!focus.to) focus.car = null;
-    } else {
-      focus.raf = requestAnimationFrame(stepFocus);
-    }
-    renderGraph();
-  }
-
-  function expandedCar() {
-    const ref = state.selectedCheckpoint;
-    if (!ref) return null;
-    for (const l of layout.lanes || []) for (const c of l.cars || []) if (c.checkpoint === ref) return { lane: l, car: c };
-    return null;
-  }
-
-  // ---- checkpoint-panel (test slice boundary)
-  // The rows a panel draws: the named functions this checkpoint changed, oldest first, then any
-  // function a later checkpoint shares with it (what stands on it), each once, capped.
-  function panelRows(car) {
-    const syms = (car.symbols || []).filter((s) => s && s.symbol && !/::__/.test(s.symbol));
-    const first = (s) => Math.min(...((s.saves && s.saves.length) ? s.saves : [Infinity]));
-    const own = syms.slice().sort((a, b) => first(a) - first(b) || (a.symbol < b.symbol ? -1 : 1));
-    const seen = new Set(own.map((s) => s.symbol));
-    const shared = [];
-    for (const d of car.reverted ? [] : car.dependents || []) for (const sym of d.symbols || []) {
-      if (seen.has(sym) || /::__/.test(sym)) continue;
-      seen.add(sym);
-      shared.push({ symbol: sym, file: String(sym).split("::")[0], shared: true });
-    }
-    return own.concat(shared).slice(0, PANEL.maxRows);
-  }
-  function panelSaves(car) {
-    const set = new Set();
-    for (const s of car.symbols || []) for (const ci of s.saves || []) set.add(ci);
-    for (const [ci] of car.subBins || []) set.add(ci);
-    if (!set.size && car.firstIndex != null) { set.add(car.firstIndex); set.add(car.lastIndex); }
-    return [...set].sort((a, b) => a - b);
-  }
-  function panelHeight(car) {
-    const rows = panelRows(car);
-    const named = (car.symbols || []).filter((s) => s && s.symbol && !/::__/.test(s.symbol)).length;
-    const more = named > rows.filter((r) => !r.shared).length || car.symbolsTruncated ? 1 : 0;
-    return PANEL.padT + PANEL.headH + ((rows.length || 1) + more) * PANEL.rowH + PANEL.padB;
-  }
-  // Every save in which any checkpoint touched each function: symbol -> [{ci, ref, featureId, live}].
-  function symbolTouches(lanes) {
-    const out = new Map();
-    for (const l of lanes || []) for (const c of l.cars || []) for (const s of c.symbols || []) {
-      if (!s || !s.symbol) continue;
-      if (!out.has(s.symbol)) out.set(s.symbol, []);
-      for (const ci of s.saves || []) out.get(s.symbol).push({ ci, ref: c.checkpoint, featureId: c.featureId, live: s.live !== false });
-    }
-    for (const list of out.values()) list.sort((a, b) => a.ci - b.ci);
-    return out;
-  }
-  // ---- end-checkpoint-panel
-
-  let lastOpened = null; // the checkpoint whose panel content was last drawn, so only a new one animates in
-
-  function renderCheckpointPanel(g, l, geom, car, color) {
-    const H = geom.panelH(l.row);
-    if (!H) return;
-    const enter = lastOpened !== car.checkpoint && !prefersReducedMotion();
-    lastOpened = car.checkpoint;
-    const top = geom.panelY(l.row);
-    const x0 = geom.plotX0, x1 = geom.plotX0 + geom.plotW;
-    const colX = (ci) => (geom.xOf(ci) + geom.xOf(ci + 1)) / 2;
-    const colW = (ci) => geom.xOf(ci + 1) - geom.xOf(ci);
-    // This checkpoint's own saves sit under its own bar as drawn: a neighbour that starts in the
-    // same save cuts the bar short, and a column centre past that cut would sit under the neighbour.
-    const bar = carRects.get(car.checkpoint);
-    const ownX = (ci) => {
-      if (!bar) return colX(ci);
-      const lo = Math.max(bar.x, geom.xOf(ci));
-      const hi = Math.min(bar.x + bar.w, geom.xOf(ci + 1));
-      return hi > lo ? (lo + hi) / 2 : Math.max(bar.x + 4, Math.min(bar.x + bar.w - 4, colX(ci)));
-    };
-    const panel = mk("g", { class: "cp-panel" + (enter ? " cp-enter" : ""), "data-checkpoint": car.checkpoint });
-    panel.addEventListener("click", (ev) => ev.stopPropagation()); // a click in here is not a lane click
-    // The lens band: the opened checkpoint's own span, carried down from its bar through its rows.
-    const lx1 = bar ? bar.x : geom.xOf(car.firstIndex);
-    const lx2 = bar ? bar.x + bar.w : geom.xOf(car.lastIndex + 1);
-    panel.appendChild(mk("rect", { x: x0, y: top, width: x1 - x0, height: H - 4, class: "cp-ground" }));
-    panel.appendChild(mk("rect", { x: lx1, y: top - 6, width: Math.max(4, lx2 - lx1), height: H + 2, rx: 2, class: "cp-lens", fill: color }));
-
-    const saves = panelSaves(car);
-    const commits = (compose.history && compose.history.commits) || [];
-    const headY = top + PANEL.padT + PANEL.headH - 5;
-    for (const ci of saves) {
-      // A header only where it fits: a checkpoint over many saves has narrow columns, and clipped
-      // headers ("sa… sa…") say nothing the ruler below does not already date.
-      if (colW(ci) < 56) continue;
-      const c = commits.find((x) => x.index === ci) || commits[ci] || {};
-      const when = axisLabel(ci);
-      panel.appendChild(mk("text", {
-        x: ownX(ci), y: headY, class: "cp-col",
-        text: fitText(when.startsWith("save") ? when : `save ${ci + 1} · ${when}`, Math.max(20, colW(ci) - 6), "cp-col").text,
-      }));
-    }
-
-    const rows = panelRows(car);
-    const touches = symbolTouches(layout.lanes);
-    const depRefs = new Set((car.reverted ? [] : car.dependents || []).map((d) => d.ref));
-    const gx = GANTT.gutterPad + (l.depth || 0) * GANTT.indent + 24;
-    const verb = car.reverted ? "restore" : "revert";
-    let y = top + PANEL.padT + PANEL.headH;
-    rows.forEach((sym, i) => {
-      const mid = y + PANEL.rowH / 2;
-      const ownSym = !sym.shared;
-      const row = mk("g", { class: "cp-row" + (sym.live === false ? " out" : "") + (sym.shared ? " shared" : ""), "data-symbol": sym.symbol });
-      if (enter) row.style.animationDelay = `${i * 26}ms`;
-      row.appendChild(mk("rect", { x: gx - 6, y, width: x1 - gx + 6, height: PANEL.rowH, class: "cp-row-hit" }));
-      // Its name, and its file only where the name does not already say it.
-      const name = String(sym.symbol).split("::").slice(1).join("::") || String(sym.symbol);
-      const fileBase = String(sym.file || String(sym.symbol).split("::")[0]).split("/").pop();
-      const showFile = name !== fileBase && name !== String(sym.symbol);
-      const room = geom.labelW - gx - 6;
-      const fileW = showFile ? Math.min(room * 0.45, textWidth(fileBase, "cp-file") + 8) : 0;
-      const label = mk("text", { x: gx, y: mid + 4, class: "cp-fn" });
-      label.appendChild(mk("tspan", { class: "cp-name", text: fitText(name, room - fileW, "cp-fn").text }));
-      if (showFile) label.appendChild(mk("tspan", { class: "cp-file", dx: 6, text: fitText(fileBase, fileW - 6, "cp-file").text }));
-      row.appendChild(label);
-      // The function's lifeline: every save any checkpoint touched it, in that checkpoint's hue. This
-      // checkpoint's own marks are full size; others are small; one that would be rewritten by
-      // taking this out is ringed amber. Born here reads as nothing to the left; built on reads as
-      // marks to the right.
-      const all = touches.get(sym.symbol) || [];
-      const xAt = (tch) => tch.ref === car.checkpoint ? ownX(tch.ci) : colX(tch.ci);
-      if (all.length > 1) {
-        const xs = all.map(xAt);
-        row.appendChild(mk("line", { x1: Math.min(...xs), x2: Math.max(...xs), y1: mid, y2: mid, class: "cp-life" }));
-      }
-      for (const tch of all) {
-        const own = tch.ref === car.checkpoint;
-        const cx = xAt(tch), cw = colW(tch.ci);
-        const w = own ? Math.min(26, Math.max(6, cw * 0.6)) : Math.min(10, Math.max(3, cw * 0.6));
-        const h = own ? 8 : 6;
-        const m = mk("rect", {
-          x: cx - w / 2, y: mid - h / 2, width: w, height: h, rx: own ? 2 : 1.5,
-          class: (own ? "cp-mark" : "cp-touch") + (tch.live ? "" : " out") + (depRefs.has(tch.ref) ? " dep" : ""),
-          fill: own ? color : laneColor(tch.featureId), stroke: own ? color : laneColor(tch.featureId),
-        });
-        if (enter && own) m.style.animationDelay = `${60 + i * 26}ms`;
-        row.appendChild(m);
-      }
-      row.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        const ref = ownSym ? car.checkpoint : ((all.find((x) => depRefs.has(x.ref)) || {}).ref || car.checkpoint);
-        const target = carByRef(ref) || car;
-        vscode.postMessage({ type: "openChangeDiff", verb: ownSym ? verb : "revert", ref, label: target.label || "",
-          path: sym.file || String(sym.symbol).split("::")[0], symbol: sym.symbol });
-      });
-      panel.appendChild(row);
-      y += PANEL.rowH;
-    });
-    if (!rows.length) {
-      panel.appendChild(mk("text", { x: gx, y: y + PANEL.rowH / 2 + 4, class: "cp-empty",
-        text: "moved lines without changing a named function" }));
-      y += PANEL.rowH;
-    }
-    const named = (car.symbols || []).filter((sv) => sv && sv.symbol && !/::__/.test(sv.symbol)).length;
-    const hidden = named - rows.filter((r) => !r.shared).length;
-    if (hidden > 0 || car.symbolsTruncated) {
-      panel.appendChild(mk("text", { x: gx, y: y + PANEL.rowH / 2 + 4, class: "cp-more",
-        text: hidden > 0 ? `${hidden} more function${hidden === 1 ? "" : "s"}` : "and more functions" }));
-    }
-    g.appendChild(panel);
-  }
-
-  function carByRef(ref) {
-    for (const l of layout.lanes || []) for (const c of l.cars || []) if (c.checkpoint === ref) return c;
-    return null;
-  }
-
-  // `forecastCars` is the widest forecast a single lane carries this render (0 when nothing is
-  // pending or planned). It buys a FORECAST BAND to the right of the `now` rule: measured time ends
-  // at `now`, and anticipated work lives past it. Without a band the future has literally no room on
-  // an axis whose domain is [c0, lastCommit] -- which is why pending work used to degenerate into a
-  // badge jammed against the plot edge instead of reading as a car.
-  // The name column's width, in px. A hard `clamp(130, paneW*0.4, 220)` truncated most of the
-  // repo's feature names on a pane with room to spare -- 220px is about 34 glyphs, and these names
-  // are sentences -- and offered the reader no way to see the rest. So: fit to the longest name the
-  // view is actually drawing (bounded by a share of the pane, so the plot is never squeezed out),
-  // and let the reader override that by dragging the divider. Every table view works this way.
-  // Two different ceilings, because automatic and deliberate are different acts. Left to itself the
-  // column takes at most 45% of the pane -- names matter, but this is a TIMELINE, and a fit that
-  // quietly ate two thirds of a docked pane would trade one unreadable field for another. A drag is
-  // the reader saying "right now I am reading names", so it may go to 70%.
-  const LABEL_MIN_W = 90;                 // narrower than this and a name is a stub, not a name
-  const LABEL_FIT_FRAC = 0.45;            // ...how far the automatic fit may go
-  const LABEL_DRAG_FRAC = 0.7;            // ...and how far a deliberate drag may
-  const labelFitW = (paneW) => Math.max(LABEL_MIN_W, Math.round(paneW * LABEL_FIT_FRAC));
-  const labelMaxW = (paneW) => Math.max(LABEL_MIN_W, Math.round(paneW * LABEL_DRAG_FRAC));
-
-  const featureCount = (n) => `${n} feature${n === 1 ? "" : "s"}`;
-
-  // The natural width: the widest label actually on screen, plus its indent and swatch. Measured,
-  // not estimated -- see textWidth.
-  function naturalLabelW() {
-    let widest = 0;
-    for (const l of layout.lanes) {
-      const node = byId(l.id);
-      const raw = (node && node.label) || l.id;
-      const labelX = GANTT.gutterPad + (l.depth || 0) * GANTT.indent + (l.isMeta ? 24 : 12);
-      const metaW = l.isMeta ? 12 + textWidth(featureCount(l.leaves.length), "swimlane-meta") : 0;
-      widest = Math.max(widest, labelX + textWidth(raw, "glane-label") + metaW);
-    }
-    for (const hd of layout.headers) {
-      const ind = (hd.depth || 0) * GANTT.indent;
-      widest = Math.max(widest, 22 + ind + textWidth(hd.label, "swimlane-label")
-        + 12 + textWidth(featureCount(hd.laneCount), "swimlane-meta"));
-    }
-    return Math.ceil(widest) + 10; // a little air before the divider
-  }
-
-  function ganttGeom(forecastCars = 0) {
-    const pane = panePx();
-    const paneW = pane.w;
-    // A width the reader dragged wins over the fit, clamped to what this pane can hold (so a column
-    // dragged wide in a maximized panel doesn't swallow the plot when the panel is docked narrow).
-    const labelW = Math.round(state.labelW != null
-      ? Math.max(LABEL_MIN_W, Math.min(state.labelW, labelMaxW(paneW)))
-      : Math.max(LABEL_MIN_W, Math.min(naturalLabelW(), labelFitW(paneW))));
-    const plotX0 = labelW + GANTT.gutterPad;
-    const fullW = Math.max(60, paneW - plotX0 - 16 - GANTT.countW);
-    // The band asks for one nameable slot per forecast car, then gets clamped to 38% of the plot so a
-    // forecast can never crowd out measured history (and the history side never drops below 40px).
-    // `forecastSlots` reports how many slots SURVIVED that clamp -- the renderer collapses anything
-    // beyond them into a stack card, which is what makes the band responsive: squeeze the pane and the
-    // band sheds cards rather than shrinking them all into illegible stubs.
-    const slotW = GANTT.ghostW + GANTT.carGap;
-    const wantW = forecastCars > 0 ? forecastCars * slotW + GANTT.nowPad * 2 : 0;
-    // The band is sized by its content, one column per actor, and 38 % of the plot is its ceiling:
-    // recorded use never had more than one actor at a time (the engineer's count over the study
-    // repos), so the common case is one or two narrow columns that take nothing from the lanes.
-    const forecastW = Math.min(wantW, Math.max(0, Math.round(fullW * 0.38)), Math.max(0, fullW - 40));
-    // A column asks for ghostW and narrows to minColW (a name of eight or nine letters) before the
-    // band folds anyone into the stack: four actors fit a bottom panel, where four full columns did
-    // not and two of them vanished behind "+2 more".
-    const forecastSlots = forecastCars > 0
-      ? Math.min(forecastCars, Math.max(1, Math.floor((forecastW - GANTT.nowPad * 2 + GANTT.carGap) / (GANTT.minColW + GANTT.carGap)))) : 0;
-    const plotW = Math.max(40, fullW - forecastW);
-    const nowX = plotX0 + plotW;          // the `now` rule: right edge of measured time
-    const forecastX0 = nowX + GANTT.nowPad;
-    const w = paneW;
-    // Every row is full height. A theme focus used to compress the other lanes to thin strips; it
-    // recedes them through the lens instead, so a row never changes size for a reason the reader
-    // has to guess.
-    const heights = new Array(layout.rowCount).fill(GANTT.rowH);
-    // A checkpoint opened in place adds its panel under its own lane, growing with the focus tween;
-    // every row below moves down and nothing is drawn over anything.
-    const extra = new Array(layout.rowCount).fill(0);
-    const fc = focusCar();
-    if (fc && fc.lane.row != null) extra[fc.lane.row] = Math.round(panelHeight(fc.car) * focus.t);
-    const yTop = new Array(layout.rowCount + 1);
-    yTop[0] = GANTT.padT;
-    for (let i = 0; i < layout.rowCount; i++) yTop[i + 1] = yTop[i] + heights[i] + extra[i];
-    const rowsH = yTop[layout.rowCount] - GANTT.padT;
-    // Rows stay top-anchored, but the axis pins to the bottom of the pane: the SVG grows to fill the
-    // rail's viewport (minus its 8px padding each side) so a short timeline no longer leaves a dead
-    // band of background below it -- the void becomes an honest empty plot with a full-height axis.
-    // The axis is PINNED: it lives in its own SVG below the scroller, so the plot's height is its
-    // rows and nothing else. It used to sit at the bottom of the one scrolling SVG, which meant the
-    // `c0 … cN` ruler -- the thing that makes every column mean a time -- scrolled off the moment a
-    // repository had more features than the pane is tall. On this repo that was already true at 24
-    // rows, with the tick labels clipped by the pane's own edge.
-    // 2026-10-21: the plot is its rows' height again. Filled to the pane, a five-row timeline in the
-    // bottom panel put its ruler a third of the screen below the last bar, so the eye had to carry
-    // every column down to read its date. The axis now sits under the rows and the pane's spare
-    // height stays below it; the axis is still pinned once the rows outgrow the pane.
-    const h = GANTT.padT + rowsH + 12;
-    const axisY = h;  // gridlines, the future-veil and the frontier line run the full plot height
-    const maxCommit = Math.max(1, layout.commitCount - 1);
-    // One column per save, [xOf(ci), xOf(ci + 1)], so the latest save has a column of its own and the
-    // now edge is the end of it. It used to be the right edge itself, which left the newest work as a
-    // nub and gave a lens nothing to open on that save.
-    const xOf = bifocalScale(plotX0, plotW, maxCommit + 1, fc ? fc.car : null, fc ? focus.t : 0);
-    return {
-      labelW, plotX0, plotW, w, h, axisY, maxCommit,
-      forecastW, forecastSlots, nowX, forecastX0,
-      xOf,
-      rowY: (row) => yTop[Math.max(0, Math.min(row, layout.rowCount))], // top of the row
-      midY: (row) => {
-        const r = Math.max(0, Math.min(row, layout.rowCount - 1));
-        return yTop[r] + heights[r] / 2;
-      },
-      rowH: (row) => heights[Math.max(0, Math.min(row, layout.rowCount - 1))] || GANTT.rowH,
-      panelY: (row) => yTop[row] + heights[row],
-      panelH: (row) => extra[row] || 0,
-      // the playhead "as of save k" stands at the end of save k's column
-      scrubX: (idx) => xOf(idx + 1),
-      xToCommit: (x) => {
-        let best = 0, bestD = Infinity;
-        for (let ci = 0; ci <= maxCommit; ci++) { const d = Math.abs(xOf(ci + 1) - x); if (d < bestD) { bestD = d; best = ci; } }
-        return best;
-      },
-    };
-  }
-
-  // ---- bifocal (test slice boundary)
-  // The time axis with one checkpoint under the lens (Spence and Apperley's bifocal display, a
-  // fisheye in one dimension): the open checkpoint's span takes a wide share of the plot, enough for
-  // its saves to be read one by one, and the rest of history shares what is left in proportion. Every
-  // lane is drawn on this one axis, so everything stays aligned in time, and the opened checkpoint's
-  // functions sit exactly under its saves. `t` runs 0..1 and blends from the plain axis, so opening
-  // and closing are a continuous change of scale rather than a jump.
-  function bifocalScale(plotX0, plotW, cols, car, t) {
-    const lin = (u) => plotX0 + (Math.max(0, Math.min(cols, u)) / cols) * plotW;
-    if (!car || !(t > 0)) return lin;
-    let a = Math.max(0, Math.min(cols, car.firstIndex));
-    let b = Math.max(0, Math.min(cols, car.lastIndex + 1));
-    if (b - a < 1) a = Math.max(0, b - 1);
-    const left = a, right = cols - b, rest = left + right;
-    const wf = rest > 0 ? Math.min(plotW * 0.7, Math.max(plotW * 0.35, (b - a) * 120)) : plotW;
-    const wl = rest > 0 ? (plotW - wf) * (left / rest) : 0;
-    const wr = plotW - wf - wl;
-    const bi = (u) => {
-      u = Math.max(0, Math.min(cols, u));
-      if (u <= a) return plotX0 + (left ? (u / left) * wl : 0);
-      if (u <= b) return plotX0 + wl + ((u - a) / (b - a)) * wf;
-      return plotX0 + wl + wf + (right ? ((u - b) / right) * wr : 0);
-    };
-    return (u) => lin(u) + (bi(u) - lin(u)) * t;
-  }
-  // ---- end-bifocal
-
-  function laneColor(id) {
-    const n = byId(id);
-    return (n && n.color) || "#8a8a8a"; // neutral only for a node the host didn't color (unknown id)
-  }
-
-  // Draw one lane's checkpoints as chunk-cars positioned on the SHARED commit-time axis: each car
-  // spans [xOf(firstIndex), xOf(lastIndex)], so a lane's cars show *when* that feature was worked
-  // on and when it went quiet -- reading left-to-right against the same bottom axis every other
-  // lane uses. A single left->right pass enforces a minimum width and a small gap so short chapters
-  // stay legible/clickable and never overlap; a burst of chapters in a narrow time band degrades
-  // gracefully by nudging right rather than stacking. Each car is wrapped in its own <g data-first>
-  // so the frontier scrubber (applyFrontier) dims it in place without a relayout. Returns the x just
-  // past the last car (or the plain lifetime track when the feature has no mined segments yet), so
-  // the caller can place the op-count label and badges against it.
-  function renderCars(g, l, geom, color, barY, midY, carOpts) {
-    carOpts = carOpts || {};
-    const barH = carOpts.barH || GANTT.barH;
-    const quiet = !!carOpts.quiet; // a compressed context lane: bars only, no labels or chips
-    const laneNode = byId(l.id);
-    const laneName = (laneNode && laneNode.label) || l.id;
-    const cars = l.cars || [];
-    if (!cars.length) {
-      const x1 = geom.xOf(l.firstCommit), x2 = geom.xOf(l.lastCommit + 1);
-      g.appendChild(mk("rect", {
-        x: x1, y: barY, width: Math.max(GANTT.minBarW, x2 - x1), height: barH, rx: 3,
-        class: "gbar-track", fill: color,
-      }));
-      return x2;
-    }
-    const plotR = geom.plotX0 + geom.plotW;
-    // A lane flagged for landing (its ghost just became a real save): the newest (last) car plays
-    // the solidify transition -- entering from the dashed/low-opacity ghost look into a solid car.
-    const landing = landingFeatures.has(l.id);
-    // Every car is drawn the same: one height, one fill. There used to be a "big event" (the lane's
-    // fattest chapter by op count, brighter, with its own tag) and a per-commit density texture
-    // inside each car -- two of the five magnitude encodings the study named as unexplained, both
-    // of an op count that is mostly bookkeeping. Magnitude is the count in words, on hover and in
-    // the panel.
-    // Gap-fill tiling: a car fills from its first commit through the END of its last commit's column
-    // (one colStep wide), so a single-commit chapter occupies a whole column instead of a sliver --
-    // wide enough to carry its label inline. It never runs into the next car (capped at that car's
-    // start, less a gap); the final car fills to the plot edge. Distant chapters still leave a dim gap
-    // between them, so "when the feature went quiet" stays readable.
-    let cursor = geom.plotX0;
-    let lastRight = geom.plotX0;
-    let tagRight = 0; // how far right an in-row big-event tag reached, so the op count clears it
-    for (let i = 0; i < cars.length; i++) {
-      const car = cars[i];
-      let x = Math.max(geom.xOf(car.firstIndex), cursor); // anchored in time, never behind the last car
-      let rightEnd = geom.xOf(car.lastIndex + 1);
-      if (i + 1 < cars.length) rightEnd = Math.min(rightEnd, geom.xOf(cars[i + 1].firstIndex) - GANTT.carGap);
-      let w = Math.max(GANTT.minCarW, rightEnd - x);
-      // Never past the plot's right edge. x means WHEN, so a car drawn beyond the axis is claiming a
-      // time that does not exist -- and in a dense lane that is exactly what happened: each car is
-      // nudged right to clear the previous one and floored at `minCarW`, so a train of short
-      // chapters walked `cursor` off the end and the clamp, which also floored at `minCarW`, could
-      // not pull it back. On seedbank-v3's folded `Plant Discovery` row the last chapters ran 57px
-      // past the axis and through the op-count column. Pinning to the edge and letting the final
-      // cars thin to slivers is the honest degradation: too many chapters for the width.
-      if (x + w > plotR) x = Math.max(geom.plotX0, plotR - w);
-      if (x + w > plotR) w = Math.max(2, plotR - x);
-      const selected = car.checkpoint === state.selectedCheckpoint;
-      const wrap = mk("g", {
-        class: "gcar-wrap" + (selected ? " gcar-selected" : ""),
-        "data-first": car.firstIndex, "data-checkpoint": car.checkpoint,
-      });
-      carRects.set(car.checkpoint, { x, w, midY, laneId: l.id, subBins: car.subBins || [] });
-      // A reverted car is drawn hollow in its own identity hue: the edits are still recorded and
-      // still addressable (`ugh restore`), they are just no longer in the ideal, so the car has to
-      // stay in place and read as emptied rather than vanish or redraw as live. The inline stroke
-      // is needed because `.gcar` sets `stroke: var(--bg)`, which a class rule cannot override
-      // per-lane.
-      // A chapter that changed no named function (it moved lines, or touched only files with no
-      // entities) is a hairline on the lane: still there, still named on hover, never the same
-      // weight as a chapter that changed code. Three whole lanes read this way on a repository
-      // whose history is one commit split across ten features.
-      const layoutOnly = car.changeCount === 0 && !(car.symbols || []).length;
-      const carH = layoutOnly ? Math.max(3, Math.round(barH * 0.4)) : barH;
-      const carRect = mk("rect", {
-        x, y: layoutOnly ? midY - carH / 2 : barY, width: w, height: carH, rx: layoutOnly ? 1.5 : 3,
-        class: "gcar" +
-          (layoutOnly ? " gcar-layout" : "") +
-          (car.reverted ? " gcar-reverted" : car.partial ? " gcar-partial" : "") +
-          (landing && i === cars.length - 1 ? " gcar-landing" : ""),
-        fill: color, "data-checkpoint": car.checkpoint,
-      });
-      if (car.reverted || car.partial) carRect.style.stroke = color;
-      // A focused theme's member chapters carry a shared accent ring across every lane they sit
-      // on -- the one visual that makes "this work spans these lanes" a single object on screen.
-      if (themeMarks && !quiet && (car.subBins || []).some((b) => themeMarks.commitIdx.has(b[0]))) {
-        wrap.classList.add("gcar-theme-member");
-      }
-      // A save picked in find: flash its chapters wherever that commit landed, across lanes.
-      if (saveFlashIdx != null && (car.subBins || []).some((b) => b[0] === saveFlashIdx)) {
-        wrap.classList.add("gcar-save-hit");
-      }
-      wrap.appendChild(carRect);
-      // Partly taken out reads as a bar filled only as far as its work is still in: the share of its
-      // named functions still live, from the left. "Partly" is a quantity, so it is drawn as one.
-      if (car.partial && !layoutOnly) {
-        const named = (car.symbols || []).filter((sv) => sv && sv.symbol && !/::__/.test(sv.symbol));
-        const frac = named.length ? named.filter((sv) => sv.live !== false).length / named.length : 0.5;
-        wrap.appendChild(mk("rect", { x, y: barY, width: Math.max(1, w * frac), height: carH, rx: 3, class: "gcar-partial-fill", fill: color }));
-      }
-      // Inline label: the chapter's intent, not the bare @n index (which reads as a meaningless
-      // "0"). Only when the car is wide enough to hold the WHOLE name; otherwise the hover tooltip
-      // carries it (a clipped `Variet…` could be two different chapters, so it names nothing while
-      // looking like it does).
-      //
-      // ...unless the label only echoes the lane's own name (`Sort The Grid` on the row called
-      // `sort the grid by name, species or days to harvest`), in which case it is printing the row
-      // header a second time, inside the row.
-      const inlineFit = car.label ? fitText(car.label, w - 6, "gcar-label") : null;
-      if (car.label && !quiet && !layoutOnly && !echoesLane(car.label, laneName)
-          && w >= GANTT.labelMinW && !inlineFit.clipped) {
-        wrap.appendChild(mk("text", {
-          x: x + w / 2, y: midY + 3, class: "gcar-label", text: inlineFit.text,
-        }));
-      }
-      // A car is its own click target: selecting it picks the CHECKPOINT (`f-XXXX@n`, the revert
-      // unit), distinct from a row/label click that picks the whole feature. stopPropagation keeps
-      // it from bubbling up to the lane's feature-select handler.
-      wrap.addEventListener("click", (ev) => selectCar(car, l.id, ev));
-      // Hovering a chapter IDENTIFIES it; it does not preview destroying it. This used to fire a
-      // full revert preview -- so merely running the cursor over the timeline to read what was
-      // there dimmed the field and drained cars, showing the consequence of an action the reader
-      // had not chosen and might never choose. Feedforward belongs to the verb the reader is
-      // pointing at, and pointing at a chapter is not pointing at a verb. Instant and local: no
-      // round-trip, no hover-intent delay, because naming what is already on screen costs nothing.
-      // Pointing at a checkpoint reads it on the time axis -- see readCar for why nothing grows.
-      const rectArgs = { x, w, midY };
-      // A held revert/restore preview does NOT block this. Reading is not previewing: a reader
-      // deciding whether to approve a consequence is exactly the reader who needs to point at a
-      // neighbouring chapter and ask "what is that one?", and until now the staged confirm made
-      // every bar on screen unidentifiable -- the OS `<title>` tooltip, a second late and drawn
-      // over the timeline it describes, was the only answer left. Nothing here previews or
-      // cancels anything (`clearGhosts` already refuses to strip a staged paint), so the only
-      // reason to gate it was that the pill it used to write is owned by the preview. It no
-      // longer writes one. `armedVerb` still returns early: arming owns the field as a crosshair.
-      wrap.addEventListener("mouseenter", () => {
-        if (armedVerb || playheadDragging) return;
-        wrap.classList.add("gcar-hovered");
-        readCar(car, l.id, rectArgs, color);
-      });
-      wrap.addEventListener("mouseleave", () => {
-        wrap.classList.remove("gcar-hovered");
-        unreadCar();
-      });
-      g.appendChild(wrap);
-      cursor = x + w + GANTT.carGap;
-      lastRight = x + w;
-    }
-    return Math.max(lastRight, tagRight);
-  }
-
-  // ---- count-words (test slice boundary)
-  // A chapter's size in the reader's units. `change_count` (one named function or file in one
-  // save) when the payload carries it; an older payload falls back to its op count, still worded
-  // as changes rather than "edit(s)", so no surface prints a bare number.
-  function carCountText(car) {
-    const n = car.changeCount == null ? car.opCount : car.changeCount;
-    const fns = (car.symbols || []).length;
-    const saves = car.saves || 0;
-    // A chapter with no named function (9 of 27 on the footfall study repo) moved lines around;
-    // "0 changes" would read as nothing happened, which is not what a hollow car means either.
-    const changes = car.changeCount === 0 && !fns ? "moved lines only, no function changed"
-      : `${n} change${n === 1 ? "" : "s"}`;
-    const parts = [changes];
-    if (fns) parts.push(`${fns} function${fns === 1 ? "" : "s"}`);
-    if (saves) parts.push(`${saves} save${saves === 1 ? "" : "s"}`);
-    return parts.join(" · ");
-  }
-  // ---- end-count-words
-
-  // Pending ops a lane would gain on the next save. A meta (collapsed-subsystem) lane rolls up its
-  // member leaves; a normal lane reads its own entry.
-  // ─── Actors: whose work is coming, as columns of the forecast band ───────────────────────────
-  // ugh has three kinds of not-yet-real work, and each belongs to someone: the reader's own edits on
-  // disk (they land on the next save), a live `ugh session` (a scratch tree whose work has not
-  // landed), and the steps of a plan an agent is building. The band gives each actor a COLUMN, in
-  // that order, so a lane's ghosts say whose work is coming there, and two sessions on one lane sit
-  // side by side where their overlap can be drawn. The ghost grammar is unchanged: the same rounded
-  // rect in the lane's own hue; dash weight, never hue, tells existing code from intended code:
-  //   unsaved / session ghost (3 3 dash, filled; breathes while the work is alive) = edits that exist
-  //   plan ghost              (1.5 2.5 dash, hollow)                                = a step intended
-  // ---- actors (test slice boundary)
-  function planLabel(text) {
-    const words = String(text || "").trim().split(/\s+/).filter(Boolean);
-    return words.length ? words.slice(0, 4).join(" ") : "plan";
-  }
-
-  function collectActors(savePreview, sessionsView, plan) {
-    const actors = [];
-    const byFeature = (savePreview && savePreview.byFeature) || {};
-    const unsaved = Object.keys(byFeature).filter((f) => byFeature[f] > 0);
-    if (unsaved.length) actors.push({ id: "unsaved", kind: "unsaved", label: "unsaved", lanes: new Set(unsaved) });
-    // A plan's steps, by the lane each pending one is predicted for, and the lanes its built steps
-    // landed in. Shared by a plan column and by a session column the same agent owns.
-    const planLanes = (p) => {
-      const stepsByLane = {};
-      const lanes = new Set();
-      for (const st of (plan || {}).steps || []) {
-        if (st.sessionId !== p.sessionId) continue;
-        if (st.matched) { if (st.matchedFeature) lanes.add(st.matchedFeature); continue; }
-        if (!st.predictedFeature) continue;
-        (stepsByLane[st.predictedFeature] || (stepsByLane[st.predictedFeature] = [])).push(st);
-        lanes.add(st.predictedFeature);
-      }
-      return { stepsByLane, lanes };
-    };
-    // One agent, one column: a plan whose agent also owns a live session (the same Claude Code
-    // session id on both records) rides that session's column, with its progress and its steps.
-    const plansByAgent = new Map();
-    for (const p of (plan || {}).sessions || []) if (p.claudeSessionId) plansByAgent.set(p.claudeSessionId, p);
-    const joined = new Set();
-    for (const sess of ((sessionsView || {}).sessions || [])) {
-      const symbolsByLane = {};
-      let unplaced = [];
-      // A touched entry with no feature is a function the main tree's map has no lane for yet (born
-      // in the session): it has no ghost, and the card names it.
-      for (const t of sess.touched || []) {
-        if (t.feature_id == null) unplaced = unplaced.concat(t.symbols || []);
-        else symbolsByLane[t.feature_id] = (symbolsByLane[t.feature_id] || []).concat(t.symbols || []);
-      }
-      // The mark means recent activity (a commit or a dirty file in the last ten minutes), which the
-      // kernel can see; "alive" is only whether the starting process exists, and for an agent that
-      // process outlives the work. Without `last_change_ts` the process fact is all there is.
-      const recent = sess.last_change_ts != null
-        ? (Date.now() / 1000 - sess.last_change_ts) < 600
-        : !!sess.alive;
-      const actor = {
-        id: "session:" + sess.name, kind: "session", label: sess.name, alive: recent, session: sess,
-        symbolsByLane, unplaced, lanes: new Set(Object.keys(symbolsByLane)),
-        changes: sess.change_count != null ? sess.change_count : null,
-      };
-      const p = sess.claude_session_id && plansByAgent.get(sess.claude_session_id);
-      if (p) {
-        const pl = planLanes(p);
-        // The fraction is honest only once the kernel matches the plan's steps against this
-        // session's own work; until then the column shows the steps and no progress.
-        Object.assign(actor, { plan: p, stepsByLane: pl.stepsByLane,
-          done: p.matchedInSession ? p.matchedCount : null, total: p.matchedInSession ? p.stepCount : 0 });
-        for (const f of pl.lanes) actor.lanes.add(f);
-        joined.add(p.sessionId);
-      }
-      actors.push(actor);
-    }
-    for (const p of (plan || {}).sessions || []) {
-      if (joined.has(p.sessionId)) continue;
-      const pl = planLanes(p);
-      actors.push({
-        id: "plan:" + p.sessionId, kind: "plan", label: planLabel(p.planText), plan: p,
-        stepsByLane: pl.stepsByLane, lanes: pl.lanes, done: p.matchedCount, total: p.stepCount,
-      });
-    }
-    return actors;
-  }
-
-  // The columns the band can hold: one per actor while they fit, else the last slot folds the rest
-  // into one stack column, so a squeezed pane sheds columns rather than shrinking them all to stubs.
-  function forecastColumnsFor(actors, slots) {
-    if (!actors.length || slots <= 0) return [];
-    if (actors.length <= slots) return actors.map((a) => ({ actors: [a], stack: false }));
-    const named = Math.max(0, slots - 1);
-    const cols = actors.slice(0, named).map((a) => ({ actors: [a], stack: false }));
-    cols.push({ actors: actors.slice(named), stack: true });
-    return cols;
-  }
-  // ---- end-actors
-
-  function tail(symbol) { return String(symbol).split("::").pop(); }
-
-  // What one actor has coming on one lane (a folded subsystem lane rolls up its leaves), or null.
-  function actorGhostOn(actor, l) {
-    const ids = l.isMeta ? (l.leaves || []) : [l.id];
-    if (actor.kind === "unsaved") {
-      const n = ids.reduce((sum, f) => sum + (savePreviewMarks.byFeature[f] || 0), 0);
-      return n > 0 ? { kind: "save", label: "unsaved", detail: "unsaved changes on disk: they land on the next save" } : null;
-    }
-    if (actor.kind === "session") {
-      const syms = ids.flatMap((f) => actor.symbolsByLane[f] || []);
-      if (!syms.length && !actor.stepsByLane) return null;
-      if (!syms.length) return planGhostOn(actor, ids); // the agent's plan reaches a lane its tree has not
-      const n = syms.length;
-      return {
-        kind: "session", alive: actor.alive,
-        label: `${n} function${n === 1 ? "" : "s"}`,
-        detail: [`${actor.label}: ${n} function${n === 1 ? "" : "s"} changed in its own tree, not landed`,
-          ...syms.slice(0, 8).map(tail), n > 8 ? `+${n - 8} more` : null].filter(Boolean).join("\n"),
-      };
-    }
-    return planGhostOn(actor, ids);
-  }
-
-  function planGhostOn(actor, ids) {
-    const steps = ids.flatMap((f) => (actor.stepsByLane || {})[f] || []);
-    if (!steps.length) return null;
-    const step = steps[0];
-    const syms = step.footprint || [];
-    const token = /^(\S+::\S+)/.exec(String(step.label || ""));
-    return {
-      kind: "plan", step, more: steps.length - 1,
-      label: token ? tail(token[1]) : step.label, // a fallback title names the function; show that, not the path
-      // The honest magnitude for a prediction is its FOOTPRINT, not an op count (no ops exist yet).
-      detail: [step.label, step.rationale || null,
-        syms.length ? `predicted: ${syms.slice(0, 6).join(", ")}` + (syms.length > 6 ? ` +${syms.length - 6} more` : "") : "no predicted footprint",
-        steps.length > 1 ? `and ${steps.length - 1} more step${steps.length === 2 ? "" : "s"} here` : null,
-      ].filter(Boolean).join("\n"),
-    };
-  }
-
-  function forecastColumnX(geom) {
-    const cols = forecastColumns.length;
-    const bandW = geom.forecastW - GANTT.nowPad * 2;
-    const w = Math.max(GANTT.minCarW, Math.min(GANTT.ghostW, (bandW - (cols - 1) * GANTT.carGap) / Math.max(1, cols)));
-    return { w, x: (i) => geom.forecastX0 + i * (w + GANTT.carGap) };
-  }
-
-  // Draw one lane's ghosts, one per column, each in its actor's place. A column with more than one
-  // thing to say on this lane (a plan with several steps here, or the stack column) draws one card
-  // with a second outline offset behind it, the ordinary "more behind this" idiom, which holds at
-  // any width where a count label would not.
-  function renderForecastCars(g, l, geom, color, barY, midY, barH) {
-    barH = barH || GANTT.barH;
-    if (!forecastColumns.length || geom.forecastW <= 0) return;
-    const { w, x: colX } = forecastColumnX(geom);
-    forecastColumns.forEach((col, i) => {
-      const x = colX(i);
-      const here = col.actors.map((a) => ({ actor: a, ghost: actorGhostOn(a, l) })).filter((e) => e.ghost);
-      if (!here.length) return;
-      const lead = here[0];
-      const gh = lead.ghost;
-      const stacked = col.stack ? here.length > 1 : gh.more > 0;
-      const isPlan = gh.kind === "plan";
-      const wrap = mk("g", {
-        class: "gcar-wrap gcar-ghost-wrap" + (isPlan ? " gcar-plan-wrap" : gh.kind === "session" ? " gcar-session-wrap" : " gcar-pending-wrap")
-          + (stacked ? " gcar-ghost-stack" : ""),
-        "data-actor": lead.actor.id,
-      });
-      if (stacked) {
-        wrap.appendChild(mk("rect", {
-          x: x + 2.5, y: barY - 2.5, width: Math.max(GANTT.minCarW, w - 2.5), height: barH,
-          rx: 3, class: "gcar-ghost-stackback", stroke: color,
-        }));
-      }
-      const look = isPlan ? "gcar-plan-ghost" : gh.kind === "session" ? "gcar-session" + (gh.alive ? " alive" : "") : "gcar-pending";
-      const detail = col.stack ? here.map((e) => `${e.actor.label}: ${e.ghost.label}`).join("\n") : gh.detail;
-      const rect = mk("rect", {
-        x, y: barY, width: w, height: barH, rx: 3, class: "gcar gcar-ghost " + look, fill: color,
-      }, [mk("title", { text: detail })]);
-      wrap.appendChild(rect);
-      // The same three-tier label rule history uses (renderCars): inline when the car can hold a few
-      // glyphs, a tag floated above when it can't, and the tooltip always.
-      const text = col.stack && here.length > 1 ? `+${here.length}` : gh.label;
-      if (w >= GANTT.labelMinW) {
-        wrap.appendChild(mk("text", {
-          x: x + w / 2, y: midY + 3, class: "gcar-label gcar-ghost-label", text: truncate(text, Math.floor(w / 6)),
-        }));
-      } else {
-        wrap.appendChild(mk("text", { x: x + w / 2, y: barY - 3, class: "gcar-tag gcar-ghost-tag", text: truncate(text, 14) }));
-      }
-      // Staggered entry for a newly-arrived plan step: the steps of one plan settle in reading order
-      // rather than all popping at once.
-      const order = isPlan && gh.step ? planStepEnterStagger[gh.step.id] : undefined;
-      if (order != null && !prefersReducedMotion()) {
-        wrap.classList.add("gcar-ghost-enter");
-        wrap.style.animationDelay = `${Math.min(order, 6) * 55}ms`;
-      }
-      // A plan ghost is the same click target as its card in the inspector; a session ghost opens
-      // its session, the same as its column header.
-      if (!col.stack && (isPlan ? gh.step : gh.kind === "session")) {
-        wrap.style.pointerEvents = "auto";
-        wrap.style.cursor = "pointer";
-        wrap.addEventListener("click", (ev) => {
-          ev.stopPropagation();
-          if (isPlan) selectPlanStep(gh.step.id); else selectActor(lead.actor.id);
-        });
-      }
-      for (const e of here) ghostRects.set(e.actor.id + "|" + l.id, { x, w, barY, midY, rect, lane: l });
-      g.appendChild(wrap);
-    });
-  }
-
-  // The column headers, in the band's title strip: the actor's name, an alive mark that breathes
-  // only while a session's process lives, and a plan's progress as a thin underline (the built
-  // fraction in ink, the rest faint). The exact count is in the title and the card.
-  function actorLine(a) {
-    if (a.kind === "unsaved") return "your unsaved changes: they land on the next save";
-    if (a.kind === "session") {
-      const n = Object.keys(a.symbolsByLane).length; // its own tree's lanes, not its plan's
-      const size = a.changes != null ? `${a.changes} change${a.changes === 1 ? "" : "s"}` : `${n} feature${n === 1 ? "" : "s"} touched`;
-      return `session ${a.label}` + (a.session.branch ? ` on ${a.session.branch}` : "")
-        + ` · ${size}, not landed · ${a.alive ? "active in the last ten minutes" : "quiet"}`
-        + (a.plan ? `\nits plan: ${planTitle(a.plan.planText)}` + (a.total > 0 ? ` · ${a.done} of ${a.total} step${a.total === 1 ? "" : "s"} built` : "") : "");
-    }
-    return `plan: ${planTitle(a.plan.planText)}\n${a.done} of ${a.total} step${a.total === 1 ? "" : "s"} built`
-      + (a.plan.derivedStatus ? ` · ${a.plan.derivedStatus}` : "");
-  }
-
-  function renderActorHeaders(svg, geom) {
-    if (!forecastColumns.length) return;
-    const { w, x: colX } = forecastColumnX(geom);
-    const y = GANTT.padT - 3;
-    forecastColumns.forEach((col, i) => {
-      const x = colX(i);
-      const a = col.actors[0];
-      const head = mk("g", { class: "actor-head " + (col.stack ? "stack" : a.kind), "data-actor": col.stack ? "" : a.id });
-      let tx = x;
-      let text, title;
-      if (col.stack) {
-        text = forecastColumns.length === 1 ? `${col.actors.length} at work` : `+${col.actors.length} more`;
-        title = col.actors.map(actorLine).join("\n");
-      } else {
-        if (a.kind === "session") {
-          head.appendChild(mk("circle", { cx: x + 3, cy: y - 3.5, r: 2.5, class: "actor-alive" + (a.alive ? " on" : "") }));
-          tx = x + 9;
-        }
-        text = a.label;
-        title = actorLine(a);
-      }
-      const fit = fitText(text, w - (tx - x) - 6, "axis-title");
-      head.appendChild(mk("text", {
-        x: tx, y, class: "axis-title actor-name",
-        // a stack too narrow for its word keeps its count, which its title then explains
-        text: col.stack && fit.clipped ? `+${col.actors.length}` : fit.text,
-      }, [mk("title", { text: title })]));
-      if (!col.stack && a.total > 0 && a.done != null) {
-        head.appendChild(mk("line", { x1: x, x2: x + w, y1: y + 3, y2: y + 3, class: "actor-progress track" }));
-        head.appendChild(mk("line", { x1: x, x2: x + (w * a.done) / a.total, y1: y + 3, y2: y + 3, class: "actor-progress done" }));
-      }
-      const followable = !col.stack && a.kind !== "unsaved";
-      if (followable) {
-        head.style.cursor = "pointer";
-        head.setAttribute("tabindex", "0");
-        head.setAttribute("role", "button");
-        if (selectedActor() === a) head.classList.add("selected");
-        const go = (ev) => { ev.stopPropagation(); selectActor(a.id); };
-        head.addEventListener("click", go);
-        head.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); go(ev); } });
-      }
-      // Pointing at a header says in the status line what the mark and the underline mean: two
-      // cold readers guessed the green dot and the underline at confidence 1 and 2.
-      head.addEventListener("mouseenter", () => { if (!previewActive) setPreviewContext(title.split("\n")[0], "identity"); });
-      head.addEventListener("mouseleave", () => { if (!previewActive) setPreviewContext(null); });
-      svg.appendChild(head);
-    });
-  }
-
-  // Two live sessions that touched the same function, on the lane where they did: both ghosts take
-  // the amber ring and a short amber tie joins them above the bar. Amber keeps its one meaning (also
-  // affected), and the sentence names the function in the status line on hover.
-  // A collision with main (`b: "main"`: the main line changed the function after the session
-  // began) has one ghost, not two: it takes the ring, and its tie reaches back to the now rule,
-  // where the work it collides with already sits.
-  function renderOverlapTies(layer) {
-    const geom = graphView ? graphView.geom : null;
-    for (const o of ((compose.sessions || {}).overlaps || [])) {
-      const shared = new Set(o.symbols || []);
-      const actorA = currentActors.find((a) => a.id === "session:" + o.a);
-      if (!actorA) continue;
-      const withMain = o.branch === true || (o.branch == null && o.b === "main"); // the older literal, tolerated
-      for (const l of layout.lanes) {
-        const ra = ghostRects.get("session:" + o.a + "|" + l.id);
-        const rb = withMain ? ra : ghostRects.get("session:" + o.b + "|" + l.id);
-        if (!ra || !rb) continue;
-        const ids = l.isMeta ? (l.leaves || []) : [l.id];
-        const here = ids.flatMap((f) => actorA.symbolsByLane[f] || []).filter((sym) => shared.has(sym)).map(tail);
-        if (!here.length) continue;
-        ra.rect.classList.add("overlap");
-        rb.rect.classList.add("overlap");
-        const what = here.slice(0, 3).join(", ") + (here.length > 3 ? ` and ${here.length - 3} more` : "");
-        const sentence = withMain
-          ? `${o.b} changed ${what} after ${o.a} began: landing will have to reconcile it`
-          : `${o.a} and ${o.b} both changed ${what}`;
-        const x1 = withMain && geom ? geom.nowX : Math.min(ra.x, rb.x), x2 = Math.max(ra.x + ra.w, rb.x + rb.w);
-        const ty = ra.barY - (withMain ? 6 : 3); // the tie to main rides above a pair's tie on the same row
-        const tie = mk("line", { x1, x2, y1: ty, y2: ty, class: "overlap-tie" + (withMain ? " with-main" : "") }, [mk("title", { text: sentence })]);
-        tie.addEventListener("mouseenter", () => { if (!previewActive) setPreviewContext(sentence, "identity"); });
-        tie.addEventListener("mouseleave", () => { if (!previewActive) setPreviewContext(null); });
-        layer.appendChild(tie);
-      }
-    }
-  }
-
-  // The actor being followed, if any: a session column, or a plan session (its own selection
-  // coordinate predates the columns and its card is the plan card).
-  function selectedActor() {
-    if (state.selectedActor) return currentActors.find((a) => a.id === state.selectedActor) || null;
-    if (state.selectedPlanSession) return currentActors.find((a) => a.kind === "plan" && a.plan.sessionId === state.selectedPlanSession) || null;
-    return null;
-  }
-
-  function selectActor(id) {
-    const a = currentActors.find((x) => x.id === id);
-    if (!a || a.kind === "unsaved") return; // your own edits are not someone to follow
-    const again = selectedActor() === a;
-    state.selectedActor = again || a.kind !== "session" ? null : id;
-    state.selectedPlanSession = again || a.kind !== "plan" ? null : a.plan.sessionId;
-    state.selected = null;
-    state.multi = [];
-    state.selectedStep = null;
-    state.selectedCheckpoint = null;
-    saveState();
-    render();
-  }
-
-  function clearActor() {
-    if (!state.selectedActor && !state.selectedPlanSession) return false;
-    state.selectedActor = null;
-    state.selectedPlanSession = null;
-    saveState();
-    render();
-    return true;
-  }
-
-  // ─── Cross-feature work, drawn IN the graph ─────────────────────────────────────────────────
-  // Links on demand, presence for cheap. Always-on spines were tried and, with several themes on
-  // real data, drew crossing dotted lines and floating labels nobody could attribute -- classic
-  // link spaghetti. So the DEFAULT is one small ◆ on the time axis per spanning work (the Gantt
-  // milestone idiom): hovering it rings that work's member chapters and names it in the presence
-  // pill; clicking enters the TableLens focus, and only THEN does the one focused spine draw --
-  // a dotted vertical with a dot at each member lane, no elbows, members already ringed.
-  // A focused cross-feature request rings its checkpoints (renderCars) and the lens recedes the
-  // other lanes; the strip names it with its exit. The spine, its floating label and the axis
-  // diamonds that used to mark these are gone: lines and labels laid over the rows read as clutter,
-  // and a diamond no reader could name was a control nobody found.
-  function renderThemeSpines() {}
-
-  function renderGraph() {
-    if (!paneMeasurable()) return;
-    resetFontCache(); // the editor font can change under us; re-resolve before measuring anything
-    // The plot scrolls, not the rail (whose overflow is hidden so the axis stays pinned): reading the
-    // rail's scrollTop always gave 0, and every render threw a long history back to its first row.
-    const prevScroller = rail.querySelector(".plot-scroll");
-    const prevScroll = prevScroller ? prevScroller.scrollTop : 0;
-    const bandHadFocus = !!(document.activeElement && document.activeElement.classList
-      && document.activeElement.classList.contains("frontier-band"));
-    rail.innerHTML = "";
-    // Size the forecast band to the actors who have work coming, once, before geometry: every lane
-    // shares one band edge so the `now` rule is a single straight line down the plot (a per-lane
-    // band would make "now" ragged, and the eye reads a ragged boundary as data).
-    currentActors = collectActors(savePreviewMarks, compose.sessions, planMarks);
-    if (state.selectedActor && !selectedActor()) state.selectedActor = null; // its session landed or was reaped
-    const geom = ganttGeom(currentActors.length);
-    forecastColumns = forecastColumnsFor(currentActors, geom.forecastSlots);
-    ghostRects = new Map();
-    const scroller = mk("div", { class: "plot-scroll" });
-    const svg = mk("svg", { width: geom.w, height: geom.h, class: "railsvg gantt" });
-    const bandLayer = mk("g", { class: "swimlanes" });
-    const laneLayer = mk("g", { class: "glanes" });
-    // The forecast ground, drawn first so every ghost car sits ON it: a faint wash from the `now` rule
-    // to the plot edge. It is what makes the band a *place* ("past here is not measured yet") rather
-    // than a few floating dashed marks the reader has to infer a region from.
-    if (geom.forecastW > 0) {
-      svg.appendChild(mk("rect", {
-        x: geom.nowX, y: GANTT.padT - 4, width: geom.forecastW,
-        height: Math.max(0, geom.axisY - GANTT.padT + 4), class: "forecast-band",
-      }));
-    }
-    svg.appendChild(bandLayer);
-    svg.appendChild(laneLayer);
-    const spineLayer = mk("g", { class: "theme-spines" });
-    svg.appendChild(spineLayer); // above the lane bars, below the chips
-
-    // SVG has no z-index -- paint order is document order -- so the hover layer is made before the
-    // lanes (their handlers capture it) and appended after them, so guides and arcs sit on top.
-    hoverLayer = mk("g", { class: "hover-layer" });
-    for (const hd of layout.headers) bandLayer.appendChild(renderSwimlaneHeader(hd, geom));
-    // A backstop, not a design: every lane is ~10 SVG nodes, so a repository with thousands of
-    // features would build a document the browser cannot lay out. Measured on a synthetic 600-feature
-    // history this render was 131,053 nodes and 3.7s. The flat view is ordered by most-recently
-    // touched, so the cap keeps what a reader is most likely to be looking for -- and it SAYS what it
-    // dropped, because a view that silently stops at 250 rows is lying about the size of the repo.
-    // (The real fix is virtualising on scroll; this bounds the damage until then.)
-    const drawn = layout.lanes.slice(0, GANTT.maxLanes);
-    const hiddenLanes = layout.lanes.length - drawn.length;
-    carRects = new Map();
-    for (const l of drawn) laneLayer.appendChild(renderLane(l, geom));
-    renderThemeSpines(spineLayer, svg, geom); // after the lanes: anchors come from carRects
-    renderOverlapTies(spineLayer);            // likewise: the ties join ghosts the lanes drew
-    if (hiddenLanes > 0) {
-      svg.appendChild(mk("text", {
-        x: GANTT.gutterPad, y: geom.rowY(drawn.length) + 12, class: "glane-overflow",
-        text: `+${hiddenLanes} more feature${hiddenLanes === 1 ? "" : "s"} not drawn: narrow the view with find, or group by subsystem`,
-      }));
-    }
-    svg.appendChild(renderColumnDivider(geom));
-    svg.appendChild(hoverLayer);
-    const axisSvg = mk("svg", {
-      width: geom.w, height: GANTT.axisH, class: "railsvg gantt gantt-axis",
-    });
-    renderTimeAxis(svg, axisSvg, geom);
-
-    scroller.appendChild(svg);
-    rail.appendChild(scroller);
-    rail.appendChild(axisSvg);
-    scroller.scrollTop = prevScroll;
-    if (bandHadFocus && graphView && graphView.scrubBandEl && graphView.scrubBandEl.focus) {
-      graphView.scrubBandEl.focus({ preventScroll: true }); // a push must not take the keyboard away
-    }
-    glideRows(svg, geom); // rows that moved glide to their new slot instead of teleporting
-    if (!state.selectedCheckpoint) lastOpened = null;
-    applyLens(); // re-apply a live search across the re-render
-  }
-
-  // FLIP row transitions: every re-render rebuilds the SVG from scratch, which reads as the whole
-  // map teleporting whenever anything folds, focuses or lands. Rows are the unit a reader tracks,
-  // so each row's PREVIOUS y is remembered across renders (keyed by lane/header id) and a row that
-  // moved starts at its old offset and glides to its new slot; a row that is genuinely new fades
-  // in in place. Pure view-side motion: layout stays exact, and reduced-motion gets the old cut.
-  let prevRowYById = new Map();
-  function glideRows(svg, geom) {
-    const tweening = !!focus.raf;
-    const next = new Map();
-    for (const l of layout.lanes || []) if (l.row != null) next.set("L:" + l.id, geom.rowY(l.row));
-    for (const hd of layout.headers || []) next.set("H:" + hd.collapsedId, geom.rowY(hd.row));
-    if (!tweening && !prefersReducedMotion() && prevRowYById.size) {
-      const els = new Map();
-      svg.querySelectorAll(".glane").forEach((n) => els.set("L:" + n.getAttribute("data-id"), n));
-      svg.querySelectorAll(".swimlane").forEach((n) => els.set("H:" + n.getAttribute("data-id"), n));
-      for (const [key, newY] of next) {
-        const n = els.get(key);
-        if (!n) continue;
-        const oldY = prevRowYById.get(key);
-        if (oldY == null) {
-          n.classList.add("grow-enter");
-          n.addEventListener("animationend", () => n.classList.remove("grow-enter"), { once: true });
-          continue;
-        }
-        const dy = oldY - newY;
-        if (!dy) continue;
-        n.style.transform = `translateY(${dy}px)`;
-        n.getBoundingClientRect(); // commit the start frame before the transition class lands
-        n.classList.add("grow-glide");
-        n.style.transform = "";
-        n.addEventListener("transitionend", () => n.classList.remove("grow-glide"), { once: true });
-      }
-    }
-    prevRowYById = next;
-  }
-
-  // The divider between the name column and the plot -- draggable, the way a column header edge is
-  // draggable in every table view. It replaces a fixed 220px cap that truncated most of this repo's
-  // feature names with no recourse: the reader could not widen the column, and the cut names carried
-  // no tooltip either, so a row could be unidentifiable and stay that way.
-  //
-  // Drag sets `state.labelW` (persisted, so the column survives a reload); double-click clears it
-  // back to the measured fit. The visible rule is 1px; the grab target is 9px, because a 1px target
-  // is a target only in theory.
-  function renderColumnDivider(geom) {
-    const x = geom.labelW + GANTT.gutterPad / 2;
-    const g = mk("g", { class: "col-divider" });
-    g.appendChild(mk("line", { x1: x, x2: x, y1: GANTT.padT - 6, y2: geom.axisY, class: "col-divider-rule" }));
-    const grip = mk("rect", {
-      x: x - 4.5, y: 0, width: 9, height: Math.max(0, geom.axisY),
-      class: "col-divider-grip",
-    });
-    grip.appendChild(mk("title", { text: "Drag to resize the name column · double-click to fit" }));
-    g.appendChild(grip);
-
-    grip.addEventListener("pointerdown", (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation(); // never let the grab fall through to the frontier scrubber underneath
-      grip.setPointerCapture(ev.pointerId);
-      const startX = ev.clientX, startW = geom.labelW;
-      const maxW = labelMaxW(panePx().w);
-      g.classList.add("dragging");
-      const onMove = (e) => {
-        const next = Math.round(Math.max(LABEL_MIN_W, Math.min(startW + (e.clientX - startX), maxW)));
-        if (next === state.labelW) return;
-        state.labelW = next;
-        // Redraw at the new width rather than sliding a preview line and reflowing on release: the
-        // point of the drag is to read the names, so the names have to grow while it is happening.
-        renderGraph();
-      };
-      const onUp = () => {
-        saveState();
-        document.removeEventListener("pointermove", onMove);
-        document.removeEventListener("pointerup", onUp);
-      };
-      document.addEventListener("pointermove", onMove);
-      document.addEventListener("pointerup", onUp);
-    });
-    grip.addEventListener("dblclick", (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      state.labelW = null; // back to the measured fit
-      saveState();
-      renderGraph();
-    });
-    return g;
-  }
-
-  // A subsystem swimlane header: a faint full-width band with a ▾ caret + label + "(N feat)", and
-  // the group's [first,last] span drawn faintly in the plot. Clicking collapses the subsystem back
-  // to a single meta-lane (toggleCollapse), so it's the "fold this cluster" affordance.
-  function renderSwimlaneHeader(hd, geom) {
-    const y = geom.rowY(hd.row);
-    const ind = (hd.depth || 0) * GANTT.indent; // nested subsystems step in like their member lanes
-    const g = mk("g", { class: "swimlane", "data-id": hd.collapsedId, "data-first": hd.firstCommit });
-    g.appendChild(mk("rect", { x: 0, y, width: geom.w, height: GANTT.rowH, class: "swimlane-band" }));
-    g.appendChild(mk("text", { x: 8 + ind, y: y + GANTT.rowH / 2 + 4, class: "swimlane-caret", text: "▾" }));
-    // The end-anchored meta grows leftward from the divider into the same column, so reserve its
-    // measured width (plus a gap) out of the label's budget or the two overprint.
-    const metaText = featureCount(hd.laneCount);
-    const metaW = textWidth(metaText, "swimlane-meta") + 12;
-    const labelX = 22 + ind;
-    const label = mk("text", { x: labelX, y: y + GANTT.rowH / 2 + 4, class: "swimlane-label" });
-    setLabel(label, hd.label, geom.labelW - labelX - metaW);
-    g.appendChild(label);
-    // The subsystem's own activity envelope in the plot, so the header still shows "when".
-    const bx = geom.xOf(hd.firstCommit), bx2 = geom.xOf(hd.lastCommit + 1);
-    g.appendChild(mk("rect", {
-      x: bx, y: y + GANTT.rowH / 2 - 2, width: Math.max(GANTT.minBarW, bx2 - bx), height: 4,
-      rx: 2, class: "swimlane-span", "data-first": hd.firstCommit,
-    }));
-    const meta = mk("text", { x: geom.plotX0 - 8, y: y + GANTT.rowH / 2 + 4, class: "swimlane-meta" });
-    meta.textContent = metaText;
-    g.appendChild(meta);
-    g.addEventListener("click", () => toggleCollapse(hd.collapsedId)); // fold cluster -> meta-lane
-    return g;
-  }
-
-  function renderLane(l, geom) {
-    const y = geom.rowY(l.row);
-    const midY = geom.midY(l.row);
-    // A context lane under a theme focus renders quiet: thin row, thin bars, no chip ink.
-    const rh = geom.rowH ? geom.rowH(l.row) : GANTT.rowH;
-    const quiet = rh < GANTT.rowH;
-    const barH = quiet ? 5 : GANTT.barH;
-    const barY = midY - barH / 2;
-    const color = laneColor(l.id);
-    const inSelection = l.id === state.selected || (state.multi || []).includes(l.id);
-    const g = mk("g", {
-      class: "glane" + (inSelection ? " selected" : "") + (quiet ? " glane-quiet" : ""),
-      "data-id": l.id, "data-first": l.firstCommit,
-    });
-    // full-row hit target (so hovering/clicking the gutter or empty time works, not just the bar)
-    g.appendChild(mk("rect", { x: 0, y, width: geom.w, height: rh, class: "glane-hit" }));
-
-    // Left gutter: identity swatch (▸ caret for a folded subsystem), then the label. Indented by
-    // the lane's nesting depth so features step in under their (possibly nested) subsystem header.
-    const gx = GANTT.gutterPad + (l.depth || 0) * GANTT.indent;
-    if (l.isMeta) {
-      g.appendChild(mk("text", { x: gx, y: midY + 4, class: "glane-caret", text: "▸" }));
-      g.appendChild(mk("rect", { x: gx + 12, y: midY - 4, width: 8, height: 8, rx: 2, class: "glane-swatch", fill: color }));
-    } else {
-      g.appendChild(mk("rect", { x: gx, y: midY - 4, width: 8, height: 8, rx: 2, class: "glane-swatch", fill: color }));
-    }
-    const labelX = gx + (l.isMeta ? 24 : 12);
-    const label = mk("text", { x: labelX, y: midY + 4, class: "glane-label" });
-    const node = byId(l.id);
-    const raw = (node && node.label) || l.id;
-    // Measured, and carrying its full text on hover whenever it had to be cut. A feature's name is
-    // the only thing on this row a reader can identify it by, and `put a search box in the h…` had
-    // no way at all to finish itself -- not a wider column, not a tooltip, not a drag.
-    let metaW = 0;
-    if (l.isMeta) {
-      const metaText = featureCount(l.leaves.length);
-      metaW = textWidth(metaText, "swimlane-meta") + 12;
-      g.appendChild(mk("text", { x: geom.plotX0 - 8, y: midY + 4, class: "swimlane-meta", text: metaText }));
-    }
-    setLabel(label, raw, geom.labelW - labelX - 4 - metaW);
-    // The whole row is ONE click target: it opens the lane in the detail panel. The name used to be
-    // a second, smaller target inside it that did something else -- pin a lens: dim every other
-    // lane, keep this one and its co-change neighbours, and put a banner over the plot saying so.
-    // Two outcomes from one row, told apart by hitting a 90px word or missing it, and the common
-    // miss (clicking the name because the name is what you are pointing at) answered a question
-    // nobody had asked by dimming most of the map and covering the timeline with a caption. The
-    // lens itself is still here and still captioned -- through find, where dimming is the answer to
-    // something the reader typed. A name that had to be cut keeps `setLabel`'s own full-text
-    // <title>, which the pin tooltip used to replace.
-    g.appendChild(label);
-
-    // Chunk-car train: the lane's checkpoints, packed left->right in seg_index order (see
-    // renderCars) -- the visual atom is the intent segment, not a raw op or a shared time column.
-    const lastX = renderCars(g, l, geom, color, barY, midY, { barH, quiet });
-    const open = expandedCar();
-    if (open && open.lane.id === l.id && !quiet && focus.t >= 1 && !focus.raf) renderCheckpointPanel(g, l, geom, open.car, color);
-    // Op count in its own right-hand column: one x for every row, so the numbers read down the page
-    // and none of them can land on the plot edge or the frontier scrubber.
-    // The lane's size in changes (one function in one save), summed over its chapters when the
-    // payload carries `change_count`; an op count is mostly bookkeeping and read as "edits" it
-    // was the number participants could not place ("10 ops in a checkpoint of 3 commits").
-    const laneChanges = (l.cars || []).length
-      ? (l.cars || []).reduce((a, c) => a + (c.changeCount == null ? c.opCount : c.changeCount), 0)
-      : l.opCount;
-    // A lane whose chapters changed no named function says the word, not a zero beside a bar:
-    // two cold readers read "0" with a bar as a contradiction.
-    const layoutOnly = laneChanges === 0 && (l.cars || []).length > 0;
-    const count = mk("text", {
-      // Anchored to the plot's own right edge, not the SVG's: the SVG is drawn at the pane's
-      // clientWidth, which includes the rail's 8px padding, so an x measured from `geom.w` sits
-      // past the visible content and only appears once the pane is scrolled sideways.
-      x: geom.plotX0 + geom.plotW + geom.forecastW + GANTT.countW - 6,
-      y: midY + 4, class: "gbar-count" + (laneChanges === 0 ? " zero" : ""), text: layoutOnly ? "layout" : String(laneChanges),
-    });
-    g.appendChild(count);
-
-    // This lane's future, in the band right of the `now` rule: each actor's work here, in that
-    // actor's column, drawn as cars in the same grammar as history (see renderForecastCars).
-    renderForecastCars(g, l, geom, color, barY, midY, barH);
-
-    renderLaneBadges(g, l, geom, color, barY, midY, geom.plotX0, lastX);
-
-    g.addEventListener("mouseenter", () => onHover(l.id));
-    g.addEventListener("mouseleave", () => onHover(null));
-    g.addEventListener("click", (ev) => {
-      if (l.isMeta) { toggleCollapse(l.id); return; } // expand the subsystem into its features
-      if (armedVerb) { confirmArmed(l.id); return; }
-      selectRow(l.id, ev.metaKey || ev.ctrlKey || ev.shiftKey);
-    });
-    return g;
-  }
-
-  // Drift / fork are decorations ON the lane (never separate marks): a lane carrying a drift op gets
-  // a solid identity outline; a forked lane gets a ⋔ badge in the gutter. Neither introduces a second
-  // hue competing with identity. Pending PLAN steps used to live here too, as a dashed underline plus
-  // a `+N` step count -- a second visual language for "not real yet" that competed with the save
-  // preview's ghost car and left the reader with a bare count and no way to learn what it stood for.
-  // They are forecast cars now (renderForecastCars), so a plan step is named, positioned, and
-  // clickable like every other unit of work in this view.
-  function renderLaneBadges(g, l, geom, color, barY, midY, x1, x2) {
-    const barW = Math.max(GANTT.minBarW, x2 - x1);
-    const hasDrift = (layout.opsByFeature[l.id] || []).some((op) => driftMarks.ids.has(op.id));
-    if (hasDrift) {
-      g.appendChild(mk("rect", {
-        x: x1 - 1.5, y: barY - 1.5, width: barW + 3, height: GANTT.barH + 3, rx: 4,
-        class: "gbar-drift", stroke: color,
-      }));
-    }
-    if (forkMarks.byFeature[l.id]) {
-      const f = mk("text", { x: geom.labelW - 6, y: midY + 4, class: "gbar-fork", text: "⋔" });
-      f.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        const forks = forkMarks.byFeature[l.id];
-        if (forks && forks[0]) vscode.postMessage({ type: "resolveFork", symbol: forks[0].symbol });
-      });
-      g.appendChild(f);
-    }
-  }
-
-  // The bottom time axis + frontier scrubber. Ticks label a handful of commit-index positions; the
-  // draggable handle (and click anywhere in the plot) scrubs a fold frontier -- a translucent veil
-  // covers everything to its right (the "future") and the code(I)/op-set panels reflect that point,
-  // without a relayout on every drag.
-  // `svg` is the scrolling plot; `axisSvg` is the pinned strip beneath it. Marks that measure the
-  // plot's own height -- gridlines, the future-veil, the frontier line and its grab-band -- belong
-  // to the plot and scroll with it. The ruler and the drag handle belong to the axis and do not.
-  // A position on the time axis as a time a reader keeps: the clock time when the whole history
-  // fits in a day and a half, the date otherwise. It used to print the commit index (`c4`), a
-  // number nothing else on screen explains.
-  function axisLabel(ci) {
-    const cs = (compose && compose.history && compose.history.commits) || [];
-    const c = cs.find((x) => x.index === ci) || cs[ci];
-    if (!c || !c.ts) return `save ${ci + 1}`;
-    const first = cs[0] && cs[0].ts, last = cs[cs.length - 1] && cs[cs.length - 1].ts;
-    const d = new Date(c.ts * 1000);
-    return first && last && last - first < 36 * 3600
-      ? d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
-      : d.toLocaleDateString([], { month: "short", day: "numeric" });
-  }
-
-  function renderTimeAxis(svg, axisSvg, geom) {
-    // One save (or none) has no axis to scrub, but it can already have work coming: a fresh
-    // repository an agent has just started on. The band's headers and the now rule draw regardless.
-    const single = layout.commitCount <= 1;
-    const y = geom.axisY;          // the plot's bottom edge, in plot coordinates
-    const ay = 8;                  // the track's y, in the axis strip's own coordinates
-    if (!single) axisSvg.appendChild(mk("line", {
-      x1: geom.plotX0, x2: geom.plotX0 + geom.plotW, y1: ay, y2: ay, class: "axis-track",
-    }));
-    let prevTick = null;
-    for (let i = 0; !single && i <= 4; i++) {
-      const ci = Math.round((i / 4) * geom.maxCommit);
-      const tx = i === 4 ? geom.xOf(geom.maxCommit + 1) : geom.xOf(ci);
-      const tick = axisLabel(ci);
-      // Faint full-height gridline so the plot reads as a structured field of time columns rather
-      // than an empty expanse above the axis.
-      svg.appendChild(mk("line", { x1: tx, x2: tx, y1: GANTT.padT, y2: y, class: "axis-gridline", "data-ci": ci }));
-      // five ticks inside one afternoon read as the same date five times: print each label once
-      if (tick !== prevTick) {
-        axisSvg.appendChild(mk("text", {
-          x: tx, y: ay + 16, class: "axis-tick" + (i === 0 ? " start" : i === 4 ? " end" : ""), text: tick, "data-ci": ci,
-        }));
-      }
-      prevTick = tick;
-    }
-    // Right-aligned into the label gutter rather than at the plot's left edge: the ◆ spanning-work
-    // marks ride that same band (y 4..20), and a piece of work starting at c0 sits exactly on top of
-    // this label. The gutter is empty at this height -- lane rows begin at padT.
-    // The count column had no header at all: a strip of bare numbers (97, 328, 204…) down the right
-    // edge of the plot, in a view whose every other column says what it is. A reader who cannot
-    // tell whether that is edits, commits, or symbols cannot use it.
-    svg.appendChild(mk("text", {
-      x: geom.plotX0 + geom.plotW + geom.forecastW + GANTT.countW - 4, y: GANTT.padT - 3,
-      class: "axis-title count-title", text: "changes",
-    }));
-
-    // The `now` rule: the honest right edge of measured time. Everything left of it happened;
-    // everything right of it is forecast. Drawn only when there IS a forecast, so a repo with nothing
-    // pending keeps exactly the axis it had. The band's title strip names whose work is coming, one
-    // column each (renderActorHeaders); that is the whole explanation, so no ghost needs a caption.
-    if (geom.forecastW > 0) {
-      svg.appendChild(mk("line", {
-        x1: geom.nowX, x2: geom.nowX, y1: GANTT.padT - 4, y2: y, class: "now-rule",
-      }));
-      renderActorHeaders(svg, geom);
-    }
-
-    if (single) { graphView = null; return; }
-    const frontier = playheadCommitIndex == null ? geom.maxCommit : playheadCommitIndex;
-    const fx = geom.scrubX(frontier);
-    const veil = mk("rect", {
-      x: fx, y: GANTT.padT, width: Math.max(0, geom.plotX0 + geom.plotW - fx), height: y - GANTT.padT,
-      class: "future-veil" + (playheadCommitIndex == null ? " at-head" : ""),
-    });
-    const line = mk("line", { x1: fx, x2: fx, y1: GANTT.padT - 2, y2: y, class: "frontier-line" + (playheadCommitIndex == null ? " at-head" : "") });
-    const handle = mk("path", { d: `M ${fx - 5} ${ay + 3} L ${fx + 5} ${ay + 3} L ${fx} ${ay - 4} Z`, class: "frontier-handle", "data-cx": fx });
-    // A wide invisible grab-band over the frontier line, spanning the plot height. Scrubbing is a
-    // deliberate "grab the playhead and drag" gesture -- via this band or the bottom handle -- never
-    // a plain click: a lane click still selects its feature, and clicking empty plot does nothing.
-    const band = mk("rect", { x: fx - 6, y: GANTT.padT - 2, width: 12, height: y - (GANTT.padT - 2), class: "frontier-band" });
-    // A floating readout above the playhead, shown only while scrubbing: the commit index it's on
-    // plus the checkpoint(s) that begin/end there when snapped to a boundary -- so a scrub reads as
-    // "landing on this event", not "somewhere on a bare axis".
-    // The readout and the reading line sit on the ruler, in the row where the dates are, and the
-    // dates step aside while either speaks: the axis is pinned, so what it says is on screen however
-    // far the rows are scrolled, and it covers no row.
-    const readout = mk("text", { x: fx, y: ay + 16, class: "scrub-readout", text: "" });
-    readout.style.display = "none";
-    const axisSpan = mk("line", { x1: 0, x2: 0, y1: ay, y2: ay, class: "axis-span" });
-    axisSpan.style.display = "none";
-    const axisReadText = mk("text", { x: 0, y: ay + 16, class: "axis-read", text: "" });
-    axisReadText.style.display = "none";
-    svg.appendChild(veil);
-    svg.appendChild(line);
-    svg.appendChild(band);
-    // Snap targets: every checkpoint boundary (a car's first/last commit) -- the commit indices where
-    // "something happened", so the playhead clicks onto real events instead of arbitrary columns.
-    const snap = new Set();
-    for (const l of layout.lanes) for (const c of (l.cars || [])) { snap.add(c.firstIndex); snap.add(c.lastIndex); }
-    // The notches the playhead rests in, drawn on the ruler and as a faint grid through the plot;
-    // both show only while the playhead is held (see showNotches).
-    const notches = notchesFor(geom, [...snap]);
-    const notchEls = new Map();
-    for (const n of notches) {
-      const nx = geom.scrubX(n), deep = snap.has(n);
-      svg.appendChild(mk("line", { x1: nx, x2: nx, y1: GANTT.padT, y2: y, class: "notch-grid" + (deep ? " deep" : "") }));
-      const t = mk("line", { x1: nx, x2: nx, y1: ay - (deep ? 5 : 3), y2: ay + (deep ? 5 : 3), class: "notch" + (deep ? " deep" : "") });
-      axisSvg.appendChild(t);
-      notchEls.set(n, t);
-    }
-    axisSvg.appendChild(axisSpan);
-    axisSvg.appendChild(handle);   // the handle rides the pinned ruler, always reachable
-    axisSvg.appendChild(readout);
-    axisSvg.appendChild(axisReadText);
-    graphView = { geom, handleEl: handle, frontierEl: line, veilEl: veil, scrubBandEl: band,
-      readoutEl: readout, handleY: ay, snap: [...snap].sort((a, b) => a - b), snapSet: snap,
-      axisSvg, axisSpanEl: axisSpan, axisReadEl: axisReadText, notches, notchEls };
-    handle.addEventListener("pointerdown", onScrubPointerDown);
-    band.addEventListener("pointerdown", onScrubPointerDown);
-    // The band is the playhead's keyboard: a save at a time, a boundary with Shift, Esc home.
-    band.setAttribute("tabindex", "0");
-    band.setAttribute("role", "slider");
-    band.setAttribute("aria-valuemin", "0");
-    band.setAttribute("aria-valuemax", String(geom.maxCommit));
-    band.setAttribute("aria-label", "playhead: arrow keys step one save, Shift steps to a checkpoint boundary, Escape returns to now");
-    band.addEventListener("keydown", onScrubKey);
-    // If a render rebuilt the SVG mid-motion, the new marks pick the motion up where it is.
-    if (ph.x != null) paintPlayhead(ph.x);
-  }
-
-  // Snap a raw commit index to the nearest checkpoint boundary when it's within a few px, so the
-  // playhead lands on events; otherwise leave it free for fine positioning between them.
-  function snapCommit(idx, geom) {
-    const pts = graphView && graphView.snap;
-    if (!pts || !pts.length) return idx;
-    const x = geom.scrubX(idx);
-    let best = idx, bestPx = Infinity;
-    for (const p of pts) { const d = Math.abs(geom.scrubX(p) - x); if (d < bestPx) { bestPx = d; best = p; } }
-    return bestPx <= 8 ? best : idx;
-  }
-
-  // The checkpoint labels whose chapter begins or ends exactly at this commit -- what the scrub
-  // readout names when the playhead snaps onto a boundary.
-  function eventsAt(idx) {
-    const out = [];
-    for (const l of layout.lanes) for (const c of (l.cars || [])) {
-      if (c.firstIndex === idx || c.lastIndex === idx) out.push(c.label);
-    }
-    return out;
-  }
-
-  function truncate(s, n) {
-    s = String(s);
-    return s.length > n ? s.slice(0, Math.max(1, n - 1)) + "…" : s;
-  }
-
-  // ─── Measuring label text ───────────────────────────────────────────────────────────────────
-  // Every label in the gutter used to be cut with `truncate(s, floor(availablePx / 6.5))` -- a
-  // guessed 6.5px per glyph, applied to whatever font the user's VS Code happens to render the
-  // webview in. The guess is wrong in both directions: a narrow font clipped names that had room to
-  // spare, a wide one let them overrun into the plot. Measure the actual string in the actual font
-  // instead, and cut to a PIXEL budget rather than a character count.
-  const _measureCtx = document.createElement("canvas").getContext("2d");
-  const _measureCache = new Map();   // `${font}\0${text}` -> px
-  const _fontByClass = new Map();    // css class -> resolved shorthand, re-read once per render
-  const _probes = new Map();
-
-  // The font a label class is ACTUALLY drawn in. VS Code resolves the family and size from the
-  // user's own settings at runtime, so the only honest way to get it is to ask a real node styled
-  // exactly like the labels -- hence one off-screen probe per class, kept for the session.
-  function fontFor(cls) {
-    let font = _fontByClass.get(cls);
-    if (font) return font;
-    let probe = _probes.get(cls);
-    if (!probe) {
-      const svg = mk("svg", { class: "railsvg gantt", width: "0", height: "0" });
-      svg.setAttribute("style", "position:absolute;left:-9999px;top:0;visibility:hidden");
-      probe = mk("text", { class: cls });
-      svg.appendChild(probe);
-      document.body.appendChild(svg);
-      _probes.set(cls, probe);
-    }
-    const cs = getComputedStyle(probe);
-    font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
-    _fontByClass.set(cls, font);
-    return font;
-  }
-
-  // Drop the resolved fonts at the start of each draw: the user can change the editor font
-  // mid-session, and a cache keyed to a stale font measures lies with total confidence.
-  function resetFontCache() {
-    _fontByClass.clear();
-    if (_measureCache.size > 4000) _measureCache.clear(); // a long session, not a leak
-  }
-
-  function textWidth(s, cls = "glane-label") {
-    s = String(s);
-    const font = fontFor(cls);
-    const key = font + " " + s;
-    let w = _measureCache.get(key);
-    if (w === undefined) {
-      _measureCtx.font = font;
-      w = _measureCtx.measureText(s).width;
-      _measureCache.set(key, w);
-    }
-    return w;
-  }
-
-  // Cut `s` to at most `px` pixels, ellipsis included. Returns `{text, clipped}` so the caller can
-  // decide whether the row needs a tooltip -- a name the reader cannot finish is exactly the case
-  // where hovering has to be able to finish it, and until now nothing in the gutter carried one.
-  function fitText(s, px, cls) {
-    s = String(s);
-    if (px <= 0) return { text: "", clipped: s.length > 0 };
-    if (textWidth(s, cls) <= px) return { text: s, clipped: false };
-    const ell = textWidth("…", cls);
-    let lo = 0, hi = s.length;
-    while (lo < hi) { // widest prefix whose glyphs + `…` still fit
-      const mid = (lo + hi + 1) >> 1;
-      if (textWidth(s.slice(0, mid), cls) + ell <= px) lo = mid; else hi = mid - 1;
-    }
-    return { text: s.slice(0, lo).trimEnd() + "…", clipped: true };
-  }
-
-  // True when a chapter's name only repeats words from the lane it sits on -- `Sort The Grid` on the
-  // row called `sort the grid by name, species or days to harvest`. Those labels are most of the ink
-  // and none of the information: the row says it, then the bar inside the row says it again in title
-  // case. Compared on the first few words, since the two strings are ellipsized independently and a
-  // tail cut at a different place would otherwise read as new content.
-  // The terminal's `_echoes` in ugh/tui/graph.py is the same rule -- keep the two in step.
-  const WORD_RE = /[a-z0-9]+/g;
-  function echoesLane(chapter, lane) {
-    const laneWords = new Set(String(lane).toLowerCase().match(WORD_RE) || []);
-    if (!laneWords.size) return false;
-    const words = (String(chapter).toLowerCase().match(WORD_RE) || []).slice(0, 6);
-    return words.length > 0 && words.every((w) => laneWords.has(w));
-  }
-
-  // Put the full text on hover whenever the drawn text is a cut of it. An SVG <text> ignores a
-  // `title` attribute, so the tooltip has to be a <title> CHILD (same rule the chapter cars follow).
-  function setLabel(el, full, px, cls) {
-    const fit = fitText(full, px, cls || el.getAttribute("class"));
-    el.textContent = fit.text;
-    if (fit.clipped) el.appendChild(mk("title", { text: String(full) }));
-    return fit.clipped;
-  }
-
-  // ─── Frontier scrubber ──────────────────────────────────────────────────────────────────────
-  // A commit-index dragged along the time axis. It's a *fold point*, not a snapshot pointer: a
-  // translucent veil covers the plot to its right (the "future"), lanes not yet born dim, and the
-  // code(I) + op-set panels reflect the fold at that commit -- but the layout itself never moves,
-  // so scrubbing stays smooth (moving the veil + line is O(1), no relayout per pointermove).
-  function svgLocalX(svg, clientX) {
-    return clientX - svg.getBoundingClientRect().left;
-  }
-
-  function applyFrontier() {
-    const svg = rail.querySelector("svg");
-    if (!svg || !graphView) return;
-    const geom = graphView.geom;
-    const atHead = playheadCommitIndex == null;
-    const idx = atHead ? geom.maxCommit : playheadCommitIndex;
-    // While the playhead has mass (a drag, a coast, a glide home) the line sits where the spring
-    // put it, not on the save it stands for; the two meet when it settles.
-    const fx = ph.x != null ? ph.x : geom.scrubX(idx);
-    paintPlayhead(fx);
-    graphView.frontierEl.classList.toggle("at-head", atHead);
-    graphView.veilEl.classList.toggle("at-head", atHead);
-    if (graphView.scrubBandEl) {
-      graphView.scrubBandEl.setAttribute("aria-valuenow", String(idx));
-      graphView.scrubBandEl.setAttribute("aria-valuetext", atHead ? "now" : axisLabel(idx));
-    }
-    if (graphView.readoutEl) {
-      const ro = graphView.readoutEl;
-      if ((playheadDragging || ph.x != null || phDrag.ratchet) && !atHead) {
-        const events = eventsAt(idx);
-        const when = axisLabel(idx);
-        ro.textContent = (when.startsWith("save") ? when : `save ${idx + 1} · ${when}`) + (events.length ? " · " + truncate(events[0], 40) : "");
-        ro.classList.remove("fading");
-        ro.style.display = "";
-      } else if (!ro.classList.contains("fading")) {
-        ro.style.display = "none";
-      }
-      if (graphView.axisSvg) graphView.axisSvg.classList.toggle("scrub-reading", ro.style.display !== "none");
-    }
-    // Dim the gutter (label + swatch) of lanes/swimlanes not yet born, and any car whose checkpoint
-    // starts past the frontier -- the veil handles the rest of the plot.
-    for (const el of svg.querySelectorAll(".glane, .swimlane, .gcar-wrap")) {
-      const first = Number(el.getAttribute("data-first"));
-      el.classList.toggle("beyond", !atHead && first > playheadCommitIndex);
-    }
-    renderPresence(); // keep the "where am I" band's scrub position live while dragging
-    renderContextRows();
-  }
-
-  // Move the four marks that ARE the playhead to one x: the line, the veil's edge, the handle on
-  // the pinned ruler, the grab band, and the readout above it.
-  function paintPlayhead(fx) {
-    if (!graphView) return;
-    const geom = graphView.geom;
-    graphView.frontierEl.setAttribute("x1", fx);
-    graphView.frontierEl.setAttribute("x2", fx);
-    graphView.veilEl.setAttribute("x", fx);
-    graphView.veilEl.setAttribute("width", Math.max(0, geom.plotX0 + geom.plotW - fx));
-    // The handle lives in the PINNED axis SVG, so its y is that strip's own coordinate -- not the
-    // plot's bottom edge, which is where it used to sit when the two shared one SVG.
-    const y = graphView.handleY != null ? graphView.handleY : geom.axisY;
-    graphView.handleEl.setAttribute("d", `M ${fx - 5} ${y + 3} L ${fx + 5} ${y + 3} L ${fx} ${y - 4} Z`);
-    if (graphView.scrubBandEl) graphView.scrubBandEl.setAttribute("x", fx - 6);
-    if (graphView.readoutEl) {
-      const ro = graphView.readoutEl;
-      ro.setAttribute("x", Math.max(geom.plotX0 + 20, Math.min(geom.plotX0 + geom.plotW - 20, fx)));
-      ro.setAttribute("text-anchor", fx > geom.plotX0 + geom.plotW - 80 ? "end" : "middle");
-    }
-  }
-
-  function setPlayhead(idx) {
-    if (playheadCommitIndex === idx) return;
-    playheadCommitIndex = idx;
-    applyFrontier();
-    renderInspector();
-    scheduleScrub(idx);
-  }
-
-  function clearPlayhead() {
-    if (playheadCommitIndex == null && ph.x == null) return;
-    clearTimeout(scrubTimer);
-    // Home is the now edge: the playhead glides back to it rather than teleporting, so the eye
-    // can follow where "now" is after a scrub. Seeded from where it is, so before the index clears.
-    if (graphView) phGlideTo(graphView.geom.scrubX(graphView.geom.maxCommit));
-    playheadCommitIndex = null;
-    applyFrontier();
-    renderInspector();
-  }
-
-  function scheduleScrub(idx) {
-    clearTimeout(scrubTimer);
-    scrubTimer = setTimeout(() => requestScrub(idx), 250);
-  }
-
-  function requestScrub(idx) {
-    if (playheadCommitIndex !== idx) return; // superseded by a later drag position
-    if (playheadResultCache[idx]) {
-      renderInspector();
-      return;
-    }
-    const seq = ++playheadSeq;
-    pendingPlayhead = { seq, commitIndex: idx };
-    vscode.postMessage({ type: "scrubPlayhead", commitIndex: idx, seq });
-    renderInspector(); // "Loading…" for this frontier
-  }
-
-  // ─── The playhead as an instrument ────────────────────────────────────────────────────────────
-  // It moves the way a detented dial does. It rests in a notch, holds there while the hand starts
-  // to pull, and clicks into the next notch once the hand is past the halfway point by a margin,
-  // seating with a small overshoot. The notches are the saves, drawn on the ruler and as a faint
-  // grid through the plot while the playhead is held; a checkpoint boundary is a deeper notch that
-  // takes a firmer pull to leave. On a history too dense for a notch per save, the notches are the
-  // boundaries. A flick ratchets on through a few notches, each a click, slowing as it goes; a
-  // release on the now edge returns to now. Reduced motion jumps from notch to notch.
-  // ---- playhead-wells (test slice boundary)
-  const PH = { omega: 48, zeta: 0.78, coastMs: 140, minGap: 6, hold: 0.08, deepHold: 0.16, lean: 0.22 };
-
-  function notchesFor(geom, snap) {
-    const step = geom.plotW / (geom.maxCommit + 1);
-    if (step >= PH.minGap) return Array.from({ length: geom.maxCommit + 1 }, (_, i) => i);
-    return [...new Set([0, geom.maxCommit, ...(snap || [])])].sort((a, b) => a - b);
-  }
-
-  // The notch the playhead sits in with the hand at `px`, starting from notch `cur`: the nearest
-  // notch, but only once the hand has pulled past the halfway point by the hold margin.
-  function detentIndex(px, cur, notches, geom, deep) {
-    let best = notches[0], bestD = Infinity;
-    for (const n of notches) {
-      const d = Math.abs(geom.xOf(n) - px);
-      if (d < bestD) { bestD = d; best = n; }
-    }
-    const i = notches.indexOf(cur);
-    if (best === cur || i < 0) return best;
-    const dir = geom.xOf(best) > geom.xOf(cur) ? 1 : -1;
-    const next = notches[i + dir];
-    if (next == null) return cur;
-    const gap = Math.abs(geom.xOf(next) - geom.xOf(cur));
-    const hold = Math.min(8, Math.max(1, gap * (deep && deep.has(cur) ? PH.deepHold : PH.hold)));
-    return Math.abs(px - geom.xOf(cur)) > gap / 2 + hold ? best : cur;
-  }
-
-  // How many notches a release at `v` px/s carries on, with notches `gap` px apart.
-  function coastSteps(v, gap) {
-    const n = Math.min(8, Math.floor((Math.abs(v) * PH.coastMs / 1000) / Math.max(PH.minGap, gap)));
-    return v < 0 ? -n : n;
-  }
-  // ---- end-playhead-wells
-
-  const phDrag = { notches: [], deep: new Set(), cur: null, samples: [], ratchet: null, hideTimer: null };
-
-  function clampPlot(x, geom) {
-    return Math.max(geom.plotX0, Math.min(geom.plotX0 + geom.plotW, x));
-  }
-
-  function showNotches(on) {
-    clearTimeout(phDrag.hideTimer);
-    rail.classList.toggle("notching", on);
-  }
-
-  // Seat the playhead at x: a stiff spring, a little under-damped, so it lands with a click.
-  function phGlideTo(x) {
-    if (!graphView) return;
-    if (prefersReducedMotion()) { ph.x = null; return; }
-    if (ph.x == null) {
-      const geom = graphView.geom;
-      ph.x = geom.scrubX(playheadCommitIndex == null ? geom.maxCommit : playheadCommitIndex);
-      ph.v = 0;
-    }
-    ph.target = x;
-    ph.last = 0;
-    if (!ph.raf) ph.raf = requestAnimationFrame(phFrame);
-  }
-
-  function phFrame(now) {
-    ph.raf = 0;
-    if (!graphView || ph.x == null) return;
-    const dt = ph.last ? Math.min(0.05, Math.max(0.004, (now - ph.last) / 1000)) : 0.016;
-    ph.last = now;
-    // Fixed 4 ms substeps: a spring this stiff integrated in one step per frame diverges as soon as
-    // frames arrive 30 ms apart (a busy editor), and the playhead would fly off the plot.
-    const k = PH.omega * PH.omega, c = 2 * PH.zeta * PH.omega;
-    const n = Math.ceil(dt / 0.004), h = dt / n;
-    for (let i = 0; i < n; i++) {
-      ph.v += (k * (ph.target - ph.x) - c * ph.v) * h;
-      ph.x += ph.v * h;
-    }
-    const done = Math.abs(ph.target - ph.x) < 0.2 && Math.abs(ph.v) < 2;
-    if (done) { ph.x = ph.target; ph.v = 0; }
-    paintPlayhead(ph.x);
-    if (done) { phSettled(); return; }
-    ph.raf = requestAnimationFrame(phFrame);
-  }
-
-  function phSettled() {
-    ph.x = null;
-    if (playheadDragging || phDrag.ratchet) { applyFrontier(); return; }
-    const ro = graphView && graphView.readoutEl;
-    if (ro && ro.style.display !== "none" && playheadCommitIndex != null) {
-      // The landing's name holds a second, then fades (highlight, hold, let go).
-      ro.classList.add("fading");
-      clearTimeout(ph.holdTimer);
-      ph.holdTimer = setTimeout(() => {
-        ro.style.display = "none";
-        ro.classList.remove("fading");
-        if (graphView && graphView.axisSvg) graphView.axisSvg.classList.remove("scrub-reading");
-      }, 1400);
-    }
-    applyFrontier();
-  }
-
-  // One click: the playhead moves to notch `idx`, seats, and the notch under it flashes.
-  function phClick(idx) {
-    if (!graphView) return;
-    // Seed the spring where the line is now, before the index moves, or it starts at its target and
-    // the notch is a jump instead of a seat.
-    if (ph.x == null && !prefersReducedMotion()) {
-      const geom = graphView.geom;
-      ph.x = geom.scrubX(playheadCommitIndex == null ? geom.maxCommit : playheadCommitIndex);
-      ph.v = 0;
-    }
-    setPlayhead(idx);
-    phGlideTo(graphView.geom.scrubX(idx));
-    const t = graphView.notchEls && graphView.notchEls.get(idx);
-    if (t && !prefersReducedMotion()) {
-      t.classList.remove("hit");
-      t.getBoundingClientRect(); // restart the flash
-      t.classList.add("hit");
-    }
-  }
-
-  function stopRatchet() {
-    clearTimeout(phDrag.ratchet);
-    phDrag.ratchet = null;
-  }
-
-  // Done moving: on the now edge the playhead returns to now; the notches fade a moment later.
-  function finishScrub() {
-    if (graphView && playheadCommitIndex != null && playheadCommitIndex >= graphView.geom.maxCommit) clearPlayhead();
-    applyFrontier();
-    clearTimeout(phDrag.hideTimer);
-    phDrag.hideTimer = setTimeout(() => { if (!playheadDragging && !phDrag.ratchet) rail.classList.remove("notching"); }, 600);
-  }
-
-  function ratchet(dir, left, k) {
-    phDrag.ratchet = setTimeout(() => {
-      const i = phDrag.notches.indexOf(phDrag.cur);
-      const next = phDrag.notches[i + dir];
-      if (next == null || left <= 0) { phDrag.ratchet = null; finishScrub(); return; }
-      phDrag.cur = next;
-      phClick(next);
-      if (left <= 1) { phDrag.ratchet = null; finishScrub(); return; }
-      ratchet(dir, left - 1, k + 1);
-    }, Math.round(45 * Math.pow(1.35, k))); // each click a little later than the last: it slows
-  }
-
-  function onScrubPointerDown(ev) {
-    ev.stopPropagation();
-    ev.preventDefault(); // a scrub is a drag, not a text-selection gesture -- suppress the latter
-    const svg = rail.querySelector("svg");
-    if (!svg || !graphView) return;
-    stopRatchet();
-    playheadDragging = true;
-    unreadCar();
-    // A pointer that is no longer active (a synthetic event, a lost touch) makes capture throw;
-    // the drag still works through the window listeners below.
-    try { if (svg.setPointerCapture) svg.setPointerCapture(ev.pointerId); } catch (e) { /* uncaptured */ }
-    const geom = graphView.geom;
-    phDrag.notches = graphView.notches || notchesFor(geom, graphView.snap);
-    phDrag.deep = graphView.snapSet || new Set();
-    phDrag.cur = playheadCommitIndex == null ? geom.maxCommit : playheadCommitIndex;
-    phDrag.samples = [];
-    clearTimeout(ph.holdTimer);
-    showNotches(true);
-    scrubTo(svgLocalX(svg, ev.clientX));
-    window.addEventListener("pointermove", onScrubPointerMove);
-    window.addEventListener("pointerup", onScrubPointerUp);
-    window.addEventListener("pointercancel", onScrubPointerUp); // a lost touch or capture ends the drag too
-  }
-
-  function scrubTo(rawX) {
-    const geom = graphView.geom;
-    const px = clampPlot(rawX, geom);
-    phDrag.samples.push({ t: performance.now(), x: px });
-    if (phDrag.samples.length > 12) phDrag.samples.shift();
-    const idx = detentIndex(px, phDrag.cur, phDrag.notches, { xOf: geom.scrubX }, phDrag.deep);
-    if (idx !== phDrag.cur) {
-      phDrag.cur = idx;
-      phClick(idx);
-    } else if (!prefersReducedMotion()) {
-      // Inside its notch the line leans a little toward the hand, so it stays connected to the
-      // pointer; past the halfway point it lets go into the next notch.
-      const home = geom.scrubX(idx);
-      const i = phDrag.notches.indexOf(idx);
-      const nb = phDrag.notches[i + (px > home ? 1 : -1)];
-      const gap = nb == null ? 0 : Math.abs(geom.scrubX(nb) - home);
-      const lean = Math.max(-gap * 0.3, Math.min(gap * 0.3, (px - home) * PH.lean));
-      if (ph.x == null) { ph.x = home; ph.v = 0; }
-      phGlideTo(home + lean);
-    }
-  }
-
-  function onScrubPointerMove(ev) {
-    if (!playheadDragging) return;
-    const svg = rail.querySelector("svg");
-    if (!svg || !graphView) return;
-    scrubTo(svgLocalX(svg, ev.clientX));
-  }
-
-  function onScrubPointerUp() {
-    playheadDragging = false;
-    if (graphView && phDrag.cur != null) phGlideTo(graphView.geom.scrubX(phDrag.cur)); // seat from the lean
-    window.removeEventListener("pointermove", onScrubPointerMove);
-    window.removeEventListener("pointerup", onScrubPointerUp);
-    window.removeEventListener("pointercancel", onScrubPointerUp);
-    if (!graphView) return;
-    const geom = graphView.geom;
-    const now = performance.now();
-    const recent = phDrag.samples.filter((p) => now - p.t < 90);
-    const v = recent.length > 1
-      ? (recent[recent.length - 1].x - recent[0].x) / Math.max(0.016, (recent[recent.length - 1].t - recent[0].t) / 1000)
-      : 0;
-    const gap = geom.plotW / Math.max(1, phDrag.notches.length - 1);
-    const n = prefersReducedMotion() ? 0 : coastSteps(v, gap);
-    if (!n) { finishScrub(); return; }
-    ratchet(n > 0 ? 1 : -1, Math.abs(n), 0);
-  }
-
-  // Keys on the grab band: a notch at a time, a checkpoint boundary with Shift, Esc back to now.
-  function onScrubKey(ev) {
-    if (!graphView) return;
-    const geom = graphView.geom;
-    const notches = graphView.notches || notchesFor(geom, graphView.snap);
-    const cur = playheadCommitIndex == null ? geom.maxCommit : playheadCommitIndex;
-    let next = null;
-    if (ev.key === "ArrowLeft" || ev.key === "ArrowRight") {
-      const dir = ev.key === "ArrowLeft" ? -1 : 1;
-      if (ev.shiftKey) {
-        const stops = graphView.snap || [];
-        next = dir < 0 ? [...stops].reverse().find((s) => s < cur) : stops.find((s) => s > cur);
-        if (next == null) next = dir < 0 ? 0 : geom.maxCommit;
-      } else {
-        const i = notches.indexOf(cur);
-        next = i < 0 ? cur : notches[Math.max(0, Math.min(notches.length - 1, i + dir))];
-      }
-    } else if (ev.key === "Home") {
-      next = 0;
-    } else if (ev.key === "End") {
-      next = geom.maxCommit;
-    } else {
-      return;
-    }
-    ev.preventDefault();
-    ev.stopPropagation();
-    stopRatchet();
-    if (next >= geom.maxCommit) { clearPlayhead(); return; }
-    showNotches(true);
-    phDrag.cur = next;
-    phClick(next);
-    finishScrub();
-  }
-
-  // Mirrors `overall_status()` in ugh/core/oracle.py: override wins if present; else "fail" if
-  // any recorded tier failed; else "pass" if at least one tier ran; else "pending".
-  function oracleStatus(record) {
-    if (!record) return "pending";
-    if (record.override) return record.override.status;
-    const tiers = Object.values(record.tiers || {});
-    if (tiers.some((t) => t.status === "fail")) return "fail";
-    return tiers.length ? "pass" : "pending";
-  }
-
-  function toggleCollapse(id) {
-    const i = state.collapsed.indexOf(id);
-    if (i >= 0) state.collapsed.splice(i, 1);
-    else state.collapsed.push(id);
-    saveState();
-    recompute();
-    render();
-  }
-
-  function opIdsFor(featureId) {
-    return (layout.opsByFeature[featureId] || []).map((op) => op.id);
-  }
-
-  // Brighten the time-axis gridlines/ticks within a hovered lane's active commit span, so hovering a
-  // feature also shows *when* on the shared axis it was worked (task 5). Hover-only; the same
-  // dim/light grammar the lanes use, no new hue. `laneId == null` clears.
-  function markAxisSpan(svg, laneId) {
-    svg.querySelectorAll(".axis-gridline.lit, .axis-tick.lit").forEach((el) => el.classList.remove("lit"));
-    if (laneId == null) return;
-    const l = layout.laneById[laneId];
-    if (!l) return;
-    svg.querySelectorAll(".axis-gridline, .axis-tick").forEach((el) => {
-      const ci = Number(el.getAttribute("data-ci"));
-      if (ci >= l.firstCommit && ci <= l.lastCommit) el.classList.add("lit");
-    });
-  }
-
-  function onHover(id) {
-    const svg = rail.querySelector("svg");
-    if (!svg) return;
-    if (!id) {
-      markAxisSpan(svg, null);
-      svg.querySelectorAll(".glane.hovered").forEach((el) => el.classList.remove("hovered"));
-      if (!armedVerb) clearGhosts();
-      applyLens(); // a live search survives mouse-out; an empty find box clears the dim
-      return;
-    }
-    if (armedVerb) {
-      // Picking a target while "Merge into..."/"Move ops..." is armed: outline the candidate and
-      // live-preview the real op-count/member delta it would produce, via the same blast paint.
-      clearGhosts();
-      if (id !== armedVerb.feature) {
-        // A collapsed subsystem is a meta-lane, not a leaf feature, so no feature verb can take it as
-        // a target. It used to receive the candidate outline anyway -- a false affordance -- preview
-        // as silence, and fail on click. The layout already knows, so answer here rather than
-        // round-tripping to be refused. Esc first, because while armed a lane click confirms the
-        // verb and cannot expand anything.
-        if (((layout.laneById || {})[id] || {}).isMeta) {
-          showRefusal("That's a collapsed subsystem, not a feature.",
-                      ["Esc · expand it, then pick a feature inside"]);
-          return;
-        }
-        renderArmedBanner(); // the previous candidate's answer is stale the moment the cursor moves
-        rail.querySelectorAll(".glane").forEach((el) => {
-          if (el.getAttribute("data-id") === id) el.classList.add("ghost-target");
-        });
-        onHoverIntent(() => previewArmed(id));
-      }
-      return;
-    }
-    if (previewActive) return; // a held consequence preview owns the field dim
-    // Hover marks the row under the cursor and NOTHING else. It used to dim the whole field and
-    // recolour the hovered lane's co-change neighbours accent-blue, which meant moving the cursor
-    // across the map re-dimmed thirty rows and turned an unpredictable handful of them a different
-    // colour -- three questions raised for every one answered, on a gesture that was not a question.
-    // Co-change is worth showing and still is, on the lens: a deliberate, held, captioned act.
-    svg.querySelectorAll(".glane.hovered").forEach((el) => el.classList.remove("hovered"));
-    svg.querySelectorAll(".glane").forEach((el) => {
-      if (el.getAttribute("data-id") === id) el.classList.add("hovered");
-    });
-    markAxisSpan(svg, id); // brighten the time columns this lane spans -- local to the hovered lane
-  }
-
-  // ---- armed-result
-  // The moment of choice had the weakest preview in this file. While arming, `previewAndBlast`
-  // deliberately skips the deep-dim morph (it would fight the crosshair field) and falls back to the
-  // flat ghost paint -- which colours two lanes and says nothing about what the pair becomes. The
-  // banner keeps asking its question ("into which lane?"), worded identically whichever candidate is
-  // under the cursor, so the reader was choosing a target from role paint alone. Both numbers that
-  // answer it are already in the payload and were being thrown away, the same way split's `groups`
-  // were: merge's `op_count`/`member_count` are the *combined* totals -- the lane that results.
-  function armedResultText(verb, res, sourceLabel, targetLabel, targetOps) {
-    if (!res || !res.ok) return null; // setPreviewContext(null) hides the pill; inventing a sentence
-                                      // here would describe a result the backend just refused
-    const name = (l) => `"${l || "that lane"}"`;
-    const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
-    // Sized in symbols, never in ops: `op_count`/`op_ids` are the kernel's bookkeeping units and
-    // were the numbers a reader could not place ("10 ops in 3 commits").
-    if (verb === "merge") {
-      const mem = res.member_count;
-      return `→ ${name(targetLabel)}: one lane`
-        + (mem ? ` of ${plural(mem, "symbol")}` : "")
-        + `, and ${name(sourceLabel)} is gone.`;
-    }
-    void targetOps;
-    return `→ ${name(targetLabel)}: its work lands here; `
-      + `${name(sourceLabel)} keeps its symbols and leaves the graph.`;
-  }
-  // ---- end-armed-result
-
-  function previewArmed(targetId) {
-    const { verb, feature } = armedVerb;
-    const src = byId(feature), tgt = byId(targetId);
-    const targetOps = ((layout.laneById || {})[targetId] || {}).opCount || 0;
-    const say = (res) => {
-      // Both endpoints, named explicitly rather than read off the payload. `merge`'s preview reports
-      // `affected: []` (metadata-only, so no blast/foundation direction applies), which made
-      // `classifyAffected` paint the candidate alone and leave the lane that is about to cease
-      // existing unmarked -- the one lane whose fate the choice is about. For `move` this is the same
-      // classification its rows already produce, since every op being moved comes from this feature.
-      paintClosure({ target: targetId, blast: [feature], foundation: [] });
-      // Both operands are known here, so this is the one hover that can show the whole
-      // transition: the chunks leaving this lane AND arriving in the candidate one.
-      paintMigration(feature, targetId);
-      // The sentence goes in the banner, not the bottom-right pill: while the cursor is out on a lane
-      // the pill is peripheral, and the answer belongs where the question was asked. One locus, so
-      // choosing a target does not mean reading two corners of the pane.
-      renderArmedBanner(armedResultText(verb, res, src && src.label, tgt && tgt.label, targetOps));
-    };
-    if (verb === "merge") {
-      previewAndBlast("merge", [targetId, feature], say);
-    } else if (verb === "move") {
-      previewAndBlast("move", [...opIdsFor(feature), targetId], say);
-    }
-  }
-
-  // Plain click = single-select toggle (clears any multi set). ⌘/ctrl/shift-click = accrete/toggle
-  // into the multi set (the VS Code parallel of the TUI's space-select). state.selected stays the
-  // "primary" (last-touched) row that drives the per-feature inspector; state.multi is the set the
-  // union-closure card + paint read.
-  function selectRow(id, additive) {
-    if (stagedAction && !applyBusy) cancelStaged(); // navigating away withdraws the question
-    const multi = state.multi || [];
-    if (additive) {
-      const i = multi.indexOf(id);
-      if (i >= 0) multi.splice(i, 1);
-      else multi.push(id);
-      state.multi = multi;
-      state.selected = multi.length ? multi[multi.length - 1] : null;
-    } else {
-      const wasSole = multi.length === 1 && multi[0] === id && state.selected === id;
-      state.multi = wasSole ? [] : [id];
-      state.selected = wasSole ? null : id;
-    }
-    state.selectedStep = null;
-    state.selectedPlanSession = null;
-    state.selectedActor = null; // picking a feature ends a follow
-    state.selectedCheckpoint = null; // a feature-level select clears any checkpoint focus
-    if ((state.multi || []).length < 2) selectionResult = null; // no union closure to show
-    saveState();
-    render();
-    if ((state.multi || []).length >= 2) {
-      requestSelectionClosure(state.multi);
-    }
-  }
-
-  // Clicking a chunk-car selects its CHECKPOINT (`f-XXXX@n`), the revert unit -- distinct from a
-  // click anywhere else on the row, which picks the whole feature. The feature is selected so the
-  // inspector shows its checkpoint list + code fold; the matching checkpoint row is highlighted and
-  // scrolled into view. Clicking the same car again clears the checkpoint focus. An armed
-  // merge/move still targets the feature (a car is just a point on it), matching lane-click.
-  function selectCar(car, laneId, ev) {
-    if (ev) ev.stopPropagation();
-    if (stagedAction && !applyBusy) cancelStaged(); // navigating away withdraws the question
-    if (armedVerb) { confirmArmed(laneId); return; }
-    // A checkpoint in a folded subsystem is packed among its siblings' bars, so it is not drawn at
-    // its own time; opening it there would put the lens on a time the bar is not at. Unfold to the
-    // checkpoint's own feature lane first, then open it there.
-    if (car.featureId && laneId !== car.featureId && state.selectedCheckpoint !== car.checkpoint) {
-      let cur = byId(car.featureId);
-      cur = cur ? byId(cur.parent) : null;
-      let unfolded = false;
-      while (cur) {
-        const i = state.collapsed.indexOf(cur.id);
-        if (i >= 0) { state.collapsed.splice(i, 1); unfolded = true; }
-        cur = byId(cur.parent);
-      }
-      if (unfolded) {
-        state.multi = [car.featureId];
-        state.selected = car.featureId;
-        state.selectedStep = null;
-        state.selectedPlanSession = null;
-        state.selectedActor = null;
-        selectionResult = null;
-        state.selectedCheckpoint = car.checkpoint;
-        askedOpen = null;
-        saveState();
-        recompute();
-        render();
-        const row = [...rail.querySelectorAll(".glane")].find((g) => g.getAttribute("data-id") === car.featureId);
-        if (row && row.scrollIntoView) row.scrollIntoView({ block: "center" });
-        return;
-      }
-    }
-    if (state.selected !== laneId) {
-      state.multi = [laneId];
-      state.selected = laneId;
-      state.selectedStep = null;
-      state.selectedPlanSession = null;
-      state.selectedActor = null;
-      selectionResult = null;
-    }
-    state.selectedCheckpoint = state.selectedCheckpoint === car.checkpoint ? null : car.checkpoint;
-    if (askedOpen !== state.selectedCheckpoint) askedOpen = null;
-    saveState();
-    render();
-    const row = inspector.querySelector(".checkpoint.selected");
-    if (row) row.scrollIntoView({ block: "nearest" });
-  }
-
-  // Toggle a checkpoint's highlight from the inspector's checkpoint list (the feature is already
-  // selected there). Keeps the gantt car and the inspector row in agreement -- click either, both
-  // light up.
-  function highlightCheckpoint(ref) {
-    if (stagedAction && !applyBusy) cancelStaged(); // navigating away withdraws the question
-    state.selectedCheckpoint = state.selectedCheckpoint === ref ? null : ref;
-    if (askedOpen !== state.selectedCheckpoint) askedOpen = null;
-    saveState();
-    renderInspector();
-    renderGraph();
-  }
-
-  // ---- the lens
-  // ONE held, captioned state: the find box's text. It means "these lanes, the rest is context",
-  // and it is captioned because a map with half its rows dimmed and no caption reads as a
-  // rendering fault. A second source used to feed it -- clicking a feature's NAME pinned the lane
-  // and its co-change neighbours -- and it is gone: dimming thirty rows is a large answer, and it
-  // was being given to a click that in this view means "show me this feature", not a question.
-  //
-  // Search used to do none of this. It filled a dropdown and left the map exactly as it was, so the
-  // answer to "where is the thing that formats dates" was a list of names you then had to find by
-  // eye in thirty rows -- the map, the one surface that could have answered, stayed silent.
-  // Every lane a hit reaches, so clicking a result lights the work it names. A save has no lane of
-  // its own -- it is a commit -- so it lights every lane its cells touched, which is what the reader
-  // pointed at when they picked it.
-  function lanesForHit(hit) {
-    const ids = new Set();
-    if (hit.feature) ids.add(hit.feature);
-    if (hit.theme) {
-      const t = ((((compose || {}).intent) || {}).themes || []).find((x) => x.theme_id === hit.theme);
-      for (const f of (t && t.feature_span) || []) ids.add(f);
-    }
-    if (hit.commitIndex != null) {
-      for (const c of ((grid && grid.cells) || [])) {
-        if (c.commit_index === hit.commitIndex && c.feature_id) ids.add(c.feature_id);
-      }
-    }
-    return ids;
-  }
-
-  function lensState() {
-    const box = document.getElementById("findBox");
-    const query = box ? box.value.trim() : "";
-    if (findPick && findPick.query === query && findPick.ids.size) {
-      return { query, ids: findPick.ids };
-    }
-    if (query) {
-      const hits = localFindHits(query, (map || {}).nodes, checkpointsByFeature, 500,
-                                 ((compose || {}).intent || {}).themes, (grid || {}).commits);
-      const ids = new Set();
-      for (const h of hits) {
-        if (h.feature) ids.add(h.feature);
-        // A theme hit is work across lanes; a save hit is a commit with no lane of its own. Both
-        // light every lane they reach, or searching for one would dim the whole map.
-        if (h.theme) {
-          const t = ((((compose || {}).intent) || {}).themes || []).find((x) => x.theme_id === h.theme);
-          for (const f of (t && t.feature_span) || []) ids.add(f);
-        }
-      }
-      for (const h of (semanticState && semanticState.query === query ? semanticState.hits : [])) {
-        if (h.feature) ids.add(h.feature);
-      }
-      return { query, ids };
-    }
-    // A focused cross-feature request: its lanes stay, the rest recede (the strip says so).
-    if (themeMarks && themeMarks.featureIds.size) return { query: "", theme: themeMarks.id, ids: new Set(themeMarks.featureIds) };
-    // A followed actor: the lanes it touched stay, the rest recede, until Esc.
-    const actor = selectedActor();
-    if (actor && actor.lanes.size) return { query: "", actor, ids: new Set(actor.lanes) };
-    return null;
-  }
-
-  function applyLens() {
-    const svg = rail.querySelector("svg");
-    const lens = lensState();
-    if (!svg) return;
-    // A held revert/restore preview owns the field: its dim is deeper and says something else
-    // ("these lanes change"), and stacking a lens under it multiplies two opacities into a floor
-    // nothing can be read at. The preview's own teardown re-applies whatever was in the find box.
-    if (previewActive) return;
-    // A query that reaches no lane dims nothing: a fully greyed map with nothing lit says only that
-    // the view broke. Typing on toward a match then lights lanes as they start matching.
-    if (!lens || !lens.ids.size) {
-      svg.classList.remove("focus");
-      svg.querySelectorAll(".lit").forEach((el) => el.classList.remove("lit"));
-      return;
-    }
-    svg.classList.add("focus");
-    // A lane counts as lit when it IS a hit or when a hit sits inside it -- otherwise searching for
-    // a symbol dims the collapsed subsystem that contains it, which is where the reader has to go.
-    svg.querySelectorAll(".glane").forEach((el) => {
-      const rid = el.getAttribute("data-id");
-      const lane = (layout.laneById || {})[rid] || {};
-      const inside = (lane.leaves || []).some((f) => lens.ids.has(f));
-      el.classList.toggle("lit", lens.ids.has(rid) || inside);
-    });
-    renderContextRows();
-  }
-
-  // What receded, why, and how to get it back. A map with half its rows dimmed and no caption is
-  // read as a rendering fault -- the terminal's `ugh log --focus` has said so above its own rows
-  // for months and this surface had nothing.
-
-  // Reveal a feature from the editor (task 4): select it (so the inspector opens) and scroll its
-  // lane/row into view -- the same primitives selectRow uses, but deterministic (never toggling
-  // off). Robust to message ordering: if the graph hasn't loaded this feature yet, stash it and
-  // re-apply after the next state render (see the "state" handler).
-  function revealFeature(featureId) {
-    if (!featureId || !byId(featureId)) { pendingReveal = featureId || null; return; }
-    pendingReveal = null;
-    // In the Gantt a feature folded inside a collapsed subsystem has no lane -- expand its ancestors
-    // so the row exists to select and scroll to. (The rail ignores collapse, so this is a no-op there.)
-    let changed = false;
-    let cur = byId(featureId);
-    cur = cur ? byId(cur.parent) : null;
-    while (cur) {
-      const i = state.collapsed.indexOf(cur.id);
-      if (i >= 0) { state.collapsed.splice(i, 1); changed = true; }
-      cur = byId(cur.parent);
-    }
-    state.multi = [featureId];
-    state.selected = featureId;
-    state.selectedStep = null;
-    state.selectedPlanSession = null;
-    state.selectedCheckpoint = null;
-    selectionResult = null;
-    saveState();
-    if (changed) recompute();
-    render();
-    let target = null;
-    rail.querySelectorAll(".glane, .rail-row").forEach((el) => {
-      if (!target && el.getAttribute("data-id") === featureId) target = el;
-    });
-    if (target) target.scrollIntoView({ block: "center" });
-  }
-
-  function requestSelectionClosure(refs) {
-    const seq = ++selectionSeq;
-    pendingSelection = { seq, refs: refs.slice() };
-    vscode.postMessage({ type: "selectClosure", refs, seq });
-  }
-
-  function selectPlanStep(stepId) {
-    state.selectedStep = state.selectedStep === stepId ? null : stepId;
-    state.selected = null;
-    state.selectedPlanSession = null;
-    saveState();
-    render();
-  }
-
-  // ---- hover-intent
-  // Every hover preview shells out: the host runs `ugh <verb> --emit` in a subprocess to compute the
-  // consequence. Fired straight off `mouseenter` that meant one process per row *crossed* -- a sweep
-  // down forty lanes to reach the fortieth started forty of them, and every result that landed
-  // painted, so the consequence flickered through each row on the way to the one being asked about.
-  // Resting on a row is the intent; crossing it is not. One timer, restarted on each enter and
-  // cancelled on each leave, so only the row under a settled cursor costs anything.
-  const HOVER_INTENT_MS = 130;
-  let hoverTimer = null;
-
-  function cancelHoverIntent() {
-    if (hoverTimer !== null) {
-      clearTimeout(hoverTimer);
-      hoverTimer = null;
-    }
-  }
-
-  // A staged confirm suspends hover previews entirely (its consequence paint must not be
-  // repainted under the reader). The gate is injected (`setHoverGate`, below the slice) rather
-  // than read directly so this block stays self-contained for the node harness.
-  let hoverGate = null;
-
-  function setHoverGate(fn) {
-    hoverGate = fn;
-  }
-
-  function onHoverIntent(fn) {
-    if (hoverGate && hoverGate()) return;
-    cancelHoverIntent();
-    hoverTimer = setTimeout(() => {
-      hoverTimer = null;
-      fn();
-    }, HOVER_INTENT_MS);
-  }
-  // ---- end-hover-intent
-  setHoverGate(() => !!stagedAction);
-
-  // ---- armed-banner
-  // "Merge into…" and "Move ops…" arm a mode: the next lane click is a target, not a selection. The
-  // only sign of that mode was `cursor: crosshair` on the lanes -- a mode that never states itself,
-  // which is how a reader who looked away comes back, clicks a lane meaning to select it, and merges
-  // two features instead. The banner says which verb is waiting, on what, what a click does now, and
-  // the way out.
-  function armedBannerText(armed, label) {
-    if (!armed) return null;
-    const subject = `"${label || armed.feature}"`;
-    const what = armed.verb === "merge"
-      ? `Merge ${subject} into which lane?`
-      : `Move ${subject}'s changes into which lane?`;
-    return `${what}  ·  click one, or Esc to cancel`;
-  }
-  // ---- end-armed-banner
-
-  // ---- staged-summary (test slice boundary)
-  // The in-graph confirmation's one sentence. A native modal answers "are you sure?" with a wall
-  // of prose in the middle of the screen; the graph behind it already knows how to SHOW the
-  // consequence. So a Revert/Restore click now stages instead: the preview is held on the field
-  // and the confirm bar states the consequence in one line -- confirming is reading the picture,
-  // not re-reading a paragraph. Pure over the staged payload so the node harness can hold it.
-  function stagedSummaryText(staged) {
-    const res = staged.res;
-    if (!res) return "computing consequence…";
-    if (res.ok === false) return humanizeRefusal(res.message) || `ugh refuses this ${staged.verb}.`;
-    const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
-    if (staged.kind === "multi") {
-      return staged.summary || "computing union closure…";
-    }
-    if (staged.kind === "split") {
-      return splitPreviewText(res).message;
-    }
-    if (staged.kind === "backto") {
-      const n = (staged.refs || []).length;
-      const head = `removes ${plural(n, "later checkpoint")}`;
-      const blast = staged.blastCount || 0;
-      const tail = staged.blastDone
-        ? (blast ? `touches ${plural(blast, "other feature")}` : "no other feature touched")
-        : (blast ? `touches ≥${blast} other feature(s) · still checking…` : "checking other features…");
-      return `${head} · ${tail} · this checkpoint stays`;
-    }
-    // Prefer the backend's own so-what headline -- one vocabulary across CLI, TUI and here.
-    const soWhat = res.so_what || (res.focus && res.focus.so_what);
-    if (soWhat) return soWhat;
-    // Sized in functions (the dry run's named symbols) and files, never in ops.
-    const fns = (res.affected_symbols || []).filter((s) => !/::__/.test(s)).length;
-    const files = Object.keys(res.files || {}).length;
-    const others = (res.affected || []).filter((r) => r.feature_id !== staged.targetId).length;
-    const what = fns ? plural(fns, "function") : "its changes";
-    return [
-      staged.verb === "restore" ? `brings back ${what}` : `${what} come${fns === 1 ? "s" : ""} out`,
-      files ? `${plural(files, "file")} rewritten` : "no files change",
-      others ? `${plural(others, "other feature")} affected` : "no other feature touched",
-    ].join(" · ");
-  }
-  // ---- end-staged-summary
-
-  // ---- preview-words (test slice boundary)
-  // What a held revert or restore will do, as short sentences, from the dry run's subtraction
-  // report: which functions leave or lose this work, which files and other features change, what is
-  // left for the reader, and that nothing has happened yet. The kernel's own headline used to stand
-  // here, and it spoke the kernel's language ("1 prerequisite locked"); the op-count deltas that
-  // stood on the lanes counted bookkeeping. `tone` picks the line's colour: what / also / warn / quiet.
-  function previewWords(verb, res, ownFeature, labelOf, alsoOf) {
-    const user = (sym) => !!sym && !/::__/.test(sym);
-    const uniq = (arr) => [...new Set((arr || []).filter(user))].sort();
-    const fn = (sym) => String(sym).split("::").slice(1).join("::") || String(sym);
-    const names = (arr) => arr.slice(0, 3).map(fn).join(", ") + (arr.length > 3 ? ` and ${arr.length - 3} more` : "");
-    const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
-    const lines = [];
-    if (verb === "restore") {
-      const back = uniq(res.affected_symbols);
-      lines.push({ tone: "what", text: back.length ? `Brings back ${plural(back.length, "function")}: ${names(back)}.` : "Brings its changes back." });
-    } else {
-      const pruned = uniq(res.pruned_symbols), sub = uniq(res.subtracted_symbols);
-      if (pruned.length) lines.push({ tone: "what", text: `Removes ${plural(pruned.length, "function")} it added: ${names(pruned)}.` });
-      if (sub.length) lines.push({ tone: "what", text: `Takes its edits out of ${names(sub)}; the rest of ${sub.length === 1 ? "that function stays" : "those functions stays"}.` });
-      if (!pruned.length && !sub.length) {
-        const fns = uniq(res.affected_symbols);
-        lines.push({ tone: "what", text: fns.length ? `Takes out its changes to ${names(fns)}.` : "Takes out its changes." });
-      }
-    }
-    // Other work that changes: first the live checkpoints whose functions are among the ones going
-    // or coming back (a later checkpoint that edited a function this one created loses that edit),
-    // named as the timeline names them; then any other feature whose own work moves the verb's way
-    // and is not already named. A count that moves the other way is the kernel filing its repair
-    // edits, not a change to that feature.
-    const touched = new Set(verb === "restore" ? uniq(res.affected_symbols)
-      : [...uniq(res.pruned_symbols), ...uniq(res.subtracted_symbols)]);
-    const named = alsoOf ? alsoOf(touched) : [];
-    const others = named.map((x) => x.name);
-    const coveredFeatures = new Set(named.map((x) => x.featureId));
-    for (const n of (res.focus && res.focus.nodes) || []) {
-      if (n.role === "target" || n.feature_id === ownFeature || coveredFeatures.has(n.feature_id)) continue;
-      const moved = verb === "restore" ? n.ops_after > n.ops_before : n.ops_after < n.ops_before;
-      if (moved) others.push((labelOf && labelOf(n.feature_id)) || n.label || "another feature");
-    }
-    const files = Object.keys(res.files || {}).length;
-    lines.push({
-      tone: others.length ? "also" : "plain",
-      text: (files ? `Rewrites ${plural(files, "file")}` : "Rewrites no file")
-        + (others.length ? `; also changes ${others.slice(0, 3).join(", ")}${others.length > 3 ? ` and ${others.length - 3} more` : ""}.` : "; no other feature changes."),
-    });
-    const broken = uniq(res.broken_references), kept = uniq(res.kept_conflicts);
-    if (broken.length) lines.push({ tone: "warn", text: `${names(broken)} will still call code this removes.` });
-    if (kept.length) lines.push({ tone: "warn", text: `${names(kept)} ${kept.length === 1 ? "needs" : "need"} a hand edit afterwards.` });
-    lines.push({ tone: "quiet", text: "Nothing has changed yet. Undo reverses it afterwards." });
-    return lines;
-  }
-  // ---- end-preview-words
-
-  // ---- staged-confirm (DOM half)
-  const APPLY_PHASE_LABEL = {
-    checking: "checking consequences",
-    applying: "rewriting + committing",
-    refreshing: "rebuilding the graph",
-  };
-
-  function stageAction(staged) {
-    // Entering a staged confirm replaces any armed merge/move mode and any prior stage.
-    if (armedVerb) {
-      armedVerb = null;
-      rail.classList.remove("arming");
-      renderArmedBanner();
-    }
-    if (stagedAction) { stagedAction = null; clearGhosts(); }
-    setPreviewContext(null); // the confirm bar carries the sentence now, not the hover pill
-    stagedAction = staged;
-    applyBusy = null;
-    renderConfirmBar();
-    if (staged.kind === "backto") {
-      paintBackToCars(staged.targetId, staged.refs);
-      chainBackToPreviews(staged, 0, new Set());
-      return;
-    }
-    if (staged.kind === "multi") {
-      return; // the union closure is already fetched (selectionResult) and painted by the caller
-    }
-    if (staged.kind === "split") {
-      beginPreviewPending(staged.targetId, "previewing split…");
-      const seq = ++previewSeq;
-      vscode.postMessage({ type: "previewSplit", featureId: staged.ref, seq });
-      pendingPreview = {
-        seq,
-        onResult: (res) => {
-          clearPreviewPending();
-          if (stagedAction !== staged) return;
-          staged.res = res;
-          if (res && res.ok) {
-            paintClosure({ target: staged.targetId, blast: [], foundation: [] });
-            paintSplitPreview(staged.targetId, res);
-          }
-          renderConfirmBar();
-        },
-      };
-      return;
-    }
-    // The click usually follows the hover that already computed this preview, so the host answers
-    // from its cache and the paint holds without a visible wait; a cold click shows the pending
-    // shimmer for exactly as long as the subprocess takes.
-    beginPreviewPending(staged.targetId, `previewing ${staged.verb}…`);
-    requestPreview(staged.verb, [staged.ref], (res) => {
-      clearPreviewPending();
-      if (stagedAction !== staged) return;
-      staged.res = res;
-      paintStaged(staged);
-      // A refusal is NOT sent to the top-centered refusal card the hover path uses. That card sits
-      // exactly where the theme banner does, so a refused whole-group restore -- the one refusal a
-      // reader is most likely to hit -- drew its own explanation underneath the caption of the
-      // thing it was refusing. The bar carries the reason and the way out instead (renderConfirmBar),
-      // which is also where the click was: one surface per flow, same rule the host reports by.
-      renderConfirmBar();
-    });
-  }
-
-  // The held consequence, painted on whatever graph is on screen. Called when the dry run lands and
-  // again after every render while the question is held: a resize, a pushed state, or the strip
-  // growing to fit the answer rebuilds the SVG, and a held preview that silently vanished from the
-  // map while its question stayed open would be the timeline contradicting its own bar.
-  function paintStaged(staged) {
-    const res = staged.res;
-    if (!res || !res.ok || (staged.kind !== "feature" && staged.kind !== "chapter")) return;
-    // `staged.targetId` is already the feature id; `res.target` for a chapter is the raw
-    // `<f>@<n>` ref, which matches no row.
-    const focus = res.focus;
-    if (focus && focus.nodes && focus.nodes.length) enterPreviewMode(focus, staged.targetId, staged.verb);
-    else {
-      paintClosure(classifyAffected(res, staged.targetId));
-      // The lighter paint has no morph and no dimmed field, so the sentence is the only place
-      // the direction can be stated -- and it is the same sentence either way.
-      setPreviewContext(previewCaptionText(staged.verb, null, res),
-                        staged.verb === "restore" ? "in" : "out");
-    }
-    paintCarPreview(classifyCarImpact(res.removed, res.added, segmentsOf(compose),
-                                      res.target_ops, staged.verb));
-  }
-
-  // "Revert to here"'s cross-feature consequence, accumulated progressively: one preview per later
-  // chapter, requested strictly in sequence (the host's latest-wins guard would drop a parallel
-  // burst), the union of their blasts painted and counted as each answer lands. Intermediate
-  // feedback -- the number firms up in front of the reader instead of a spinner until omniscience.
-  function chainBackToPreviews(staged, i, blast) {
-    if (stagedAction !== staged) return;
-    if (i >= staged.refs.length) {
-      staged.blastDone = true;
-      renderConfirmBar();
-      return;
-    }
-    requestPreview("revert", [staged.refs[i]], (res) => {
-      if (stagedAction !== staged) return;
-      if (res && res.ok) {
-        for (const r of res.affected || []) {
-          if (r.direction !== "foundation" && r.feature_id !== staged.targetId) blast.add(r.feature_id);
-        }
-      }
-      staged.blastCount = blast.size;
-      renderConfirmBar();
-      // Each answer adds its dependency cars in other lanes -- the blast firming up chunk by chunk.
-      paintCarPreview(classifyCarImpact(res.removed, res.added, segmentsOf(compose),
-                                        res.target_ops, staged.verb));
-      for (const f of blast) {
-        const row = findRow(f);
-        if (row) row.classList.add("ghost-blast");
-      }
-      renderOffscreenPills([staged.targetId, ...blast]);
-      chainBackToPreviews(staged, i + 1, blast);
-    });
-  }
-
-  // The instant half of "revert to here": the cars that would come out are exactly this lane's
-  // later chapters, and the layout already owns them -- zero round-trips, painted on the
-  // keystroke, in the same draining-to-hollow grammar every revert preview uses.
-  function paintBackToCars(targetId, refs) {
-    const gone = new Set(refs);
-    const impacts = segmentsOf(compose)
-      .filter((sg) => gone.has(sg.checkpoint))
-      .map((sg) => ({ checkpoint: sg.checkpoint, featureId: sg.feature_id, dir: "out", coverage: "full" }));
-    paintCarPreview(impacts);
-    const row = findRow(targetId);
-    if (row) row.classList.add("ghost-target");
-  }
-
-  function applyStagedAction() {
-    if (!stagedAction || applyBusy) return;
-    const staged = stagedAction;
-    if (staged.res && staged.res.ok === false) return; // refused: nothing to apply
-    applyBusy = { verb: staged.verb, phase: "checking", detail: null };
-    renderConfirmBar();
-    if (staged.kind === "backto" || staged.kind === "multi") {
-      vscode.postMessage({
-        type: "revertSequence",
-        refs: staged.refs.slice(),
-        label: staged.kind === "backto" ? staged.label : undefined,
-        noun: staged.kind === "multi" ? "feature" : "chapter",
-      });
-    } else {
-      vscode.postMessage({ type: "applyStaged", verb: staged.verb, ref: staged.ref });
-    }
-  }
-
-  function cancelStaged() {
-    if (!stagedAction) return;
-    stagedAction = null;
-    applyBusy = null;
-    renderConfirmBar();
-    clearGhosts();
-  }
-
-  // The host's phase reports while a staged action runs: checking → applying → refreshing, then
-  // done / failed / cancelled. Progress paints in the bar -- where the decision was taken -- not
-  // in a corner toast the eye has already left.
-  function onApplyProgress(msg) {
-    if (!stagedAction) return;
-    if (msg.phase === "done") {
-      // Settle only if something actually applied: a flow that ended during "checking" (e.g.
-      // "removes nothing here") changed nothing, and a receipt for it would flash a lie later.
-      const applied = applyBusy && applyBusy.phase !== "checking";
-      pendingSettle = applied && stagedAction.targetId ? [stagedAction.targetId] : [];
-      // The settling lane flashes in the direction it moved, so the fourth and last moment of the
-      // sequence agrees with the three before it instead of being the one neutral one.
-      settleDir = msg.verb === "restore" ? "in" : "out";
-      // What happened, left on the bar where the decision was taken. The host used to say this in
-      // a VS Code notification instead, which stacked with every other notification the same click
-      // produced and covered the corner of the timeline the reader was watching. The bar is the
-      // place the question was asked, so it is the place the answer belongs.
-      showApplyReceipt(msg.verb, stagedAction.label || stagedAction.ref, msg.detail);
-      stagedAction = null;
-      applyBusy = null;
-      renderConfirmBar();
-      clearGhosts();
-      return;
-    }
-    if (msg.phase === "cancelled") {
-      // The host-side flow bailed (a dismissed dependents QuickPick, no target): back to the
-      // staged state, where Apply and Esc are both still live.
-      applyBusy = null;
-      renderConfirmBar();
-      return;
-    }
-    applyBusy = { verb: msg.verb, phase: msg.phase, detail: msg.detail || null };
-    renderConfirmBar();
-  }
-
-  // The receipt an applied action leaves behind: the same bar, for a few seconds, saying what it
-  // did. Long enough to read a sentence and short enough that it is gone before it becomes chrome.
-  let applyDone = null;
-  let applyDoneTimer = null;
-  const RECEIPT_MS = 7000;
-
-  // What the receipt is titled. "Done" was true of both directions, which made the one line that
-  // reports the outcome the one line that could not tell a reader which outcome they got -- so
-  // after applying they were back to comparing two near-identical pictures from memory. The verb
-  // in the past tense, in the same channel the preview's own lanes wore.
-  const RECEIPT_HEAD = { revert: "Reverted", restore: "Restored", split: "Split" };
-
-  function showApplyReceipt(verb, label, detail) {
-    if (!detail) return;
-    applyDone = { verb, label, detail };
-    clearTimeout(applyDoneTimer);
-    applyDoneTimer = setTimeout(() => { applyDone = null; renderConfirmBar(); }, RECEIPT_MS);
-  }
-
-  function dismissReceipt() {
-    clearTimeout(applyDoneTimer);
-    applyDone = null;
-    renderConfirmBar();
-  }
-
-  function renderConfirmBar() {
-    if (!confirmBar) return;
-    confirmBar.innerHTML = "";
-    const staged = stagedAction;
-    confirmBar.hidden = !staged && !applyDone;
-    if (!staged) {
-      if (!applyDone) return;
-      const head = el("div", "confirm-head");
-      head.appendChild(el("span",
-        "confirm-verb done" + (applyDone.verb === "restore" ? " in" : " out"),
-        RECEIPT_HEAD[applyDone.verb] || "Done"));
-      head.appendChild(el("span", "confirm-target", applyDone.label));
-      confirmBar.appendChild(head);
-      const line = el("div", "confirm-progress done");
-      line.appendChild(el("span", "confirm-detail", applyDone.detail));
-      const dismiss = el("button", "confirm-btn", "Dismiss");
-      dismiss.addEventListener("click", dismissReceipt);
-      line.appendChild(dismiss);
-      confirmBar.appendChild(line);
-      return;
-    }
-    applyDone = null; // a new question replaces the last answer
-
-    const head = el("div", "confirm-head");
-    head.appendChild(el("span",
-      "confirm-verb" + (staged.verb === "restore" ? " restore" : staged.verb === "split" ? " split" : ""),
-      staged.kind === "backto" ? "Revert to"
-        : staged.verb === "restore" ? "Restore"
-        : staged.verb === "split" ? "Split" : "Revert"));
-    // (a multi stage reads "Revert · N selected features" through the same two spans)
-    head.appendChild(el("span", "confirm-target", staged.label || staged.ref));
-    confirmBar.appendChild(head);
-
-    if (applyBusy) {
-      if (applyBusy.phase === "failed") {
-        const fail = el("div", "confirm-progress failed");
-        fail.appendChild(el("span", "confirm-fail", applyBusy.detail || "failed"));
-        const dismiss = el("button", "confirm-btn", "Dismiss");
-        dismiss.addEventListener("click", cancelStaged);
-        fail.appendChild(dismiss);
-        confirmBar.appendChild(fail);
-        return;
-      }
-      // The three real stages, named, current one lit. Not a spinner: a spinner says "busy",
-      // this says busy WITH WHAT, and how far along.
-      const prog = el("div", "confirm-progress");
-      const order = ["checking", "applying", "refreshing"];
-      const at = order.indexOf(applyBusy.phase);
-      order.forEach((ph, i) => {
-        prog.appendChild(el("span",
-          "confirm-step" + (i < at ? " done" : i === at ? " live" : ""), APPLY_PHASE_LABEL[ph]));
-      });
-      if (applyBusy.detail) prog.appendChild(el("span", "confirm-detail", applyBusy.detail));
-      confirmBar.appendChild(prog);
-      return;
-    }
-
-    const refused = !!(staged.res && staged.res.ok === false);
-    confirmBar.classList.toggle("refused", refused);
-    if (!refused && staged.res && (staged.kind === "feature" || staged.kind === "chapter")) {
-      const alsoRefs = [];
-      const alsoOf = (touched) => {
-        const out = [];
-        for (const sg of segmentsOf(compose)) {
-          if (sg.checkpoint === staged.ref || (staged.kind === "feature" && sg.feature_id === staged.targetId)) continue;
-          if (sg.state === "reverted") continue;
-          if ((sg.symbols || []).some((x) => touched.has(x.symbol))) {
-            out.push({ name: sg.intent || "a later checkpoint", featureId: sg.feature_id, ref: sg.checkpoint });
-            alsoRefs.push(sg.checkpoint);
-          }
-        }
-        return out;
-      };
-      const words = el("div", "confirm-summary words");
-      for (const ln of previewWords(staged.verb, staged.res, staged.targetId, (fid) => (byId(fid) || {}).label, alsoOf)) {
-        words.appendChild(el("div", "pw " + ln.tone, ln.text));
-      }
-      confirmBar.appendChild(words);
-      markPreviewFates(staged, alsoRefs);
-    } else {
-      confirmBar.appendChild(el("div", "confirm-summary" + (refused ? " refused" : ""),
-                                stagedSummaryText(staged)));
-    }
-
-    const actions = el("div", "confirm-actions");
-    // The diff exists only for the exact ideal edits (one emit-able ref): feature/chapter scope.
-    // A refusal has no before → after to open -- there is no proposed state to diff against.
-    if ((staged.kind === "feature" || staged.kind === "chapter") && !refused) {
-      const diff = el("button", "confirm-btn subtle", "Open diff");
-      diff.title = "Open the exact before → after in editor tabs";
-      diff.addEventListener("click", () =>
-        vscode.postMessage({ type: "openStagedDiff", verb: staged.verb, ref: staged.ref }));
-      actions.appendChild(diff);
-    }
-    const cancel = el("button", "confirm-btn", refused ? "Close" : "Cancel");
-    cancel.title = "Esc";
-    cancel.addEventListener("click", cancelStaged);
-    actions.appendChild(cancel);
-    if (refused) {
-      // A refusal drew a greyed-out Apply beside the reason, which reads as "this is loading" or
-      // "you lack permission" -- neither of which is true, and both of which leave the reader
-      // clicking a button that will never do anything. ugh is not busy and it is not asking: it
-      // has answered no, and the useful thing to put where the dead button was is the way out.
-      // On its own row, not in the action group: the reason and the remedy are both sentences, and
-      // squeezed onto one line with the buttons they ellipsised each other into uselessness.
-      confirmBar.appendChild(actions);
-      const way = refusalWayOut(staged);
-      if (way) confirmBar.appendChild(el("div", "confirm-way-out", way));
-      return;
-    }
-    const apply = el("button",
-      "confirm-btn confirm-apply"
-        + (staged.verb === "restore" ? " restore" : staged.verb === "split" ? " split" : ""),
-      staged.verb === "restore" ? "Restore" : staged.verb === "split" ? "Split" : "Revert");
-    // Disabled until the consequence is known (usually instant off the hover's cached preview):
-    // an Apply that runs before the picture exists would be the old blind modal wearing new paint.
-    apply.disabled = !staged.res;
-    apply.addEventListener("click", applyStagedAction);
-    actions.appendChild(apply);
-    confirmBar.appendChild(actions);
-  }
-
-  // ---- way-out (test slice boundary)
-  // The one next move a refusal leaves, said in the bar rather than only in the overlay card.
-  // Pure over the staged payload so the node harness can hold it.
-  function refusalWayOut(staged) {
-    const res = staged.res || {};
-    if (staged.verb === "restore" && res.forked) {
-      // The one-live-version rule: something else is already live where this would land, so the
-      // move is to take THAT out first. Naming the verb matters -- "resolve the fork" is the other
-      // way and it is a CLI-only one, so the reader is told which of the two this surface offers.
-      return "way out: revert the live version first, then restore, or reconcile it with ugh resolve";
-    }
-    // Every other refusal: the humanized reason above IS the whole answer, and inventing a remedy
-    // from the absence of a known one would be guessing at the reader.
-    return null;
-  }
-  // ---- end-way-out
-  // ---- end-staged-confirm
-
-  function clearGhosts() {
-    // A staged confirm OWNS the current consequence paint: the mouseleave that would normally
-    // clear a hover must not strip the picture the user is being asked to approve. Cancel/Apply
-    // tear it down through cancelStaged/onApplyProgress, which null stagedAction first.
-    if (stagedAction) return;
-    rail.querySelectorAll(
-      ".glane.ghost-blast, .glane.ghost-target, .glane.ghost-foundation, " +
-      ".rail-row.ghost-blast, .rail-row.ghost-target, .rail-row.ghost-foundation").forEach((el) => {
-      el.classList.remove("ghost-blast", "ghost-target", "ghost-foundation");
-    });
-    clearCarPreview();
-    cancelHoverIntent(); // a preview still waiting out the hover delay is abandoned here too
-    clearPreviewPending(); // ...and its pending shimmer/pill, wherever it had got to
-    clearOffscreenPills();
-    clearPreviewRefusal(); // a refusal overlay clears on the same mouseleave path
-    setPreviewContext(null); // ...as does a sentence pill set without a morph behind it (split)
-    exitPreviewMode(); // a held Focus & Morph overlay tears down on the same mouseleave path
-  }
-
-  function requestPreview(verb, args, onResult) {
-    const seq = ++previewSeq;
-    vscode.postMessage({ type: "previewVerb", verb, args, seq });
-    pendingPreview = { seq, onResult };
-  }
-
-  // ---- pending-ack
-  // The instant acknowledgement layer. Every consequence preview shells out and queues behind the
-  // store flock, so the honest answer can be a second or more away -- and a system that paints
-  // nothing in that window reads as one that did not hear the hover. The row under the cursor
-  // takes a quiet shimmer and the pill states what is being computed. Both appear only after a
-  // grace period: feedback for work that finishes inside ~200ms would be flicker, not information.
-  const PENDING_GRACE_MS = 180;
-  let previewPendingTimer = null;
-  let previewPendingRow = null;
-
-  function beginPreviewPending(targetId, say) {
-    clearPreviewPending();
-    previewPendingTimer = setTimeout(() => {
-      previewPendingTimer = null;
-      const row = targetId && findRow(targetId);
-      if (row) {
-        row.classList.add("preview-pending");
-        previewPendingRow = row;
-      }
-      setPreviewContext(say, true);
-    }, PENDING_GRACE_MS);
-  }
-
-  function clearPreviewPending() {
-    if (previewPendingTimer !== null) {
-      clearTimeout(previewPendingTimer);
-      previewPendingTimer = null;
-    }
-    if (previewPendingRow) {
-      previewPendingRow.classList.remove("preview-pending");
-      previewPendingRow = null;
-    }
-    if (previewContext.classList.contains("pending")) setPreviewContext(null);
-  }
-  // ---- end-pending-ack
-
-  // Every hover-preview site wants the same thing: show the consequence if the preview came back
-  // ok, do nothing otherwise. The target is args[0] (revert/restore take one feature). When the
-  // backend hands back a `focus` subgraph (a feature map is built) and we're not mid-arming, use the
-  // richer deep-dim morph; otherwise fall back to the flat three-role ghost paint.
-  // `say` is the armed path's only addition: a function(res) called after the paint. Only
-  // `previewArmed` passes one, because it is the only caller whose two operands are both known at
-  // hover time and therefore the only one that can name the result.
-  function previewAndBlast(verb, args, say) {
-    // A checkpoint ref (`f-xxx@n`) shimmers its feature's row -- rows are keyed by feature id.
-    beginPreviewPending(String(args[0]).split("@")[0], `previewing ${verb}…`);
-    requestPreview(verb, args, (res) => {
-      clearPreviewPending();
-      if (!res || !res.ok) {
-        // A blocked restore -- the symbol has a competing live version, so ugh refuses. Surface the
-        // two ways out in the preview overlay instead of silently doing nothing.
-        if (verb === "restore" && res && res.forked) showRestoreRefusal(res, args[0]);
-        // `say` marks the armed path, whose whole purpose is telling good targets from bad before the
-        // click. Everything it refuses used to preview as silence -- indistinguishable from a preview
-        // still in flight -- and then fail in a toast after the choice was already made.
-        else if (say) showRefusal((res && res.message) || `Can't ${verb} into that lane.`);
-        return;
-      }
-      // `say` is set only by the armed path (every other caller is guarded by `!armedVerb`), and that
-      // path paints its own two endpoints -- see `previewArmed`.
-      if (say) { say(res); return; }
-      const focus = res.focus;
-      // Rows are keyed by feature id: a `<f>@<n>` checkpoint ref must paint its feature's row,
-      // never miss every lane and list the acted-on feature among its own collateral.
-      const targetRow = String(res.target || args[0]).split("@")[0];
-      if (focus && focus.nodes && focus.nodes.length) {
-        enterPreviewMode(focus, targetRow, staged.verb);
-      } else {
-        paintClosure(classifyAffected(res, targetRow));
-      }
-      // The chunk-grain layer over the field treatment: the exact cars this verb changes, drawn
-      // as the state they will end in.
-      paintCarPreview(classifyCarImpact(res.removed, res.added, segmentsOf(compose),
-                                        res.target_ops, verb));
-    });
-  }
-
-  // ─── Find ────────────────────────────────────────────────────────────────────────────────────
-  // Describe the thing; get the ids. Every other route into this graph needs a name you already
-  // know, which is the one thing someone reading unfamiliar history does not have. A hit is a
-  // starting point, not an action: clicking one reveals it on the rail and selects it, and every
-  // verb stays where it was. Search that could change something is search nobody runs.
-  let findSeq = 0;
-  let latestFindSeq = 0;
-
-  // ---- local-find (test slice boundary)
-  // The instant rung of search: substring matching over what the client already holds -- feature
-  // labels and ids, chapter intents, member symbols. Zero round-trips, so results land on the
-  // keystroke; `ugh find`'s meaning rung layers in underneath on Enter. Scoring is deliberately
-  // simple (prefix > word-start > substring; features nudged above symbols on ties) and capped, so
-  // the dropdown stays a glance, not a page.
-  function localFindHits(query, nodes, segsByFeature, cap, themes, commits) {
-    cap = cap || 12;
-    const q = String(query || "").trim().toLowerCase();
-    if (!q) return [];
-    const BOUNDARY = new Set([" ", "-", "_", "/", ".", ":"]);
-    const score = (text) => {
-      const t = String(text || "").toLowerCase();
-      const i = t.indexOf(q);
-      if (i < 0) return -1;
-      if (i === 0) return 3;
-      if (BOUNDARY.has(t[i - 1])) return 2;
-      return 1;
-    };
-    const hits = [];
-    for (const n of nodes || []) {
-      if (n.kind !== "feature") continue;
-      const sf = Math.max(score(n.label), score(n.id));
-      if (sf > 0) {
-        hits.push({ kind: "feature", label: n.label || n.id,
-                    detail: `${n.op_count || 0} op(s)`, feature: n.id, s: sf + 0.2 });
-      }
-      for (const m of n.members || []) {
-        const sym = m.split("::").pop();
-        const ss = score(sym);
-        // `symbol` and `file` ride along so the click can open the code rather than only light up
-        // the lane the code lives in. A result that says `metrics.py` and then does not take you
-        // to `metrics.py` is the search saying it found something and then declining to show it.
-        if (ss > 0) {
-          hits.push({ kind: "symbol", label: sym,
-                      detail: `${m.split("::")[0]} · in ${n.label || n.id}`, feature: n.id,
-                      symbol: m, file: m.split("::")[0], s: ss - 0.2 });
-        }
-      }
-    }
-    for (const fid in segsByFeature || {}) {
-      for (const seg of segsByFeature[fid]) {
-        const sc = score(seg.intent);
-        if (sc > 0) {
-          // Not `seg.checkpoint`: that is the handle (`f-0252…@1`), which is the one string on the
-          // row a reader cannot use to decide whether this is their result. The lane it sits in is.
-          const owner = (nodes || []).find((n) => n.id === fid);
-          hits.push({ kind: "checkpoint", label: seg.intent,
-                      detail: `in ${(owner && owner.label) || fid}`,
-                      feature: fid, checkpoint: seg.checkpoint, s: sc });
-        }
-      }
-    }
-    // Cross-feature themes: the one unit that spans lanes. Ranked slightly above features on a
-    // tie -- a query matching a theme's name is usually asking about the work, not one lane.
-    for (const t of themes || []) {
-      if ((t.feature_span || []).length < 2 || !t.label || t.label === "(unwitnessed)") continue;
-      const st = Math.max(score(t.label), score(t.theme_id));
-      if (st > 0) {
-        hits.push({ kind: "work", label: t.label,
-                    detail: `across ${t.feature_span.length} features`, theme: t.theme_id, s: st + 0.3 });
-      }
-    }
-    // Saves, by subject or sha prefix -- the tokens `ugh find` and the terminal print. A save has
-    // no single lane, so its hit carries the commit index and the click flashes every lane it
-    // touched (revealSave) instead of selecting nothing.
-    for (const c of commits || []) {
-      if (c.bookkeeping) continue;
-      const sha = String(c.sha || "");
-      const bySha = q.length >= 4 && sha.toLowerCase().startsWith(q) ? 3 : -1;
-      const sc = Math.max(bySha, score(c.subject));
-      if (sc > 0) {
-        hits.push({ kind: "save", label: c.subject || sha.slice(0, 7), detail: sha.slice(0, 7),
-                    commitIndex: c.index, s: sc - 0.1 });
-      }
-    }
-    hits.sort((a, b) => b.s - a.s || String(a.label).localeCompare(String(b.label)));
-    const seen = new Set();
-    const out = [];
-    for (const h of hits) {
-      const key = `${h.kind}\u0000${h.label}\u0000${h.feature}`;
-      if (seen.has(key)) continue; // one row per (kind, label, feature)
-      seen.add(key);
-      out.push(h);
-      if (out.length >= cap) break;
-    }
-    return out;
-  }
-  // ---- end-local-find
-
-  function initFind() {
-    const box = document.getElementById("findBox");
-    const results = document.getElementById("findResults");
-    if (!box || !results) return;
-
-    // Typing answers instantly from the local rung; Enter adds the meaning rung (a CLI
-    // round-trip). The dropdown never sits blank while something is already known.
-    box.addEventListener("input", () => {
-      semanticState = null; // a changed query orphans any older meaning results
-      findPick = null;
-      renderFind(box.value.trim());
-      applyLens(); // and the map answers too, not just the dropdown
-    });
-
-    box.addEventListener("keydown", (ev) => {
-      if (ev.key === "Escape") {
-        // This box owns its Escape. Left to bubble, the window handler ran as well, so one key
-        // cleared the search AND cancelled a staged revert AND dropped the playhead -- three
-        // coordinates for one keystroke, the one a reader presses to back out of one thing.
-        ev.stopPropagation();
-        box.value = "";
-        results.hidden = true;
-        semanticState = null;
-        box.blur();
-        applyLens(); // clearing the text is what un-dims the map, so it has to run here too
-        return;
-      }
-      if (ev.key !== "Enter") return;
-      const query = box.value.trim();
-      if (!query) {
-        results.hidden = true;
-        return;
-      }
-      const seq = ++findSeq;
-      latestFindSeq = seq;
-      semanticState = { query, pending: true, hits: [], mode: null, message: null };
-      renderFind(query);
-      applyLens();
-      vscode.postMessage({ type: "find", query, seq });
-    });
-
-    document.addEventListener("click", (ev) => {
-      if (!results.hidden && !results.contains(ev.target) && ev.target !== box) results.hidden = true;
-    });
-  }
-
-  // One result row. The kind is a badge rather than a word in the same ink as the name: a reader
-  // scanning ten results is sorting them by kind first, and a column of grey nouns does not sort.
-  function findHitRow(hit) {
-    const row = el("div", `find-hit find-hit-${hit.kind}`);
-    row.appendChild(el("span", "find-kind", FIND_KIND_GLYPH[hit.kind] || "•"));
-    const text = el("div", "find-text");
-    text.appendChild(el("span", "find-label", hit.label));
-    if (hit.detail) text.appendChild(el("span", "find-detail", hit.detail));
-    row.appendChild(text);
-    // What clicking does, on the row, before it is clicked. Every kind lands somewhere different
-    // and none of them said so, so the only way to learn what a result was for was to click it.
-    row.appendChild(el("span", "find-go", FIND_KIND_ACTION[hit.kind] || ""));
-    // The dropdown is only as wide as the box above it, so a commit subject clips. The tooltip
-    // carries the whole row -- a result you cannot read the name of is not a result.
-    row.title = [hit.label, hit.detail, FIND_KIND_ACTION[hit.kind]].filter(Boolean).join("\n");
-    row.addEventListener("click", () => {
-      const results = document.getElementById("findResults");
-      if (results) results.hidden = true;
-      // The chosen result owns the highlight from here until the query changes.
-      const box = document.getElementById("findBox");
-      const ids = lanesForHit(hit);
-      findPick = ids.size ? { query: box ? box.value.trim() : "", ids } : null;
-      // Every hit that belongs somewhere takes you there. A chapter hit lands on its exact car;
-      // a theme enters the cross-lane focus; a save flashes every lane its commit touched.
-      if (hit.theme) { setThemeFocus(hit.theme); return; }
-      if (hit.commitIndex != null) { revealSave(hit.commitIndex, hit.label); return; }
-      if (hit.feature) revealFeature(hit.feature);
-      if (hit.checkpoint) {
-        state.selectedCheckpoint = hit.checkpoint;
-        saveState();
-        render();
-      }
-      // A symbol result is a piece of code. Lighting its lane says which work it belongs to;
-      // opening it says what it is. Both, in that order, so the map keeps its place.
-      if (hit.file) vscode.postMessage({ type: "openFile", path: hit.file, symbol: hit.symbol });
-    });
-    return row;
-  }
-
-  const FIND_KIND_GLYPH = {
-    work: "◆", feature: "▤", checkpoint: "▸", symbol: "ƒ", save: "◇",
-  };
-
-  const FIND_KIND_ACTION = {
-    work: "show the lanes this work touched",
-    feature: "go to this row on the timeline",
-    checkpoint: "go to this checkpoint",
-    symbol: "open this code",
-    save: "show what this save touched",
-  };
-
-  function renderFind(query) {
-    const results = document.getElementById("findResults");
-    if (!results) return;
-    results.innerHTML = "";
-    if (!query) {
-      results.hidden = true;
-      return;
-    }
-    results.hidden = false;
-    const local = localFindHits(query, map.nodes, checkpointsByFeature, 12,
-                                ((compose || {}).intent || {}).themes, (grid || {}).commits);
-    if (local.length) {
-      results.appendChild(el("div", "find-section", "matching by name"));
-      for (const h of local) results.appendChild(findHitRow(h));
-    }
-    if (semanticState && semanticState.query === query) {
-      results.appendChild(el("div", "find-section", "by meaning"));
-      if (semanticState.pending) {
-        results.appendChild(skeletonRows(3, "find"));
-      } else if (!semanticState.hits.length) {
-        results.appendChild(el("div", "find-note", semanticState.message || "nothing matched"));
-      } else {
-        const dupe = new Set(local.map((h) => `${h.kind}\u0000${h.feature}\u0000${h.label}`));
-        let shown = 0;
-        for (const hit of semanticState.hits) {
-          if (dupe.has(`${hit.kind}\u0000${hit.feature}\u0000${hit.label}`)) continue;
-          results.appendChild(findHitRow(hit));
-          shown++;
-        }
-        if (!shown) results.appendChild(el("div", "find-note", "nothing beyond the matches above"));
-        // A word-overlap answer and a meaning answer look identical in a list, and only one of
-        // them means "there is nothing like this here" when it comes back short.
-        if (semanticState.mode === "lexical") {
-          results.appendChild(el("div", "find-note", "matched on words, not meaning"));
-        }
-      }
-    } else if (local.length) {
-      results.appendChild(el("div", "find-note", "press ⏎ to also search by meaning"));
-    } else {
-      results.appendChild(el("div", "find-note", "no name matches: press ⏎ to search by meaning"));
-    }
-  }
-
-  function renderFindResults(msg) {
-    if (msg.seq !== latestFindSeq || !semanticState) return; // a slower earlier query landing late
-    semanticState.pending = false;
-    semanticState.mode = msg.mode || null;
-    semanticState.message = msg.message || null;
-    const idxOfSha = new Map(((grid && grid.commits) || []).map((c) => [String(c.sha || "").slice(0, 8), c.index]));
-    semanticState.hits = (msg.hits || []).map((h) => {
-      // `ugh find` labels a symbol with its whole `path::name`, and the local rung labels the same
-      // symbol with its bare name. Two spellings of one thing read as two results, and the dedupe
-      // below (keyed on the label) could not see they were the same. One shape for both rungs:
-      // the name is the label, the file is part of the detail, and the full symbol travels
-      // separately so the click can open it.
-      const isSym = h.kind === "symbol";
-      const full = String(h.id || "");
-      const file = isSym && full.includes("::") ? full.split("::")[0] : null;
-      return {
-        kind: h.kind,
-        label: isSym && file ? full.split("::").pop() : h.label,
-        detail: isSym ? [file, h.detail || ""].filter(Boolean).join(" · ") : (h.detail || ""),
-        feature: h.feature || (h.kind === "feature" ? h.id : null),
-        symbol: isSym ? full : undefined,
-        file: file || undefined,
-        // `ugh find` names a save by its sha; joining it to a commit index is what makes the hit
-        // land somewhere instead of being a dead row.
-        commitIndex: h.kind === "save" ? idxOfSha.get(String(h.id || h.detail || "").slice(0, 8)) : undefined,
-      };
-    });
-    renderFind(semanticState.query);
-    applyLens(); // the meaning rung usually reaches lanes the substring rung did not
-  }
-
-  // ---- ask derivations (test slice boundary)
-  //
-  // The one ask to put on a single line: the one accounting for most of the chapter, latest first
-  // on a tie -- a correction is the standing word. Same rule as `ugh.intent.stint.dominant_ask`,
-  // so the tooltip, the panel and the CLI all quote the same sentence back.
-  function dominantAsk(asks) {
-    if (!asks || !asks.length) return null;
-    return asks.reduce((best, a) =>
-      !best || a.claimed > best.claimed || (a.claimed === best.claimed && (a.ts || 0) > (best.ts || 0))
-        ? a : best, null);
-  }
-
-  // "9 days ago" for a captured timestamp (seconds since the epoch, as the store keeps it).
-  function askAge(ts) {
-    if (!ts) return "";
-    const secs = Math.max(0, Date.now() / 1000 - ts);
-    if (secs < 90) return "just now";
-    if (secs < 5400) return `${Math.round(secs / 60)} min ago`;
-    if (secs < 172800) return `${Math.round(secs / 3600)}h ago`;
-    return `${Math.round(secs / 86400)}d ago`;
-  }
-
-  // Whose words, when, and -- only when it distinguishes anything -- how much of the chapter they
-  // account for. On a single-ask chapter that share is every edit in it, so the clause would be a
-  // second line saying what the card above already said; the prompt's length goes there instead,
-  // which is what the reader needs to decide whether to open it.
-  function askedMeta(ask, index, withClaim) {
-    const bits = [ask.source];
-    const age = askAge(ask.ts);
-    if (age) bits.push(age);
-    // `claimed` is an op count -- the share of the chapter this ask produced -- and printed as
-    // "accounts for 7 edits" it was one more number a reader could not place. The asks are
-    // already in dominance order, which says the same thing.
-    void withClaim;
-    if (ask.trimmed && !withClaim) bits.push(`${ask.chars} characters in full`);
-    return (index ? `${index}. ` : "") + bits.join(" · ");
-  }
-
-  // What is behind the control, in a label short enough to stay an inline control: a longer prompt
-  // or more asks. Full-width, it read as a second action equal to "Revert this checkpoint", which
-  // is not a pair a panel should offer at the same weight. The length of what it opens is on the
-  // provenance line above it.
-  function askedMoreLabel(top, more) {
-    if (more > 0) return `Read all ${more + 1} asks`;
-    return "Read the whole prompt";
-  }
-
-  // ---- end-ask-derivations
-
-  function el(tag, cls, text) {
-    const node = document.createElement(tag);
-    if (cls) node.className = cls;
-    if (text != null) node.textContent = text;
-    return node;
-  }
-
-  // An agent's revert or restore, painted as it happens.
-  //
-  // Deliberately the same paint as a hover: the participant should learn one
-  // vocabulary for "this is what that would do", not one for their own mouse and
-  // another for the assistant. The only additions are a line saying who asked,
-  // since nothing else on screen would say so, and a hold after the action
-  // finishes -- an agent's call returns in well under a second, and a paint that
-  // vanished that fast would be a flicker nobody could read.
-  let agentActionTimer = null;
-
-  function showAgentAction(msg) {
-    if (!msg || !msg.verb || !msg.ref) return;
-    if (agentActionTimer) {
-      clearTimeout(agentActionTimer);
-      agentActionTimer = null;
-    }
-    if (msg.state === "failed") {
-      clearGhosts();
-      return;
-    }
-    // Who asked is the one thing a person watching an assistant work must not have to guess. The
-    // sentence sits in the status line's slot, the same place a held preview speaks from, with the
-    // assistant as its subject and the work named by its label, never its handle.
-    const subject = (res) => {
-      const ref = String((res && res.target) || msg.ref).split("@")[0];
-      const node = byId(ref);
-      if (node && node.label) return node.label;
-      return /^f-[0-9a-f]+$/.test(ref) ? "a feature" : ref; // a handle never prints; a label may
-    };
-    const say = (res) => `the assistant ${msg.state === "done" ? (msg.emit ? "previewed" : "ran") : "is running"} ${msg.verb} on ${subject(res)}`;
-    setPreviewContext(say(null), "pending");
-    // Not `previewAndBlast(verb, [msg.ref])`: an agent's ref is often a label
-    // ("Waitlist Join"), and painting with the raw ref as the target id would
-    // leave the target lane unmarked and list it among its own collateral. The
-    // preview result carries the resolved feature id; paint with that.
-    requestPreview(msg.verb, [msg.ref], (res) => {
-      if (!res || !res.ok) return;
-      const resolved = String(res.target || msg.ref).split("@")[0];
-      const focus = res.focus;
-      if (!armedVerb && focus && focus.nodes && focus.nodes.length) {
-        enterPreviewMode(focus, resolved, msg.verb);
-      } else {
-        paintClosure(classifyAffected(res, resolved));
-      }
-      paintCarPreview(classifyCarImpact(res.removed, res.added, segmentsOf(compose),
-                                        res.target_ops, msg.verb));
-      setPreviewContext(`${say(res)} · ${previewCaptionText(msg.verb, focus, res)}`, msg.verb === "restore" ? "in" : "out");
-    });
-
-    if (msg.state === "done") {
-      agentActionTimer = setTimeout(() => {
-        clearGhosts();
-        agentActionTimer = null;
-      }, 6000);
-    }
-  }
-
-  // One non-interactive fold: ask the host to fold the current composition and hand back only the
-  // files under this feature's directory. No longer fired on every selection -- the change panel
-  // is what a selection asks for, and this is its fallback when there is no projection to read, so
-  // it is requested from inside the render that will draw the skeleton for it. Stale responses (an
-  // older selection's fold landing after a newer one) are dropped by sequence number, same pattern
-  // as `requestPreview`.
-  function requestFold(featureId) {
-    if (pendingFold && pendingFold.featureId === featureId) return;
-    const seq = ++foldSeq;
-    pendingFold = { seq, featureId };
-    vscode.postMessage({ type: "requestFold", featureId, ref: state.compositionRef || "HEAD", seq });
-  }
-
-  function renderInspector() {
-    inspector.innerHTML = "";
-    // A multi-select (>=2 lanes) takes over the inspector with the union-closure card -- there is
-    // no single "primary" feature to show a code panel for; the question is "what does this SET
-    // revert, together."
-    if ((state.multi || []).length >= 2) {
-      inspector.appendChild(renderSelectionCard());
-      return;
-    }
-    const id = state.selected;
-    const node = id && byId(id);
-    const step = state.selectedStep && planMarks.steps.find((s) => s.id === state.selectedStep);
-    const session = state.selectedPlanSession && planMarks.sessions.find((s) => s.sessionId === state.selectedPlanSession);
-    const liveSession = state.selectedActor && selectedActor();
-
-    if (step) {
-      inspector.appendChild(renderPlanCard(step));
-    } else if (session) {
-      inspector.appendChild(renderPlanSessionCard(session));
-    } else if (liveSession) {
-      inspector.appendChild(renderSessionCard(liveSession));
-    } else if (node) {
-      const h = document.createElement("div");
-      h.className = "detail-title";
-      h.textContent = node.label || id;
-      inspector.appendChild(h);
-
-      const why = document.createElement("div");
-      why.className = "detail-why";
-      why.textContent = node.why || "";
-      inspector.appendChild(why);
-
-      // The member count, not the id. `f-05845707a7cefe2e0e42f8e3f99484f8bc69b6f5e966fbabef90…`
-      // led this line: 64 hex characters of internal handle, wrapped over three lines, directly
-      // under the name -- so the most prominent thing about a piece of work was the one string
-      // about it a reader can neither use nor remember. Nothing on this surface asks anyone to
-      // type an id; the panels that need one carry it themselves.
-      const meta = document.createElement("div");
-      meta.className = "detail-meta";
-      meta.textContent = `${node.size} function${node.size === 1 ? "" : "s"} and files`;
-      meta.title = node.id;
-      inspector.appendChild(meta);
-
-      if (node.kind === "feature") {
-        renderTouchedFiles(id, node);
-        inspector.appendChild(renderActionBar(id));
-        inspector.appendChild(renderCheckpoints(id));
-      }
-    }
-
-    // Each of these takes over the code(I) slot with a read-only view of a DIFFERENT frontier
-    // than the one the action bar above still previews/applies against -- composition-preview
-    // (hovering the composition QuickPick), then the playhead, then the ordinary selection.
-    // A staged candidate blocks `save`/`switch`/every materializing verb, so it outranks whatever is
-    // selected: drawn first and drawn always, not just in the idle "home" state below. Drift keeps
-    // the home-only placement -- an invitation to record, which can wait until the reader is idle --
-    // but a state that makes the next click fail cannot be behind a selection.
-    const stagedNow = compose.status && compose.status.staged && compose.status.staged.any;
-    if (stagedNow) renderWorkingChangesCard();
-
-    if (compositionPreviewActive != null) {
-      renderCompositionPreviewPanel(node && node.kind === "feature" ? node : null);
-    } else if (playheadCommitIndex != null) {
-      renderPlayheadPanel(playheadCommitIndex, node && node.kind === "feature" ? node : null);
-    } else if (node && node.kind === "feature") {
-      renderChangePanel(id);
-    } else if (!node && !step && !session && !liveSession) {
-      // The panel's "home" state: nothing selected, not scrubbing. Surface the uncommitted work
-      // as a record-and-save card so the primary daily action is one click from an idle view.
-      // Guarded: a staged candidate already drew this card above, and drawing it twice would put two
-      // Abandon buttons on screen.
-      if (!stagedNow) renderWorkingChangesCard();
-      renderThemesCard();
-    }
-  }
-
-  // The cross-feature themes, on the idle panel: work that ran across lanes has no row of its own
-  // in the graph, so with nothing selected the panel lists the groups by name -- the same names
-  // `ugh log` footers and `ugh revert "<name>"` take. Clicking one enters the TableLens focus.
-  function renderThemesCard() {
-    const themes = spanningThemes();
-    if (!themes.length) return;
-    themes.sort((a, b) => (b.feature_span || []).length - (a.feature_span || []).length);
-    const wrap = document.createElement("div");
-    const h = document.createElement("div");
-    h.className = "detail-title";
-    h.textContent = "Requests that changed several features";
-    wrap.appendChild(h);
-    const why = document.createElement("div");
-    why.className = "detail-meta";
-    why.textContent = "One request that landed in several features. Click one to light its rows.";
-    wrap.appendChild(why);
-    for (const t of themes.slice(0, 8)) {
-      const row = document.createElement("button");
-      row.className = "theme-row" + (state.themeFocus === t.theme_id ? " theme-row-active" : "");
-      const name = document.createElement("span");
-      name.className = "theme-row-name";
-      name.textContent = t.label;
-      const meta = document.createElement("span");
-      meta.className = "theme-row-meta";
-      meta.textContent = `${(t.feature_span || []).length} features`;
-      row.append(name, meta);
-      row.addEventListener("click", () => setThemeFocus(t.theme_id));
-      wrap.appendChild(row);
-    }
-    inspector.appendChild(wrap);
-  }
-
-  // The multi-select union-closure card (Stage C): "N features -> M ops in closure", the OTHER
-  // features that selection pulls in (the blast beyond the direct pick), the selected lanes as
-  // deselectable chips, and a Revert-all action. The VS Code parallel of the TUI's frontier
-  // checklist header; the closure itself is `ugh select`'s report (selectionResult).
-  function renderSelectionCard() {
-    const wrap = document.createElement("div");
-    const h = document.createElement("div");
-    h.className = "detail-title";
-    h.textContent = `Selection · ${state.multi.length} features`;
-    wrap.appendChild(h);
-
-    const view = selectionResult && selectionResult.view;
-    if (!view) {
-      wrap.appendChild(statusLine("Resolving closure…", ""));
-      wrap.appendChild(skeletonRows(2, "find"));
-    } else if (!view.ok) {
-      wrap.appendChild(statusLine(view.message || "Cannot resolve selection.", "fail"));
-    } else {
-      const meta = document.createElement("div");
-      meta.className = "detail-meta";
-      meta.textContent =
-        `${(view.files || []).length} file(s) rewritten once what depends on these features is included`;
-      wrap.appendChild(meta);
-
-      const direct = new Set(view.feature_ids || []);
-      const pulled = (view.pulled || []).filter((p) => p.feature_id && !direct.has(p.feature_id) && p.op_count > 0);
-      if (pulled.length) {
-        const why = document.createElement("div");
-        why.className = "detail-why";
-        why.textContent = "Pulls in work from (amber on the graph):";
-        wrap.appendChild(why);
-        const chips = document.createElement("div");
-        chips.className = "footprint-chips";
-        for (const p of pulled) {
-          const node = byId(p.feature_id);
-          const chip = document.createElement("span");
-          chip.className = "chip";
-          chip.textContent = `${(node && node.label) || p.feature_id} · ${p.op_count}`;
-          chips.appendChild(chip);
-        }
-        wrap.appendChild(chips);
-      }
-      if (view.hub) {
-        wrap.appendChild(statusLine(`${view.hub.symbol} is shared: taking it out pulls other work with it`, ""));
-      }
-    }
-
-    // Selected lanes as deselectable chips.
-    const picked = document.createElement("div");
-    picked.className = "footprint-chips";
-    for (const fid of state.multi) {
-      const node = byId(fid);
-      const chip = document.createElement("span");
-      chip.className = "chip selected-chip";
-      chip.textContent = (node && node.label) || fid;
-      chip.title = "click to deselect";
-      chip.addEventListener("click", () => selectRow(fid, true));
-      picked.appendChild(chip);
-    }
-    wrap.appendChild(picked);
-
-    const bar = document.createElement("div");
-    bar.className = "action-bar";
-    const clear = document.createElement("button");
-    clear.className = "action";
-    clear.textContent = "Clear";
-    clear.addEventListener("click", clearSelection);
-    bar.appendChild(clear);
-    const revert = document.createElement("button");
-    revert.className = "action primary";
-    revert.textContent = "Revert all";
-    revert.title = "Revert each selected feature in turn (stops if one refuses)";
-    revert.addEventListener("mouseenter", () => paintSelectionClosure());
-    revert.addEventListener("mouseleave", () => clearGhosts());
-    revert.addEventListener("click", () => {
-      // Staged like every other destructive verb: the union closure is already painted amber and
-      // counted (selectionResult); the confirm bar takes the decision in-graph, no modal.
-      const view = selectionResult && selectionResult.view;
-      stageAction({
-        verb: "revert", kind: "multi", targetId: state.multi[0],
-        label: `${state.multi.length} selected features`,
-        refs: state.multi.slice(),
-        summary: view && view.ok
-          ? `${(view.files || []).length} file(s) rewritten `
-            + "· each feature reverted in turn, stopping if one refuses"
-          : null,
-        res: { ok: true },
-      });
-      paintSelectionClosure();
-    });
-    bar.appendChild(revert);
-    wrap.appendChild(bar);
-    return wrap;
-  }
-
-  function clearSelection() {
-    state.multi = [];
-    state.selected = null;
-    selectionResult = null;
-    saveState();
-    render();
-  }
-
-  // Amber the features the current selection pulls in beyond the direct pick (the union's blast),
-  // so "where this selection lands" is visible on the graph. Direct picks already read as
-  // .selected; this adds the closure-only features.
-  function paintSelectionClosure() {
-    const view = selectionResult && selectionResult.view;
-    if (!view || !view.ok) return;
-    const direct = new Set(view.feature_ids || []);
-    paintBlast((view.pulled || []).map((p) => p.feature_id).filter((f) => f && !direct.has(f)));
-  }
-
-  // ---- working-changes
-  // What the card says about a tree that is not clean, which is two different situations the old
-  // card conflated into one. Split out as a pure function because the conflation was the bug and a
-  // test can hold this shape but not the DOM: `status.drift` used to carry staged paths too, so a
-  // staged rewrite candidate was titled "Working changes", explained as "edits not yet recorded",
-  // and offered a Save that `lens.put`'s staged guard refuses -- the one button drawn was the one
-  // that could not run. The two states want opposite sentences: drift is bytes the ideal has never
-  // seen (Save records them), a candidate is bytes that *replace* recorded ops (landing swaps them
-  // in, and only once the oracle agrees the rewrite preserved behavior).
-  function workingChangesCard(status, rewrite) {
-    const staged = (status && status.staged) || { any: false, paths: [] };
-    const drift = (status && status.drift) || { any: false, paths: [] };
-    const candidate = (rewrite && rewrite.staged) || null;
-    if (staged.any) {
-      // Keyed on `status.staged` alone, not on the candidate projection as well. The two come from
-      // different view functions, so a refresh can deliver the paths without the detail -- and the
-      // fallback then has to be a staged card with less to say, never the drift card, because a tree
-      // holding a candidate is the one tree that must not be described as clean or as savable.
-      const verb = candidate && candidate.verb;
-      const n = candidate && candidate.op_count;
-      // The oracle verdict is the *candidate's*, not the current ideal's, so it cannot be read off
-      // the titlebar chip. Naming the gate is the whole point: unshown, it arrives as a refusal
-      // after the click, and a refusal after the click teaches nothing about why.
-      const gate = (candidate && candidate.oracle_status) || "pending";
-      const abandon = { verb: "unstage", label: "Abandon", hint: "ugh advanced unstage: discard the candidate" };
-      return {
-        state: "staged",
-        title: verb ? `Staged · ${verb}` : "Staged rewrite",
-        why: (n ? `${n} recorded edit(s) rewritten, ` : "A rewrite of recorded edits, ")
-          + "on disk and not yet in the record. Landing replaces those edits; abandoning discards the "
-          + "rewrite and restores the recorded bytes.",
-        paths: staged.paths || [],
-        gate: gate === "pass"
-          ? "Oracle passed: safe to land."
-          : `Oracle ${gate}: landing is blocked until it passes.`,
-        actions: gate === "pass"
-          ? [{ verb: "land", label: "Land", primary: true,
-               hint: "ugh advanced commit: replace those edits in the record" },
-             abandon]
-          : [{ verb: "oracle", label: "Check", primary: true,
-               hint: "ugh advanced oracle run: verify the rewrite preserved behavior" },
-             { verb: "land", label: "Land", disabled: true,
-               hint: `oracle is ${gate}; landing a rewrite it has not passed needs an override` },
-             abandon],
-      };
-    }
-    const paths = drift.paths || [];
-    if (!paths.length) return { state: "clean", title: "Unsaved changes", clean: "Nothing unsaved. Every change is recorded." };
-    return {
-      state: "drift",
-      title: `${paths.length} unsaved file${paths.length === 1 ? "" : "s"}`,
-      // `ugh save` mines *and* commits, so this is one action and not the Save/Commit pair the card
-      // used to draw. The second button shipped a promise the daily loop had already kept.
-      why: "Edited since the last save. Save, in the title bar, records them and commits.",
-      paths,
-      // no Save of its own: the title bar's Save is the one, and this card lists what it records
-      actions: [],
-    };
-  }
-
-  const CARD_MESSAGE = {
-    land: { type: "landCandidate" },
-    save: { type: "dailyLoop", verb: "save" },
-    oracle: { type: "runOracle" },
-    // Not `applyVerb`: that switch is feature verbs only and answers anything else by throwing
-    // `unknown feature verb`. Its own message type, because abandoning asks for confirmation first.
-    unstage: { type: "abandonCandidate" },
-  };
-
-  // ---- end-working-changes
-
-  function renderWorkingChangesCard() {
-    const card = workingChangesCard(compose.status, compose.rewrite);
-    const wrap = document.createElement("div");
-    wrap.className = "changes-card";
-    wrap.dataset.state = card.state;
-
-    const h = document.createElement("div");
-    h.className = "detail-title";
-    h.textContent = card.title;
-    wrap.appendChild(h);
-
-    if (card.clean) {
-      wrap.appendChild(statusLine(card.clean, ""));
-      inspector.appendChild(wrap);
-      return;
-    }
-
-    const sub = document.createElement("div");
-    sub.className = "detail-why";
-    sub.textContent = card.why;
-    wrap.appendChild(sub);
-
-    const list = document.createElement("div");
-    list.className = "changes-list";
-    const CAP = 12;
-    for (const p of card.paths.slice(0, CAP)) {
-      const row = document.createElement("div");
-      row.className = "changes-file";
-      row.textContent = p;
-      row.title = p;
-      list.appendChild(row);
-    }
-    if (card.paths.length > CAP) {
-      const more = document.createElement("div");
-      more.className = "changes-more";
-      more.textContent = `+${card.paths.length - CAP} more`;
-      list.appendChild(more);
-    }
-    wrap.appendChild(list);
-
-    if (card.gate) wrap.appendChild(statusLine(card.gate, card.gate.startsWith("Oracle passed") ? "ok" : "warn"));
-
-    if (!card.actions.length) { inspector.appendChild(wrap); return; }
-    const bar = document.createElement("div");
-    bar.className = "action-bar";
-    for (const a of card.actions) {
-      const btn = document.createElement("button");
-      btn.className = "action" + (a.primary ? " primary" : "");
-      btn.textContent = a.label;
-      btn.title = a.hint;
-      btn.disabled = !!a.disabled;
-      if (!a.disabled) btn.addEventListener("click", () => vscode.postMessage(CARD_MESSAGE[a.verb]));
-      bar.appendChild(btn);
-    }
-    wrap.appendChild(bar);
-
-    inspector.appendChild(wrap);
-  }
-
-  // A tight plan-step card: the rail encodings (open mark, landing slide, comet) already carry
-  // the primary read, so this is the on-demand secondary -- one-line rationale, footprint as chips
-  // (not a bulleted essay), predicted->matched shown as colored identity dots (arrow only when
-  // they differ). No fold ref exists for a step id, so this replaces the action bar/code panel
-  // rather than feeding them.
-  function renderPlanCard(step) {
-    const wrap = document.createElement("div");
-
-    const h = document.createElement("div");
-    h.className = "detail-title";
-    h.textContent = `${step.matched ? "●" : "○"} ${step.label}`;
-    wrap.appendChild(h);
-
-    if (step.rationale) {
-      const why = document.createElement("div");
-      why.className = "detail-why";
-      why.textContent = step.rationale;
-      wrap.appendChild(why);
-    }
-
-    if (step.footprint && step.footprint.length) {
-      const chips = document.createElement("div");
-      chips.className = "footprint-chips";
-      for (const sym of step.footprint) {
-        const chip = document.createElement("span");
-        chip.className = "chip";
-        chip.textContent = sym;
-        chips.appendChild(chip);
-      }
-      wrap.appendChild(chips);
-    }
-
-    const target = step.matched ? step.matchedFeature : step.predictedFeature;
-    if (target) wrap.appendChild(renderPlanTargetLine(step, target));
-
-    const firstSpan = step.matched && step.files && step.files[0] && step.files[0].spans && step.files[0].spans[0];
-    // Mutually exclusive by construction: `checkpointMatch` is only ever set on an unmatched step
-    // (see collectPlanMarks), `firstSpan` only on a matched one -- never both in the same card.
-    if (firstSpan || step.checkpointMatch) {
-      const bar = document.createElement("div");
-      bar.className = "action-bar";
-      if (firstSpan) {
-        const btn = document.createElement("button");
-        btn.className = "action";
-        btn.textContent = "Show diff";
-        btn.addEventListener("click", () => {
-          const file = step.files[0];
-          vscode.postMessage({
-            type: "openPlanDiff",
-            target: {
-              kind: "match", title: step.label, rationale: step.rationale,
-              predictedFootprint: step.footprint, path: file.path,
-              startLine: firstSpan.start_line, endLine: firstSpan.end_line,
-            },
-          });
-        });
-        bar.appendChild(btn);
-      }
-      if (step.checkpointMatch) {
-        // A footprint-overlap candidate `ugh checkpoint` already found between this pending step
-        // and an unpredicted op -- confirming it is what actually flips the step to "matched" and
-        // lands the rail's open-ring-to-solid-glyph transition on the next render.
-        const group = step.checkpointMatch;
-        const btn = document.createElement("button");
-        btn.className = "action";
-        btn.textContent = (group.files || []).length
-          ? `Confirm match (${group.files.length} file${group.files.length === 1 ? "" : "s"})`
-          : "Confirm match";
-        btn.addEventListener("click", () => {
-          vscode.postMessage({ type: "confirmCheckpoint", hollowIds: group.hollow_ids, opIds: group.op_ids });
-        });
-        bar.appendChild(btn);
-      }
-      wrap.appendChild(bar);
-    }
-
-    return wrap;
-  }
-
-  // Predicted -> matched as colored identity dots (the same hue the dot/comet already use) rather
-  // than a text diff -- an arrow only appears when the two actually differ. This is the *durable*
-  // divergence read: the rail's comet-trail is transient (fades in ~1s), this card stays as long
-  // as the step is selected.
-  function renderPlanTargetLine(step, target) {
-    const row = document.createElement("div");
-    row.className = "plan-target-line";
-    const swatch = (featureId, faint) => {
-      const featureNode = byId(featureId);
-      const s = document.createElement("span");
-      s.className = "plan-target" + (faint ? " faint" : "");
-      const dot = document.createElement("span");
-      dot.className = "plan-target-dot";
-      dot.style.background = (featureNode && featureNode.color) || "var(--dim)";
-      s.appendChild(dot);
-      const lbl = document.createElement("span");
-      lbl.textContent = (featureNode && featureNode.label) || featureId;
-      s.appendChild(lbl);
-      return s;
-    };
-    if (step.matched && step.predictedFeature && step.predictedFeature !== step.matchedFeature) {
-      row.appendChild(swatch(step.predictedFeature, true));
-      const arrow = document.createElement("span");
-      arrow.className = "plan-target-arrow";
-      arrow.textContent = "→";
-      row.appendChild(arrow);
-    }
-    row.appendChild(swatch(target, !step.matched));
-    return row;
-  }
-
-  // The session-level card (titlebar chip click): plan text, overall progress, and any steps with
-  // no predicted feature at all (nothing to attach to on the rail, so they're listed here instead
-  // of inventing a fake row for them).
-  function planTitle(text) {
-    const first = String(text || "").trim().split(/\n/)[0];
-    const cut = first.search(/\.\s/);
-    const t = cut > 0 ? first.slice(0, cut + 1) : first;
-    return t.length > 120 ? t.slice(0, 119).trimEnd() + "…" : t || "plan";
-  }
-
-  function renderPlanSessionCard(session) {
-    const wrap = document.createElement("div");
-    wrap.appendChild(el("div", "detail-title", planTitle(session.planText)));
-    wrap.appendChild(el("div", "detail-meta",
-      `${session.matchedCount} of ${session.stepCount} step${session.stepCount === 1 ? "" : "s"} built`
-      + (session.derivedStatus ? ` · ${session.derivedStatus}` : "")));
-
-    // Stalled: the plan stopped part-way and no work is flowing toward it. State it plainly, then
-    // offer the single clear next action -- hand the conversation back to the real Claude Code
-    // session. This is the primary HIG affordance (what it is + one thing to do about it).
-    if (session.derivedStatus === "stalled") {
-      const pending = session.pendingCount != null
-        ? session.pendingCount
-        : session.stepCount - session.matchedCount;
-      wrap.appendChild(el("div", "detail-why stalled", `Interrupted: ${pending} step${pending === 1 ? "" : "s"} not built`));
-      const resume = el("button", "action plan-resume-primary", "Resume in terminal");
-      resume.title = "Relaunch this Claude Code session (claude --resume) to finish the plan";
-      resume.addEventListener("click", () => {
-        vscode.postMessage({ type: "resumePlan", sessionId: session.sessionId });
-      });
-      wrap.appendChild(resume);
-    }
-
-    wrap.appendChild(planStepsList(session));
-    return wrap;
-  }
-
-  // The steps, in plan order, each on the lane it was built in or predicted for; a step with no
-  // lane yet says so instead of being listed apart as "unplaced".
-  function planStepsList(session) {
-    const list = el("div", "actor-lanes");
-    for (const step of planMarks.steps.filter((st) => st.sessionId === session.sessionId)) {
-      const feature = step.matched ? step.matchedFeature : step.predictedFeature;
-      const node = feature && byId(feature);
-      const row = el("div", "actor-lane" + (step.matched ? " built" : ""));
-      const dot = el("span", "plan-target-dot");
-      dot.style.background = (node && node.color) || "var(--faint)";
-      row.appendChild(dot);
-      row.appendChild(el("span", "actor-lane-name plan-step-title", step.label));
-      row.appendChild(el("span", "actor-lane-syms plan-step-state", step.matched ? "built" : feature ? "" : "no lane yet"));
-      row.title = [step.label, step.rationale || null, node ? (step.matched ? "built in " : "predicted for ") + node.label : null].filter(Boolean).join("\n");
-      row.addEventListener("click", () => selectPlanStep(step.id));
-      list.appendChild(row);
-    }
-    return list;
-  }
-
-  // A live session's card: whose tree, what it touched, what it shares with another session, and the
-  // one command that brings its work home (landing stays on the CLI).
-  function renderSessionCard(a) {
-    const wrap = document.createElement("div");
-    wrap.appendChild(el("div", "detail-title", a.label));
-    const sess = a.session;
-    const startedBy = sess.started_by === "claude" ? (sess.alive ? "started by Claude Code, still open" : "started by Claude Code, since closed")
-      : sess.started_by === "terminal" ? (sess.alive ? "started from a terminal, still open" : "started from a terminal, since closed")
-      : null;
-    // What it holds: commits its target lacks, and edits not yet committed in its tree. A session with
-    // only uncommitted edits must never read as holding nothing.
-    const holdsParts = [];
-    if (sess.unlanded) holdsParts.push(`${sess.unlanded} unlanded commit${sess.unlanded === 1 ? "" : "s"}`);
-    if (sess.uncommitted) holdsParts.push("uncommitted edits");
-    const emptyHanded = sess.unlanded === 0 && sess.uncommitted === false;
-    const holds = holdsParts.length ? holdsParts.join(" and ") : emptyHanded ? "nothing unlanded" : null;
-    wrap.appendChild(el("div", "detail-meta",
-      [sess.branch ? `on ${sess.branch}` : null, a.alive ? "active in the last ten minutes" : "quiet", startedBy, holds].filter(Boolean).join(" · ")));
-    const own = Object.keys(a.symbolsByLane);
-    const n = own.length;
-    const fns = own.reduce((sum, f) => sum + (a.symbolsByLane[f] || []).length, 0);
-    const size = a.changes != null ? `${a.changes} change${a.changes === 1 ? "" : "s"} to ${fns} function${fns === 1 ? "" : "s"} across ` : "";
-    wrap.appendChild(el("div", "detail-why", n
-      ? `Work in this session's own tree, not landed: ${size}${n} feature${n === 1 ? "" : "s"}. The lanes it has not touched recede while you follow it.`
-      : "No named function changed in this session's tree yet."));
-    if (!sess.alive && emptyHanded) {
-      wrap.appendChild(el("div", "detail-why", "Closed with nothing unlanded: this is what a session clean-up removes."));
-    }
-    const list = el("div", "actor-lanes");
-    for (const f of own) {
-      const node = byId(f);
-      const syms = (a.symbolsByLane[f] || []).map(tail);
-      const row = el("div", "actor-lane");
-      const dot = el("span", "plan-target-dot");
-      dot.style.background = (node && node.color) || "var(--dim)";
-      row.appendChild(dot);
-      row.appendChild(el("span", "actor-lane-name", (node && node.label) || f));
-      row.appendChild(el("span", "actor-lane-syms", syms.slice(0, 4).join(", ") + (syms.length > 4 ? ` +${syms.length - 4}` : "")));
-      row.title = syms.join("\n");
-      row.addEventListener("click", () => revealFeature(f));
-      list.appendChild(row);
-    }
-    // Lanes its plan reaches that its tree has not: listed with the word, so the lens's extra
-    // bright rows are accounted for (a reader counted three bright lanes against "1 feature").
-    for (const f of a.lanes) {
-      if (a.symbolsByLane[f]) continue;
-      const node = byId(f);
-      const row = el("div", "actor-lane");
-      const dot = el("span", "plan-target-dot");
-      dot.style.background = (node && node.color) || "var(--faint)";
-      row.appendChild(dot);
-      row.appendChild(el("span", "actor-lane-name", (node && node.label) || f));
-      row.appendChild(el("span", "actor-lane-syms plan-step-state", "planned"));
-      row.addEventListener("click", () => revealFeature(f));
-      list.appendChild(row);
-    }
-    if (list.childNodes.length) wrap.appendChild(list);
-    if (a.unplaced.length) {
-      const k = a.unplaced.length;
-      wrap.appendChild(el("div", "detail-why",
-        `${k} new function${k === 1 ? "" : "s"} not in any feature yet: ${a.unplaced.slice(0, 4).map(tail).join(", ")}${k > 4 ? ` and ${k - 4} more` : ""}.`));
-    }
-    for (const o of ((compose.sessions || {}).overlaps || [])) {
-      if (o.a !== a.label && o.b !== a.label) continue;
-      const other = o.a === a.label ? o.b : o.a;
-      const isBranch = o.branch === true || (o.branch == null && o.b === "main");
-      const names = (o.symbols || []).map(tail);
-      const note = el("div", "detail-why overlap-note");
-      note.append(isBranch ? `${other} changed ` : `${other} also changed `);
-      note.appendChild(el("span", "overlap-what", names.slice(0, 3).join(", ")));
-      note.append(`${names.length > 3 ? ` and ${names.length - 3} more` : ""}`
-        + (isBranch ? " after this session began, in commits: landing will have to reconcile it." : ": whichever lands second will be told."));
-      wrap.appendChild(note);
-    }
-    if (a.plan) {
-      // Joined by who is acting (one Claude Code session), not by task: the plan may be about other work.
-      wrap.appendChild(el("div", "detail-meta",
-        `The same agent's plan: ${planTitle(a.plan.planText)}` + (a.total > 0 ? ` · ${a.done} of ${a.total} step${a.total === 1 ? "" : "s"} built` : "")));
-      wrap.appendChild(planStepsList(a.plan));
-    }
-    const bar = el("div", "action-bar");
-    const copy = el("button", "action", "Copy land command");
-    copy.title = `ugh session land ${a.label}`;
-    copy.addEventListener("click", () => vscode.postMessage({ type: "copyText", text: `ugh session land ${a.label}` }));
-    bar.appendChild(copy);
-    wrap.appendChild(bar);
-    return wrap;
-  }
-
-  function renderFileList(container, files) {
-    const paths = Object.keys(files || {}).sort();
-    if (!paths.length) {
-      container.appendChild(statusLine("No files under this path at this frontier."));
-      return;
-    }
-    for (const path of paths) {
-      const file = document.createElement("div");
-      file.className = "code-file";
-      const label = document.createElement("div");
-      label.className = "code-file-path";
-      label.textContent = path;
-      const pre = document.createElement("pre");
-      pre.className = "code-file-body";
-      pre.textContent = files[path];
-      file.appendChild(label);
-      file.appendChild(pre);
-      container.appendChild(file);
-    }
-  }
-
-  // Loading/error/file-list/forked-warning body shared by the selection code panel and the
-  // playhead panel: `cached` is undefined while loading, `{error}` on failure, or a result with
-  // `files`/`forked` on success.
-  function renderCachedFrontierBody(section, cached, files) {
-    if (!cached) {
-      section.appendChild(skeletonRows(6, "code"));
-      return;
-    }
-    if (cached.error) {
-      section.appendChild(statusLine(cached.error, "error"));
-      return;
-    }
-    renderFileList(section, files);
-    if (cached.forked) {
-      section.appendChild(statusLine("This frontier has an open fork here.", "warn"));
-    }
-  }
-
-  function renderCodePanel(id) {
-    const section = document.createElement("div");
-    section.className = "code-panel";
-    const heading = document.createElement("div");
-    heading.className = "code-panel-heading";
-    heading.textContent = `code(I) @ ${state.compositionLabel || "HEAD"}`;
-    section.appendChild(heading);
-
-    const cached = foldResultCache[id];
-    if (cached === undefined) requestFold(id);
-    // A failing verdict tints the panel's own heading (a transition on the status channel this
-    // surface already owns) rather than a separate line of text saying "oracle: fail".
-    if (cached && !cached.error && oracleStatus(cached.oracle_verdict) === "fail") {
-      heading.classList.add("oracle-fail");
-    }
-    renderCachedFrontierBody(section, cached, cached && cached.files);
-    inspector.appendChild(section);
-  }
-
-  // The playhead's frontier is unfiltered (the host folds the whole thing, once per commit
-  // index) -- filtering to the selected feature's `dir` happens here, client-side, so dragging
-  // through a run of commit indices never re-requests per feature-selection change.
-  // What one save changed, by feature, in the reader's units: the named functions each feature's
-  // chapters touched at this save (`symbols[].saves` from the segments payload). This used to be
-  // a proportional stacked bar of op counts with a per-kind glyph tally (`◆◆+~−`) under it -- a
-  // percentage of an unnamed unit, which was the exact encoding a study participant asked "what
-  // does this mean?" about. A payload without per-chapter symbols falls back to op counts, worded.
-  function renderOpSetDecomposition(container, idx) {
-    const byFeat = new Map();
-    const segsAll = ((compose || {}).intent || {}).segments || [];
-    let haveSymbols = false;
-    for (const seg of segsAll) {
-      for (const s of seg.symbols || []) {
-        haveSymbols = true;
-        if (!(s.saves || []).includes(idx)) continue;
-        let g = byFeat.get(seg.feature_id);
-        if (!g) byFeat.set(seg.feature_id, (g = new Set()));
-        g.add(s.symbol);
-      }
-    }
-    let groups;
-    if (haveSymbols) {
-      groups = [...byFeat.entries()].map(([fid, syms]) => ({ fid, count: syms.size, node: byId(fid) }));
-    } else {
-      const ops = (history.ops || []).filter((o) => o.commit_index === idx && o.feature_id);
-      const counts = new Map();
-      for (const op of ops) counts.set(op.feature_id, (counts.get(op.feature_id) || 0) + 1);
-      groups = [...counts.entries()].map(([fid, count]) => ({ fid, count, node: byId(fid) }));
-    }
-    if (!groups.length) return;
-    groups.sort((a, b) => b.count - a.count);
-    const unit = haveSymbols ? "function" : "change";
-
-    const wrap = document.createElement("div");
-    wrap.className = "opset";
-    const h = document.createElement("div");
-    h.className = "opset-heading";
-    h.textContent = `this save changed ${groups.length} feature${groups.length === 1 ? "" : "s"}`;
-    wrap.appendChild(h);
-    for (const g of groups) {
-      const row = document.createElement("div");
-      row.className = "opset-row";
-      if (g.node) row.addEventListener("click", () => selectRow(g.fid));
-      const dot = document.createElement("span");
-      dot.className = "opset-dot";
-      dot.style.background = (g.node && g.node.color) || "#888";
-      row.appendChild(dot);
-      const label = document.createElement("span");
-      label.className = "opset-label";
-      label.textContent = (g.node && g.node.label) || g.fid;
-      row.appendChild(label);
-      const n = document.createElement("span");
-      n.className = "opset-count";
-      n.textContent = `${g.count} ${unit}${g.count === 1 ? "" : "s"}`;
-      row.appendChild(n);
-      wrap.appendChild(row);
-    }
-    container.appendChild(wrap);
-  }
-
-  function renderPlayheadPanel(idx, featureNode) {
-    const section = document.createElement("div");
-    section.className = "code-panel";
-
-    const heading = document.createElement("div");
-    heading.className = "code-panel-heading";
-    const cached = playheadResultCache[idx];
-    // The save, by its place and its date, never by an index or a kernel flag.
-    const commits = (compose.history && compose.history.commits) || [];
-    const when = axisLabel(idx);
-    heading.textContent = `Save ${idx + 1} of ${commits.length}` + (when.startsWith("save") ? "" : ` · ${when}`);
-    section.appendChild(heading);
-    const commit = commits.find((c) => c.index === idx) || commits[idx];
-    if (commit && commit.subject) section.appendChild(el("div", "detail-why", readableSubject(commit.subject, segmentsOf(compose))));
-
-    const back = document.createElement("button");
-    back.className = "code-panel-back";
-    back.textContent = state.compositionLabel && state.compositionLabel !== "HEAD" ? `Back to ${state.compositionLabel}` : "Back to now";
-    back.addEventListener("click", clearPlayhead);
-    section.appendChild(back);
-
-    // The scrub's exit into real editors: this history point as read-only now ⇄ then diffs. The
-    // snippet panel below orients; this is how you actually READ the codebase at that save.
-    const visit = document.createElement("button");
-    visit.className = "code-panel-back code-panel-visit";
-    visit.textContent = "Open files at this save, read-only";
-    visit.title = "Open files as they stood at this point: read-only; your working tree is untouched";
-    visit.addEventListener("click", () => vscode.postMessage({ type: "openFoldFiles", commitIndex: idx }));
-    section.appendChild(visit);
-
-    // The op-set at this point comes first -- "what IS this history point" before "what does the
-    // tree look like folded here." Not `dir`-filtered: the decomposition is the whole point's set.
-    renderOpSetDecomposition(section, idx);
-
-    if (cached && !cached.error && oracleStatus(cached.oracle_verdict) === "fail") {
-      heading.classList.add("oracle-fail");
-    }
-
-    const allPaths = (cached && cached.files) || {};
-    renderCachedFrontierBody(section, cached, filesForFeature(allPaths, featureNode));
-    inspector.appendChild(section);
-  }
-
-  // code(I) file filter: keep a fold path if it's one of the feature's member files
-  // (MapNode.members, `file::qualname`) OR sits under its majority-prefix dir. Dir alone drops a
-  // feature's own production file when its members span dirs (e.g. a test-labeled leaf that also
-  // owns `livehub/conflict.py`), which showed as an empty "No files under this path" panel.
-  function filesForFeature(allPaths, featureNode) {
-    if (!featureNode) return allPaths;
-    const memberFiles = new Set((featureNode.members || []).map((m) => m.split("::")[0]));
-    return Object.fromEntries(Object.entries(allPaths).filter(
-      ([p]) => memberFiles.has(p) || p.startsWith(featureNode.dir)));
-  }
-
-  // Composition-picker hover-preview panel: same shape as the playhead panel (unfiltered fold,
-  // filtered to the selected feature's files client-side), fed by `compositionPreviewResult`
-  // instead of `playheadResult`. Lets arrowing through the composition QuickPick show what each
-  // candidate would put in the code(I) panel before committing to a real `ugh switch`.
-  function renderCompositionPreviewPanel(featureNode) {
-    const section = document.createElement("div");
-    section.className = "code-panel";
-
-    const heading = document.createElement("div");
-    heading.className = "code-panel-heading";
-    const cached = compositionPreviewCache[compositionPreviewActive];
-    heading.textContent = `code(I) @ ${compositionPreviewActive} (previewing)`;
-    section.appendChild(heading);
-
-    if (cached && !cached.error && oracleStatus(cached.oracle_verdict) === "fail") {
-      heading.classList.add("oracle-fail");
-    }
-
-    const allPaths = (cached && cached.files) || {};
-    renderCachedFrontierBody(section, cached, filesForFeature(allPaths, featureNode));
-    inspector.appendChild(section);
+    const s = document.createElementNS(ns, "svg");
+    s.setAttribute("viewBox", "0 0 16 16");
+    s.setAttribute("class", "chev" + (open ? " open" : ""));
+    s.setAttribute("aria-hidden", "true");
+    const p = document.createElementNS(ns, "path");
+    p.setAttribute("d", "M10.072 8.024L5.715 3.667l.618-.62L11 7.716v.618L6.333 13l-.618-.619 4.357-4.357z");
+    p.setAttribute("fill", "currentColor");
+    s.append(p);
+    return s;
+  }
+  function pathLabel(path) {
+    const span = h("span", "path");
+    const cut = path.lastIndexOf("/");
+    const base = path.slice(cut + 1);
+    span.append(h("span", null, base));
+    if (cut > 0) span.append(h("span", "dir", " " + tailDir(path.slice(0, cut), Math.floor((LABEL_W - 40) / 7.2) - base.length - 1)));
+    span.title = path;
+    return span;
+  }
+  function unitLabel(unit) {
+    const path = pathOf(unit);
+    const def = defOf(unit);
+    const span = h("span", "path");
+    const cut = path.lastIndexOf("/");
+    span.append(h("span", def ? "dir" : null, path.slice(cut + 1)));
+    if (def) span.append(h("span", "dir", "::"), h("span", null, def));
+    span.title = unit;
+    return span;
   }
 
   // ---- skeleton
-  // The waiting shapes. "Loading…" is a word about the system; a skeleton is a promise about the
-  // answer's shape -- lines where code will be, rows where hits will be -- and its shimmer says
-  // "alive", where a static caption after two seconds reads "wedged". Reduced-motion users get
-  // static blocks (CSS kills the animation, keeps the shape).
-  function skeletonRows(n, kind) {
-    const wrap = el("div", "skel" + (kind ? ` skel-${kind}` : ""));
-    const widths = [86, 61, 74, 47, 68, 55];
-    for (let i = 0; i < n; i++) {
-      const line = el("div", "skel-line");
-      line.style.width = widths[i % widths.length] + "%";
-      wrap.appendChild(line);
-    }
-    return wrap;
-  }
-  // ---- end-skeleton
-
-  function statusLine(text, kind) {
-    const el = document.createElement("div");
-    el.className = "code-panel-status" + (kind ? ` ${kind}` : "");
-    el.textContent = text;
-    return el;
-  }
-
-  // The selected feature's checkpoints: its history as a short list of labeled chapters, newest
-  // last, each one a rewind target. A dimmed dot marks a low-novelty chapter (mostly tweaks) --
-  // a low-value place to rewind to. Clicking a chapter rewinds it (`ugh revert <feature>@<n>`);
-  // hovering it previews the ops it covers on the timeline. This is the answer to "which version
-  // of this feature do I go back to" that a flat 100-op feature never gave.
-  function renderCheckpoints(id) {
-    const segs = checkpointsByFeature[id] || [];
-    const wrap = document.createElement("div");
-    wrap.className = "checkpoints";
-    if (!segs.length) return wrap;
-
-    const head = document.createElement("div");
-    head.className = "checkpoints-head";
-    // A reverted chapter stays on this list -- it is still recorded and still addressable, and a
-    // restore needs it named -- so the head says how many are gone rather than quietly shrinking.
-    //
-    // It used to end with "(run ugh intent build to name)" whenever the names were fallbacks. That
-    // is a maintenance instruction, printed in the reader's way, for a job the reader did not ask
-    // to do and mostly cannot do anything about -- and the names it offers to improve are already
-    // on screen beneath it.
-    // "Taken out" is the kernel's per-symbol `state` (see computeSegmentLayout); a payload without
-    // it keeps the `present_op_count === 0` rule.
-    const stateOf = (s) => s.state || (s.present_op_count === 0 ? "reverted" : s.present_op_count == null ? null : "live");
-    const nGone = segs.filter((s) => stateOf(s) === "reverted").length;
-    const nPart = segs.filter((s) => stateOf(s) === "partial").length;
-    head.textContent = `Checkpoints · ${segs.length}` + (nGone ? ` · ${nGone} taken out` : "");
-    wrap.appendChild(head);
-    void nPart;
-
-    for (const seg of segs) {
-      const st = stateOf(seg);
-      const gone = st === "reverted";
-      const partial = st === "partial";
-      const row = document.createElement("div");
-      row.className = "checkpoint" + (gone ? " reverted" : "") + (partial ? " partial" : "") +
-        (seg.checkpoint === state.selectedCheckpoint ? " selected" : "");
-      row.dataset.checkpoint = seg.checkpoint;
-      const goneSyms = (seg.symbols || []).filter((s) => s.live === false).map((s) => s.symbol.split("::").slice(-1)[0]);
-      void goneSyms;
-      row.addEventListener("click", () => highlightCheckpoint(seg.checkpoint)); // sync with the gantt car
-
-      // Its shape before its name: the unit glyph (a cell per function per save, hollow where taken
-      // out), the same thumbnail the ruler shows on hover and the chart the checkpoint opens into.
-      const glyph = el("span", "checkpoint-glyph");
-      glyph.appendChild(unitGlyphEl({ symbols: seg.symbols || [] }, laneColor(id)));
-      row.appendChild(glyph);
-
-      const label = document.createElement("span");
-      label.className = "checkpoint-label";
-      label.textContent = readableSubject(seg.intent, segmentsOf(compose));
-      row.appendChild(label);
-      // A word only where the state needs one, in the reader's terms.
-      const named = (seg.symbols || []).filter((sv) => sv && sv.symbol && !/::__/.test(sv.symbol));
-      const stateWord = gone ? "taken out"
-        : partial && named.length ? `${named.filter((sv) => sv.live !== false).length} of ${named.length} still in`
-        : !named.length ? "lines moved" : "";
-      if (stateWord) row.appendChild(el("span", "checkpoint-size", stateWord));
-
-      // One button, whichever direction is actually available. Before this the row offered `⤺`
-      // even on an already-reverted chapter, where a second revert can only report "no change" --
-      // a button that looks live and does nothing. A reverted chapter's one useful move is the
-      // inverse, and it is addressable by the same `<feature>@<n>` handle.
-      const rewind = document.createElement("button");
-      rewind.className = "checkpoint-rewind";
-      rewind.textContent = gone ? "⤻" : "⤺";
-      rewind.title = gone
-        ? `Restore this checkpoint: bring "${seg.intent}" back`
-        : `Revert this checkpoint: take out "${seg.intent}"; later checkpoints stay`;
-      rewind.addEventListener("mouseenter", () =>
-        onHoverIntent(() => previewAndBlast(gone ? "restore" : "revert", [seg.checkpoint])));
-      rewind.addEventListener("mouseleave", () => clearGhosts());
-      rewind.addEventListener("click", (e) => {
-        e.stopPropagation();
-        // Staged in the graph (consequence held + confirm bar), not the old modal round-trip.
-        stageAction({
-          verb: gone ? "restore" : "revert", ref: seg.checkpoint, targetId: id,
-          label: seg.intent, kind: "chapter",
-        });
-      });
-      row.appendChild(rewind);
-
-      // Hovering the ROW identifies its car on the timeline (a cheap, local "this one"); only the
-      // action button below previews the consequence. Same rule as the cars themselves: reading is
-      // not previewing -- which is why a staged confirm does not gate it either. The button's own
-      // hover preview is gated centrally (see setHoverGate); this adds a class and nothing else.
-      row.addEventListener("mouseenter", () => {
-        if (armedVerb) return;
-        const wrap = findCar(seg.checkpoint);
-        if (wrap) wrap.classList.add("gcar-hovered");
-      });
-      row.addEventListener("mouseleave", () => {
-        rail.querySelectorAll(".gcar-hovered").forEach((el) => el.classList.remove("gcar-hovered"));
-      });
-      wrap.appendChild(row);
-    }
-    return wrap;
-  }
-
-  // ---- the asked disclosure
-  //
-  // What a chapter was asked for, on the card the reader is deciding from. Two levels, and the
-  // reader chooses: the excerpt (drawn as soon as a checkpoint is selected -- it is already in the
-  // payload and costs nothing) and the verbatim prompts (fetched on click). The excerpt is not a
-  // summary anybody wrote: it is a cut of the prompt starting at the request (`ugh.intent.gist`),
-  // so opening the full text shows the same sentence again inside the paragraph it came from --
-  // which is what makes the excerpt trustworthy rather than a claim to take on faith.
-  //
-  // Drawn once per screen. It was briefly under the selected row in the checkpoint list as well,
-  // which put the same quotation on screen twice with two open/close controls for one reading
-  // state.
-  function askedBlock(seg) {
-    const asks = seg.asks || [];
-    if (!asks.length) return null;
-    const top = dominantAsk(asks);
-    const open = askedOpen === seg.checkpoint;
-    const cached = askedCache[seg.checkpoint];
-    const loading = !!pendingAsked && pendingAsked.ref === seg.checkpoint;
-
-    const block = el("div", "asked" + (askedAnimated === seg.checkpoint ? "" : " asked-enter"));
-    askedAnimated = seg.checkpoint;
-
-    if (open && cached && cached.asks && cached.asks.length) {
-      // How many turns there are, before the first one -- the scroller below is capped, and a
-      // reader who cannot see the extent of what they opened reads the visible part as all of it.
-      if (cached.asks.length > 1) {
-        block.appendChild(el("div", "asked-head",
-                             `${cached.asks.length} asks, oldest first`));
-      }
-      // The conversation, in order, in ONE capped scroller -- outside it go the count above and
-      // the control below, because a control that scrolls away with the content is a control the
-      // reader has to go looking for to close what they opened.
-      const turns = el("div", "asked-turns");
-      block.appendChild(turns);
-      // Each turn keeps its own attribution line: a chapter's words can be one ask, an ask and its
-      // correction, or an ask relayed by an agent, and collapsing them would lose which is which.
-      cached.asks.forEach((a, i) => {
-        const turn = el("div", "asked-turn");
-        turn.appendChild(el("div", "asked-meta",
-                              askedMeta(a, cached.asks.length > 1 ? i + 1 : 0, cached.asks.length > 1)));
-        turn.appendChild(el("div", "asked-text", a.text || a.gist));
-        if (a.resumable && a.claude_session_id) {
-          // Offered only when the transcript is still on this machine (the host checks). A
-          // `claude --resume` that fails teaches the reader that these lines are decoration.
-          const resume = el("button", "asked-resume", "Reopen this conversation");
-          resume.title = `claude --resume ${a.claude_session_id}`;
-          resume.addEventListener("click", (e) => {
-            e.stopPropagation();
-            vscode.postMessage({ type: "resumePlan", sessionId: a.claude_session_id });
-          });
-          turn.appendChild(resume);
-        }
-        turns.appendChild(turn);
-      });
-    } else {
-      const quote = el("div", "asked-quote", `“${top.gist}”`);
-      block.appendChild(quote);
-      block.appendChild(el("div", "asked-meta", askedMeta(top, 0, asks.length > 1)));
-      if (open && cached && cached.error) {
-        // A disclosure that opened onto nothing would read as "there is nothing here", which is a
-        // different claim from "this could not be read".
-        block.appendChild(el("div", "asked-error", `Could not read the conversation: ${cached.error}`));
-      }
-    }
-
-    // The control says what it will do, and only appears when there is something behind it: an
-    // excerpt that IS the whole prompt, with no other asks, has nothing to open.
-    const more = asks.length - 1;
-    if (top.trimmed || more > 0) {
-      const toggle = el("button", "asked-more",
-        loading ? "reading…" : open ? "Show less" : askedMoreLabel(top, more));
-      toggle.disabled = loading;
-      toggle.addEventListener("click", (e) => {
-        e.stopPropagation(); // the row underneath toggles the selection; this toggles the reading
-        if (open) {
-          askedOpen = null;
-          renderInspector();
-          return;
-        }
-        askedOpen = seg.checkpoint;
-        if (!askedCache[seg.checkpoint]) requestAsked(seg.checkpoint);
-        renderInspector();
-      });
-      block.appendChild(toggle);
-    }
-    return block;
-  }
-
-  function requestAsked(ref) {
-    const seq = ++askedSeq;
-    pendingAsked = { seq, ref };
-    vscode.postMessage({ type: "requestAsked", ref, seq });
-  }
-
-  // ---- retired-work (test slice boundary)
-  // What a feature has RECORDED but no longer has LIVE. `present_op_count` is how many of a
-  // chapter's ops survive in the ideal, so a chapter at 0 is fully retired and one below its
-  // op_count is partly so. Restore's whole affordance was invisible: the action bar offered a
-  // "Restore" that, on a feature with nothing retired, could only fail -- and it failed by
-  // rendering the kernel's raw invalid-ideal exception, a wall of hex. A verb that can only
-  // refuse should not be a live button; a verb that CAN do something should say what.
-  function retiredWork(segs) {
-    let chapters = 0, edits = 0, partial = 0;
-    for (const sg of segs || []) {
-      const present = sg.present_op_count;
-      // The kernel's per-symbol `state` decides what is retired when the payload carries it (a
-      // forward-subtraction revert leaves ops in the ideal, so the count alone under-reports);
-      // `edits` stays the op arithmetic the restore moves, for the button's size.
-      const st = sg.state || (present == null ? null : present === 0 ? "reverted"
-        : present < sg.op_count ? "partial" : "live");
-      if (st == null) continue; // no claim (older payload) -- never counted as retired
-      if (st === "reverted") { chapters++; edits += sg.op_count; }
-      else if (st === "partial") { partial++; edits += Math.max(1, sg.op_count - (present || 0)); }
-    }
-    return { chapters, partial, edits, any: chapters + partial > 0 };
-  }
-  // ---- end-retired-work
-
-  // ---- chapter-scope (test slice boundary)
-  // What the action bar is FOR once a checkpoint is selected. Clicking a chapter and clicking its
-  // feature used to reach the same six feature-scoped buttons, so "Revert" beside a highlighted
-  // chapter removed the WHOLE feature -- the classic mis-scope, and the exact pilot complaint.
-  // This derives the chapter's own affordances from the segment list alone: the one live direction
-  // for THIS chapter (rewind or restore), and "back to here" -- every LIVE chapter after it,
-  // newest first, which is what "revert to this checkpoint" means in an op-set world. Pure, so the
-  // node harness can hold the scoping.
-  function chapterScope(segs, ref) {
-    const i = (segs || []).findIndex((sg) => sg.checkpoint === ref);
-    if (i < 0) return null;
-    const seg = segs[i];
-    const later = segs.slice(i + 1).filter((sg) => sg.present_op_count !== 0);
-    return {
-      seg,
-      gone: seg.present_op_count === 0,
-      // Newest first: each `ugh revert <feature>@<n>` peels the top chapter, so applying in this
-      // order is always removing the current tip, never digging under later work.
-      laterRefs: later.map((sg) => sg.checkpoint).reverse(),
-      laterCount: later.length,
-      laterOps: later.reduce(
-        (n, sg) => n + (sg.present_op_count == null ? sg.op_count : sg.present_op_count), 0),
-    };
-  }
-  // ---- end-chapter-scope
-
-  // The chapter-scoped action bar: drawn instead of the feature bar while a checkpoint is
-  // selected, so the highlighted thing and the acted-on thing are the same thing. The feature-wide
-  // verbs stay one explicit scope-switch away rather than being the loaded default.
-  function renderChapterActionBar(id, scope) {
-    const wrap = document.createElement("div");
-    const node = byId(id);
-    const seg = scope.seg;
-
-    const head = el("div", "chapter-scope-head");
-    const dot = el("span", "chapter-scope-dot");
-    dot.style.background = (node && node.color) || "var(--dim)";
-    head.appendChild(dot);
-    head.appendChild(el("span", "chapter-scope-label", `Checkpoint · ${seg.intent}`));
-    wrap.appendChild(head);
-
-    // What this chapter was asked for, between its name and the verb that removes it. Here rather
-    // than under its row in the list below: this is the card the reader is deciding from, and the
-    // words somebody typed are the thing that says whether the chapter under the cursor is the one
-    // they meant. A name can be a generated approximation; the ask is evidence.
-    const asked = askedBlock(seg);
-    if (asked) wrap.appendChild(asked);
-
-    const bar = el("div", "action-bar");
-    const one = el("button", "action", scope.gone ? "Restore this checkpoint" : "Revert this checkpoint");
-    one.title = scope.gone
-      ? `ugh restore ${seg.checkpoint}: bring this checkpoint's changes back`
-      : `ugh revert ${seg.checkpoint}: take out this checkpoint's changes only; later ones stay`;
-    one.addEventListener("mouseenter", () =>
-      onHoverIntent(() => previewAndBlast(scope.gone ? "restore" : "revert", [seg.checkpoint])));
-    one.addEventListener("mouseleave", () => clearGhosts());
-    one.addEventListener("click", () => stageAction({
-      verb: scope.gone ? "restore" : "revert", ref: seg.checkpoint, targetId: id,
-      label: seg.intent, kind: "chapter",
-    }));
-    bar.appendChild(one);
-
-    if (!scope.gone && scope.laterCount) {
-      const back = el("button", "action", "Revert to here");
-      back.title = `Revert the feature to "${seg.intent}": removes the ${scope.laterCount} `
-        + `checkpoint(s) after it; this one stays`;
-      back.addEventListener("mouseenter", () => onHoverIntent(() => {
-        paintBackToCars(id, scope.laterRefs);
-        setPreviewContext(`revert to "${seg.intent}": the ${scope.laterCount} checkpoint(s) after `
-          + "it come out");
-      }));
-      back.addEventListener("mouseleave", () => clearGhosts());
-      back.addEventListener("click", () => stageAction({
-        verb: "revert", kind: "backto", targetId: id, ref: seg.checkpoint, label: seg.intent,
-        refs: scope.laterRefs.slice(), opCount: scope.laterOps,
-        blastCount: 0, blastDone: false, res: { ok: true },
-      }));
-      bar.appendChild(back);
-    }
-    wrap.appendChild(bar);
-
-    // The scope switch, stated as one: not six duplicate buttons that differ only in blast radius.
-    const featureRow = el("div", "action-bar feature-scope");
-    const whole = el("button", "action subtle", "Whole feature…");
-    whole.title = "Switch to feature scope: rename, merge, split, move, revert every chapter";
-    whole.addEventListener("click", () => {
-      state.selectedCheckpoint = null;
-      saveState();
-      render();
-    });
-    featureRow.appendChild(whole);
-    wrap.appendChild(featureRow);
-    return wrap;
-  }
-
-  // What this feature's own work touches, BY FILE -- the bridge from a lens to the running app.
-  // The study's quiz asks "which parts of the dashboard did this change", and the parts are files
-  // (one page per file under pages/); a participant staring at a lens called "Event Day Tracking"
-  // had no way to answer without reading code. Files answer it in one glance, so they come first
-  // on the card, page files ahead of the rest. Client-side over `own_symbols` -- what the lane's
-  // ops really touched, the same number every other surface reports -- never `members`.
-  function renderTouchedFiles(id, node) {
-    const own = node.own_symbols || [];
-    if (!own.length) return;
-    const perFile = new Map();
-    for (const sym of own) {
-      const file = String(sym).split("::")[0];
-      perFile.set(file, (perFile.get(file) || 0) + 1);
-    }
-    const shortName = (f) => {
-      const parts = f.split("/");
-      return parts.length > 1 ? parts.slice(1).join("/") : f;
-    };
-    const rows = [...perFile.entries()]
-      .map(([file, n]) => ({ file, n, page: /(^|\/)pages\//.test(file) }))
-      .sort((a, b) => (b.page - a.page) || (b.n - a.n) || a.file.localeCompare(b.file));
-    const wrap = document.createElement("div");
-    wrap.className = "touched-files";
-    const label = document.createElement("span");
-    label.className = "touched-files-label";
-    label.textContent = "Files";
-    wrap.appendChild(label);
-    for (const r of rows.slice(0, 8)) {
-      // A hit target, not a label. The chip already answers "which part of the dashboard"; the one
-      // move it left the reader with -- go look at it -- was theirs to make by hand, through a file
-      // tree, from a name the panel was already showing. Opening the document is all this has to
-      // do: blame.ts decorates whatever editor becomes active, so the file arrives with this
-      // feature's own spans already tinted in its identity color.
-      const chip = document.createElement("button");
-      chip.className = "chip file-chip" + (r.page ? " file-chip-page" : "");
-      chip.textContent = shortName(r.file);
-      chip.title = `${r.file}: ${r.n} symbol(s) of this feature's work · click to open`;
-      chip.addEventListener("click", () => vscode.postMessage({ type: "openFile", path: r.file }));
-      wrap.appendChild(chip);
-    }
-    if (rows.length > 8) {
-      const more = document.createElement("span");
-      more.className = "touched-files-more";
-      more.textContent = `+${rows.length - 8}`;
-      wrap.appendChild(more);
-    }
-    inspector.appendChild(wrap);
-  }
-
-  // ─── The change panel ─────────────────────────────────────────────────────────────────────────
-  // What the selection CHANGED, as a file-explorer tree with a way into a real diff editor on every
-  // row. It replaces the panel that printed each of the feature's files in full: that answered
-  // "what does this code say", and the only question a selection raises is "what did this do".
-
-  // Which dry run answers for this selection, and what to call it. A chapter is its own scope --
-  // clicking a checkpoint and clicking its feature must not project the same change, which is the
-  // same mis-scope the action bar already fixed. The verb is whichever direction actually exists:
-  // a retired chapter has nothing to revert, and its change is the one a restore would bring back.
-  function changeScope(id) {
-    const segs = checkpointsByFeature[id] || [];
-    const scope = state.selectedCheckpoint && chapterScope(segs, state.selectedCheckpoint);
-    if (scope) {
-      // "checkpoint", the word the list above this panel uses. It said "chapter" -- ugh's internal
-      // name for the same thing -- so one panel headed `Checkpoints · 10` sat directly above another
-      // reading `changed by this chapter`, and a reader had to work out that the two were one noun.
-      return { ref: scope.seg.checkpoint, verb: scope.gone ? "restore" : "revert",
-               label: scope.seg.intent, noun: "checkpoint" };
-    }
-    const retired = retiredWork(segs);
-    const gone = segs.length > 0 && retired.chapters === segs.length;
-    const node = byId(id);
-    return { ref: id, verb: gone ? "restore" : "revert",
-             label: (node && node.label) || id, noun: "feature" };
-  }
-
-  function requestChange(verb, ref, key) {
-    if (pendingChange && pendingChange.key === key) return; // already in flight for this scope
-    const seq = ++changeSeq;
-    pendingChange = { seq, key };
-    // Deliberately no repaint: this is called from inside a render that is already drawing the
-    // skeleton for exactly this request.
-    vscode.postMessage({ type: "requestChange", verb, ref, seq });
-  }
-
-  function renderChangePanel(id) {
-    const scope = changeScope(id);
-    // Separated on U+001F, spelled rather than typed: a checkpoint ref can be `<feature>:<slug>`,
-    // so a punctuation separator is one a real ref can contain.
-    const key = `${scope.verb}\u001f${scope.ref}`;
-    const section = el("div", "code-panel change-panel");
-    const heading = el("div", "code-panel-heading", `changed by this ${scope.noun}`);
-    // The scope is wider than the lane, and saying so here is cheaper than a reader discovering it
-    // from a diff: a revert takes its dependents with it, so the projection is the whole closure.
-    heading.title = `ugh ${scope.verb} ${scope.ref} --emit\n`
-      + `The difference between the code with this ${scope.noun}'s changes and the code without `
-      + `them: dependents included, which is what the ${scope.verb} would actually do.`;
-    section.appendChild(heading);
-    inspector.appendChild(section);
-
-    const cached = changeCache[key];
-    if (cached === undefined) {
-      requestChange(scope.verb, scope.ref, key);
-      // Pass one, from the payload, at once: the functions this checkpoint touched (`symbols`),
-      // headed differently from the closure the dry run will draw -- that list can be wider, and
-      // the two must never read as one list morphing into another. The dry run can take 20 s on a
-      // large repository; five grey bars said nothing for all of it.
-      const seg = scope.noun === "checkpoint" && (checkpointsByFeature[id] || []).find((s) => s.checkpoint === scope.ref);
-      let touched = seg ? (seg.symbols || []) : [];
-      if (!seg) {
-        // Feature scope: the feature's own symbols (the same set `ugh show` counts), as changed.
-        const node = byId(id);
-        touched = ((node && node.own_symbols) || []).map((sym) => ({ symbol: sym, file: sym.split("::")[0], kind: "changed" }));
-      }
-      if (touched.length) {
-        heading.textContent = "What it touched";
-        renderTouchedSymbols(section, touched.slice(0, 24));
-        section.appendChild(statusLine("reading the exact change…", ""));
-      } else {
-        section.appendChild(skeletonRows(5));
-      }
-      return;
-    }
-    if (!cached.ok) {
-      section.appendChild(statusLine(humanizeRefusal(cached.message), "warn"));
-      renderCodePanel(id); // no projection to read, so offer the code at this frontier instead
-      return;
-    }
-    const tree = changeTree(cached.files, { withSide: scope.verb === "restore" ? "after" : "before" });
-    if (!tree.fileCount) {
-      section.appendChild(statusLine(`This ${scope.noun} changes no file in the code right now.`));
-      renderCodePanel(id);
-      return;
-    }
-
-    const sum = el("div", "change-summary");
-    sum.appendChild(el("span", "change-files",
-      `${tree.fileCount} file${tree.fileCount === 1 ? "" : "s"}`));
-    sum.appendChild(el("span", "change-plus", `+${tree.added}`));
-    sum.appendChild(el("span", "change-minus", `−${tree.removed}`));
-    section.appendChild(sum);
-    if (tree.capped) {
-      // Never a silent truncation: the count is a floor, and the caption says which way it errs.
-      section.appendChild(statusLine(
-        "A file changed too much to align line by line: its counts read whole regions as changed.",
-        "warn"));
-    }
-
-    // Files start folded only when the change is genuinely big.
-    //
-    // The old rule -- fold past 40 rows, to keep the action bar on screen -- was written when this
-    // panel sat above the verbs. It does not: the bar renders before it, so folding protects
-    // nothing, and 40 counted rows is three files on a real feature. Folding there hides the one
-    // thing this panel is for.
-    //
-    // So: one rule, total rows, and a ceiling set from what real work actually measures rather
-    // than from a round number. Every feature in the two study projects lands between 29 and 107
-    // rows (7 files is typical, not large), and all of them should open: a reader who selected a
-    // feature to find out what it did is not helped by seven folded rows. Past the ceiling the
-    // panel is no longer readable as a whole and folding is the kinder default. Rows are counted
-    // with the changed lines under each entity, because those are rows on this list like any other.
-    const rows = tree.fileCount + countEntityRows(tree.root) + countLineRows(tree.root);
-    const foldFiles = rows > 250;
-    const list = el("div", "ctree");
-    appendChangeRows(list, tree.root, 0, scope, foldFiles);
-    section.appendChild(list);
-  }
-
-  // The checkpoint's own functions as plain lines: a kind word's glyph, the file, the name. Not
-  // chips -- a wall of chips is what the first redesign draft was rejected for -- and never a
-  // sentinel (`__residue__`, `__import__`), which the kernel already filters out of `symbols`.
-  const SYMBOL_KIND = { added: "+", changed: "~", removed: "−", moved: "→" };
-  function renderTouchedSymbols(section, symbols) {
-    const list = el("div", "touched-list");
-    for (const s of symbols) {
-      const row = el("div", "touched-row" + (s.live === false ? " gone" : ""));
-      row.appendChild(el("span", "touched-kind " + (s.kind || "changed"), SYMBOL_KIND[s.kind] || "~"));
-      const file = s.file.split("/").slice(-1)[0];
-      const name = s.symbol.includes("::") ? s.symbol.split("::").slice(1).join("::") : "(whole file)";
-      row.appendChild(el("span", "touched-file", file));
-      row.appendChild(el("span", "touched-name", name));
-      row.title = `${s.kind || "changed"}: ${s.symbol}` + (s.live === false ? " · no longer in the code" : "")
-        + " · click to open it in the editor";
-      row.addEventListener("click", () => vscode.postMessage({ type: "openFile", path: s.file, symbol: s.symbol }));
-      list.appendChild(row);
-    }
-    section.appendChild(list);
-  }
-
-  function countEntityRows(node) {
-    if (node.kind === "file") return node.children.length;
-    let n = 0;
-    for (const c of node.children || []) n += countEntityRows(c);
-    return n;
-  }
-
-  // The changed lines an unfolded file would draw: each entity's own, capped, plus its "+N more".
-  function countLineRows(node) {
-    if (node.kind === "file") {
-      let n = 0;
-      for (const e of node.children || []) {
-        const len = (e.lines || []).length;
-        n += Math.min(len, CHANGED_LINES_CAP) + (len > CHANGED_LINES_CAP ? 1 : 0);
-      }
-      return n;
-    }
-    let n = 0;
-    for (const c of node.children || []) n += countLineRows(c);
-    return n;
-  }
-
-  function appendChangeRows(list, parent, depth, scope, foldFiles) {
-    for (const node of parent.children || []) {
-      const folded = changeFolded.has(node.path) || (node.kind === "file" && foldFiles
-        && !changeUnfolded.has(node.path));
-      list.appendChild(changeRow(node, depth, scope, folded));
-      if (node.kind === "dir") {
-        if (!folded) appendChangeRows(list, node, depth + 1, scope, foldFiles);
-      } else if (!folded) {
-        for (const entity of node.children) {
-          list.appendChild(changeRow(entity, depth + 1, scope, false));
-          appendChangedLines(list, entity, depth + 2);
-        }
-      }
-    }
-  }
-
-  // The lines themselves, under the entity that holds them.
-  //
-  // This panel used to stop at counts: `render  +4 −2`, and the code was one click away in a diff
-  // editor that opens as a separate tab. Reading a history is the task here, not editing it, and
-  // "what did this change" was answered with a number and a way to go and find out. Somebody
-  // looking for where a wrong figure comes from read the whole panel, found no code in it, and
-  // concluded the tool would not show them the change.
-  //
-  // Capped, because an entity can be a whole rewritten file and this sits inside a scrolling
-  // inspector. The cap says what it hid, and the row above still opens the full diff.
-  const CHANGED_LINES_CAP = 10;
-
-  function appendChangedLines(list, entity, depth) {
-    const lines = entity.lines || [];
-    if (!lines.length) return;
-    const shown = lines.slice(0, CHANGED_LINES_CAP);
-    for (const ln of shown) {
-      const row = el("div", `cline cline-${ln.side === "+" ? "add" : "del"}`);
-      row.style.paddingLeft = `${4 + depth * 12}px`;
-      row.appendChild(el("span", "cline-no", String(ln.line)));
-      row.appendChild(el("span", "cline-sign", ln.side));
-      // Leading whitespace is meaning in Python, and a span collapses it. Kept verbatim in the
-      // text node; `white-space: pre` on `.cline-text` is what preserves it on screen.
-      const text = el("span", "cline-text", ln.text == null ? "" : ln.text);
-      // The panel is narrow and a clipped line can hide the half that matters, so the whole line
-      // is on the row itself rather than only in the diff a click away.
-      text.title = ln.text == null ? "" : ln.text;
-      row.appendChild(text);
-      list.appendChild(row);
-    }
-    if (lines.length > shown.length) {
-      const rest = el("div", "cline cline-more",
-        `+${lines.length - shown.length} more changed line(s). Click the row above for the full diff`);
-      rest.style.paddingLeft = `${4 + depth * 12}px`;
-      list.appendChild(rest);
-    }
-  }
-
-  function changeRow(node, depth, scope, folded) {
-    const row = el("div", `ctree-row ctree-${node.kind}`);
-    row.style.paddingLeft = `${4 + depth * 12}px`;
-    const twisty = el("span", "ctree-twisty",
-      node.kind === "entity" || !node.children.length ? "" : folded ? "▸" : "▾");
-    row.appendChild(twisty);
-    row.appendChild(el("span", "ctree-name", node.name));
-
-    const meter = changeMeter(node.added, node.removed);
-    const strip = el("span", "ctree-meter");
-    strip.appendChild(el("span", "ctree-plus", meter.plus));
-    strip.appendChild(el("span", "ctree-minus", meter.minus));
-    strip.appendChild(el("span", "ctree-rest", meter.rest));
-    row.appendChild(strip);
-    row.appendChild(el("span", "ctree-count", `+${node.added} −${node.removed}`));
-
-    if (node.kind === "dir") {
-      row.title = `${node.path}: ${node.added} line(s) added, ${node.removed} removed by this `
-        + `${scope.noun}`;
-      row.addEventListener("click", () => toggleChangeFold(node.path, folded));
-      return row;
-    }
-    // A file or an entity is a way into the diff; a file's twisty is the one part of its row that
-    // folds instead, the same split the editor's own explorer uses.
-    const what = node.kind === "file" ? node.path : node.symbol || node.path;
-    row.title = `${what}: +${node.added} −${node.removed} · click to diff without ⇄ with `
-      + `this ${scope.noun}`;
-    row.addEventListener("click", () => vscode.postMessage({
-      type: "openChangeDiff", verb: scope.verb, ref: scope.ref, label: scope.label,
-      path: node.path, symbol: node.kind === "entity" ? node.symbol : undefined,
-    }));
-    if (node.kind === "file" && node.children.length) {
-      twisty.classList.add("ctree-twisty-live");
-      twisty.title = folded ? "Show the entities inside" : "Hide the entities inside";
-      twisty.addEventListener("click", (e) => {
-        e.stopPropagation();
-        toggleChangeFold(node.path, folded);
-      });
-    }
-    return row;
-  }
-
-  // Folding is exploratory, not a preference: it lives beside the panel, not in `state`, so a
-  // reopened workbench is not still hiding what the last selection folded. `changeUnfolded` is the
-  // opposite set, so a file the long-tree rule folded stays open once the reader opens it.
-  function toggleChangeFold(path, wasFolded) {
-    if (wasFolded) {
-      changeFolded.delete(path);
-      changeUnfolded.add(path);
-    } else {
-      changeFolded.add(path);
-      changeUnfolded.delete(path);
-    }
-    renderInspector();
-  }
-
-  function renderActionBar(id) {
-    // A selected checkpoint narrows the bar to that chapter (see chapterScope) -- the fix for
-    // "clicked a checkpoint, pressed Revert, lost the whole feature".
-    const scope = state.selectedCheckpoint
-      && chapterScope(checkpointsByFeature[id] || [], state.selectedCheckpoint);
-    if (scope) return renderChapterActionBar(id, scope);
-
-    const bar = document.createElement("div");
-    bar.className = "action-bar";
-
-    const btn = (label, verb, title) => {
-      const b = document.createElement("button");
-      b.textContent = label;
-      b.className = "action";
-      if (title) b.title = title;
-      b.addEventListener("mouseenter", () => onHoverIntent(() => previewAction(verb, id)));
-      b.addEventListener("mouseleave", () => clearGhosts());
-      b.addEventListener("click", () => triggerAction(verb, id));
-      return b;
-    };
-    const segs = checkpointsByFeature[id] || [];
-    const chapters = segs.length;
-    const retired = retiredWork(segs);
-    // Two verbs, and they are the two this surface is for: take this work out, put it back.
-    //
-    // Rename, Merge into…, Split and Move ops… used to sit ahead of them, in that order, so the
-    // first four things offered about a piece of work were four ways to reorganise the RECORD of
-    // it -- before either of the two ways to act on the code. They are real verbs and they are not
-    // this panel's job: reading a history is what someone opens this for, and a reader who reaches
-    // for the leftmost button to see what it does has restructured their own graph. Reorganising
-    // the record is deliberate work and belongs where it is asked for by name, on the CLI.
-    // The whole-feature blast radius, said out loud -- and pointing at the narrower tool, so the
-    // person who meant one chapter learns the distinction BEFORE the click, not from the wreckage.
-    bar.appendChild(btn("Revert", "revert", chapters > 1
-      ? `Removes the whole feature: all ${chapters} checkpoints. To act on one, click a checkpoint below.`
-      : "Removes this feature's changes."));
-    // Restore only exists when something is actually retired. Offering it otherwise was a button
-    // whose only possible outcome was a refusal -- and the refusal was the hex wall.
-    if (retired.any) {
-      // Sized in checkpoints, the unit the list below is in -- not in ops.
-      const n = retired.chapters + retired.partial;
-      const label = `Restore ${n} checkpoint${n === 1 ? "" : "s"}`;
-      const r = btn(label, "restore",
-        `Brings back what was taken out here: ${retired.chapters} checkpoint(s)`
-        + (retired.partial ? ` and part of ${retired.partial} more` : "")
-        + ". To bring back one, click it below.");
-      bar.appendChild(r);
-    } else {
-      const inert = document.createElement("button");
-      inert.className = "action";
-      inert.textContent = "Restore";
-      inert.disabled = true;
-      inert.title = "Nothing is retired in this feature: every chapter is already live.";
-      bar.appendChild(inert);
-    }
-    // Reorganising the record, after the two verbs that act on code and quieter than them: these
-    // move names and boundaries, never lines. They are offered here because the brief asks for a
-    // way to manipulate versions by meaning, and a merge or a move is exactly that; each is
-    // previewed on the graph before anything happens, and a merge or move then asks for its target
-    // in the strip above the map.
-    const quiet = document.createElement("div");
-    quiet.className = "action-bar action-bar-quiet";
-    quiet.appendChild(btn("Rename", "rename", "Change this feature's name. Nothing else moves."));
-    quiet.appendChild(btn("Merge into", "merge", "Fold this feature into another: pick the lane next. This lane stops existing."));
-    quiet.appendChild(btn("Split", "split", "Cut this feature into two by what its functions do, previewed first."));
-    // Move changes stays on the CLI: one op can carry several functions and the kernel's move
-    // preview cannot yet say which symbols go or whether the source is left empty (engineer, 10-21).
-    const wrap = document.createElement("div");
-    wrap.appendChild(bar);
-    wrap.appendChild(quiet);
-    return wrap;
-  }
-
-  // ---- arm-preview
-  // Why these three verbs need a preview of their own. Merge, move and rename each ask a question
-  // before they do anything -- which lane? what label? -- so the hover that arms one has no second
-  // operand and cannot round-trip to `ugh preview`, which is why all three previewed nothing. But the
-  // half that does not depend on the answer is the half that decides *which verb to pick*: what
-  // becomes of the lane under the cursor. Merge ends it. Move empties it -- and `computeLayout` drops
-  // a lane with no ops (`if (!commits.length) continue`), so the feature survives in the tree while
-  // vanishing from this view, a result visually identical to the merge the reader did not choose.
-  // Feedback that confirms the wrong operation removes the reason to check it, so the difference has
-  // to be legible before the click, not after. Rename changes no edits, symbols or lanes, and saying
-  // so is what makes it usable as a first move rather than something as consequential as revert.
-  function armPreviewText(verb, node, opCount) {
-    const label = (node && node.label) || "this feature";
-    const symbols = ((node && node.own_symbols) || []).length;
-    // `opCount` arrives as the feature's changes (one function in one save, summed over its
-    // chapters) when the payload carries them, and as its op count on an older payload; the word
-    // is "changes" either way, never "edits", which counted bookkeeping ops a reader cannot place.
-    const edits = `${opCount} change${opCount === 1 ? "" : "s"}`;
-    const syms = `${symbols} symbol${symbols === 1 ? "" : "s"}`;
-    if (verb === "rename") {
-      // `target`, not `blast`: blast means "this lane loses ops" everywhere else in this file, and a
-      // rename loses nothing. The role is the reassurance -- the sentence only spells it out.
-      return { role: "target",
-               message: `Rename · label only: "${label}" keeps its ${edits} and ${syms}; nothing moves.` };
-    }
-    if (verb === "merge") {
-      return {
-        role: "blast",
-        message: `Merge · pick a lane to fold "${label}" into: its ${edits} and ${syms} move there `
-          + "and this lane stops existing.",
-      };
-    }
-    return {
-      role: "blast",
-      message: `Move · pick a lane to take all ${edits}: "${label}" keeps its ${syms} but, with no `
-        + "changes left, leaves the graph until it is edited again.",
-    };
-  }
-  // ---- end-arm-preview
-
-  function previewAction(verb, id) {
-    // merge/move/rename have no target or label yet, so this is the pre-target half: paint the one
-    // lane whose fate is already decided, and say it. `previewArmed` replaces this with the real
-    // two-operand `ugh preview` round-trip once a candidate target is under the cursor.
-    if (verb === "rename" || verb === "merge" || verb === "move") {
-      const segsHere = checkpointsByFeature[id] || [];
-      const changes = segsHere.length && segsHere.every((s) => s.change_count != null)
-        ? segsHere.reduce((a, s) => a + s.change_count, 0)
-        : opIdsFor(id).length;
-      const say = armPreviewText(verb, byId(id), changes);
-      paintClosure(say.role === "target" ? { target: id, blast: [], foundation: [] }
-                                        : { target: null, blast: [id], foundation: [] });
-      // Merge/move relocate this lane's chapters; rename moves nothing, so nothing nudges.
-      if (verb !== "rename") paintLaneRelocating(id);
-      setPreviewContext(say.message);
-      return;
-    }
-    if (verb === "revert" || verb === "restore") previewAndBlast(verb, [id]);
-    // Split has no `ugh preview split` branch server-side by design (`ugh split <feature>` with
-    // no `--apply` already *is* that preview -- a second path would duplicate it), so this can't
-    // go through the generic `previewVerb` round-trip the other verbs share.
-    if (verb === "split") previewSplit(id);
-  }
-
-  // ---- humanize (test slice boundary)
-  // Refusals arrive as raw CLI/kernel strings, and one of them is a dumped op-id set: the kernel's
-  // invalid-ideal ValueError used to print every id in the ideal, which reached the reader as a
-  // full-pane wall of hex with the one useful sentence buried at the top. The producing message is
-  // bounded at the source now, but this surface renders whatever any deployed CLI hands it, so the
-  // guarantee has to hold here too: collapse id runs to a count, cap the length, keep the lead.
-  const HEXISH = /\b[0-9a-f]{12,}\b/g;
-
-  function humanizeRefusal(message) {
-    let text = String(message || "").trim();
-    if (!text) return "ugh refused this: no reason given.";
-    // A bracketed list of long hex ids says only "there were N of them"; say that instead.
-    text = text.replace(/\[[^\]]*\]/g, (list) => {
-      const ids = list.match(HEXISH);
-      return ids && ids.length ? `${ids.length} recorded edit(s)` : list;
-    });
-    text = text.replace(HEXISH, (id) => id.slice(0, 8) + "…"); // stray ids: short-form, still traceable
-    text = text.replace(/\s+/g, " ");
-    return text.length > 220 ? text.slice(0, 219) + "…" : text;
-  }
-  // ---- end-humanize
-
-  // ---- split-preview
-  // What a split preview says. Split exists for one situation: a lane is carrying two pieces of work
-  // that only look like one, and the reader has to decide whether *this* cut is the right place to
-  // separate them. That decision is entirely about which symbols end up on which side -- and the
-  // groups that answer it were computed, returned, and thrown away. The preview painted one amber
-  // row and nothing else, which told the reader what they already knew from having hovered it.
-  //
-  // Two further things it got wrong. `groups.length > 1` reads like a guard but is vacuous: split is
-  // always binary (`lens/verbs.py plan_split` folds >2 communities into exactly 2), so an ok preview
-  // always passes it. And the case it silently dropped -- a feature with no cut in it -- is the
-  // interesting half of the feedforward, rendered identically to a preview still in flight.
-  function splitPreviewText(res) {
-    if (!res || !res.ok || !Array.isArray(res.groups) || res.groups.length !== 2) {
-      return { kind: "refused", message: (res && res.message) || "Can't split this feature." };
-    }
-    const [keep, off] = res.groups;
-    // Name a few whole and count the rest. Both sides arrive complete here, so unlike undo's
-    // upstream-capped symbol list the remainder is a number this payload can be right about.
-    const named = off.slice(0, 3).join(", ");
-    const rest = off.length - 3;
-    return {
-      kind: "split",
-      // Same frame the terminal's own split preview uses ("splits in two", keep / new), so the two
-      // surfaces describe one operation in one vocabulary. Both counts, because a lopsided cut is
-      // the thing a reader wants to catch; then the new side by name, because that is the proposal
-      // under judgement -- what stays is the feature they already know.
-      message: `splits in two · keeps ${keep.length}, new ${off.length}: ` +
-               named + (rest > 0 ? `, +${rest} more` : ""),
-    };
-  }
-  // ---- end-split-preview
-
-  function previewSplit(id) {
-    beginPreviewPending(id, "previewing split…");
-    const seq = ++previewSeq;
-    vscode.postMessage({ type: "previewSplit", featureId: id, seq });
-    pendingPreview = {
-      seq,
-      onResult: (res) => {
-        clearPreviewPending();
-        const say = splitPreviewText(res);
-        if (say.kind === "refused") {
-          showRefusal(say.message);
-          return;
-        }
-        // `ghost-target`, not `ghost-blast`. Split removes nothing, and `ghost-blast` is the channel
-        // that means "this lane loses ops" everywhere else in this file -- the one visual with an
-        // established meaning, used to say something it does not mean. A split has exactly one
-        // participant, so the target role is the whole truth about which rows change.
-        paintClosure({ target: id, blast: [], foundation: [] });
-        setPreviewContext(say.message);
-        paintSplitPreview(id, res); // the moving chapters + the ghost of the lane the graph gains
-      },
-    };
-  }
-
-  // The painter half of the chunk-grain grammar. Additive (does not clear first) so a chained
-  // preview -- revert-to-here accumulating its cross-feature blast one chapter at a time -- can
-  // layer impacts as they land. The dash is drawn in the car's own identity hue: SVG presentation
-  // attributes can't resolve CSS custom properties and the hue is per-lane, the same reason the
-  // hollow reverted car sets its stroke inline at render.
-  function paintCarPreview(impacts, cls) {
-    const byCp = new Map((impacts || []).map((im) => [im.checkpoint, im]));
-    if (!byCp.size) return;
-    rail.querySelectorAll(".gcar-wrap").forEach((wrap) => {
-      const im = byCp.get(wrap.getAttribute("data-checkpoint"));
-      if (!im) return;
-      wrap.classList.add(cls || (im.dir === "in" ? "gcar-preview-in" : "gcar-preview-out"));
-      if (im.coverage === "partial") wrap.classList.add("gcar-preview-partial");
-      const rect = wrap.querySelector(".gcar");
-      if (rect) rect.style.stroke = rect.getAttribute("fill");
-    });
-  }
-
-  // While a revert or restore is held, the timeline says it too: the other checkpoints that change
-  // take the amber outline, and in an opened checkpoint each function says what will happen to it.
-  function markPreviewFates(staged, alsoRefs) {
-    for (const ref of alsoRefs) { const w = findCar(ref); if (w) w.classList.add("gcar-dependent"); }
-    const res = staged.res || {};
-    const set = (k) => new Set((res[k] || []).filter((x) => !/::__/.test(x)));
-    const leaves = set("pruned_symbols"), edited = set("subtracted_symbols"), back = set("affected_symbols");
-    rail.querySelectorAll(".cp-panel .cp-row").forEach((row) => {
-      const sym = row.getAttribute("data-symbol");
-      const fate = staged.verb === "restore" ? (back.has(sym) ? ["fate-in", "comes back"] : null)
-        : leaves.has(sym) ? ["fate-out", "leaves"] : edited.has(sym) ? ["fate-edit", "loses this work"] : null;
-      if (!fate) return;
-      row.classList.add(fate[0]);
-      const k = row.querySelector(".cp-kind");
-      if (k) k.textContent = fate[1];
-    });
-  }
-
-  function clearCarPreview() {
-    rail.querySelectorAll(".gcar-dependent").forEach((w) => w.classList.remove("gcar-dependent"));
-    rail.querySelectorAll(".cp-row.fate-out, .cp-row.fate-edit, .cp-row.fate-in").forEach((row) => {
-      row.classList.remove("fate-out", "fate-edit", "fate-in");
-      const k = row.querySelector(".cp-kind");
-      if (k && k.hasAttribute("data-word")) k.textContent = k.getAttribute("data-word");
-    });
-    rail.querySelectorAll(".gcar-preview-in, .gcar-preview-out, .gcar-splitting").forEach((wrap) => {
-      wrap.classList.remove("gcar-preview-in", "gcar-preview-out", "gcar-preview-partial", "gcar-splitting");
-      const rect = wrap.querySelector(".gcar");
-      // A hollow (reverted) car's inline identity stroke is part of its resting look -- keep it.
-      if (rect && !rect.classList.contains("gcar-reverted")) rect.style.stroke = "";
-    });
-    rail.querySelectorAll(".split-ghost, .migrate-ghost").forEach((el) => el.remove());
-  }
-
-  // Where a row's car strip sits, read off the DOM rather than recomputed: the row's own hit
-  // rect is drawn at absolute coordinates by renderLane, so this stays correct without depending
-  // on `graphView.geom` (which only exists once the time axis has drawn).
-  function laneBarY(row) {
-    const hit = row.querySelector(".glane-hit");
-    if (hit) return Number(hit.getAttribute("y")) + GANTT.rowH / 2 - GANTT.barH / 2;
-    const car = row.querySelector(".gcar");
-    return car ? Number(car.getAttribute("y")) : null;
-  }
-
-  // ─── Destination ghosts: the graph as it WILL BE ────────────────────────────────────────────
-  // Merge and move RELOCATE recorded work, and a preview that only drains the source answers half
-  // the question -- the reader is choosing a destination, and the destination showed nothing. Each
-  // chunk that would re-home is drawn a second time, dashed, in the receiving lane at the same
-  // point in time, in the SOURCE's identity hue: whose work is arriving, and where it lands. The
-  // same in-situ move a plan ghost makes, run over recorded history instead of predicted work.
-  function paintMigration(sourceId, targetId) {
-    const src = findRow(sourceId);
-    const dst = findRow(targetId);
-    if (!src || !dst || typeof dst.appendChild !== "function") return;
-    const barY = laneBarY(dst);
-    if (barY == null) return;
-    const cars = [...src.querySelectorAll(".gcar-wrap .gcar")];
-    for (const car of cars) {
-      const ghost = mk("rect", {
-        x: car.getAttribute("x"), y: barY,
-        width: car.getAttribute("width"), height: GANTT.barH, rx: 3,
-        class: "migrate-ghost",
-      });
-      // Identity is the source's -- the point of the ghost is that THIS work goes THERE.
-      ghost.style.stroke = car.getAttribute("fill");
-      ghost.style.fill = car.getAttribute("fill");
-      dst.appendChild(ghost);
-    }
-    paintLaneRelocating(sourceId); // ...and the same chunks read as leaving where they are now
-  }
-
-  // Split's destination is a lane that does not exist yet, so it is drawn in the row's own slack:
-  // one ghost segment per moving chapter, on a dashed baseline directly under the cars they leave.
-  // Per-car, not one merged bar -- the question a split answers is WHICH chapters go, and a single
-  // span erases exactly that. Falls back to the sentence alone on a CLI without `moving_op_ids`.
-  function paintSplitPreview(featureId, res) {
-    const moving = (res && res.moving_op_ids) || [];
-    if (!moving.length) return;
-    const segs = segmentsOf(compose).filter((sg) => sg.feature_id === featureId);
-    paintCarPreview(classifyCarImpact(moving, [], segs), "gcar-splitting");
-    const row = findRow(featureId);
-    if (!row || typeof row.appendChild !== "function") return; // the rail view has no car geometry
-    const rects = [...row.querySelectorAll(".gcar-wrap.gcar-splitting .gcar")];
-    if (!rects.length) return;
-    const barY = laneBarY(row);
-    if (barY == null) return;
-    const stripY = barY + GANTT.barH + 2;
-    const newCount = (res.groups && res.groups[1] && res.groups[1].length) || 0;
-    const tip = `the new lane: ${newCount} symbol(s) split off here`
-      + (res.new_id ? ` as ${String(res.new_id).slice(0, 10)}…` : "");
-    let x0 = Infinity, x1 = -Infinity, color = "#888";
-    for (const r of rects) {
-      const x = Number(r.getAttribute("x"));
-      const w = Number(r.getAttribute("width"));
-      x0 = Math.min(x0, x);
-      x1 = Math.max(x1, x + w);
-      color = r.getAttribute("fill") || color;
-      const seg = mk("rect", {
-        x, y: stripY, width: w, height: 4, rx: 2, class: "split-ghost split-ghost-car",
-      }, [mk("title", { text: tip })]);
-      seg.style.fill = color;
-      row.appendChild(seg);
-    }
-    // The baseline ties the segments into one lane rather than leaving three unrelated stubs.
-    const base = mk("line", {
-      x1: x0, x2: x1, y1: stripY + 2, y2: stripY + 2, class: "split-ghost split-ghost-base",
-    }, [mk("title", { text: tip })]);
-    base.style.stroke = color;
-    row.appendChild(base);
-  }
-
-  // Merge/move/split RELOCATE recorded chunks rather than deleting them, so their preview keeps
-  // each car's fill and nudges it out in dashed outline -- visually distinct from revert's
-  // draining and restore's filling.
-  function paintLaneRelocating(featureId) {
-    paintCarPreview(
-      segmentsOf(compose)
-        .filter((sg) => sg.feature_id === featureId)
-        .map((sg) => ({ checkpoint: sg.checkpoint, featureId, dir: "out", coverage: "full" })),
-      "gcar-splitting");
-  }
-
-  function paintBlast(featureIds) {
-    rail.querySelectorAll(".glane.ghost-blast, .rail-row.ghost-blast").forEach((el) => el.classList.remove("ghost-blast"));
-    rail.querySelectorAll(".glane, .rail-row").forEach((el) => {
-      if (featureIds.includes(el.getAttribute("data-id"))) el.classList.add("ghost-blast");
-    });
-    renderOffscreenPills(featureIds);
-  }
-
-  // Paint a revert closure (classifyAffected) with the three distinct roles, so a hover reads as
-  // "this one (target), these lose ops (blast), these get re-drafted (foundation)" -- not one
-  // undifferentiated amber blob. Off-screen pills cover every role so nothing affected hides
-  // outside the scroll window.
-  function paintClosure(closure) {
-    rail.querySelectorAll(".glane, .rail-row").forEach((el) => {
-      el.classList.remove("ghost-target", "ghost-blast", "ghost-foundation");
-      const id = el.getAttribute("data-id");
-      if (id === closure.target) el.classList.add("ghost-target");
-      else if (closure.blast.includes(id)) el.classList.add("ghost-blast");
-      else if (closure.foundation.includes(id)) el.classList.add("ghost-foundation");
-    });
-    renderOffscreenPills([closure.target, ...closure.blast, ...closure.foundation]);
-  }
-
-  // The richer, held cousin of paintClosure: drive the "Focus & Morph" overlay from the backend
-  // `focus` subgraph (ugh.api.focus_subgraph). Deep-dim the whole field, re-light only the affected
-  // lanes with their role, and stamp each one's op-count with the "N -> M" delta -- so a revert
-  // reads as "these features shrink, everything else is context" instead of an op-id wall. The morph
-  // (a fully-emptied lane fading to a dashed ghost, a gaining lane landing) is CSS; this only sets
-  // the classes. Torn down by clearGhosts (the same mouseleave path the ghosts use).
-  function enterPreviewMode(focus, targetId, verb) {
-    const svg = rail.querySelector("svg");
-    if (!svg) return;
-    exitPreviewMode();
-    // The shallow co-change hover dim (.focus) would fight the deep field dim -- drop it first.
-    svg.classList.remove("focus");
-    svg.querySelectorAll(".lit").forEach((el) => el.classList.remove("lit"));
-    svg.classList.add("preview");
-    previewActive = true;
-    const lit = [];
-    for (const n of focus.nodes) {
-      const row = findRow(n.feature_id);
-      if (!row) continue;
-      lit.push(n.feature_id);
-      row.classList.add("preview-lit");
-      if (n.role === "target") {
-        // The row the user clicked, and until now the ONE row with no direction on it: `target`
-        // short-circuited before either morph, so the lane being restored and the lane being
-        // reverted were painted identically -- a neutral outline and an `N → M` count. It is the
-        // row being looked at, so it is the row that most has to say which way this goes.
-        row.classList.add("preview-target", verb === "restore" ? "preview-gaining" : "preview-losing");
-        if (n.ops_after > n.ops_before) row.classList.add("preview-arriving");
-        else if (n.ops_after === 0) row.classList.add("preview-leaving");
-      } else if (n.role === "foundation") {
-        row.classList.add("preview-foundation");
-        if (n.ops_after > n.ops_before) row.classList.add("preview-arriving"); // genuinely gains
-      } else {
-        row.classList.add("preview-blast");
-        if (n.ops_after === 0) row.classList.add("preview-leaving"); // fully emptied -> ghost
-      }
-      // The lane's count used to turn into "26 → 23 −3" here. Those were op counts, mostly the
-      // kernel's bookkeeping, and the preview read as a sum nobody could check. The lane's outline
-      // says it changes; the confirm bar says how, in functions.
-    }
-    renderOffscreenPills(lit);
-    setPreviewContext(previewCaptionText(verb, focus, null), verb === "restore" ? "in" : "out");
-  }
-
-  // ---- preview-caption (test slice boundary)
-  // The one sentence on the field, which used to read `＋12 unchanged` for a revert and `＋12
-  // unchanged` for a restore -- the tally of what is NOT happening, and nothing about what is. It
-  // is the only prose inside the plot, so it is where the verb belongs: a reader who looks away
-  // and back has to be able to tell which direction is held without re-reading the confirm bar at
-  // the far bottom of the pane. Pure over the focus subgraph so the node harness can hold it.
-  function previewCaptionText(verb, focus, res) {
-    const nodes = (focus && focus.nodes) || [];
-    let out = 0, back = 0;
-    for (const n of nodes) {
-      const d = (n.ops_after || 0) - (n.ops_before || 0);
-      if (d < 0) out -= d; else back += d;
-    }
-    // No focus subgraph (an older CLI, or a target with no feature map behind it): the op sets the
-    // dry run always carries say the same thing at whole-edit grain.
-    if (!nodes.length && res) {
-      out = (res.removed || []).length;
-      back = (res.added || []).length;
-    }
-    void out; void back;
-    const lanes = nodes.filter((n) => n.ops_before !== n.ops_after).length;
-    // Kept to one line deliberately: it sits in the status line. No op count: the lanes that
-    // change are the honest size here, and the panel beside it names the functions.
-    void lanes; // the bar above the map says what changes; this line says what state the view is in
-    return (verb === "restore" ? "Preview: putting it back" : "Preview: taking it out") + " · nothing has changed yet";
-  }
-  // ---- end-preview-caption
-
-  function exitPreviewMode() {
-    if (!previewActive) return;
-    previewActive = false;
-    const svg = rail.querySelector("svg");
-    if (svg) svg.classList.remove("preview");
-    rail.querySelectorAll(".preview-lit").forEach((el) =>
-      el.classList.remove(
-        "preview-lit", "preview-target", "preview-blast", "preview-foundation",
-        "preview-leaving", "preview-arriving", "preview-gaining", "preview-losing",
-      ));
-    rail.querySelectorAll(".gbar-count.preview-delta").forEach((c) => {
-      if (c.hasAttribute("data-orig")) {
-        c.textContent = c.getAttribute("data-orig");
-        c.removeAttribute("data-orig");
-      }
-      c.classList.remove("preview-delta", "losing", "gaining");
-    });
-    setPreviewContext(null);
-    clearOffscreenPills();
-    // Entering a preview drops the `focus` class (the two dims would compound), so leaving one has
-    // to put it back -- otherwise previewing anything silently un-dimmed a live search, and the
-    // banner went on claiming the field was dimmed.
-    applyLens();
-  }
-
-  // The one preview-scoped sentence, wherever it comes from. Two writers and one clearer of the same
-  // element, and the clearer cannot live in `exitPreviewMode` alone -- that early-returns unless a
-  // Focus & Morph overlay is live, so a pill set by the lighter ghost path would stay on screen.
-  // `kind` marks who owns the pill, so a clear can be precise: `true`/"pending" is work in
-  // flight, "identity" is the neutral "this is what you are pointing at" a chapter hover writes,
-  // and "out"/"in" are a held consequence's direction -- which puts the sentence in the same
-  // --blast/--land channel the lanes it describes are already wearing.
-  // Without that, moving the cursor off a chapter would wipe an unrelated "applying merge…".
-  function setPreviewContext(text, kind) {
-    previewContext.hidden = text === null;
-    previewContext.textContent = text || "";
-    previewContext.classList.toggle("pending", kind === true || kind === "pending");
-    previewContext.classList.toggle("identity", kind === "identity");
-    previewContext.classList.toggle("dir-out", kind === "out");
-    previewContext.classList.toggle("dir-in", kind === "in");
-  }
-
-  // A blocked-restore overlay: ugh refuses to restore a symbol that has a competing live version
-  // (`ok:false, forked:true`). Show the two ways out as plain text -- swap (revert the live tip, then
-  // restore) and reconcile (`ugh resolve <symbol>`) -- mirroring the CLI's own refusal, rather than
-  // swallowing the preview. The symbol is the preview's `file::symbol` target, else its first
-  // affected symbol. Hover-scoped; torn down by clearGhosts on the same mouseleave path as the ghosts.
-  function showRestoreRefusal(res, fallbackId) {
-    // The forking symbol from the structured refusal (`conflicts`, kernel K7); `affected_symbols`
-    // is always empty on a refusal, so reading it here fell through to the raw target every time.
-    const conflict = (res.conflicts || [])[0];
-    const sym = (conflict && conflict.symbol)
-      || (res.target && String(res.target).includes("::") ? res.target : null)
-      || (res.affected_symbols && res.affected_symbols[0]) || res.target || fallbackId;
-    showRefusal(res.message || "Can't restore: this symbol has a competing live version.",
-                ["swap · revert the live tip, then restore", `reconcile · ugh resolve ${sym}`]);
-  }
-
-  // The refusal card: a head, plus a remedy line per way out. A blocked restore has two; a feature
-  // with no cut in it has none -- the refusal is the whole answer, and saying it is the point. It
-  // used to say nothing at all for split, which reads as "still thinking" rather than "no".
-  function showRefusal(message, remedies = []) {
-    previewRefusal.innerHTML = "";
-    const head = document.createElement("div");
-    head.className = "refusal-head";
-    head.textContent = humanizeRefusal(message);
-    previewRefusal.appendChild(head);
-    for (const text of remedies) {
-      const line = document.createElement("div");
-      line.className = "refusal-remedy";
-      line.textContent = text;
-      previewRefusal.appendChild(line);
-    }
-    previewRefusal.hidden = false;
-  }
-
-  function clearPreviewRefusal() {
-    previewRefusal.hidden = true;
-  }
-
-  // Off-screen affected (huge-tree scale): a blast can paint rows outside #rail's current scroll
-  // window, where a hover preview would otherwise be invisible. Pills are anchored to #main (not
-  // #rail) so they stay pinned regardless of scroll, per-row visibility is a plain
-  // getBoundingClientRect comparison against #rail's own rect (no virtualization to account for
-  // yet -- every row is a real DOM node today), and lookups match `paintBlast`'s own
-  // getAttribute equality rather than a template-literal attribute selector, so a feature id with
-  // a quote in it can't break the query.
-  function findRow(id) {
-    let found = null;
-    rail.querySelectorAll(".glane, .rail-row").forEach((el) => {
-      if (el.getAttribute("data-id") === id) found = el;
-    });
-    return found;
-  }
-
-  /** The car wrap for a `<feature>@<n>` checkpoint. Attribute equality, not a template-literal
-   * selector, for the same reason findRow uses it: a ref with a quote in it must not break the
-   * query. */
-  function findCar(checkpoint) {
-    let found = null;
-    rail.querySelectorAll(".gcar-wrap").forEach((el) => {
-      if (el.getAttribute("data-checkpoint") === checkpoint) found = el;
-    });
-    return found;
-  }
-
-  function renderOffscreenPills(featureIds) {
-    if (!featureIds || !featureIds.length) {
-      clearOffscreenPills();
-      return;
-    }
-    const railRect = rail.getBoundingClientRect();
-    const above = [];
-    const below = [];
-    for (const id of featureIds) {
-      const row = findRow(id);
-      if (!row) continue;
-      const r = row.getBoundingClientRect();
-      if (r.bottom < railRect.top) above.push(id);
-      else if (r.top > railRect.bottom) below.push(id);
-    }
-    offscreen = { above: above.length, below: below.length };
-    offscreenAbove.hidden = !above.length;
-    if (above.length) {
-      offscreenAbove.title = `${above.length} lane${above.length === 1 ? "" : "s"} that change, above: click to scroll there`;
-      offscreenAbove.setAttribute("aria-label", offscreenAbove.title);
-      offscreenAbove.onclick = () => scrollRowIntoView(above[0]);
-    }
-    offscreenBelow.hidden = !below.length;
-    if (below.length) {
-      offscreenBelow.title = `${below.length} lane${below.length === 1 ? "" : "s"} that change, below: click to scroll there`;
-      offscreenBelow.setAttribute("aria-label", offscreenBelow.title);
-      offscreenBelow.onclick = () => scrollRowIntoView(below[0]);
-    }
-    renderPresence(); // the count rides the status line; the glow is only an edge
-  }
-
-  function scrollRowIntoView(id) {
-    const row = findRow(id);
-    if (row) row.scrollIntoView({ block: "center" });
-  }
-
-  function clearOffscreenPills() {
-    const had = offscreen.above || offscreen.below;
-    offscreen = { above: 0, below: 0 };
-    offscreenAbove.hidden = true;
-    offscreenBelow.hidden = true;
-    if (had) renderPresence();
-  }
-
-  function renderArmedBanner(answer) {
-    if (!armedBanner) return;
-    const n = armedVerb && byId(armedVerb.feature);
-    const text = armedBannerText(armedVerb, n && n.label);
-    armedBanner.hidden = text === null;
-    // Two elements, not one string with a newline: the standing question and the answer for *this*
-    // candidate carry different weight, and the answer is the half the eye should land on. Same
-    // primary/secondary pairing the refusal card uses for its head and remedies.
-    armedBanner.textContent = "";
-    if (text === null) return;
-    armedBanner.appendChild(el("div", "armed-q", text));
-    if (answer) armedBanner.appendChild(el("div", "armed-a", answer));
-  }
-
-  function triggerAction(verb, id) {
-    if (verb === "rename") {
-      vscode.postMessage({ type: "renamePrompt", feature: id });
-      return;
-    }
-    if (verb === "merge" || verb === "move") {
-      armedVerb = { verb, feature: id };
-      rail.classList.add("arming");
-      renderArmedBanner();
-      return;
-    }
-    if (verb === "split") {
-      // Staged like revert/restore: the cut is held on the graph (moving cars + the ghost of the
-      // new lane) and the confirm bar takes the decision.
-      const node = byId(id);
-      stageAction({ verb: "split", ref: id, targetId: id, label: node && node.label, kind: "split" });
-      return;
-    }
-    if (verb === "revert" || verb === "restore") {
-      // Staged in the graph: the consequence preview is held on the field and the confirm bar
-      // takes the decision -- no modal between the reader and the picture.
-      const node = byId(id);
-      stageAction({ verb, ref: id, targetId: id, label: node && node.label, kind: "feature" });
-    }
-  }
-
-  function confirmArmed(targetId) {
-    const { verb, feature } = armedVerb;
-    armedVerb = null;
-    rail.classList.remove("arming");
-    renderArmedBanner();
-    clearGhosts();
-    if (targetId === feature) return;
-    // The apply round-trips a subprocess + a full graph rebuild; say so where the eye already is.
-    setPreviewContext(`applying ${verb}…`, true);
-    if (verb === "merge") {
-      vscode.postMessage({ type: "applyVerb", verb: "merge", args: [targetId, feature] });
-    } else if (verb === "move") {
-      vscode.postMessage({ type: "applyVerb", verb: "move", args: [...opIdsFor(feature), targetId] });
-    }
-  }
-
-  // Minimize/restore the detail pane -- hands the full width to the timeline when docked narrow.
-  inspectorToggle.addEventListener("click", () => {
-    state.inspectorCollapsed = !state.inspectorCollapsed;
-    saveState();
-    render(); // re-measures the rail against the now-full width via the ResizeObserver too
-  });
-
-  const loopBtns = {
-    save: document.getElementById("saveBtn"),
-    undo: document.getElementById("undoBtn"),
+  const hd = h("header", "hd");
+  const tabs = h("div", "tabs");
+  tabs.setAttribute("role", "tablist");
+  const tab = (label, mode) => {
+    const b = h("button", "tab", label);
+    b.type = "button";
+    b.setAttribute("role", "tab");
+    b.addEventListener("click", () => setMode(mode));
+    return b;
   };
-  let loopBusy = null; // the daily-loop verb running in the host, or null
+  const tabT = tab("Timeline", "timeline");
+  const tabL = tab("Ledger", "ledger");
+  tabs.append(tabT, tabL);
+  const find = h("div", "find");
+  const findIn = h("input", "find-in");
+  findIn.type = "text";
+  findIn.placeholder = "Find";
+  findIn.spellcheck = false;
+  findIn.setAttribute("aria-label", "Find");
+  const findKey = h("span", "find-key", "/");
+  const hitsEl = h("div", "hits");
+  hitsEl.setAttribute("role", "listbox");
+  hitsEl.hidden = true;
+  find.append(findIn, findKey, hitsEl);
+  const stat = h("div", "st");
+  hd.append(tabs, find, stat);
+  const progress = h("div", "progress");
+  const main = h("main", "main");
+  const tl = h("section", "tl");
+  const canvas = h("div", "canvas");
+  tl.append(canvas);
+  const ledger = h("section", "ledger");
+  const lower = h("section", "lower");
+  const note = h("div", "note");
+  main.append(tl, ledger, lower, note);
+  const bar = h("footer", "bar");
+  document.body.append(hd, progress, main, bar);
 
-  // The ledger: the same history as a document, in an editor tab (src/ledger.ts). One button,
-  // because the two surfaces are two readings of one state and either is a click from the other.
-  const ledgerBtn = document.getElementById("ledgerBtn");
-  if (ledgerBtn) ledgerBtn.addEventListener("click", () => vscode.postMessage({ type: "openLedger" }));
+  let cells = [];
+  let rowEls = new Map();
+  let refs = {};
 
-  function renderLoopButtons() {
-    for (const b of loopButtonState(loopBusy)) {
-      loopBtns[b.verb].textContent = b.label;
-      loopBtns[b.verb].disabled = b.disabled;
-    }
+  // ---- render
+  function render() {
+    tabT.setAttribute("aria-selected", String(S.mode === "timeline"));
+    tabL.setAttribute("aria-selected", String(S.mode === "ledger"));
+    renderStatus();
+    const ready = S.phase === "ready";
+    tl.hidden = !(S.mode === "timeline" && (ready || S.phase === "loading"));
+    ledger.hidden = !(S.mode === "ledger" && (ready || S.phase === "loading"));
+    note.hidden = ready || S.phase === "loading";
+    find.hidden = !(ready || S.phase === "loading");
+    if (S.phase === "loading") renderSkeleton(S.mode === "timeline" ? canvas : ledger);
+    else if (!ready) renderNote();
+    else if (S.mode === "timeline") renderTimeline();
+    else renderLedger();
+    renderLower();
+    renderBar();
+    paint();
   }
 
-  for (const verb of Object.keys(loopBtns)) {
-    loopBtns[verb].addEventListener("click", () => {
-      // Set busy on the click, not on the host's answer: a round trip is long enough for a second
-      // click to land, and that second click is the thing this state exists to stop.
-      loopBusy = verb;
-      renderLoopButtons();
-      vscode.postMessage({ type: "dailyLoop", verb });
+  function renderSkeleton(into) {
+    into.textContent = "";
+    const widths = [96, 120, 72, 108, 84, 64];
+    widths.forEach((w, i) => {
+      const r = h("div", "row skel");
+      const lab = h("div", "lab");
+      const b = h("span", "sk");
+      b.style.width = w + "px";
+      lab.append(b);
+      r.append(lab);
+      for (let k = 0; k < 3; k++) {
+        const c = h("span", "sk cellsk");
+        c.style.left = LABEL_W + 3 + ((i * 3 + k * 5) % 14) * COL_W + "px";
+        r.append(c);
+      }
+      into.append(r);
     });
   }
 
-  window.addEventListener("message", (event) => {
-    const msg = event.data;
-    if (msg.type === "state") {
-      // A fresh composition means the mutation landed (`store.invalidate()` pushes this), so the
-      // buttons come back here as well as on the host's own end signal -- whichever arrives first.
-      // The end signal is the backstop for the paths that never reach a mutation: a cancelled
-      // dialog, "nothing to save", a failure.
-      if (loopBusy !== null) {
-        loopBusy = null;
-        renderLoopButtons();
+  function renderNote() {
+    note.textContent = "";
+    note.className = "note";
+    if (S.phase === "uninit") {
+      note.append(h("span", null, "No ugh history in this repository"), button("Init", "primary", () => post({ type: "init" })));
+    } else if (S.phase === "empty") {
+      note.append(h("span", null, "No saves yet"));
+    } else if (S.phase === "error") {
+      note.classList.add("err");
+      const t = h("span", "line", S.error);
+      t.title = S.error;
+      note.append(t);
+    }
+  }
+
+  function canvasWidth() {
+    return LABEL_W + S.model.width + META_W;
+  }
+
+  function renderTimeline() {
+    const m = S.model;
+    const W = canvasWidth();
+    const rowsH = m.rows.length * ROW_H;
+    const top = tl.scrollTop;
+    const left = tl.scrollLeft;
+    canvas.textContent = "";
+    canvas.style.width = W + "px";
+    cells = [];
+    rowEls = new Map();
+
+    const back = h("div", "back");
+    back.style.height = rowsH + "px";
+    for (const c of m.cols) {
+      if (!c.empty) continue;
+      const l = h("div", "hair");
+      l.style.left = LABEL_W + c.x + Math.floor(c.w / 2) + "px";
+      l.dataset.col = c.i;
+      back.append(l);
+    }
+    const band = h("div", "band");
+    band.hidden = true;
+    back.append(band);
+    canvas.append(back);
+
+    for (const r of m.rows) {
+      const row = h("div", "row k-" + r.kind);
+      row.dataset.row = r.key;
+      if (r.hue != null) row.style.setProperty("--h", r.hue.toFixed(1));
+      const lab = h("div", "lab");
+      if (r.kind === "group") {
+        lab.append(chevron(r.open), h("span", "t", "Unnamed"));
+        lab.setAttribute("role", "button");
+        lab.setAttribute("aria-expanded", String(!!r.open));
+      } else if (r.kind === "file") {
+        const t = pathLabel(r.label);
+        t.classList.add("t");
+        lab.append(t);
+      } else {
+        const t = h("span", "t", r.label);
+        t.title = r.label;
+        lab.append(t);
       }
-      compose = msg.compose || compose;
-      history = compose.history || { commits: [], ops: [] };
-      grid = compose.grid || { commits: [], cells: [] };
-      map = compose.map || { nodes: [], roots: [], edges: [] };
-      nodeIndex = new Map((map.nodes || []).map((n) => [n.id, n])); // keep byId's index in sync
-      planMarks = collectPlanMarks(compose.plan, history);
-      driftMarks = collectDriftMarks(compose.drift, history);
-      forkMarks = collectForkMarks(compose.forks, map.nodes);
-      savePreviewMarks = collectSavePreview(compose.save_preview);
-      checkpointsByFeature = collectCheckpoints(compose.intent);
-      foldResultCache = {};
-      changeCache = {};
-      pendingChange = null; // in flight against an ideal this push replaced
-      playheadResultCache = {};
-      playheadCommitIndex = null; // a new composition means a different commit-index axis
-      // A held (not yet applying) staged confirm is stale the moment the composition changes under
-      // it -- its consequence was computed against a world that no longer exists. Drop it. A BUSY
-      // one stays: this push IS its own mutation landing, and the done phase closes the bar.
-      if (stagedAction && !applyBusy) cancelStaged();
-      applyClusterDefaultOnce();
-      // Prune a multi-select to lanes that still exist (a revert-all may have removed some), so a
-      // stale id can't linger in the selection card after the composition changes under it.
-      recompute();
-      if ((state.multi || []).length) {
-        state.multi = state.multi.filter((fid) => byId(fid));
-        if (state.selected && !byId(state.selected)) state.selected = null;
-        if (state.multi.length < 2) selectionResult = null;
+      row.append(lab);
+      row.append(rowMeta(r));
+      if (r.kind === "plan") {
+        const t = h("div", "track");
+        t.style.left = LABEL_W + 2 + "px";
+        t.style.width = Math.max(0, m.width - 4) + "px";
+        row.append(t);
       }
-      render();
-      // an "applying…" note is answered by this push; the assistant's own sentence holds its 6 s
-      if (!stagedAction && !agentActionTimer) setPreviewContext(null);
-      if (pendingReveal) revealFeature(pendingReveal); // deliver a reveal that arrived before its lane existed
-      // The receipt: the lane a staged action just rewrote settles with a one-shot flash, so the
-      // change is visible IN the graph -- the same place the preview promised it.
-      if (pendingSettle.length) {
-        const dirClass = settleDir === "in" ? "settle-in" : "settle-out";
-        for (const fid of pendingSettle) {
-          const row = findRow(fid);
-          if (row) {
-            row.classList.add("settle-flash", dirClass);
-            setTimeout(() => row.classList.remove("settle-flash", dirClass), 1500);
-          }
+      for (const cell of r.cells.values()) {
+        const c = m.cols[cell.col];
+        const e = h("div", "cell");
+        e.dataset.col = cell.col;
+        e.style.left = LABEL_W + c.x + 3 + "px";
+        e.style.width = c.w - 6 + "px";
+        if (S.arrived.has(c.sha)) e.classList.add("arrive");
+        row.append(addCell({ el: e, steps: cell.steps, col: cell.col }));
+      }
+      for (const ch of m.choices) {
+        if (ch.row !== r.key) continue;
+        const c = m.cols[ch.col];
+        const e = h("div", "choice");
+        e.style.left = LABEL_W + c.x + 3 + "px";
+        e.style.width = c.w - 6 + "px";
+        e.title = "Two versions of " + ch.unit;
+        e.dataset.choice = ch.address;
+        row.append(e);
+      }
+      canvas.append(row);
+      rowEls.set(r.key, row);
+    }
+
+    const over = h("div", "over");
+    over.style.height = rowsH + "px";
+    const gv = h("div", "gv");
+    const gh = h("div", "gh");
+    const phl = h("div", "phl");
+    phl.style.height = rowsH + "px";
+    over.append(gv, gh, phl);
+    canvas.append(over);
+
+    const axis = h("div", "axis");
+    const alab = h("div", "alab");
+    const ticks = h("div", "ticks");
+    for (const t of axisTicks(m)) {
+      const s = h("span", "tick", t.text);
+      s.style.left = LABEL_W + t.x + "px";
+      ticks.append(s);
+    }
+    const amark = h("div", "amark");
+    const rset = h("div", "rset");
+    const read = h("div", "read");
+    const ph = h("div", "ph");
+    ph.append(h("span", "now", "now"));
+    ph.tabIndex = 0;
+    ph.setAttribute("role", "slider");
+    ph.setAttribute("aria-label", "Playhead");
+    axis.append(alab, ticks, rset, amark, read, ph);
+    canvas.append(axis);
+
+    refs = { back, band, gv, gh, phl, ticks, amark, rset, read, ph, axis };
+    bindPlayhead(ph);
+    placePlayhead();
+    drawHover();
+    tl.scrollTop = top;
+    tl.scrollLeft = S.scrolled ? left : tl.scrollWidth;
+    S.scrolled = true;
+  }
+
+  function rowMeta(r) {
+    const meta = h("span", "meta");
+    if (r.kind === "plan") {
+      meta.append(h("span", null, "declared"));
+      return meta;
+    }
+    const steps = r.kind === "group" ? S.model.steps.filter((s) => !s.name) : r.steps;
+    const out = steps.filter((s) => s.out).length;
+    let words = plural(steps.length, "step", "steps") + (out ? ", " + out + " out" : "");
+    if (r.kind === "group") words += " in " + plural(new Set(steps.map((s) => s.path)).size, "file", "files");
+    meta.append(h("span", null, words));
+    const last = S.model.cols[Math.max(...steps.map((s) => s.col))];
+    const d = h("span", "ago", ago(last.date, Date.now()));
+    d.title = dateLong(last.date);
+    meta.append(d);
+    return meta;
+  }
+
+  function renderLedger() {
+    const m = S.model;
+    const top = ledger.scrollTop;
+    ledger.textContent = "";
+    cells = [];
+    rowEls = new Map();
+    const lanes = m.rows.filter((r) => r.kind === "name").map((r) => ({
+      label: r.label,
+      hue: r.hue,
+      first: Math.min(...r.steps.map((s) => s.col)),
+      last: Math.max(...r.steps.map((s) => s.col)),
+    }));
+    const gutW = 10 + lanes.length * 7;
+    const gutter = (col, touched) => {
+      const g = h("div", "gut");
+      g.style.width = gutW + "px";
+      lanes.forEach((l, i) => {
+        if (col < l.first || col > l.last) return;
+        const ln = h("span", "ln" + (touched && touched.has(l.label) ? " on" : ""));
+        ln.style.left = 8 + i * 7 + "px";
+        ln.style.setProperty("--h", l.hue.toFixed(1));
+        g.append(ln);
+      });
+      return g;
+    };
+    const selCols = new Set(S.sel ? [...S.sel.keys].map((k) => m.byKey.get(k).col) : []);
+    const now = Date.now();
+    for (const c of m.cols.slice().reverse()) {
+      const names = new Set(c.steps.filter((s) => s.name).map((s) => s.name));
+      const quiet = c.empty && !m.choices.some((ch) => ch.col === c.i);
+      const row = h("div", "lrow" + (quiet ? " empty" : ""));
+      row.dataset.col = c.i;
+      row.append(gutter(c.i, names));
+      if (quiet) {
+        row.title = c.short + "  " + c.subject;
+        ledger.append(row);
+        continue;
+      }
+      const subj = h("span", "subj", c.subject);
+      subj.title = c.subject;
+      row.append(subj);
+      for (const l of lanes) {
+        if (!names.has(l.label)) continue;
+        const nm = h("span", "nm", l.label);
+        nm.style.setProperty("--h", l.hue.toFixed(1));
+        row.append(nm);
+      }
+      for (const ch of m.choices) {
+        if (ch.col !== c.i) continue;
+        const e = h("span", "lch", shortAddress(ch.unit));
+        e.title = "Two versions of " + ch.unit;
+        e.dataset.choice = ch.address;
+        row.append(e);
+      }
+      const meta = h("span", "lmeta");
+      if (c.steps.length) {
+        const out = c.steps.filter((s) => s.out).length;
+        meta.append(h("span", null, plural(c.steps.length, "step", "steps") + (out ? ", " + out + " out" : "")));
+      }
+      meta.append(h("span", "sha", c.short));
+      const d = h("span", "ago", ago(c.date, now));
+      d.title = dateLong(c.date);
+      meta.append(d);
+      row.append(meta);
+      if (S.arrived.has(c.sha)) row.classList.add("arrive");
+      ledger.append(row);
+      rowEls.set("col:" + c.i, row);
+      if (!selCols.has(c.i)) continue;
+      row.classList.add("open");
+      const steps = c.steps.slice().sort((p, q) => (p.path === q.path ? 0 : p.path < q.path ? -1 : 1));
+      for (const s of steps) {
+        const sub = h("div", "sub");
+        sub.dataset.step = s.key;
+        sub.append(gutter(c.i, null));
+        if (s.name) sub.style.setProperty("--h", hueOf(s.name).toFixed(1));
+        else sub.classList.add("un");
+        sub.append(addCell({ el: h("div", "cell"), steps: [s], col: c.i, sub: true, flat: true }));
+        const lab = unitLabel(s.unit);
+        lab.classList.add("ulab");
+        sub.append(lab);
+        if (s.name) sub.append(h("span", "nm", s.name));
+        sub.append(stepMeta(s));
+        sub.classList.toggle("other", !S.sel.keys.has(s.key));
+        ledger.append(sub);
+        if (S.open.has(s.key)) {
+          const blk = stepBlock(s, 0);
+          blk.style.paddingLeft = gutW + 32 + "px";
+          ledger.append(blk);
         }
-        pendingSettle = [];
       }
-    } else if (msg.type === "applyProgress") {
-      onApplyProgress(msg);
-    } else if (msg.type === "selectionResult" && pendingSelection && pendingSelection.seq === msg.seq) {
-      selectionResult = { refs: pendingSelection.refs, view: msg.result };
-      pendingSelection = null;
-      renderInspector();
-      renderPresence();
-      paintSelectionClosure();
-    } else if (msg.type === "previewResult" && pendingPreview && pendingPreview.seq === msg.seq) {
-      pendingPreview.onResult(msg.result);
-    } else if (msg.type === "foldResult" && pendingFold && pendingFold.seq === msg.seq) {
-      pendingFold = null;
-      foldResultCache[msg.featureId] = {
-        files: msg.files, oracle_verdict: msg.oracle_verdict, forked: msg.forked, error: msg.error,
-      };
-      if (state.selected === msg.featureId) renderInspector();
-    } else if (msg.type === "changeResult" && pendingChange && pendingChange.seq === msg.seq) {
-      changeCache[pendingChange.key] = {
-        ok: msg.ok !== false, message: msg.message, files: msg.files || {},
-      };
-      pendingChange = null;
-      renderInspector();
-    } else if (msg.type === "playheadResult" && pendingPlayhead && pendingPlayhead.seq === msg.seq) {
-      pendingPlayhead = null;
-      playheadResultCache[msg.commitIndex] = {
-        op_count: msg.op_count, files: msg.files, oracle_verdict: msg.oracle_verdict,
-        forked: msg.forked, error: msg.error,
-      };
-      if (playheadCommitIndex === msg.commitIndex) renderInspector();
-    } else if (msg.type === "compositionPicked") {
-      state.compositionLabel = msg.label;
-      state.compositionRef = msg.ref;
-      saveState();
-      foldResultCache = {};
-      changeCache = {};
-      pendingChange = null;
-      renderTitlebar();
-      renderInspector();
-    } else if (msg.type === "compositionPreviewStart") {
-      latestCompositionPreviewSeq = msg.seq;
-      compositionPreviewActive = msg.ref;
-      renderInspector(); // "Loading…" for this candidate composition
-    } else if (msg.type === "compositionPreviewResult" && msg.seq === latestCompositionPreviewSeq) {
-      compositionPreviewCache[msg.ref] = { files: msg.files, oracle_verdict: msg.oracle_verdict, forked: msg.forked, error: msg.error };
-      if (compositionPreviewActive === msg.ref) renderInspector();
-    } else if (msg.type === "compositionPreviewEnd") {
-      compositionPreviewActive = null;
-      renderInspector();
-    } else if (msg.type === "askedResult" && pendingAsked && pendingAsked.seq === msg.seq) {
-      const ref = pendingAsked.ref;
-      pendingAsked = null;
-      askedCache[ref] = msg.ok !== false && (msg.asks || []).length
-        ? { asks: msg.asks }
-        : { error: msg.message || "nothing was captured for it" };
-      if (askedOpen === ref) renderInspector();
-    } else if (msg.type === "findResult") {
-      renderFindResults(msg);
-    } else if (msg.type === "agentAction") {
-      showAgentAction(msg);
-    } else if (msg.type === "revealFeature") {
-      revealFeature(msg.featureId);
-    } else if (msg.type === "loopBusy") {
-      loopBusy = msg.verb || null;
-      renderLoopButtons();
-    } else if (msg.type === "error") {
-      inspector.innerHTML = "";
-      inspector.appendChild(statusLine(msg.message, "error"));
     }
+    ledger.scrollTop = top;
+  }
+
+  function currentMarks() {
+    return S.marks || S.showMarks;
+  }
+
+  function stepMeta(s) {
+    const meta = h("span", "smeta");
+    const verb = S.preview ? S.preview.verb : "revert";
+    const ans = answerOf(s, currentMarks().get(s.key), verb);
+    const m = currentMarks().get(s.key);
+    meta.append(h("span", "kind", s.kind));
+    if (m && m.ran === false) meta.append(h("span", "norun", "not run by the check"));
+    const a = h("span", "ans " + ans.tone, ans.text);
+    a.title = ans.text;
+    meta.append(a);
+    return meta;
+  }
+
+  function renderLower() {
+    const top = lower.scrollTop;
+    lower.textContent = "";
+    const on = S.phase === "ready" && !!S.sel && S.mode === "timeline";
+    lower.hidden = !on;
+    main.classList.toggle("split", on);
+    cells = cells.filter((c) => !c.lower);
+    if (!on) return;
+    const m = S.model;
+    const W = canvasWidth();
+    const box = h("div", "canvas");
+    box.style.width = W + "px";
+    const vw = lower.clientWidth || tl.clientWidth;
+    for (const r of lowerRows(m, S.sel.keys)) {
+      const row = h("div", "row lrw k-" + r.kind);
+      const lab = h("div", "lab");
+      if (r.kind === "file") lab.append(pathLabel(r.path));
+      else lab.append(h("span", "def", r.def));
+      lab.title = r.kind === "file" ? r.path : r.path + "::" + r.def;
+      lab.dataset.unit = r.key;
+      row.append(lab);
+      const byCol = new Map();
+      for (const s of r.steps) {
+        if (!byCol.has(s.col)) byCol.set(s.col, []);
+        byCol.get(s.col).push(s);
+      }
+      for (const [col, own] of byCol) {
+        const c = m.cols[col];
+        const e = h("div", "cell");
+        e.style.left = LABEL_W + c.x + 3 + "px";
+        e.style.width = c.w - 6 + "px";
+        e.dataset.step = own[0].key;
+        const hue = own[0].name;
+        if (hue) {
+          e.classList.add("own");
+          e.style.setProperty("--h", hueOf(hue).toFixed(1));
+        } else e.classList.add("un");
+        row.append(addCell({ el: e, steps: own, col, lower: true, flat: true }));
+      }
+      for (const ch of m.choices) {
+        if (r.kind !== "def" || ch.unit !== r.path + "::" + r.def) continue;
+        const c = m.cols[ch.col];
+        const e = h("div", "choice");
+        e.style.left = LABEL_W + c.x + 3 + "px";
+        e.style.width = c.w - 6 + "px";
+        e.title = "Two versions of " + ch.unit;
+        row.append(e);
+      }
+      if (r.steps.length) {
+        const last = r.steps[r.steps.length - 1];
+        const meta = stepMeta(last);
+        meta.classList.add("meta");
+        row.append(meta);
+        row.dataset.step = last.key;
+      }
+      box.append(row);
+      for (const s of r.steps) if (S.open.has(s.key)) box.append(stepBlock(s, vw));
+    }
+    lower.append(box);
+    lower.scrollTop = top;
+    lower.scrollLeft = tl.scrollLeft;
+  }
+
+  function stepBlock(s, vw) {
+    const b = h("div", "step");
+    if (vw) b.style.width = vw + "px";
+    const head = h("div", "shead");
+    const addr = h("span", "addr", s.address);
+    addr.title = s.address;
+    head.append(addr, stepMeta(s));
+    const acts = h("span", "acts");
+    acts.append(button("Diff", "", () => post({ type: "openStep", address: s.address })));
+    const d = S.detail.get(s.key);
+    if (d && d.lines) acts.append(button("File", "", () => post({ type: "openFile", path: s.path, line: d.lines[0] })));
+    head.append(acts);
+    b.append(head);
+    const body = h("div", "diff");
+    if (!d) {
+      for (const w of [220, 160]) {
+        const sk = h("div", "sk dsk");
+        sk.style.width = w + "px";
+        body.append(sk);
+      }
+    } else {
+      const { lines, more } = hunks(lineDiff(d.before, d.after), 30);
+      for (const l of lines) {
+        const line = h("div", "dl " + (l.t === "+" ? "add" : l.t === "-" ? "del" : l.t === "gap" ? "gap" : "ctx"));
+        if (l.t !== "gap") line.append(h("span", "sign", l.t === " " ? "" : l.t === "-" ? "−" : "+"), h("span", null, l.s || " "));
+        body.append(line);
+      }
+      if (more) body.append(h("div", "dl more", "+" + more + " more lines"));
+    }
+    b.append(body);
+    return b;
+  }
+
+  function renderStatus() {
+    stat.textContent = "";
+    if (S.busy) stat.append(h("span", "busy", busyWords(S.busy)));
+    progress.classList.toggle("on", !!S.busy);
+    const st = S.status;
+    if (!st || !S.model || !(S.phase === "ready" || S.phase === "empty")) return;
+    const unsaved = ((st.drift && st.drift.paths) || []).length;
+    if (unsaved) {
+      const u = h("span", null, plural(unsaved, "unsaved file", "unsaved files"));
+      u.title = st.drift.paths.join("\n");
+      stat.append(u);
+    }
+    const n = S.model.choices.length;
+    if (n) stat.append(button(plural(n, "choice", "choices"), "stc", () => selectChoice(S.model.choices[0])));
+    stat.append(h("span", null, checkWords(st.observed)));
+    if (st.sync_status && st.sync_status.complete === false) stat.append(h("span", null, "sync incomplete"));
+  }
+
+  function busyWords(verb) {
+    const words = {
+      save: "Saving", revert: "Taking out", restore: "Bringing back", name: "Naming", rename: "Renaming",
+      resolve: "Resolving", sync: "Syncing", push: "Pushing", undo: "Undoing", init: "Initializing",
+    };
+    return (words[verb] || verb) + "…";
+  }
+
+  function renderBar() {
+    bar.textContent = "";
+    bar.className = "bar";
+    const show = S.phase === "ready" && (S.sel || S.result);
+    bar.hidden = !show;
+    if (!show) return;
+    const acts = h("span", "acts");
+    if (S.result && !S.sel) {
+      if (S.result.error) bar.append(errLine(S.result.error));
+      else S.result.words.forEach((w, i) => bar.append(h("span", i ? "w" : "cnt", w)));
+      acts.append(button("Close", "", closeResult));
+      bar.append(acts);
+      return;
+    }
+    const sel = S.sel;
+    const addr = h("button", "baddr", sel.addresses.join("  "));
+    addr.type = "button";
+    addr.title = sel.addresses.join("\n");
+    addr.addEventListener("click", () => {
+      post({ type: "copy", text: sel.addresses.join(" ") });
+      addr.classList.remove("copied");
+      void addr.offsetWidth;
+      addr.classList.add("copied");
+    });
+    bar.append(addr);
+    const busy = !!S.busy || !!S.applying;
+    if (sel.kind === "choice") {
+      bar.append(h("span", "held", "two versions"));
+      const r = button("Resolve", "primary", () => post({ type: "resolve", address: sel.choice }));
+      r.disabled = busy;
+      acts.append(r, button("Cancel", "", clearSelection));
+      bar.append(acts);
+      return;
+    }
+    const p = S.preview;
+    if (p && p.error) bar.append(errLine(p.error));
+    else if (p && p.plan) {
+      const w = previewWords(p.plan);
+      bar.append(h("span", "cnt", w.go));
+      if (w.held) bar.append(h("span", "held", w.held));
+    } else if (p && p.pending) bar.append(h("span", "sk bsk"));
+    const name = button("Name", "", () => post({ type: "name", addresses: sel.addresses }));
+    name.disabled = busy;
+    acts.append(name);
+    if (sel.label) {
+      const rn = button("Rename", "", () => post({ type: "rename", label: sel.label }));
+      rn.disabled = busy;
+      acts.append(rn);
+    }
+    if (!p) {
+      acts.append(button("Preview", "primary", previewNow));
+    } else {
+      const verb = p.verb === "restore" ? "Bring back" : "Take out";
+      const go = button(verb, "primary", apply);
+      go.disabled = busy || !p.plan;
+      acts.append(go);
+      const whole = p.plan ? previewWords(p.plan).whole : 0;
+      if (p.verb === "revert" && (whole || S.whole)) {
+        const wb = button("Whole", "sec", toggleWhole);
+        wb.setAttribute("aria-pressed", String(S.whole));
+        if (whole) wb.append(h("span", "num", String(whole)));
+        wb.title = "Take out everything that stands on it too";
+        wb.disabled = busy;
+        acts.append(wb);
+      }
+    }
+    acts.append(button("Cancel", "", clearSelection));
+    bar.append(acts);
+  }
+
+  function errLine(text) {
+    const e = h("span", "err", text);
+    e.title = text;
+    return e;
+  }
+
+  // ---- paint: classes only, so a preview arriving never moves anything
+  function paintCtx() {
+    const last = S.model.cols.length - 1;
+    return {
+      marks: S.marks,
+      sel: S.sel ? S.sel.keys : null,
+      ring: !!S.sel && !["row", "col", "range", "choice"].includes(S.sel.kind),
+      ph: S.ph == null ? last : S.ph,
+      fl: S.flash && performance.now() - S.flash.t0 < 1400 ? S.flash : null,
+    };
+  }
+
+  function paintCell(c, x) {
+    const st = cellState(c.steps, x.marks, x.sel);
+    const e = c.el;
+    e.classList.remove("t1", "t2", "t3", "t4");
+    e.classList.add("t" + (c.flat ? 3 : st.tone));
+    e.style.setProperty("--a", st.a + "%");
+    e.style.setProperty("--b", st.b + "%");
+    e.classList.toggle("hollow", st.hollow);
+    e.classList.toggle("gone", st.gone);
+    e.classList.toggle("held", st.held);
+    e.classList.toggle("holder", st.holder && !st.held);
+    e.classList.toggle("norun", st.norun && !st.holder);
+    e.classList.toggle("sel", x.ring && st.sel && !c.lower && !c.sub);
+    e.classList.toggle("inv", st.sel || st.gone || st.held || st.holder);
+    e.classList.toggle("ahead", S.mode === "timeline" && c.col > x.ph);
+    const flash = !!x.fl && c.steps.some((s) => x.fl.keys.has(s.key));
+    e.classList.toggle("flash", flash);
+    if (flash) e.style.setProperty("--fd", -(performance.now() - x.fl.t0) + "ms");
+  }
+
+  // A cell is painted before it enters the page, so a rebuild never animates.
+  function addCell(c) {
+    paintCell(c, paintCtx());
+    cells.push(c);
+    return c.el;
+  }
+
+  // ---- paint: classes only, so a preview arriving never moves anything
+  function paint() {
+    if (S.phase !== "ready") return;
+    const x = paintCtx();
+    canvas.classList.toggle("previewing", !!x.marks);
+    ledger.classList.toggle("previewing", !!x.marks);
+    const ph = x.ph;
+    const metaW = Math.max(META_W, (tl.clientWidth || lower.clientWidth) - LABEL_W - S.model.width - 24);
+    document.body.style.setProperty("--meta-w", metaW + "px");
+    for (const c of cells) paintCell(c, x);
+    if (S.mode === "timeline" && refs.back) {
+      for (const [key, row] of rowEls) row.classList.toggle("sel", !!S.sel && S.sel.kind === "row" && S.sel.row === key);
+      for (const l of refs.back.querySelectorAll(".hair")) l.classList.toggle("ahead", +l.dataset.col > ph);
+      for (const e of canvas.querySelectorAll(".choice")) e.classList.toggle("on", !!S.sel && S.sel.choice === e.dataset.choice);
+      refs.rset.textContent = "";
+      const set = S.preview && S.preview.whole && S.preview.plan && S.preview.plan.removal_set;
+      for (const r of (set && set.saves) || []) {
+        const col = colOf(S.model, r.sha);
+        if (col == null) continue;
+        const c = S.model.cols[col];
+        const e = h("span", "rm");
+        e.style.left = LABEL_W + c.x + 2 + "px";
+        e.style.width = c.w - 4 + "px";
+        refs.rset.append(e);
+      }
+      const band = refs.band;
+      const span = S.sel && (S.sel.kind === "col" ? [S.sel.col, S.sel.col] : S.sel.kind === "range" ? [S.sel.from, S.sel.to] : null);
+      band.hidden = !span;
+      if (span) {
+        const a = S.model.cols[Math.min(...span)];
+        const b = S.model.cols[Math.max(...span)];
+        band.style.left = LABEL_W + a.x + "px";
+        band.style.width = b.x + b.w - a.x + "px";
+      }
+    }
+    if (S.mode === "ledger") {
+      const selCols = new Set(S.sel ? [...S.sel.keys].map((k) => S.model.byKey.get(k).col) : []);
+      for (const [key, row] of rowEls) row.classList.toggle("sel", selCols.has(+key.slice(4)) && S.sel.kind === "col");
+    }
+  }
+
+  // ---- hover: two guides and the axis reading, nothing floats over the cells
+  function drawHover() {
+    if (S.mode !== "timeline" || !S.model || !refs.gv) return;
+    const m = S.model;
+    const { gv, gh, amark, read, ticks } = refs;
+    for (const row of rowEls.values()) row.classList.remove("hov");
+    const last = m.cols.length - 1;
+    const hv = S.hover;
+    const col = hv && hv.col != null ? hv.col : S.ph != null && S.ph !== last ? S.ph : null;
+    if (col == null) {
+      gv.hidden = gh.hidden = amark.hidden = read.hidden = true;
+      ticks.classList.remove("away");
+      return;
+    }
+    const c = m.cols[col];
+    const rowsH = m.rows.length * ROW_H;
+    const axisTop = Math.min(rowsH, tl.scrollTop + tl.clientHeight - 24);
+    const ri = hv && hv.row ? m.rows.findIndex((r) => r.key === hv.row) : -1;
+    const onCell = hv && hv.col === col && ri >= 0 && m.rows[ri].cells.has(col);
+    if (hv && hv.col === col) {
+      const y0 = onCell ? ri * ROW_H + 17 : 0;
+      gv.hidden = false;
+      gv.style.transform = "translate(" + (LABEL_W + c.x + Math.floor(c.w / 2)) + "px," + y0 + "px)";
+      gv.style.height = Math.max(0, axisTop - y0) + "px";
+    } else gv.hidden = true;
+    if (onCell) {
+      const x0 = tl.scrollLeft + LABEL_W;
+      const x1 = LABEL_W + c.x + 3;
+      gh.hidden = x1 <= x0;
+      gh.style.transform = "translate(" + x0 + "px," + (ri * ROW_H + 11) + "px)";
+      gh.style.width = Math.max(0, x1 - x0 - 2) + "px";
+      const row = rowEls.get(m.rows[ri].key);
+      if (row) row.classList.add("hov");
+    } else gh.hidden = true;
+    amark.hidden = false;
+    amark.style.left = LABEL_W + c.x + 2 + "px";
+    amark.style.width = c.w - 4 + "px";
+    read.textContent = "";
+    read.append(h("span", "sha", c.short), h("span", "subj", c.subject), h("span", "date", dateLong(c.date)));
+    read.hidden = false;
+    read.style.maxWidth = Math.max(160, tl.clientWidth - LABEL_W - 24) + "px";
+    const rw = read.offsetWidth;
+    const atHead = !(hv && hv.col === col);
+    let left = LABEL_W + c.x + (atHead ? c.w + 10 : 0);
+    const right = tl.scrollLeft + tl.clientWidth - 12;
+    if (left + rw > right) left = Math.max(tl.scrollLeft + LABEL_W, LABEL_W + c.x + (atHead ? c.w - 10 : c.w) - rw);
+    read.style.left = left + "px";
+    ticks.classList.add("away");
+  }
+
+  function hit(ev) {
+    const m = S.model;
+    const r = canvas.getBoundingClientRect();
+    const x = ev.clientX - r.left;
+    const y = ev.clientY - r.top;
+    const axis = !!ev.target.closest(".axis");
+    const label = ev.clientX - tl.getBoundingClientRect().left < LABEL_W && !axis;
+    const ri = Math.floor(y / ROW_H);
+    const row = !axis && ri >= 0 && ri < m.rows.length ? m.rows[ri] : null;
+    const col = label ? null : colAt(m, x - LABEL_W);
+    return { row, col, axis, label };
+  }
+
+  canvas.addEventListener("mousemove", (ev) => {
+    if (S.phase !== "ready" || S.mode !== "timeline") return;
+    const t = hit(ev);
+    S.hover = { row: t.row ? t.row.key : null, col: t.col };
+    drawHover();
+  });
+  canvas.addEventListener("mouseleave", () => {
+    S.hover = null;
+    drawHover();
+  });
+  canvas.addEventListener("click", (ev) => {
+    if (S.phase !== "ready" || ev.target.closest(".ph")) return;
+    const ch = ev.target.closest(".choice");
+    if (ch) {
+      selectChoice(S.model.choices.find((c) => c.address === ch.dataset.choice));
+      return;
+    }
+    const t = hit(ev);
+    if (t.label && t.row) {
+      if (t.row.kind === "group") toggleUnnamed();
+      else select({ kind: "row", row: t.row.key });
+      return;
+    }
+    if (t.col == null) return;
+    if (t.row && t.row.cells.has(t.col)) select({ kind: "cell", row: t.row.key, col: t.col });
+    else if (ev.shiftKey && S.anchor != null) select({ kind: "range", from: Math.min(S.anchor, t.col), to: Math.max(S.anchor, t.col) }, { anchor: false });
+    else select({ kind: "col", col: t.col });
   });
 
-  window.addEventListener("keydown", (ev) => {
-    if (ev.key !== "Escape") return;
-    if (stagedAction && !applyBusy) {
-      cancelStaged();
+  lower.addEventListener("click", (ev) => {
+    const e = ev.target.closest("[data-step]");
+    if (!e || ev.target.closest(".btn")) return;
+    toggleStep(e.dataset.step);
+  });
+  ledger.addEventListener("click", (ev) => {
+    if (S.phase !== "ready" || ev.target.closest(".btn")) return;
+    const ch = ev.target.closest("[data-choice]");
+    if (ch) {
+      selectChoice(S.model.choices.find((c) => c.address === ch.dataset.choice));
       return;
     }
-    if (armedVerb) {
-      armedVerb = null;
-      rail.classList.remove("arming");
-      renderArmedBanner();
-      clearGhosts();
+    const sub = ev.target.closest(".sub");
+    if (sub) {
+      toggleStep(sub.dataset.step);
       return;
     }
-    if (state.selectedCheckpoint) {
-      state.selectedCheckpoint = null;
-      saveState();
+    const row = ev.target.closest(".lrow");
+    if (row && !row.classList.contains("empty") && S.model.cols[+row.dataset.col].steps.length) select({ kind: "col", col: +row.dataset.col });
+  });
+
+  let syncing = false;
+  tl.addEventListener("scroll", () => {
+    if (!syncing) {
+      syncing = true;
+      lower.scrollLeft = tl.scrollLeft;
+      syncing = false;
+    }
+    drawHover();
+  });
+  lower.addEventListener("scroll", () => {
+    if (syncing) return;
+    syncing = true;
+    tl.scrollLeft = lower.scrollLeft;
+    syncing = false;
+  });
+  let resizeTimer = 0;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      if (S.phase !== "ready") return;
+      rebuild();
       render();
-      return;
-    }
-    if (clearActor()) return;
-    clearPlayhead();
+    }, 80);
   });
 
-  // Continuous reflow: the workbench is a WebviewView the user resizes freely both ways. The Gantt
-  // axis width comes from the pane width, and its bottom-pinned frontier scrubber comes from the
-  // pane height (ganttGeom derives h from rail.clientHeight) -- so a vertical resize must re-layout
-  // too, or the scrubber drifts off the fold. Debounced, and gated on a real delta in either axis so
-  // the scrollbar appearing/disappearing mid-render can't feed a render back into itself.
-  let resizeTimer = null;
+  // ---- playhead
+  let renderTimer = 0;
+  function placePlayhead() {
+    if (!refs.ph || !S.model.cols.length) return;
+    const m = S.model;
+    const last = m.cols.length - 1;
+    const k = S.ph == null ? last : S.ph;
+    const c = m.cols[k];
+    const x = LABEL_W + c.x + c.w;
+    refs.ph.style.transform = "translateX(" + x + "px)";
+    refs.ph.classList.toggle("now", k === last);
+    refs.ph.setAttribute("aria-valuemin", "0");
+    refs.ph.setAttribute("aria-valuemax", String(last));
+    refs.ph.setAttribute("aria-valuenow", String(k));
+    refs.ph.setAttribute("aria-valuetext", k === last ? "now" : c.short + " " + c.subject);
+    refs.phl.hidden = k === last;
+    refs.phl.style.transform = "translateX(" + x + "px)";
+  }
+  function setPlayhead(k) {
+    const last = S.model.cols.length - 1;
+    const next = k == null || k >= last ? null : Math.max(0, k);
+    if (next === S.ph) return;
+    S.ph = next;
+    placePlayhead();
+    paint();
+    drawHover();
+    clearTimeout(renderTimer);
+    renderTimer = setTimeout(() => post({ type: "render", address: S.ph == null ? null : S.model.cols[S.ph].short + ".." }), 200);
+  }
+  function bindPlayhead(ph) {
+    let drag = false;
+    ph.addEventListener("pointerdown", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      drag = true;
+      ph.setPointerCapture(ev.pointerId);
+      ph.classList.add("drag");
+      ph.focus();
+    });
+    ph.addEventListener("pointermove", (ev) => {
+      if (!drag) return;
+      const gx = ev.clientX - canvas.getBoundingClientRect().left - LABEL_W;
+      const last = S.model.cols.length - 1;
+      setPlayhead(detent(S.model, gx, S.ph == null ? last : S.ph));
+    });
+    const end = () => {
+      drag = false;
+      ph.classList.remove("drag");
+    };
+    ph.addEventListener("pointerup", end);
+    ph.addEventListener("pointercancel", end);
+    ph.addEventListener("keydown", (ev) => {
+      const last = S.model.cols.length - 1;
+      const k = S.ph == null ? last : S.ph;
+      const to = { ArrowLeft: k - 1, ArrowRight: k + 1, Home: 0, End: last, Escape: last }[ev.key];
+      if (to == null) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      setPlayhead(Math.min(last, Math.max(0, to)));
+    });
+  }
 
-  // Is what's on screen still drawn for the pane we have? The width half asks the DOM itself -- the
-  // rendered SVG's own `width` is the geometry it was laid out against -- rather than trusting a
-  // bookkeeping variable, so a draw that was skipped or that died halfway cannot leave the gate
-  // believing the pane is already up to date. The height half compares the last measurement, since the
-  // SVG's height is max(natural, pane) and so can't be read back as the pane's.
-  function reflowIfStale() {
-    if (!paneMeasurable()) return; // hidden pane: nothing to reconcile against yet
-    const svg = rail.querySelector("svg.railsvg");
-    const drawnW = svg ? Number(svg.getAttribute("width")) : -1;
-    if (svg && Math.abs(drawnW - Math.max(rail.clientWidth, 320)) < 4 &&
-        Math.abs(rail.clientHeight - lastRenderHeight) < 4) return;
+  // ---- selection, preview, apply
+  function select(t, opts) {
+    const a = addressFor(S.model, t);
+    if (!a.addresses.length || !a.keys.length) return;
+    setSelection(Object.assign({}, t, { addresses: a.addresses, keys: new Set(a.keys), label: a.label }), opts);
+  }
+
+  function setSelection(sel, opts) {
+    const o = opts || {};
+    S.sel = sel;
+    S.result = null;
+    S.whole = false;
+    S.preview = null;
+    S.marks = null;
+    S.showMarks = new Map();
+    S.open = new Set();
+    S.applying = null;
+    req.drop("preview");
+    if (sel.kind === "col" && o.anchor !== false) S.anchor = sel.col;
+    if (sel.kind === "cell") S.anchor = sel.col;
+    if (sel.kind === "cell" || sel.kind === "row") S.cursor = { row: sel.row, col: sel.kind === "cell" ? sel.col : null };
+    S.queue = sel.addresses.filter((a) => stepsOf(S.model, a).some((s) => !S.detail.has(s.key)));
+    S.showOut = false;
+    req.drop("show");
+    pumpShow();
+    if (o.preview !== false) previewNow();
+    if (S.mode === "ledger") renderLedger();
+    renderLower();
+    renderBar();
+    paint();
+    if (o.reveal) reveal();
+  }
+
+  function selectChoice(ch) {
+    if (!ch) return;
+    const keys = stepsOf(S.model, ch.unit).map((s) => s.key);
+    setSelection({ kind: "choice", choice: ch.address, addresses: [ch.unit], keys: new Set(keys), label: null, row: ch.row, col: ch.col }, { preview: false, reveal: true });
+  }
+
+  function focusAddress(address) {
+    const keys = stepsOf(S.model, address).map((s) => s.key);
+    if (!keys.length) {
+      S.sel = null;
+      S.result = { error: "No steps at " + address };
+      renderLower();
+      renderBar();
+      paint();
+      return;
+    }
+    const label = S.model.labels.has(address) ? address : null;
+    const sel = { kind: label ? "row" : "addr", addresses: [address], keys: new Set(keys), label };
+    if (label) sel.row = "name:" + label;
+    setSelection(sel, { reveal: true });
+  }
+
+  function clearSelection() {
+    S.sel = null;
+    S.preview = null;
+    S.marks = null;
+    S.whole = false;
+    S.open = new Set();
+    S.queue = [];
+    S.applying = null;
+    req.drop("preview");
+    req.drop("show");
+    if (S.mode === "ledger") renderLedger();
+    renderLower();
+    renderBar();
+    paint();
+  }
+
+  function closeResult() {
+    S.result = null;
+    renderBar();
+  }
+
+  function previewNow() {
+    if (!S.sel || S.sel.kind === "choice") return;
+    const verb = verbFor(S.model, [...S.sel.keys]);
+    const id = req.next("preview");
+    S.preview = { id, verb, whole: S.whole, pending: true };
+    post({ type: "preview", id, verb, addresses: S.sel.addresses, whole: S.whole });
+    renderBar();
+  }
+
+  function toggleWhole() {
+    S.whole = !S.whole;
+    previewNow();
+  }
+
+  function apply() {
+    const p = S.preview;
+    if (!p || !p.plan || S.busy || S.applying) return;
+    const id = req.next("apply");
+    req.drop("preview");
+    S.applying = { id };
+    post({ type: "apply", id, verb: p.verb, addresses: S.sel.addresses, whole: p.whole });
+    renderBar();
+  }
+
+  function onPlan(msg) {
+    const kind = req.accept(msg.id);
+    if (kind === "preview" && S.sel && S.preview) {
+      const err = msg.error ? firstLine(msg.error) : msg.plan && msg.plan.ok === false ? refusalOf(msg.plan) : null;
+      S.preview = Object.assign({}, S.preview, { pending: false, plan: err ? null : msg.plan, error: err });
+      S.marks = err ? null : planMarks(S.model, msg.plan, [...S.sel.keys]);
+      if (S.mode === "ledger") renderLedger();
+      renderLower();
+      renderBar();
+      paint();
+    } else if (kind === "apply") {
+      S.applying = null;
+      const err = msg.error ? firstLine(msg.error) : refusalOf(msg.plan);
+      if (err && S.sel && S.preview) {
+        S.preview = Object.assign({}, S.preview, { error: err });
+        renderBar();
+        return;
+      }
+      S.result = err ? { error: err } : { words: resultWords(msg.plan) };
+      S.sel = null;
+      S.preview = null;
+      S.marks = null;
+      S.whole = false;
+      S.open = new Set();
+      if (S.mode === "ledger") renderLedger();
+      renderLower();
+      renderBar();
+      paint();
+    }
+  }
+
+  function pumpShow() {
+    if (S.showOut) return;
+    const a = S.queue.shift();
+    if (a == null) return;
+    S.showOut = true;
+    post({ type: "show", id: req.next("show"), address: a });
+  }
+
+  function onDetail(msg) {
+    if (req.accept(msg.id) !== "show") return;
+    S.showOut = false;
+    const show = msg.show;
+    if (show && show.steps) {
+      const seen = new Map();
+      for (const st of show.steps) {
+        const k = st.address + "|" + st.kind;
+        const i = seen.get(k) || 0;
+        seen.set(k, i + 1);
+        const cands = (S.model.byAddress.get(st.address) || []).filter((s) => s.kind === st.kind);
+        const s = cands[i] || cands[0];
+        if (s) S.detail.set(s.key, { before: st.before, after: st.after, lines: st.lines });
+      }
+      if (show.plan && show.plan.ok !== false && S.sel) {
+        for (const [k, v] of planMarks(S.model, show.plan, [...S.sel.keys])) S.showMarks.set(k, v);
+      }
+    }
+    pumpShow();
+    if (S.mode === "ledger") renderLedger();
+    renderLower();
+    paint();
+  }
+
+  function toggleStep(key) {
+    if (!key) return;
+    if (S.open.has(key)) S.open.delete(key);
+    else {
+      S.open.add(key);
+      const s = S.model.byKey.get(key);
+      if (s && !S.detail.has(key) && !S.queue.includes(s.address)) {
+        S.queue.push(s.address);
+        pumpShow();
+      }
+    }
+    if (S.mode === "ledger") renderLedger();
+    renderLower();
+    paint();
+  }
+
+  function toggleUnnamed() {
+    S.unnamedOpen = !S.unnamedOpen;
+    keep();
+    rebuild();
     render();
   }
 
-  function scheduleReflow() {
-    clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(reflowIfStale, 80);
+  function setMode(mode) {
+    if (mode === S.mode) return;
+    S.mode = mode;
+    S.hover = null;
+    keep();
+    render();
+    if (S.sel) reveal();
   }
 
-  new ResizeObserver(scheduleReflow).observe(rail);
-  window.addEventListener("resize", scheduleReflow);
-  // The pane can be resized (or moved between the panel and the sidebar) while this webview is hidden,
-  // and a hidden document doesn't observe its own layout -- so the show is the event that has to
-  // reconcile. Without this the workbench comes back drawn for whatever size it was last visible at.
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) scheduleReflow(); });
+  function rebuild() {
+    const avail = (tl.clientWidth || main.clientWidth || window.innerWidth) - LABEL_W - META_W;
+    S.model = buildModel(S.log, S.status, { unnamedOpen: S.unnamedOpen, colW: fitColumn(S.log, S.status, avail) });
+    if (S.sel) {
+      const keys = new Set();
+      for (const a of S.sel.addresses) for (const s of stepsOf(S.model, a)) keys.add(s.key);
+      if (!keys.size) S.sel = null;
+      else S.sel.keys = keys;
+    }
+    if (S.ph != null && S.ph >= S.model.cols.length - 1) S.ph = null;
+  }
 
-  initFind();
-  vscode.postMessage({ type: "ready" });
+  function reveal() {
+    if (!S.sel) return;
+    const m = S.model;
+    const cols = [...S.sel.keys].map((k) => m.byKey.get(k).col);
+    if (S.mode === "timeline") {
+      const c = m.cols[Math.max(...cols)];
+      const x = LABEL_W + c.x;
+      if (x < tl.scrollLeft + LABEL_W || x + c.w > tl.scrollLeft + tl.clientWidth) tl.scrollLeft = x - tl.clientWidth / 2;
+      const ri = m.rows.findIndex((r) => r.key === (S.sel.row || m.rowOf.get([...S.sel.keys][0])));
+      if (ri >= 0) {
+        const y = ri * ROW_H;
+        if (y < tl.scrollTop || y + ROW_H > tl.scrollTop + tl.clientHeight - 24) tl.scrollTop = y - ROW_H * 2;
+      }
+    } else {
+      const row = rowEls.get("col:" + Math.max(...cols));
+      if (row) row.scrollIntoView({ block: "nearest" });
+    }
+  }
+
+  // ---- keyboard
+  function move(key) {
+    const m = S.model;
+    if (S.mode === "timeline") {
+      const cur = moveCursor(m, S.cursor, key);
+      if (!cur) return;
+      S.cursor = cur;
+      if (cur.col == null) select({ kind: "row", row: cur.row }, { preview: false, reveal: true });
+      else select({ kind: "cell", row: cur.row, col: cur.col }, { preview: false, reveal: true });
+      S.cursor = cur;
+    } else if (key === "ArrowUp" || key === "ArrowDown") {
+      const cur = S.sel && S.sel.kind === "col" ? S.sel.col : null;
+      const col = moveSave(m, cur, key);
+      if (col != null) select({ kind: "col", col }, { preview: false, reveal: true });
+    }
+  }
+
+  document.addEventListener("keydown", (ev) => {
+    const t = ev.target;
+    if (t === findIn) return;
+    if (ev.key === "/" && !ev.metaKey && !ev.ctrlKey) {
+      ev.preventDefault();
+      findIn.focus();
+      findIn.select();
+      return;
+    }
+    if (ev.key === "Escape") {
+      if (S.result && !S.sel) closeResult();
+      else if (S.sel) clearSelection();
+      else if (S.ph != null) setPlayhead(null);
+      return;
+    }
+    if (S.phase !== "ready" || (t.closest && t.closest(".ph"))) return;
+    if (t.tagName === "BUTTON" && (ev.key === "Enter" || ev.key === " ")) return;
+    if (ev.key === "Enter") {
+      if (S.sel && !S.preview) {
+        ev.preventDefault();
+        previewNow();
+      }
+      return;
+    }
+    if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End"].includes(ev.key)) {
+      ev.preventDefault();
+      move(ev.key);
+    }
+  });
+
+  // ---- find
+  let findTimer = 0;
+  findIn.addEventListener("input", () => {
+    clearTimeout(findTimer);
+    findKey.hidden = !!findIn.value;
+    findTimer = setTimeout(() => {
+      const q = findIn.value.trim();
+      if (!q) {
+        S.hits = null;
+        req.drop("find");
+        renderHits();
+        return;
+      }
+      post({ type: "find", id: req.next("find"), query: q });
+    }, 160);
+  });
+  findIn.addEventListener("focus", renderHits);
+  findIn.addEventListener("blur", () => {
+    hitsEl.hidden = true;
+  });
+  findIn.addEventListener("keydown", (ev) => {
+    const hits = S.hits || [];
+    if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+      ev.preventDefault();
+      if (!hits.length) return;
+      S.hitAt = (S.hitAt + (ev.key === "ArrowDown" ? 1 : hits.length - 1)) % hits.length;
+      renderHits();
+    } else if (ev.key === "Enter") {
+      ev.preventDefault();
+      if (hits[S.hitAt]) pick(hits[S.hitAt]);
+    } else if (ev.key === "Escape") {
+      ev.preventDefault();
+      findIn.value = "";
+      findKey.hidden = false;
+      S.hits = null;
+      req.drop("find");
+      findIn.blur();
+    }
+  });
+  hitsEl.addEventListener("mousedown", (ev) => {
+    ev.preventDefault();
+    const e = ev.target.closest(".hit");
+    if (e && S.hits) pick(S.hits[+e.dataset.i]);
+  });
+
+  function pick(hit) {
+    findIn.blur();
+    if (S.phase === "ready") focusAddress(hit.address);
+  }
+
+  function renderHits() {
+    hitsEl.textContent = "";
+    const q = findIn.value.trim();
+    hitsEl.hidden = !(document.activeElement === findIn && q && S.hits);
+    if (hitsEl.hidden) return;
+    if (!S.hits.length) {
+      hitsEl.append(h("div", "hit none", "No matches"));
+      return;
+    }
+    S.hits.forEach((hit, i) => {
+      const r = h("div", "hit" + (i === S.hitAt ? " on" : ""));
+      r.dataset.i = i;
+      r.setAttribute("role", "option");
+      r.setAttribute("aria-selected", String(i === S.hitAt));
+      const a = h("span", "a", hit.address);
+      a.title = hit.address;
+      r.append(a);
+      const text = hit.text && hit.text !== hit.address ? hit.text : "";
+      const x = h("span", "x", text);
+      x.title = text;
+      r.append(x, h("span", "k", hit.matched || ""));
+      hitsEl.append(r);
+    });
+  }
+
+  // ---- host messages
+  function onState(msg) {
+    if (msg.uninitialized) {
+      S.phase = "uninit";
+      S.sel = null;
+    } else if (msg.error && !msg.log) {
+      S.phase = "error";
+      S.error = firstLine(msg.error);
+    } else {
+      const before = S.model;
+      const prevShas = before ? new Set(before.cols.map((c) => c.sha)) : null;
+      S.log = msg.log;
+      S.status = msg.status;
+      rebuild();
+      const m = S.model;
+      S.phase = m.cols.length ? "ready" : "empty";
+      const changed = outChanges(before, m);
+      if (changed.length) S.flash = { keys: new Set(changed), t0: performance.now() };
+      S.arrived = new Set(prevShas ? m.cols.filter((c) => !prevShas.has(c.sha)).map((c) => c.sha) : []);
+      if (S.arrived.size) {
+        if (tl.scrollLeft + tl.clientWidth >= tl.scrollWidth - 4) S.scrolled = false;
+        setTimeout(() => S.arrived.clear(), 400);
+      }
+      if (S.sel && S.preview && S.arrived.size) previewNow();
+    }
+    render();
+    if (S.flash) setTimeout(paint, 1450);
+    if (S.pendingFocus && S.phase === "ready") {
+      const a = S.pendingFocus;
+      S.pendingFocus = null;
+      focusAddress(a);
+    }
+  }
+
+  window.addEventListener("message", (ev) => {
+    const msg = ev.data || {};
+    switch (msg.type) {
+      case "state":
+        onState(msg);
+        break;
+      case "plan":
+        onPlan(msg);
+        break;
+      case "detail":
+        onDetail(msg);
+        break;
+      case "found":
+        if (req.accept(msg.id) === "find") {
+          S.hits = msg.hits || [];
+          S.hitAt = 0;
+          renderHits();
+        }
+        break;
+      case "busy":
+        S.busy = msg.verb || null;
+        renderStatus();
+        renderBar();
+        break;
+      case "focus":
+        if (S.phase === "ready") focusAddress(msg.address);
+        else S.pendingFocus = msg.address;
+        break;
+    }
+  });
+
   render();
+  post({ type: "ready" });
 })();
